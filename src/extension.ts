@@ -1122,7 +1122,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       type: 'extension_ui_request',
       id: `preview-select-${Date.now()}`,
       method: 'select',
-      title: 'Pi RPC preview select',
+      title: 'Pi preview select',
       options: recentRequests(controller, 'select').at(-1)?.options ?? [
         'Open session tree',
         'Show models',
@@ -1136,7 +1136,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       type: 'extension_ui_request',
       id: `preview-confirm-${Date.now()}`,
       method: 'confirm',
-      title: 'Pi RPC preview confirm',
+      title: 'Pi preview confirm',
       message: 'Confirm a preview action',
       timeout: 5000,
     }))
@@ -1146,7 +1146,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       type: 'extension_ui_request',
       id: `preview-input-${Date.now()}`,
       method: 'input',
-      title: 'Pi RPC preview input',
+      title: 'Pi preview input',
       placeholder: 'type a value',
       timeout: 5000,
     }))
@@ -1156,7 +1156,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       type: 'extension_ui_request',
       id: `preview-editor-${Date.now()}`,
       method: 'editor',
-      title: 'Pi RPC preview editor',
+      title: 'Pi preview editor',
       prefill: registry.getActive()?.snapshot.draft ?? '',
     }))
   );
@@ -1165,7 +1165,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       type: 'extension_ui_request',
       id: `preview-notify-${Date.now()}`,
       method: 'notify',
-      message: 'Pi RPC preview notification',
+      message: 'Pi preview notification',
       notifyType: 'info',
     }))
   );

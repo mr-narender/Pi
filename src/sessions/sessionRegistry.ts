@@ -55,7 +55,7 @@ export class SessionRegistry implements vscode.Disposable {
   }
 
   public async pickFolder(
-    title = 'Select Pi RPC workspace folder'
+    title = 'Select Pi workspace folder'
   ): Promise<SessionController | undefined> {
     const folders = vscode.workspace.workspaceFolders ?? [];
     if (folders.length === 0) {
@@ -74,7 +74,7 @@ export class SessionRegistry implements vscode.Disposable {
       folders.map((folder) => ({
         label: folder.name,
         description: folder.uri.fsPath,
-        detail: this.activeFolderUri === folder.uri.toString() ? 'Active Pi RPC folder' : undefined,
+        detail: this.activeFolderUri === folder.uri.toString() ? 'Active Pi folder' : undefined,
         folder,
       })),
       { title }

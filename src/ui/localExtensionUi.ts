@@ -64,7 +64,7 @@ export class LocalExtensionUiContext {
   public setTheme(): UnsupportedThemeResult {
     return {
       success: false,
-      error: 'Themes are not switchable through Pi RPC VS Code compatibility mode.',
+      error: 'Themes are not switchable through the Pi VS Code compatibility mode.',
     };
   }
 

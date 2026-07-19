@@ -10,7 +10,7 @@ export const CONTRIBUTED_COMMANDS = (packageJson.contributes.commands as Contrib
   (command) => ({
     id: command.command,
     title: command.title,
-    category: command.category ?? 'Pi RPC',
+    category: command.category ?? 'Pi',
   })
 );
 

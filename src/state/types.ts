@@ -119,7 +119,7 @@ export function createInitialControllerState(
     stderrTail: [],
     statuses: {},
     widgets: [],
-    title: 'Pi RPC',
+    title: 'Pi',
     draft: '',
     pendingUi: [],
     uiHistory: [],

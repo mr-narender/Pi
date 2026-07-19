@@ -42,7 +42,7 @@ export class StatusBarController implements vscode.Disposable {
       return;
     }
     this.clearKeyed();
-    this.connection.text = '$(plug) Pi RPC: inactive';
+    this.connection.text = '$(plug) Pi: inactive';
     this.model.text = '$(hubot) No model';
     this.queue.text = '$(list-unordered) Queue';
     this.usage.text = '$(pulse) Usage';

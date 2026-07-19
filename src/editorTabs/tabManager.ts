@@ -44,7 +44,7 @@ function makeId(prefix: string): string {
 }
 
 function isDefaultTitle(value: string | undefined): boolean {
-  return !value || value === 'Pi RPC';
+  return !value || value === 'Pi' || value === 'Pi RPC';
 }
 
 function sameTarget(left: ChatTabTarget, right: ChatTabTarget): boolean {

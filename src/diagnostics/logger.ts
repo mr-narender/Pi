@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { redactText } from './redaction';
 
 export class DiagnosticsLogger {
-  public readonly output = vscode.window.createOutputChannel('Pi RPC');
+  public readonly output = vscode.window.createOutputChannel('Pi');
   private readonly ring: string[] = [];
 
   public dispose(): void {

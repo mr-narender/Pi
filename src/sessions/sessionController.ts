@@ -74,7 +74,7 @@ export class SessionController implements vscode.Disposable {
       return;
     }
     if (this.folder.uri.scheme !== 'file') {
-      throw new Error('Virtual workspaces are unsupported for Pi RPC');
+      throw new Error('Virtual workspaces are unsupported for Pi');
     }
     this.stopping = false;
     this.state = {
@@ -434,7 +434,7 @@ export class SessionController implements vscode.Disposable {
   private requireClient() {
     const client = this.supervisor.currentClient;
     if (!client) {
-      throw new Error('Pi RPC is not started for this workspace');
+      throw new Error('Pi is not started for this workspace');
     }
     return client;
   }

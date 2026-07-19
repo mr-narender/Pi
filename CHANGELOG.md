@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.16
+
+- Simplified branding to "Pi" everywhere it showed "Pi RPC": Command Palette category, Settings section, status bar, output channel, workspace pickers, and default tab title. The extension display name stays "Pi - this one is (y)ours"; setting ids are unchanged.
+
 ## 0.0.15
 
 - Renamed the extension to "Pi - this one is (y)ours".

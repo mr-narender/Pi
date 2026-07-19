@@ -266,7 +266,7 @@ function renderPreview(snapshot: WebviewSnapshot): string {
         tabindex="-1"
       >
         <h2 id="${PREVIEW_TITLE_ID}">Preview before send</h2>
-        <p class="muted" id="${PREVIEW_DESCRIPTION_ID}">This is the exact Pi RPC payload that will be sent.</p>
+        <p class="muted" id="${PREVIEW_DESCRIPTION_ID}">This is the exact Pi payload that will be sent.</p>
         <div class="detail-stack">
           <div><strong>Command:</strong> ${escapeHtml(snapshot.preview.command)}</div>
           <div><strong>Images:</strong> ${snapshot.preview.imageItems.length}</div>

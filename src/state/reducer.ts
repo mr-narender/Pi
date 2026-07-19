@@ -281,7 +281,7 @@ function resetUi(
     pendingUi: [],
     statuses: {},
     widgets: [],
-    title: 'Pi RPC',
+    title: 'Pi',
   };
 }
 

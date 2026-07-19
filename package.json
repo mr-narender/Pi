@@ -2,7 +2,7 @@
   "name": "pi-rpc-vscode",
   "displayName": "Pi - this one is (y)ours",
   "description": "An unofficial, personal VS Code chat UI for the Pi coding agent (pi.dev). Not affiliated with pi.dev — shared for anyone who wants it.",
-  "version": "0.0.15",
+  "version": "0.0.16",
   "publisher": "local",
   "license": "MIT",
   "private": true,
@@ -109,503 +109,503 @@
       {
         "command": "piRpcInternal.start",
         "title": "Start Pi",
-        "category": "Pi RPC",
+        "category": "Pi",
         "icon": "$(play-circle)"
       },
       {
         "command": "piRpcInternal.stop",
         "title": "Stop",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpcInternal.restart",
         "title": "Restart",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpcInternal.openChat",
         "title": "Open Current Chat",
-        "category": "Pi RPC",
+        "category": "Pi",
         "icon": "$(comment-discussion)"
       },
       {
         "command": "piRpc.prompt",
         "title": "Send Prompt",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.steer",
         "title": "Send Steer Message",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.followUp",
         "title": "Send Follow-up Message",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.abort",
         "title": "Abort Agent",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.newSession",
         "title": "New Chat",
-        "category": "Pi RPC",
+        "category": "Pi",
         "icon": "$(add)"
       },
       {
         "command": "piRpc.refreshState",
         "title": "Refresh State",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpcInternal.refreshRecentSessions",
         "title": "Refresh Recent Sessions",
-        "category": "Pi RPC",
+        "category": "Pi",
         "icon": "$(refresh)"
       },
       {
         "command": "piRpcInternal.filterRecentSessions",
         "title": "Search Recent Sessions",
-        "category": "Pi RPC",
+        "category": "Pi",
         "icon": "$(search)"
       },
       {
         "command": "piRpcInternal.clearRecentSessionFilter",
         "title": "Clear Recent Session Search",
-        "category": "Pi RPC",
+        "category": "Pi",
         "icon": "$(close)"
       },
       {
         "command": "piRpc.refreshMessages",
         "title": "Refresh Messages",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.selectModel",
         "title": "Select Model",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.cycleModel",
         "title": "Cycle Model",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.showModels",
         "title": "Show Available Models",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.setThinkingLevel",
         "title": "Set Thinking Level",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.cycleThinkingLevel",
         "title": "Cycle Thinking Level",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.setSteeringMode",
         "title": "Set Steering Mode",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.setFollowUpMode",
         "title": "Set Follow-up Mode",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.compact",
         "title": "Compact Conversation",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.toggleAutoCompaction",
         "title": "Toggle Auto Compaction",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.toggleAutoRetry",
         "title": "Toggle Auto Retry",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.abortRetry",
         "title": "Abort Retry",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.runBash",
         "title": "Run Bash Command",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.abortBash",
         "title": "Abort Bash Command",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.showSessionStats",
         "title": "Show Session Stats",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.exportHtml",
         "title": "Export Session as HTML",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.switchSession",
         "title": "Resume Chat",
-        "category": "Pi RPC",
+        "category": "Pi",
         "icon": "$(history)"
       },
       {
         "command": "piRpc.forkSession",
         "title": "Start Branch",
-        "category": "Pi RPC",
+        "category": "Pi",
         "icon": "$(git-branch)"
       },
       {
         "command": "piRpc.cloneSession",
         "title": "Duplicate Path",
-        "category": "Pi RPC",
+        "category": "Pi",
         "icon": "$(copy)"
       },
       {
         "command": "piRpc.showForkMessages",
         "title": "Show Branch Starting Points",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.refreshEntries",
         "title": "Refresh Entries",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.showSessionTree",
         "title": "Show Conversation Map",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.copyLastAssistant",
         "title": "Copy Last Assistant Response",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.renameSession",
         "title": "Rename Session",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.showPiCommands",
         "title": "Show Pi Commands",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.respondExtensionUi",
         "title": "Respond to Extension UI Request",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.inspectRpcError",
         "title": "Inspect RPC Error",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.inspectParseError",
         "title": "Inspect Parse Error",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.inspectAgentStart",
         "title": "Inspect Agent Start",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.inspectAgentEnd",
         "title": "Inspect Agent End",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.inspectAgentSettled",
         "title": "Inspect Agent Settled",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.inspectTurnStart",
         "title": "Inspect Turn Start",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.inspectTurnEnd",
         "title": "Inspect Turn End",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.inspectMessageStart",
         "title": "Inspect Message Start",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.inspectMessageUpdate",
         "title": "Inspect Message Update",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.inspectMessageEnd",
         "title": "Inspect Message End",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.inspectToolStart",
         "title": "Inspect Tool Start",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.inspectToolUpdate",
         "title": "Inspect Tool Update",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.inspectToolEnd",
         "title": "Inspect Tool End",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.inspectQueueUpdate",
         "title": "Inspect Queue Update",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.inspectCompactionStart",
         "title": "Inspect Compaction Start",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.inspectCompactionEnd",
         "title": "Inspect Compaction End",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.inspectRetryStart",
         "title": "Inspect Retry Start",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.inspectRetryEnd",
         "title": "Inspect Retry End",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.inspectExtensionError",
         "title": "Inspect Extension Error",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.inspectCompatibilityEvents",
         "title": "Inspect Compatibility Events",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.inspectEntryAppended",
         "title": "Inspect Entry Appended",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.inspectSessionInfoChanged",
         "title": "Inspect Session Info Changed",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.inspectThinkingChanged",
         "title": "Inspect Thinking Changed",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.extensionUi.select",
         "title": "Inspect Extension UI Select",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.extensionUi.confirm",
         "title": "Inspect Extension UI Confirm",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.extensionUi.input",
         "title": "Inspect Extension UI Input",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.extensionUi.editor",
         "title": "Inspect Extension UI Editor",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.extensionUi.notify",
         "title": "Inspect Extension UI Notify",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.extensionUi.setStatus",
         "title": "Inspect Extension UI Set Status",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.extensionUi.setWidget",
         "title": "Inspect Extension UI Set Widget",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.extensionUi.setTitle",
         "title": "Inspect Extension UI Set Title",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.extensionUi.setEditorText",
         "title": "Inspect Extension UI Set Editor Text",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.extensionUiLocal.onTerminalInput",
         "title": "Inspect Local UI onTerminalInput",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.extensionUiLocal.setWorkingMessage",
         "title": "Inspect Local UI setWorkingMessage",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.extensionUiLocal.setWorkingVisible",
         "title": "Inspect Local UI setWorkingVisible",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.extensionUiLocal.setWorkingIndicator",
         "title": "Inspect Local UI setWorkingIndicator",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.extensionUiLocal.setHiddenThinkingLabel",
         "title": "Inspect Local UI setHiddenThinkingLabel",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.extensionUiLocal.setFooter",
         "title": "Inspect Local UI setFooter",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.extensionUiLocal.setHeader",
         "title": "Inspect Local UI setHeader",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.extensionUiLocal.custom",
         "title": "Inspect Local UI custom",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.extensionUiLocal.pasteToEditor",
         "title": "Inspect Local UI pasteToEditor",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.extensionUiLocal.getEditorText",
         "title": "Inspect Local UI getEditorText",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.extensionUiLocal.addAutocompleteProvider",
         "title": "Inspect Local UI addAutocompleteProvider",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.extensionUiLocal.setEditorComponent",
         "title": "Inspect Local UI setEditorComponent",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.extensionUiLocal.getEditorComponent",
         "title": "Inspect Local UI getEditorComponent",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.extensionUiLocal.themeGetter",
         "title": "Inspect Local UI theme Getter",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.extensionUiLocal.getAllThemes",
         "title": "Inspect Local UI getAllThemes",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.extensionUiLocal.getTheme",
         "title": "Inspect Local UI getTheme",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.extensionUiLocal.setTheme",
         "title": "Inspect Local UI setTheme",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.extensionUiLocal.getToolsExpanded",
         "title": "Inspect Local UI getToolsExpanded",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.extensionUiLocal.setToolsExpanded",
         "title": "Inspect Local UI setToolsExpanded",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpcInternal.showHealth",
         "title": "Show Health",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpcInternal.exportDiagnostics",
         "title": "Export Diagnostics",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpcInternal.openWorktree",
         "title": "Open Worktree",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpc.toggleAdvancedMode",
         "title": "Toggle Advanced Mode",
-        "category": "Pi RPC",
+        "category": "Pi",
         "icon": "$(gear)"
       },
       {
         "command": "piRpcInternal.showHelp",
         "title": "Help",
-        "category": "Pi RPC"
+        "category": "Pi"
       },
       {
         "command": "piRpcInternal.deleteSession",
         "title": "Delete Chat",
-        "category": "Pi RPC",
+        "category": "Pi",
         "icon": "$(trash)"
       },
       {
         "command": "piRpcInternal.renameSession",
         "title": "Rename Chat",
-        "category": "Pi RPC",
+        "category": "Pi",
         "icon": "$(edit)"
       }
     ],
     "configuration": {
-      "title": "Pi RPC",
+      "title": "Pi",
       "properties": {
         "piRpc.executable": {
           "type": "string",
@@ -712,7 +712,7 @@
             "advanced"
           ],
           "default": "simple",
-          "description": "Default Pi RPC UI mode. Simple keeps chat focused. Advanced keeps the Advanced panel visible."
+          "description": "Default Pi UI mode. Simple keeps chat focused. Advanced keeps the Advanced panel visible."
         },
         "piRpc.editorTabs.enabled": {
           "type": "boolean",
