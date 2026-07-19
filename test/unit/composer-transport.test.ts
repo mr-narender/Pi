@@ -130,9 +130,11 @@ test('default simple mode visible controls stay compact', () => {
       /data-command="piRpc\.showModels"|data-command="piRpc\.newSession"|data-command="piRpc\.switchSession"|<summary>More<\/summary>/g
     ) ?? [];
   const composerButtons =
-    html.match(/<summary[^>]*>Attach<\/summary>|data-send-command="prompt"/g) ?? [];
-  assert.equal(headerButtons.length, 6);
-  assert.equal(composerButtons.length, 2);
+    html.match(
+      /id="attach-trigger"|id="composer-send-button"|data-command="piRpc\.showPiCommands"/g
+    ) ?? [];
+  assert.equal(headerButtons.length, 4);
+  assert.equal(composerButtons.length, 3);
   assert.equal((html.match(/data-action="abort"/g) ?? []).length, 0);
 });
 

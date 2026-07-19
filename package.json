@@ -2,7 +2,7 @@
   "name": "pi-rpc-vscode",
   "displayName": "Pi RPC",
   "description": "Direct VS Code integration for Pi 0.80.10 RPC mode",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "publisher": "local",
   "license": "MIT",
   "private": true,
@@ -87,12 +87,8 @@
     "views": {
       "piRpc": [
         {
-          "id": "piRpc.newChat",
-          "name": "New Chat"
-        },
-        {
-          "id": "piRpc.resumeChat",
-          "name": "Resume Chat"
+          "id": "piRpc.sessions",
+          "name": "Chats"
         }
       ]
     },
@@ -723,30 +719,6 @@
           "command": "piRpc.newSession",
           "when": "resourceScheme == file || resourceScheme == untitled || resourceScheme == pi-chat",
           "group": "navigation@2"
-        }
-      ],
-      "view/title": [
-        {
-          "command": "piRpc.newSession",
-          "when": "view == piRpc.newChat",
-          "group": "navigation@1"
-        },
-        {
-          "command": "piRpcInternal.filterRecentSessions",
-          "when": "view == piRpc.resumeChat",
-          "group": "navigation@1"
-        },
-        {
-          "command": "piRpcInternal.refreshRecentSessions",
-          "when": "view == piRpc.resumeChat",
-          "group": "navigation@2"
-        }
-      ],
-      "view/item/context": [
-        {
-          "command": "piRpc.switchSession",
-          "when": "view == piRpc.resumeChat && viewItem == piRpc.recentSession",
-          "group": "inline@1"
         }
       ]
     }

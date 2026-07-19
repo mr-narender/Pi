@@ -72,5 +72,18 @@
   "70": "Usability validation plan",
   "71": "Capability preservation map",
   "72": "Component inventory and microcopy",
-  "73": "Outcome"
+  "73": "Outcome",
+  "74": "LOCAL-004 — Pi editor-tab migration plan",
+  "75": "Findings by topic",
+  "76": ".onMessage",
+  "77": "types.ts",
+  "78": "model.ts",
+  "79": "ChatTabStateCache",
+  "80": "PiProcessSupervisor",
+  "81": "rpc-coverage.test.ts",
+  "82": "default",
+  "83": "ChatUiMode",
+  "84": "manifest-notes.md",
+  "85": "observer-summary.md",
+  "86": "resource-observations.md"
 }

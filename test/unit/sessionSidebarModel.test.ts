@@ -3,9 +3,75 @@ import assert from 'node:assert/strict';
 import {
   createNewChatSidebarModel,
   createResumeChatSidebarModel,
+  createSessionsSidebarModel,
 } from '../../src/ui/trees/sessionSidebarModel';
 
 const baseRecent = { loading: false, filterText: '', items: [] };
+
+test('sessions sidebar model leads with New Chat then lists existing chats', () => {
+  const model = createSessionsSidebarModel({
+    activeFolderName: 'workspace',
+    activeState: {
+      connectionState: 'ready',
+      workspaceFolderName: 'workspace',
+      state: { sessionFile: '/tmp/sessions/current.jsonl' },
+    },
+    recent: {
+      loading: false,
+      filterText: '',
+      items: [
+        {
+          id: 'a',
+          path: '/tmp/sessions/current.jsonl',
+          displayName: 'Fix auth',
+          sessionName: 'Fix auth',
+          firstPromptPreview: 'Fix auth',
+          workspaceLabel: 'workspace',
+          modelLabel: 'sonnet',
+          modifiedAt: Date.now(),
+          createdAt: Date.now(),
+          cwd: '/tmp',
+          messageCount: 2,
+        },
+        {
+          id: 'b',
+          path: '/tmp/sessions/older.jsonl',
+          displayName: 'Older chat',
+          sessionName: 'Older chat',
+          firstPromptPreview: 'Older chat',
+          workspaceLabel: 'workspace',
+          modelLabel: 'sonnet',
+          modifiedAt: Date.now() - 60000,
+          createdAt: Date.now() - 60000,
+          cwd: '/tmp',
+          messageCount: 1,
+        },
+      ],
+    },
+    hasDraft: false,
+    hasPendingAttachments: false,
+    now: Date.now(),
+  });
+
+  assert.equal(model[0]?.label, 'New Chat');
+  assert.equal(model[0]?.command?.command, 'piRpc.newSession');
+  assert.equal(model[1]?.kind, 'session');
+  assert.equal(model[1]?.label, 'Fix auth');
+  assert.equal(model[1]?.command?.command, 'piRpc.switchSession');
+  assert.ok(String(model[1]?.description).includes('Current'));
+  assert.equal(model[2]?.label, 'Older chat');
+});
+
+test('sessions sidebar model shows an empty state with only New Chat', () => {
+  const model = createSessionsSidebarModel({
+    activeFolderName: 'workspace',
+    recent: baseRecent,
+    hasDraft: false,
+    hasPendingAttachments: false,
+  });
+  assert.equal(model[0]?.label, 'New Chat');
+  assert.equal(model[1]?.label, 'No chats yet');
+});
 
 test('new chat sidebar model shows primary action and unsent draft warning', () => {
   const model = createNewChatSidebarModel({

@@ -5,6 +5,7 @@ import type { SessionController } from '../../sessions/sessionController';
 import {
   createNewChatSidebarModel,
   createResumeChatSidebarModel,
+  createSessionsSidebarModel,
   type SidebarNode,
 } from './sessionSidebarModel';
 import type { ChatUiState } from '../../webview/composerState';
@@ -100,6 +101,24 @@ export class NewChatTreeProvider extends RegistryTreeProvider {
       return [];
     }
     return createNewChatSidebarModel(await this.sidebarInput(this.recentSessions));
+  }
+}
+
+export class SessionsTreeProvider extends RegistryTreeProvider {
+  public constructor(
+    registry: SessionRegistry,
+    private readonly recentSessions: RecentSessionService,
+    uiState: ChatUiState
+  ) {
+    super(registry, uiState);
+    this.recentSessions.onDidChange(() => this.refresh());
+  }
+
+  public async getChildren(element?: SidebarNode): Promise<SidebarNode[]> {
+    if (element) {
+      return [];
+    }
+    return createSessionsSidebarModel(await this.sidebarInput(this.recentSessions));
   }
 }
 

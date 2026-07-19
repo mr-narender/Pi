@@ -25,14 +25,11 @@ test('coverage row inventory totals stay stable', () => {
   assert.equal((coverage.match(/\| D-\d+/g) ?? []).length, 8);
 });
 
-test('manifest contributes only launcher/history sidebar views', () => {
+test('manifest contributes a single Chats launcher sidebar view', () => {
   assert.deepEqual(
     packageJson.contributes.views.piRpc.map((view) => view.id),
-    ['piRpc.newChat', 'piRpc.resumeChat']
+    ['piRpc.sessions']
   );
-  assert.ok(
-    !packageJson.contributes.menus['view/title'].some((item) =>
-      String(item.when).includes('piRpc.currentChat')
-    )
-  );
+  const allMenus = JSON.stringify(packageJson.contributes.menus ?? {});
+  assert.ok(!allMenus.includes('piRpc.currentChat'));
 });

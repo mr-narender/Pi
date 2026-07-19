@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.5
+
+- Fix: New Chat no longer hangs on a permanent loading spinner (webview snapshot is no longer awaited inside resolveCustomEditor; added a pi-chat FileSystemProvider and an extension-host open-tab regression test).
+- Sidebar simplified to a single Chats launcher: New Chat at top, then existing chats that resume on click.
+- Center editor restyled to a native Claude-style layout: centered brand, mascot empty state, and a bottom-docked rounded composer with + (attach), / (commands), and send.
+
 ## 0.0.4
 
 - Completed LOCAL-004 editor-tab migration with a `CustomReadonlyEditorProvider` backed by stable `pi-chat:` URIs and native editor-tab session dedup/reveal behavior.

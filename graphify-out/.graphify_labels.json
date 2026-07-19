@@ -85,5 +85,7 @@
   "83": "ChatUiMode",
   "84": "manifest-notes.md",
   "85": "observer-summary.md",
-  "86": "resource-observations.md"
+  "86": "resource-observations.md",
+  "87": "State machines",
+  "88": "activationEvents"
 }

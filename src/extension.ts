@@ -11,11 +11,12 @@ import { SessionRegistry } from './sessions/sessionRegistry';
 import { ExtensionUiBroker } from './ui/extensionUiBroker';
 import { LocalExtensionUiContext } from './ui/localExtensionUi';
 import { openPathInNewWindow } from './ui/navigation';
-import { NewChatTreeProvider, ResumeChatTreeProvider } from './ui/trees/providers';
+import { SessionsTreeProvider } from './ui/trees/providers';
 import { StatusBarController } from './ui/status/statusBar';
 import { ChatPanelProvider } from './webview/provider';
 import { ChatUiState } from './webview/composerState';
 import { ChatEditorProvider } from './editorTabs/provider';
+import { ChatFileSystemProvider } from './editorTabs/fileSystemProvider';
 import { ChatTabManager } from './editorTabs/tabManager';
 import type { SessionController } from './sessions/sessionController';
 import type { ExtensionUiRequest } from './rpc/protocol';
@@ -70,6 +71,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     chat,
     chatTabs,
     broker,
+    ChatFileSystemProvider.register(),
     vscode.window.registerCustomEditorProvider('piRpc.chatEditor', chatEditorProvider, {
       supportsMultipleEditorsPerDocument: false,
       webviewOptions: {
@@ -87,19 +89,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   statusBar.bind(registry.getActive());
   void recentSessions.refresh();
 
-  const newChatView = new NewChatTreeProvider(registry, recentSessions, uiState);
-  const resumeChatView = new ResumeChatTreeProvider(registry, recentSessions, uiState);
+  const sessionsView = new SessionsTreeProvider(registry, recentSessions, uiState);
 
   context.subscriptions.push(
-    vscode.window.registerTreeDataProvider('piRpc.newChat', newChatView),
-    vscode.window.registerTreeDataProvider('piRpc.resumeChat', resumeChatView),
-    newChatView,
-    resumeChatView
+    vscode.window.registerTreeDataProvider('piRpc.sessions', sessionsView),
+    sessionsView
   );
 
   const refreshViews = (): void => {
-    newChatView.refresh();
-    resumeChatView.refresh();
+    sessionsView.refresh();
     statusBar.setMode(uiState.getMode());
     statusBar.bind(registry.getActive());
     if (editorTabsEnabled()) {

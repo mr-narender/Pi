@@ -29,7 +29,7 @@ async function run() {
   assert.ok(all.includes('piRpc.switchSession'));
 
   const views = extension.packageJSON.contributes.views.piRpc.map((view) => view.id);
-  assert.deepEqual(views, ['piRpc.newChat', 'piRpc.resumeChat']);
+  assert.deepEqual(views, ['piRpc.sessions']);
 
   const customEditor = extension.packageJSON.contributes.customEditors.find(
     (item) => item.viewType === 'piRpc.chatEditor'
@@ -40,8 +40,8 @@ async function run() {
   assert.ok(editorTitleMenu.some((item) => item.command === 'piRpcInternal.openChat'));
   assert.ok(editorTitleMenu.some((item) => item.command === 'piRpc.newSession'));
 
-  const viewTitleMenu = extension.packageJSON.contributes.menus['view/title'];
-  assert.ok(!viewTitleMenu.some((item) => String(item.when).includes('piRpc.currentChat')));
+  const allMenus = JSON.stringify(extension.packageJSON.contributes.menus ?? {});
+  assert.ok(!allMenus.includes('piRpc.currentChat'));
 
   const advancedMode = await vscode.commands.executeCommand('piRpc.toggleAdvancedMode');
   assert.equal(advancedMode, 'advanced');
@@ -61,6 +61,39 @@ async function run() {
 
   const editorText = await vscode.commands.executeCommand('piRpc.extensionUiLocal.getEditorText');
   assert.equal(editorText, '');
+
+  // Regression: opening a pi-chat custom editor must resolve (not hang on a
+  // permanent loading indicator). This proves a FileSystemProvider is
+  // registered for the pi-chat scheme so vscode.openWith can back the editor.
+  if ((vscode.workspace.workspaceFolders ?? []).length > 0) {
+    const folderUri = vscode.workspace.workspaceFolders[0].uri.toString();
+    const seg = Buffer.from(folderUri, 'utf8').toString('base64url');
+    const chatUri = vscode.Uri.from({ scheme: 'pi-chat', path: `/${seg}/draft.chat` });
+    // Regression: opening the pi-chat custom editor must resolve quickly. It
+    // hung indefinitely when postSnapshot awaited webview.postMessage inside
+    // resolveCustomEditor (channel not established until resolve returns).
+    let openWithOutcome = 'pending';
+    await Promise.race([
+      Promise.resolve(
+        vscode.commands.executeCommand('vscode.openWith', chatUri, 'piRpc.chatEditor', {
+          preview: false,
+          preserveFocus: false,
+        })
+      )
+        .then(() => {
+          openWithOutcome = 'ok';
+        })
+        .catch((error) => {
+          openWithOutcome = `error: ${error && error.message ? error.message : String(error)}`;
+        }),
+      new Promise((resolve) => setTimeout(resolve, 6000)),
+    ]);
+    assert.equal(openWithOutcome, 'ok', `openWith outcome: ${openWithOutcome}`);
+    const hasChatTab = vscode.window.tabGroups.all.some((group) =>
+      group.tabs.some((tab) => tab.input && tab.input.viewType === 'piRpc.chatEditor')
+    );
+    assert.ok(hasChatTab, 'no pi-chat editor tab was opened');
+  }
 }
 
 module.exports = { run };

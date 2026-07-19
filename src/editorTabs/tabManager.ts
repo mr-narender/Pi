@@ -162,7 +162,12 @@ class ChatEditorHost implements vscode.Disposable {
           .filter((uri): uri is string => typeof uri === 'string')
       )
     );
-    await this.panel.webview.postMessage({ type: 'snapshot', snapshot });
+    // IMPORTANT: do not await postMessage here. When this host is created from
+    // resolveCustomEditor, VS Code only establishes the webview messaging
+    // channel after resolveCustomEditor returns. Awaiting the post therefore
+    // deadlocks the editor on a permanent loading indicator. VS Code buffers
+    // messages sent before the webview is ready and delivers them on load.
+    void this.panel.webview.postMessage({ type: 'snapshot', snapshot });
   }
 
   public hasAttachment(uri: string): boolean {

@@ -46,16 +46,19 @@ function snapshot(overrides: Partial<WebviewSnapshot> = {}): WebviewSnapshot {
   };
 }
 
-test('renderChatApp keeps simple mode focused on chat essentials', () => {
+test('renderChatApp renders the native brand + docked composer layout', () => {
   const html = renderChatApp(snapshot());
-  assert.match(html, /Current Chat/);
+  assert.match(html, /class="brand"/);
   assert.match(html, /Skip to composer/);
-  assert.match(html, /Message Pi/);
+  assert.match(html, /class="composer-dock"/);
+  assert.match(html, /class="composer-card"/);
+  assert.match(html, /placeholder="Ask Pi to edit/);
   assert.match(html, />New</);
   assert.match(html, />History</);
   assert.match(html, />More</);
-  assert.match(html, />Attach</);
-  assert.match(html, />Send</);
+  assert.match(html, /aria-label="Attach"/);
+  assert.match(html, /id="composer-send-button"/);
+  assert.match(html, /data-command="piRpc.showPiCommands"/);
   assert.doesNotMatch(html, /Queue & steering/);
   assert.doesNotMatch(html, /Workflow & Models/);
 });
@@ -117,7 +120,7 @@ test('renderChatApp exposes empty, restricted, preview, and attachment states ac
     })
   );
   assert.match(html, /Restricted Mode/);
-  assert.match(html, /No messages yet/);
+  assert.match(html, /What to do first/);
   assert.match(html, /Selection: src\/app\.ts L18-L34/);
   assert.match(html, /diagram\.png/);
   assert.match(html, new RegExp(`id="${PREVIEW_DIALOG_ID}"`));

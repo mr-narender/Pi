@@ -1,16 +1,16 @@
 # Graph Report - feat-pi-rpc-vscode  (2026-07-19)
 
 ## Corpus Check
-- 88 files · ~71,735 words
+- 90 files · ~73,235 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 1165 nodes · 2629 edges · 87 communities (77 shown, 10 thin omitted)
-- Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 30 edges (avg confidence: 0.74)
+- 1194 nodes · 2674 edges · 89 communities (83 shown, 6 thin omitted)
+- Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 32 edges (avg confidence: 0.74)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `4fb512f4`
+- Built from commit: `b3fc3386`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -97,11 +97,13 @@
 - manifest-notes.md
 - observer-summary.md
 - resource-observations.md
+- State machines
+- activationEvents
 
 ## God Nodes (most connected - your core abstractions)
 1. `SessionController` - 136 edges
 2. `activate()` - 95 edges
-3. `ChatUiState` - 57 edges
+3. `ChatUiState` - 58 edges
 4. `JsonObject` - 55 edges
 5. `RpcClient` - 49 edges
 6. `ChatTabManager` - 42 edges
@@ -125,7 +127,7 @@
 ## Import Cycles
 - None detected.
 
-## Communities (87 total, 10 thin omitted)
+## Communities (89 total, 6 thin omitted)
 
 ### Community 0 - "JsonObject"
 Cohesion: 0.14
@@ -133,19 +135,19 @@ Nodes (3): RpcClient, JsonObject, SessionState
 
 ### Community 1 - "activate"
 Cohesion: 0.06
-Nodes (13): ChatTabContext, activate(), asRecord(), asString(), recentRequests(), ExtensionUiRequest, SessionController, resetControllerProjection() (+5 more)
+Nodes (8): activate(), ExtensionUiRequest, SessionController, resetControllerProjection(), ExtensionUiBroker, LOCAL_THEME, LocalExtensionUiContext, UnsupportedThemeResult
 
 ### Community 2 - "protocol.ts"
-Cohesion: 0.19
-Nodes (20): appendBlockText(), applyAssistantDelta(), asObject(), asStringArray(), ensureContentBlock(), mergeSessionState(), messageAt(), messageIndex() (+12 more)
+Cohesion: 0.06
+Nodes (63): asOptionalString(), asRecord(), asString(), asStringArray(), COMMAND_TYPES, EVENT_TYPES, isJsonObject(), isJsonValue() (+55 more)
 
 ### Community 3 - "recentSessions.ts"
-Cohesion: 0.06
-Nodes (32): asObject(), buildRecentSessionRecord(), compareRecentSessionRecordTimestamps(), extractTextContent(), filterRecentSessions(), formatRelativeTimestamp(), getAgentDir(), getDefaultSessionDirForWorkspace() (+24 more)
+Cohesion: 0.18
+Nodes (18): asObject(), buildRecentSessionRecord(), compareRecentSessionRecordTimestamps(), extractTextContent(), filterRecentSessions(), getAgentDir(), getDefaultSessionDirForWorkspace(), getMessageActivityTime() (+10 more)
 
 ### Community 4 - "LOCAL-001 Implementation Plan"
-Cohesion: 0.07
-Nodes (28): Accessibility, Agent/workflow, Chat, Definition of done, Diagnostics and observability, Extension UI, Extension UI mapping, Files and diffs (+20 more)
+Cohesion: 0.20
+Nodes (10): Definition of done, Diagnostics and observability, Halt/discrepancy policy, Lifecycle, folder, and remote behavior, LOCAL-001 Implementation Plan, Product definition, Proposed package architecture, Security and privacy implementation (+2 more)
 
 ### Community 5 - "validateCoverage.mjs"
 Cohesion: 0.09
@@ -160,28 +162,32 @@ Cohesion: 0.09
 Nodes (22): scripts/**/*.ts, test/**/*.ts, compilerOptions, esModuleInterop, forceConsistentCasingInFileNames, lib, module, moduleResolution (+14 more)
 
 ### Community 8 - "DiagnosticsLogger"
-Cohesion: 0.05
-Nodes (58): vscode, COMMAND_IDS, CONTRIBUTED_COMMANDS, ContributedCommand, getSettings(), PiRpcSettings, validateAdditionalArgs(), createRedactedDiagnosticsExport() (+50 more)
+Cohesion: 0.15
+Nodes (14): COMMAND_IDS, CONTRIBUTED_COMMANDS, ContributedCommand, createRedactedDiagnosticsExport(), redactJsonValue(), redactText(), SECRET_PATTERNS, asRecord() (+6 more)
 
 ### Community 9 - "render.ts"
 Cohesion: 0.11
 Nodes (35): canonicalizeSessionPath(), chipPrivacyLabel(), summarizeChip(), applyFocus(), focusElement(), getState(), handlePreviewKeydown(), persistViewState() (+27 more)
 
-### Community 11 - "extension.ts"
+### Community 10 - "providers.ts"
 Cohesion: 0.18
-Nodes (11): RpcClientOptions, RpcCommandType, RpcEvent, RpcResponse, createRequestId(), PendingRequest, RpcTransportEvents, RpcTransportOptions (+3 more)
+Nodes (3): RpcTransport, TypedEmitter, SlowWritable
+
+### Community 11 - "extension.ts"
+Cohesion: 0.20
+Nodes (10): RpcClientOptions, RpcCommandType, RpcEvent, RpcResponse, createRequestId(), PendingRequest, RpcTransportEvents, RpcTransportOptions (+2 more)
 
 ### Community 12 - "ChatPanelProvider"
-Cohesion: 0.07
-Nodes (14): ChatEditorDocument, ChatEditorHost, ChatTabManager, currentTargetForController(), makeId(), relativeWorkspacePath(), sameTarget(), buildChatUri() (+6 more)
+Cohesion: 0.05
+Nodes (34): ChatEditorDocument, PersistedChatSnapshot, sanitizePendingImages(), toPersistedChatSnapshot(), ChatEditorProvider, asRecord(), ChatTabState, ChatTabStateCache (+26 more)
 
 ### Community 13 - "Manual Acceptance and VSIX Smoke Plan"
 Cohesion: 0.13
 Nodes (15): Accessibility and UX, Build and package gate, Extension UI walkthrough, Final acceptance record, Full command matrix walkthrough, Images, files, diffs, editor context, diagnostics, LOCAL-003 acceptance addendum, Local unsupported/degraded `ExtensionUIContext` compatibility walkthrough (+7 more)
 
 ### Community 14 - "package.json"
-Cohesion: 0.13
-Nodes (14): activationEvents, description, displayName, extensionKind, icon, license, main, name (+6 more)
+Cohesion: 0.17
+Nodes (11): description, displayName, extensionKind, icon, license, main, name, private (+3 more)
 
 ### Community 15 - "scripts"
 Cohesion: 0.14
@@ -200,12 +206,12 @@ Cohesion: 0.26
 Nodes (3): summarizeModel(), summarizeQueue(), StatusBarController
 
 ### Community 19 - "sessionController.ts"
-Cohesion: 0.20
-Nodes (15): asOptionalString(), asRecord(), asString(), asStringArray(), COMMAND_TYPES, EVENT_TYPES, isJsonObject(), isJsonValue() (+7 more)
+Cohesion: 0.13
+Nodes (8): RecentSessionService, SessionRegistry, NewChatTreeProvider, nodeToTreeItem(), RegistryTreeProvider, ResumeChatTreeProvider, SessionsTreeProvider, SidebarNode
 
 ### Community 20 - "RecentSessionService"
-Cohesion: 0.29
-Nodes (6): shutdown(), SpawnedRpc, spawnMockPi(), spawnRealPi(), execFileAsync, nextTick()
+Cohesion: 0.21
+Nodes (8): assert, run(), shutdown(), SpawnedRpc, spawnMockPi(), spawnRealPi(), execFileAsync, nextTick()
 
 ### Community 21 - "RegistryTreeProvider"
 Cohesion: 0.29
@@ -224,8 +230,12 @@ Cohesion: 0.22
 Nodes (9): categories, keywords, agent, assistant, Chat, Machine Learning, Other, pi (+1 more)
 
 ### Community 25 - "contributes"
-Cohesion: 0.18
-Nodes (11): contributes, commands, customEditors, menus, views, viewsContainers, editor/title, view/item/context (+3 more)
+Cohesion: 0.22
+Nodes (9): contributes, commands, customEditors, menus, views, viewsContainers, editor/title, piRpc (+1 more)
+
+### Community 26 - "SessionRegistry"
+Cohesion: 0.17
+Nodes (6): RpcCommand, assistantMessage(), createTransportHarness(), MockTransport, runValidatorWithMutation(), update()
 
 ### Community 27 - "mock-pi-child.ts"
 Cohesion: 0.31
@@ -308,20 +318,20 @@ Cohesion: 0.40
 Nodes (5): default, description, minimum, type, piRpc.responseTimeoutMs
 
 ### Community 48 - "Changelog"
-Cohesion: 0.33
-Nodes (5): 0.0.1, 0.0.2, 0.0.3, 0.0.4, Changelog
+Cohesion: 0.29
+Nodes (6): 0.0.1, 0.0.2, 0.0.3, 0.0.4, 0.0.5, Changelog
 
 ### Community 49 - "LOCAL-001 — Build a comprehensive Pi RPC VS Code extension"
 Cohesion: 0.50
 Nodes (3): Acceptance criteria, Context, LOCAL-001 — Build a comprehensive Pi RPC VS Code extension
 
 ### Community 50 - "piRpc.autoStart"
-Cohesion: 0.29
-Nodes (7): properties, title, configuration, default, description, type, piRpc.autoStart
+Cohesion: 0.50
+Nodes (4): default, description, type, piRpc.autoStart
 
 ### Community 51 - "piRpc.executable"
-Cohesion: 0.50
-Nodes (4): default, description, type, piRpc.executable
+Cohesion: 0.29
+Nodes (7): properties, title, configuration, default, description, type, piRpc.executable
 
 ### Community 52 - "piRpc.offline"
 Cohesion: 0.50
@@ -342,6 +352,10 @@ Nodes (3): engines, node, vscode
 ### Community 56 - "repository"
 Cohesion: 0.67
 Nodes (3): repository, type, url
+
+### Community 57 - "index.cjs"
+Cohesion: 0.24
+Nodes (8): vscode, getSettings(), PiRpcSettings, validateAdditionalArgs(), DiagnosticsLogger, SupervisorEvents, renderChatWebviewHtml(), IMAGE_MIME_BY_EXTENSION
 
 ### Community 63 - "LOCAL-003 UX redesign — Pi RPC as a simple coding chat"
 Cohesion: 0.25
@@ -396,44 +410,56 @@ Cohesion: 0.06
 Nodes (29): 10) Advanced disclosure, 11) Contextual editor actions, 12) Status and notifications, 13) Keyboard behavior, 1) Launcher: where Claude enters the workflow, 2) Where chat opens, 3) History / resume location, 4) New / resume interactions (+21 more)
 
 ### Community 76 - ".onMessage"
-Cohesion: 0.18
-Nodes (5): workspaceFolders(), ChatPanelProvider, diagnosticSeverity(), makeId(), relativeWorkspacePath()
+Cohesion: 0.06
+Nodes (31): makeId(), relativeWorkspacePath(), boundDiagnosticsContent(), boundFileContent(), buildSendPreview(), canonicalContextLine(), ChatUiMode, cloneComposerState() (+23 more)
 
 ### Community 77 - "types.ts"
-Cohesion: 0.20
-Nodes (14): PersistedChatSnapshot, sanitizePendingImages(), toPersistedChatSnapshot(), ChatTabState, ModelInfo, QueueState, WebviewAttachmentPreviewItem, WebviewPendingImageItem (+6 more)
+Cohesion: 0.25
+Nodes (11): formatRelativeTimestamp(), RecentSessionRecord, RecentSessionsState, ControllerState, createNewChatSidebarModel(), createResumeChatSidebarModel(), createSessionsSidebarModel(), sessionDisplayName() (+3 more)
 
 ### Community 78 - "model.ts"
-Cohesion: 0.24
-Nodes (16): WebviewAttachmentFileRef, WebviewAttachmentItem, WebviewMessageItem, asObject(), attachmentFileRef(), maybeWorkspaceFileRef(), messageText(), normalizeAttachment() (+8 more)
+Cohesion: 0.14
+Nodes (13): Bash (>20 lines output), BLOCKED commands — do NOT attempt these, context-mode — MANDATORY routing rules, ctx commands, curl / wget — BLOCKED, Grep (large results), Inline HTTP — BLOCKED, Output constraints (+5 more)
 
 ### Community 81 - "rpc-coverage.test.ts"
-Cohesion: 0.24
-Nodes (6): createInitialControllerState(), assistantMessage(), createTransportHarness(), reduceAll(), runValidatorWithMutation(), update()
+Cohesion: 0.25
+Nodes (8): Implementation phases and gates, P0 — Scaffold and contracts, P1 — Transport and supervisor, P2 — Complete protocol client and reducer, P3 — Native surfaces, P4 — Secure chat webview, P5 — Real Pi integration, P6 — Packaging and release
 
 ### Community 82 - "default"
 Cohesion: 0.29
 Nodes (6): default, description, type, piRpc.editorTabs.enabled, actionIds, coverage
 
+### Community 83 - "ChatUiMode"
+Cohesion: 0.40
+Nodes (5): Accessibility, Chat, Extension UI mapping, Files and diffs, VS Code surface design
+
+### Community 87 - "State machines"
+Cohesion: 0.40
+Nodes (5): Agent/workflow, Extension UI, Process/connection, Request lifecycle, State machines
+
+### Community 88 - "activationEvents"
+Cohesion: 0.67
+Nodes (3): activationEvents, onCustomEditor:piRpc.chatEditor, onStartupFinished
+
 ## Knowledge Gaps
-- **396 isolated node(s):** `name`, `displayName`, `description`, `version`, `publisher` (+391 more)
+- **405 isolated node(s):** `name`, `displayName`, `description`, `version`, `publisher` (+400 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **10 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **6 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `properties` connect `piRpc.autoStart` to `piRpc.telemetryEnabled`, `piRpc.additionalArgs`, `piRpc.longRunningTimeoutMs`, `piRpc.maxImageBytes`, `piRpc.maxImagesPerPrompt`, `piRpc.maxPendingRequests`, `piRpc.maxQueuedWrites`, `piRpc.maxRecordBytes`, `piRpc.maxRestartAttempts`, `piRpc.maxToolOutputChars`, `piRpc.maxTranscriptItems`, `piRpc.responseTimeoutMs`, `default`, `piRpc.executable`, `piRpc.offline`, `RegistryTreeProvider`, `piRpc.restartOnCrash`, `properties`?**
-  _High betweenness centrality (0.122) - this node is a cross-community bridge._
-- **Why does `default` connect `default` to `DiagnosticsLogger`, `types.ts`?**
-  _High betweenness centrality (0.112) - this node is a cross-community bridge._
-- **Why does `piRpc.editorTabs.enabled` connect `default` to `piRpc.autoStart`?**
+- **Why does `properties` connect `piRpc.executable` to `piRpc.telemetryEnabled`, `piRpc.additionalArgs`, `piRpc.longRunningTimeoutMs`, `piRpc.maxImageBytes`, `piRpc.maxImagesPerPrompt`, `piRpc.maxPendingRequests`, `piRpc.maxQueuedWrites`, `piRpc.maxRecordBytes`, `piRpc.maxRestartAttempts`, `piRpc.maxToolOutputChars`, `piRpc.maxTranscriptItems`, `piRpc.responseTimeoutMs`, `default`, `piRpc.autoStart`, `piRpc.offline`, `RegistryTreeProvider`, `piRpc.restartOnCrash`, `properties`?**
+  _High betweenness centrality (0.120) - this node is a cross-community bridge._
+- **Why does `default` connect `default` to `DiagnosticsLogger`, `ChatPanelProvider`?**
   _High betweenness centrality (0.111) - this node is a cross-community bridge._
+- **Why does `piRpc.editorTabs.enabled` connect `default` to `piRpc.executable`?**
+  _High betweenness centrality (0.110) - this node is a cross-community bridge._
 - **Are the 4 inferred relationships involving `activate()` (e.g. with `.health()` and `.resource()`) actually correct?**
   _`activate()` has 4 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `name`, `displayName`, `description` to the rest of the system?**
-  _396 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _405 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `JsonObject` be split into smaller, more focused modules?**
   _Cohesion score 0.14126984126984127 - nodes in this community are weakly interconnected._
 - **Should `activate` be split into smaller, more focused modules?**
-  _Cohesion score 0.055412371134020616 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.06016929764355983 - nodes in this community are weakly interconnected._

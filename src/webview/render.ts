@@ -149,14 +149,16 @@ function renderAttachment(
 function renderMessages(snapshot: WebviewSnapshot): string {
   if (snapshot.messages.length === 0) {
     return `
-      <div class="empty-state-card">
-        <p class="empty-title">No messages yet.</p>
-        <p class="empty-copy">Start a new chat, resume a saved chat, or type below.</p>
-        <div class="button-row compact">
-          <button type="button" data-command="piRpc.newSession">New Chat</button>
-          <button type="button" data-command="piRpc.switchSession">History</button>
-        </div>
-        <button type="button" class="link-button" data-command="piRpcInternal.showHelp">Help</button>
+      <div class="empty-state" data-testid="empty-state">
+        <svg class="empty-mascot" width="64" height="48" viewBox="0 0 8 6" role="img" aria-label="Pi" shape-rendering="crispEdges">
+          <rect x="1" y="1" width="6" height="4" fill="currentColor" />
+          <rect x="2" y="2" width="1" height="1" fill="var(--vscode-editor-background)" />
+          <rect x="5" y="2" width="1" height="1" fill="var(--vscode-editor-background)" />
+          <rect x="1" y="5" width="1" height="1" fill="currentColor" />
+          <rect x="3" y="5" width="1" height="1" fill="currentColor" />
+          <rect x="6" y="5" width="1" height="1" fill="currentColor" />
+        </svg>
+        <p class="empty-copy">What to do first? Ask about this codebase or start writing code.</p>
       </div>`;
   }
   return snapshot.messages
@@ -432,46 +434,39 @@ export function renderChatApp(snapshot: WebviewSnapshot): string {
     ? ''
     : `<section class="banner info"><strong>Restricted Mode</strong><div class="muted">Restricted Mode: chat can read, but changes stay disabled until you trust this workspace.</div></section>`;
 
+  const folderSelect =
+    snapshot.folders.length > 1
+      ? `<label class="inline-select"><span class="visually-hidden">Workspace</span><select id="folder-select" aria-label="Choose workspace">${snapshot.folders
+          .map(
+            (folder) =>
+              `<option value="${escapeHtml(folder.uri)}" ${folder.active ? 'selected' : ''}>${escapeHtml(folder.name)}</option>`
+          )
+          .join('')}</select></label>`
+      : '';
+
   return `
     <a class="skip-link" href="#composer-field">Skip to composer</a>
     <div class="layout" data-testid="chat-app" data-ui-mode="${escapeHtml(snapshot.uiMode)}">
-      <header class="chat-header" role="banner">
-        <div class="header-main">
-          <h1>Current Chat</h1>
-          <div class="header-summary" aria-label="Current chat summary">${escapeHtml(summaryLine)}</div>
-        </div>
-        <div class="header-controls">
-          <button type="button" data-command="piRpc.showModels">${escapeHtml(modelLabel(snapshot))}</button>
-          <button type="button" data-command="piRpc.newSession">New</button>
-          <button type="button" data-command="piRpc.switchSession">History</button>
+      <header class="brand-bar" role="banner">
+        <div class="brand" aria-label="Pi"><span class="brand-mark" aria-hidden="true">✻</span> Pi</div>
+        <div class="brand-controls">
+          ${folderSelect}
+          <button type="button" class="ghost" data-command="piRpc.showModels" title="Model">${escapeHtml(modelLabel(snapshot))}</button>
+          <button type="button" class="ghost" data-command="piRpc.newSession" title="New">New</button>
+          <button type="button" class="ghost" data-command="piRpc.switchSession" title="History">History</button>
           ${renderMoreMenu(snapshot)}
         </div>
       </header>
+      <div class="header-summary visually-hidden" aria-label="Current chat summary">${escapeHtml(summaryLine)}</div>
 
       ${restrictedBanner}
       ${renderRecovery(snapshot)}
 
-      <section class="transcript-panel">
-        <div class="section-heading-row">
-          <h2>Transcript</h2>
-          ${
-            snapshot.folders.length > 1
-              ? `<label class="inline-select"><span>Workspace</span><select id="folder-select" aria-label="Choose workspace">${snapshot.folders
-                  .map(
-                    (folder) =>
-                      `<option value="${escapeHtml(folder.uri)}" ${folder.active ? 'selected' : ''}>${escapeHtml(folder.name)}</option>`
-                  )
-                  .join('')}</select></label>`
-              : ''
-          }
-        </div>
-        <div id="messages" role="log" aria-live="polite" aria-relevant="additions text">${renderMessages(snapshot)}</div>
-      </section>
+      <main class="conversation" id="messages" role="log" aria-live="polite" aria-relevant="additions text">${renderMessages(snapshot)}</main>
 
-      <section class="composer-panel" aria-labelledby="composer-heading">
-        <h2 id="composer-heading">Message Pi</h2>
-        <label class="composer-label" for="${COMPOSER_FIELD_ID}">Message Pi</label>
-        <textarea id="${COMPOSER_FIELD_ID}" rows="6">${escapeHtml(snapshot.draft)}</textarea>
+      <section class="composer-dock" aria-labelledby="composer-heading">
+        <h2 id="composer-heading" class="visually-hidden">Message Pi</h2>
+        <label class="visually-hidden" for="${COMPOSER_FIELD_ID}">Message Pi</label>
         ${
           attachmentsVisible
             ? `<div class="attachment-tray"><div class="section-label">Attachments for next message</div><div class="chip-list" role="list" aria-label="Attachments for next message">${snapshot.pendingContextItems
@@ -481,20 +476,28 @@ export function renderChatApp(snapshot: WebviewSnapshot): string {
                 )}${renderImageChip(snapshot)}</div><button type="button" data-action="clearAttachments">Clear attachments</button></div>`
             : ''
         }
-        <div class="button-row" aria-label="Composer actions">
-          <details class="menu-details" id="attach-menu">
-            <summary id="attach-trigger">Attach</summary>
-            <div class="menu-panel">
-              <button type="button" data-action="pickImages">Image…</button>
-              <button type="button" data-action="appendActiveFile">Active file</button>
-              <button type="button" data-action="appendPickedFile">Pick file…</button>
-              <button type="button" data-action="appendSelection">Current selection</button>
-              <button type="button" data-action="appendDiagnostics">Diagnostics</button>
-              ${attachmentsVisible ? '<button type="button" data-action="clearAttachments">Clear attachments</button>' : ''}
+        <div class="composer-card">
+          <textarea id="${COMPOSER_FIELD_ID}" rows="3" placeholder="Ask Pi to edit…">${escapeHtml(snapshot.draft)}</textarea>
+          <div class="composer-actions" aria-label="Composer actions">
+            <div class="composer-actions-left">
+              <details class="menu-details" id="attach-menu">
+                <summary id="attach-trigger" class="icon-button" title="Attach" aria-label="Attach">+</summary>
+                <div class="menu-panel">
+                  <button type="button" data-action="pickImages">Image…</button>
+                  <button type="button" data-action="appendActiveFile">Active file</button>
+                  <button type="button" data-action="appendPickedFile">Pick file…</button>
+                  <button type="button" data-action="appendSelection">Current selection</button>
+                  <button type="button" data-action="appendDiagnostics">Diagnostics</button>
+                  ${attachmentsVisible ? '<button type="button" data-action="clearAttachments">Clear attachments</button>' : ''}
+                </div>
+              </details>
+              <button type="button" class="icon-button" data-command="piRpc.showPiCommands" title="Commands" aria-label="Commands">/</button>
             </div>
-          </details>
-          <button type="button" id="${SEND_BUTTON_ID}" data-send-command="${sendCommand}">${sendLabel}</button>
-          ${busy ? '<button type="button" data-action="abort">Stop</button>' : ''}
+            <div class="composer-actions-right">
+              ${busy ? '<button type="button" class="ghost" data-action="abort">Stop</button>' : ''}
+              <button type="button" id="${SEND_BUTTON_ID}" class="send-button" data-send-command="${sendCommand}" title="${sendLabel}" aria-label="${sendLabel}">↑</button>
+            </div>
+          </div>
         </div>
       </section>
 

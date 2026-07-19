@@ -72,6 +72,97 @@ export function createNewChatSidebarModel(input: SidebarViewInput): SidebarNode[
   return nodes;
 }
 
+export function createSessionsSidebarModel(input: SidebarViewInput): SidebarNode[] {
+  const now = input.now ?? Date.now();
+  const currentSessionPath =
+    typeof input.activeState?.state.sessionFile === 'string'
+      ? input.activeState.state.sessionFile
+      : undefined;
+  const nodes: SidebarNode[] = [
+    {
+      id: 'sessions.new',
+      kind: 'action',
+      label: 'New Chat',
+      description: 'Open a fresh Pi chat in the editor.',
+      icon: 'add',
+      command: { command: 'piRpc.newSession', title: 'New Chat' },
+      accessibilityLabel: 'Start a new Pi chat',
+    },
+  ];
+
+  if (input.recent.loading) {
+    nodes.push({
+      id: 'sessions.loading',
+      kind: 'info',
+      label: 'Loading chats',
+      description: 'Reading saved Pi chats.',
+      icon: 'loading~spin',
+    });
+    return nodes;
+  }
+
+  if (input.recent.error) {
+    nodes.push({
+      id: 'sessions.error',
+      kind: 'info',
+      label: "Couldn't read chats",
+      description: input.recent.error,
+      icon: 'warning',
+    });
+    nodes.push({
+      id: 'sessions.retry',
+      kind: 'action',
+      label: 'Try again',
+      icon: 'refresh',
+      command: { command: 'piRpcInternal.refreshRecentSessions', title: 'Try again' },
+    });
+    return nodes;
+  }
+
+  if (input.recent.items.length === 0) {
+    nodes.push({
+      id: 'sessions.empty',
+      kind: 'info',
+      label: 'No chats yet',
+      description: 'Start a new chat and it will appear here.',
+      icon: 'history',
+    });
+    return nodes;
+  }
+
+  for (const session of input.recent.items.slice(0, 50)) {
+    const label = sessionDisplayName(session);
+    const description = [
+      formatRelativeTimestamp(session.modifiedAt, now),
+      session.modelLabel,
+      currentSessionPath === session.path ? 'Current' : undefined,
+    ]
+      .filter(Boolean)
+      .join(' · ');
+    nodes.push({
+      id: `sessions.${session.id}`,
+      kind: 'session',
+      label,
+      description,
+      detail:
+        session.firstPromptPreview && session.firstPromptPreview !== label
+          ? session.firstPromptPreview
+          : undefined,
+      tooltip: `${label}\n${description}\n${session.path}`,
+      icon: currentSessionPath === session.path ? 'check' : 'comment-discussion',
+      contextValue: 'piRpc.recentSession',
+      command: {
+        command: 'piRpc.switchSession',
+        title: 'Open Chat',
+        arguments: [{ sessionPath: session.path, label }],
+      },
+      accessibilityLabel: `${label}. ${description}`,
+    });
+  }
+
+  return nodes;
+}
+
 export function createResumeChatSidebarModel(input: SidebarViewInput): SidebarNode[] {
   const now = input.now ?? Date.now();
   const currentSessionPath =
