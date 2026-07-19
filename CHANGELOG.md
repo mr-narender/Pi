@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.13
+
+- Full-bleed extension logo (fills the whole icon) shared by the Activity Bar and the gallery.
+- The More menu is now an anchored dropdown (no longer pushes the header off-screen) with color-tagged groups: Session (blue), Model (orange), Context (purple), System (green/red).
+- Rewrote the README into a proper extension page: what it is, prerequisites, how it works, feature parity with the Pi TUI, keyboard, troubleshooting, and privacy.
+
 ## 0.0.12
 
 - Clicking a chat now reveals its existing editor tab instead of opening a duplicate.

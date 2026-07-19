@@ -147,7 +147,7 @@ test('editorTabs.render.headerHasNewHistoryModelMore', () => {
   assert.match(html, />New</);
   assert.match(html, />History</);
   assert.match(html, /mock\/model/);
-  assert.match(html, />More</);
+  assert.match(html, /aria-label="More actions"/);
   assert.match(html, /Current · workspace · Demo Session · Ready/);
 });
 

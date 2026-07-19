@@ -1,45 +1,42 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-label="Pi RPC for VS Code">
   <defs>
-    <!-- smoke: charcoal to warm graphite -->
     <linearGradient id="smoke" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#2b2b31"/>
-      <stop offset="0.55" stop-color="#232327"/>
-      <stop offset="1" stop-color="#17171a"/>
+      <stop offset="0" stop-color="#33333a"/>
+      <stop offset="0.5" stop-color="#232327"/>
+      <stop offset="1" stop-color="#141416"/>
     </linearGradient>
-    <!-- orange: personal flavour -->
     <linearGradient id="ember" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#ffb066"/>
+      <stop offset="0" stop-color="#ffbe7a"/>
       <stop offset="0.5" stop-color="#ff8c42"/>
-      <stop offset="1" stop-color="#e2662a"/>
+      <stop offset="1" stop-color="#df5f24"/>
     </linearGradient>
-    <radialGradient id="glow" cx="0.5" cy="0.42" r="0.62">
-      <stop offset="0" stop-color="#ff8c42" stop-opacity="0.35"/>
+    <radialGradient id="glow" cx="0.5" cy="0.4" r="0.7">
+      <stop offset="0" stop-color="#ff8c42" stop-opacity="0.4"/>
       <stop offset="1" stop-color="#ff8c42" stop-opacity="0"/>
     </radialGradient>
   </defs>
 
-  <!-- badge -->
-  <rect x="8" y="8" width="240" height="240" rx="52" fill="url(#smoke)"/>
-  <rect x="8" y="8" width="240" height="240" rx="52" fill="url(#glow)"/>
-  <rect x="8.5" y="8.5" width="239" height="239" rx="51.5" fill="none" stroke="#ffffff" stroke-opacity="0.06" stroke-width="1"/>
+  <!-- full-bleed badge (fills the entire canvas) -->
+  <rect x="0" y="0" width="256" height="256" fill="url(#smoke)"/>
+  <rect x="0" y="0" width="256" height="256" fill="url(#glow)"/>
 
-  <!-- VS Code angular ribbon (an original nod, not a copy) drifting like smoke -->
-  <g fill="#ffffff" fill-opacity="0.05">
-    <path d="M150 40 L214 78 L214 178 L150 216 L150 168 L120 128 L150 88 Z"/>
+  <!-- angular smoke ribbon (a VS Code nod, original) -->
+  <g fill="#ffffff" fill-opacity="0.055">
+    <path d="M158 22 L236 68 L236 188 L158 234 L158 176 L120 128 L158 80 Z"/>
   </g>
-  <g fill="#ff8c42" fill-opacity="0.10">
-    <path d="M150 74 L188 98 L188 158 L150 182 L150 150 L134 128 L150 106 Z"/>
+  <g fill="#ff8c42" fill-opacity="0.12">
+    <path d="M160 66 L206 94 L206 162 L160 190 L160 152 L140 128 L160 104 Z"/>
   </g>
 
-  <!-- pi glyph in ember, angled to echo the ribbon -->
+  <!-- pi glyph in ember, sized to fill the frame -->
   <g fill="url(#ember)">
-    <path d="M64 92 L196 92 L184 118 L76 118 Z"/>
-    <rect x="86" y="118" width="22" height="84" rx="9"/>
-    <path d="M150 118 h22 v70 l-22 16 Z"/>
+    <path d="M40 84 L214 84 L198 116 L56 116 Z"/>
+    <rect x="70" y="116" width="26" height="104" rx="11"/>
+    <path d="M156 116 h26 v86 l-26 18 Z"/>
   </g>
 
-  <!-- </> spark to mark "for code" -->
-  <g fill="#ffb066">
-    <path d="M118 196 l20 -15 l-20 -15 v9 l8 6 l-8 6 z" fill-opacity="0.9"/>
+  <!-- </> spark -->
+  <g fill="#ffcf9c">
+    <path d="M112 214 l24 -18 l-24 -18 v11 l10 7 l-10 7 z" fill-opacity="0.92"/>
   </g>
 </svg>

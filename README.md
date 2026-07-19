@@ -1,49 +1,113 @@
-# Pi RPC VS Code Extension
+<h1 align="center">Pi RPC for VS Code</h1>
 
-Direct VS Code integration for Pi `0.80.10` RPC mode.
+<p align="center">
+  The <strong>Pi coding agent</strong>, natively in VS Code — the same power as the
+  <code>pi</code> terminal, in a clean chat UI with editor-tab conversations and a session launcher.
+</p>
 
-## Features
+---
 
-- One Pi RPC subprocess per selected workspace folder
-- Strict UTF-8 LF-only JSONL transport with correlated requests
-- Activity Bar launcher/history sidebar with New Chat, Resume Chat, and recent-session search
-- Stable `pi-chat:` custom editor tabs with native reveal/dedup, multi-session/multi-root isolation, and reopen-safe session identity
-- Safe recent-session discovery from Pi session files/session metadata, with search, refresh, current markers, and resume actions
-- Secure in-editor Pi chat surface with streamed transcript, per-tab composer/attachments, status/widgets/title support, and progressive disclosure
-- Direct `get_commands` discovery for Pi extensions, prompts, skills, and packages
-- Restricted-mode aware startup with `--no-approve`
-- Redacted diagnostics and health export
+## What it is
 
-## Session workflow
+Pi RPC embeds the [Pi coding agent](https://pi.dev) inside VS Code. It runs the real
+`pi` process in the background (`pi --mode rpc`) and gives you a native GUI on top of it:
 
-```text
-Sidebar
-  ├─ New Chat
-  └─ Resume Chat / Search / Recent Sessions
+- A **sidebar launcher** with a big **New Chat** button and your saved chats (search, rename, delete).
+- **Chats open as editor tabs** in the center — one tab per session, reopenable and reload-safe.
+- Everything the Pi TUI can do, surfaced through the UI: models, thinking levels, slash
+  commands, attachments/context, compaction, retry, usage, and diagnostics.
 
-Pi editor tab
-  ├─ Current session status in the active tab
-  ├─ Model / New / History / More
-  ├─ Current or cached transcript
-  ├─ Composer, attachments, preview, and send/stop
-  └─ Advanced commands, diagnostics, widgets, and context tools
+It talks to Pi over Pi’s documented RPC protocol, so your existing Pi setup, models,
+sessions, skills, prompts, and extensions all work unchanged.
+
+## Prerequisites
+
+You need Pi installed and authenticated **before** using this extension:
+
+1. **Install the Pi CLI** (Node.js 18+):
+   ```bash
+   npm install -g @earendil-works/pi-coding-agent
+   ```
+   Verify it’s on your `PATH`:
+   ```bash
+   pi --version
+   ```
+2. **Authenticate Pi** once (either is fine):
+   - Subscription / OAuth: run `pi` in a terminal and use `/login`, **or**
+   - API key: export your provider key, e.g. `export ANTHROPIC_API_KEY=…`
+3. **Open a folder** in VS Code (Pi runs per workspace folder).
+
+> If `pi` isn’t on your `PATH`, set **Settings → Pi RPC → Pi Executable Path** to the full path.
+
+## How it works
+
+```
+VS Code
+├─ Sidebar (Pi)            New Chat · search · your saved chats (open / rename / delete)
+└─ Editor tab "Pi Chat"    transcript · composer · attachments · model · More menu
+        │
+        ▼
+pi --mode rpc              one background Pi process per workspace folder
 ```
 
-## Settings
+- Pi **warm-starts** when the extension activates, so your first chat is ready fast.
+- While Pi connects, the chat shows a **Connecting…** state and the composer is disabled.
+- Sessions are named **Session N** by default and can be renamed; the real session id
+  stays internal. Closing a tab never deletes the session.
 
-See `package.json` for the contributed `piRpc.*` settings.
+## Getting started
 
-## Development
+1. Install the Pi CLI and log in (see **Prerequisites**).
+2. Install this extension (VSIX or Marketplace) and open a project folder.
+3. Click the **Pi** icon in the Activity Bar → **New Chat**.
+4. Type your message and press **Cmd+Enter** (macOS) or **Ctrl+Enter** to send.
 
-```bash
-npm ci
-npm run build
-npm test
-npm run package:vsix
-```
+## Features (TUI parity, in a GUI)
+
+| Area               | What you get                                                                         |
+| ------------------ | ------------------------------------------------------------------------------------ |
+| **Chats**          | Editor-tab conversations, streaming replies, one tab per session, reopen/resume      |
+| **Sessions**       | Sidebar launcher, search, rename, delete, warm-start                                 |
+| **Models**         | Choose model, cycle, set thinking level                                              |
+| **Slash commands** | `/` lists Pi commands (skills, prompts, extension commands) and inserts them         |
+| **Context**        | Attach the active file, a picked file, the current selection, diagnostics, or images |
+| **Reliability**    | Auto-compaction, auto-retry, abort/stop, connection health                           |
+| **Advanced**       | An opt-in Advanced mode exposes the full RPC surface via the Command Palette         |
+
+## Keyboard
+
+| Shortcut                   | Action                   |
+| -------------------------- | ------------------------ |
+| `Cmd+Enter` / `Ctrl+Enter` | Send the current message |
+
+## The More menu
+
+The **More ▾** menu in a chat groups actions with color tags for quick scanning:
+
+- 🔵 **Session** — Rename chat, Export as HTML
+- 🟠 **Model** — Choose model, Thinking level
+- 🟣 **Context** — Compact conversation, Usage & cost
+- 🟢 / 🔴 **System** — Advanced mode, Restart Pi, Connection health, Help
+
+## Troubleshooting
+
+- **Stuck on “Connecting…”** → run **More → Connection health**, or **Restart Pi**. Make sure
+  `pi --version` works in a terminal and that you’ve logged in.
+- **“Pi is still connecting…”** when using `/` → wait a moment; slash commands need a live session.
+- **Wrong/old Pi** → set the **Pi Executable Path** setting to the exact binary.
+
+## Privacy & security
+
+- Runs entirely locally against your own `pi` process — this extension adds **no telemetry**.
+- Respects **VS Code Workspace Trust**: in a restricted workspace, chat is read-only and
+  mutating actions stay disabled until you trust the folder.
+- Diagnostics exports are redacted and never include transcript text, drafts, or secrets.
 
 ## Notes
 
-- The extension never reads Pi auth files.
-- `--api-key` is rejected from persisted settings.
-- Unsupported local-only RPC compatibility APIs remain explicit no-op/disabled capabilities rather than fabricated UI.
+- One Pi process per workspace folder; multi-root workspaces are isolated.
+- The Activity Bar icon and gallery logo are an original Pi × VS Code fusion mark.
+
+## License
+
+MIT

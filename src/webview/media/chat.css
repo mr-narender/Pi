@@ -815,3 +815,91 @@ button.ghost:hover,
   width: 100%;
   margin: auto 0;
 }
+
+/* ---- More menu: anchored dropdown with category color tags ---- */
+.brand-bar {
+  position: relative;
+}
+.more-menu {
+  position: static;
+}
+.more-menu > summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+.more-menu > summary::-webkit-details-marker {
+  display: none;
+}
+
+.more-menu .menu-panel {
+  position: absolute;
+  top: 40px;
+  right: 10px;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 1px;
+  min-width: 232px;
+  max-width: 300px;
+  max-height: 70vh;
+  overflow-y: auto;
+  padding: 6px;
+  border-radius: 10px;
+  background: var(--vscode-menu-background, var(--vscode-editorWidget-background));
+  color: var(--vscode-menu-foreground, var(--vscode-foreground));
+  border: 1px solid var(--vscode-menu-border, var(--vscode-panel-border));
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.more-menu .menu-group {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  opacity: 0.55;
+  padding: 8px 8px 3px;
+}
+
+.more-menu .menu-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  text-align: left;
+  justify-content: flex-start;
+  padding: 7px 9px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font-size: 13px;
+}
+.more-menu .menu-item:hover {
+  background: var(--vscode-menu-selectionBackground, var(--vscode-list-hoverBackground));
+  color: var(--vscode-menu-selectionForeground, inherit);
+}
+.more-menu .menu-item .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  background: var(--vscode-descriptionForeground);
+}
+.more-menu .cat-session .dot {
+  background: #4aa3ff;
+} /* blue */
+.more-menu .cat-model .dot {
+  background: #ff8c42;
+} /* orange */
+.more-menu .cat-context .dot {
+  background: #b98cff;
+} /* purple */
+.more-menu .cat-mode .dot {
+  background: #3fd08a;
+} /* green */
+.more-menu .cat-system .dot {
+  background: #ff6b6b;
+} /* red */

@@ -2,7 +2,7 @@
   "name": "pi-rpc-vscode",
   "displayName": "Pi RPC",
   "description": "Direct VS Code integration for Pi 0.80.10 RPC mode",
-  "version": "0.0.12",
+  "version": "0.0.13",
   "publisher": "local",
   "license": "MIT",
   "private": true,
@@ -55,7 +55,7 @@
     "test:integration": "node --import tsx --test test/integration/**/*.test.ts",
     "test:extension": "node --import tsx test/extension/run.ts",
     "smoke:real-pi": "node --import tsx --test test/integration/real-pi-smoke.test.ts",
-    "package:vsix": "npm run build && npx @vscode/vsce package --no-dependencies",
+    "package:vsix": "npm run build && npx @vscode/vsce package --no-dependencies --allow-missing-repository",
     "audit:prod": "npm audit --omit=dev"
   },
   "dependencies": {

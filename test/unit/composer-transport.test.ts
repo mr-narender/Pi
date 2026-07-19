@@ -123,18 +123,21 @@ test('buildSendPreview appends deterministic envelope and exact rpc images', () 
   assert.deepEqual(preview.rpcImages, [{ type: 'image', data: 'AAAA', mimeType: 'image/png' }]);
 });
 
-test('default simple mode visible controls stay compact', () => {
+test('default simple mode keeps the header primary controls and a grouped More menu', () => {
   const html = renderChatApp(snapshot());
-  const headerButtons =
-    html.match(
-      /data-command="piRpc\.showModels"|data-command="piRpc\.newSession"|data-command="piRpc\.switchSession"|<summary>More<\/summary>/g
-    ) ?? [];
-  const composerButtons =
-    html.match(
-      /id="attach-trigger"|id="composer-send-button"|data-command="piRpc\.showPiCommands"/g
-    ) ?? [];
-  assert.equal(headerButtons.length, 4);
-  assert.equal(composerButtons.length, 3);
+  // Primary header controls are present.
+  assert.match(html, /data-command="piRpc\.newSession"/);
+  assert.match(html, /data-command="piRpc\.switchSession"/);
+  assert.match(html, /aria-label="More actions"/);
+  // The composer exposes attach, send, and slash commands.
+  assert.match(html, /id="attach-trigger"/);
+  assert.match(html, /id="composer-send-button"/);
+  assert.match(html, /data-command="piRpc\.showPiCommands"/);
+  // The More menu is a grouped, color-tagged dropdown.
+  assert.match(html, /class="menu-group">Model</);
+  assert.match(html, /class="menu-item cat-model"/);
+  assert.match(html, /class="menu-item cat-system"/);
+  // No stop button while idle.
   assert.equal((html.match(/data-action="abort"/g) ?? []).length, 0);
 });
 

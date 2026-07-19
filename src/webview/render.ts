@@ -406,13 +406,25 @@ function renderAdvanced(snapshot: WebviewSnapshot): string {
 }
 
 function renderMoreMenu(snapshot: WebviewSnapshot): string {
+  const advancedLabel = snapshot.uiMode === 'advanced' ? 'Switch to Simple mode' : 'Advanced mode';
   return `
-    <details class="menu-details" id="more-menu">
-      <summary>More</summary>
-      <div class="menu-panel">
-        <button type="button" data-command="piRpc.toggleAdvancedMode">${snapshot.uiMode === 'advanced' ? 'Simple mode' : 'Advanced'}</button>
-        <button type="button" data-command="piRpcInternal.restart">Restart Pi</button>
-        <button type="button" data-command="piRpcInternal.showHelp">Help</button>
+    <details class="menu-details more-menu" id="more-menu">
+      <summary aria-label="More actions">More ▾</summary>
+      <div class="menu-panel" role="menu">
+        <div class="menu-group">Session</div>
+        <button type="button" class="menu-item cat-session" data-command="piRpc.renameSession"><span class="dot"></span>Rename chat</button>
+        <button type="button" class="menu-item cat-session" data-command="piRpc.exportHtml"><span class="dot"></span>Export as HTML</button>
+        <div class="menu-group">Model</div>
+        <button type="button" class="menu-item cat-model" data-command="piRpc.showModels"><span class="dot"></span>Choose model</button>
+        <button type="button" class="menu-item cat-model" data-command="piRpc.setThinkingLevel"><span class="dot"></span>Thinking level</button>
+        <div class="menu-group">Context</div>
+        <button type="button" class="menu-item cat-context" data-command="piRpc.compact"><span class="dot"></span>Compact conversation</button>
+        <button type="button" class="menu-item cat-context" data-command="piRpc.showSessionStats"><span class="dot"></span>Usage &amp; cost</button>
+        <div class="menu-group">System</div>
+        <button type="button" class="menu-item cat-mode" data-command="piRpc.toggleAdvancedMode"><span class="dot"></span>${advancedLabel}</button>
+        <button type="button" class="menu-item cat-system" data-command="piRpcInternal.restart"><span class="dot"></span>Restart Pi</button>
+        <button type="button" class="menu-item cat-system" data-command="piRpcInternal.showHealth"><span class="dot"></span>Connection health</button>
+        <button type="button" class="menu-item cat-system" data-command="piRpcInternal.showHelp"><span class="dot"></span>Help</button>
       </div>
     </details>`;
 }
