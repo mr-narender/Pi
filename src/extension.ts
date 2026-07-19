@@ -5,12 +5,15 @@ import { createRedactedDiagnosticsExport } from './diagnostics/export';
 import { DiagnosticsLogger } from './diagnostics/logger';
 import { redactJsonValue } from './diagnostics/redaction';
 import { ensureWorkspaceAvailable, ensureTrustedForMutation } from './security/trust';
+import { RecentSessionService } from './sessions/recentSessionService';
+import { formatRelativeTimestamp } from './sessions/recentSessions';
 import { SessionRegistry } from './sessions/sessionRegistry';
 import { ExtensionUiBroker } from './ui/extensionUiBroker';
 import { LocalExtensionUiContext } from './ui/localExtensionUi';
 import { openPathInNewWindow } from './ui/navigation';
 import {
   DiagnosticsTreeProvider,
+  HelpTreeProvider,
   OutlineTreeProvider,
   QueueTreeProvider,
   SessionsTreeProvider,
@@ -53,19 +56,24 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const registry = new SessionRegistry(logger);
   const settings = getSettings();
   const statusBar = new StatusBarController();
+  const recentSessions = new RecentSessionService();
   const chat = new ChatPanelProvider(context, registry);
   const broker = new ExtensionUiBroker(registry);
   const localUi = new LocalExtensionUiContext();
+  const WALKTHROUGH_KEY = 'piRpc.hasCompletedSessionWalkthrough';
+  const isFirstRun = () => !context.globalState.get<boolean>(WALKTHROUGH_KEY, false);
 
-  context.subscriptions.push(logger, registry, statusBar, chat, broker);
+  context.subscriptions.push(logger, registry, statusBar, recentSessions, chat, broker);
 
   for (const folder of vscode.workspace.workspaceFolders ?? []) {
     const controller = registry.getOrCreate(folder);
     broker.track(controller);
   }
   statusBar.bind(registry.getActive());
+  void recentSessions.refresh();
 
-  const sessionsView = new SessionsTreeProvider(registry);
+  const sessionsView = new SessionsTreeProvider(registry, recentSessions, isFirstRun);
+  const helpView = new HelpTreeProvider(registry, isFirstRun);
   const outlineView = new OutlineTreeProvider(registry);
   const queueView = new QueueTreeProvider(registry);
   const workflowView = new WorkflowTreeProvider(registry);
@@ -73,25 +81,44 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   context.subscriptions.push(
     vscode.window.registerTreeDataProvider('piRpc.sessions', sessionsView),
+    vscode.window.registerTreeDataProvider('piRpc.help', helpView),
     vscode.window.registerTreeDataProvider('piRpc.outline', outlineView),
     vscode.window.registerTreeDataProvider('piRpc.queue', queueView),
     vscode.window.registerTreeDataProvider('piRpc.workflow', workflowView),
     vscode.window.registerTreeDataProvider('piRpc.diagnostics', diagnosticsView),
     sessionsView,
+    helpView,
     outlineView,
     queueView,
     workflowView,
     diagnosticsView
   );
 
+  const maybeMarkWalkthroughComplete = async (): Promise<void> => {
+    if (!isFirstRun()) {
+      return;
+    }
+    if (
+      registry
+        .list()
+        .some((controller) => typeof controller.snapshot.state.sessionFile === 'string')
+    ) {
+      await context.globalState.update(WALKTHROUGH_KEY, true);
+      sessionsView.refresh();
+      helpView.refresh();
+    }
+  };
+
   const refreshViews = (): void => {
     sessionsView.refresh();
+    helpView.refresh();
     outlineView.refresh();
     queueView.refresh();
     workflowView.refresh();
     diagnosticsView.refresh();
     statusBar.bind(registry.getActive());
     void chat.refresh();
+    void maybeMarkWalkthroughComplete();
   };
 
   for (const controller of registry.list()) {
@@ -104,6 +131,50 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       language: 'json',
     });
     await vscode.window.showTextDocument(doc, { preview: false });
+  };
+
+  const pickRecentSession = async (
+    controller: SessionController,
+    title = 'Resume Session'
+  ): Promise<{ sessionPath: string; label: string } | undefined> => {
+    let state = recentSessions.getState(controller.folder);
+    if (!state.loading && state.items.length === 0 && !state.error) {
+      await recentSessions.refresh(controller.folder);
+      state = recentSessions.getState(controller.folder);
+    }
+    if (state.loading) {
+      await recentSessions.refresh(controller.folder);
+      state = recentSessions.getState(controller.folder);
+    }
+    if (state.error) {
+      throw new Error(`Unable to read recent sessions: ${state.error}`);
+    }
+    if (state.items.length === 0) {
+      void vscode.window.showInformationMessage(
+        'No saved Pi sessions were found for this workspace yet.'
+      );
+      return undefined;
+    }
+    const currentSessionPath = asString(controller.snapshot.state.sessionFile);
+    const picked = await vscode.window.showQuickPick(
+      state.items.map((session) => ({
+        label: session.displayName,
+        description: [
+          session.workspaceLabel,
+          formatRelativeTimestamp(session.modifiedAt),
+          session.modelLabel,
+          currentSessionPath === session.path ? 'Current' : undefined,
+        ]
+          .filter(Boolean)
+          .join(' · '),
+        detail: session.path,
+        session,
+      })),
+      { title, matchOnDescription: true, matchOnDetail: true }
+    );
+    return picked
+      ? { sessionPath: picked.session.path, label: picked.session.displayName }
+      : undefined;
   };
 
   const withController = async (
@@ -137,10 +208,54 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         : await registry.getSelectedOrPick({ forcePicker: true });
     if (selected) {
       statusBar.bind(selected);
+      await recentSessions.refresh(selected.folder);
       await chat.refresh();
       refreshViews();
     }
     return selected?.folder.uri.toString();
+  });
+
+  registrations.set('piRpcInternal.filterRecentSessions', async () => {
+    const controller = await registry.getSelectedOrPick({
+      title: 'Choose workspace for session search',
+    });
+    if (!controller) {
+      return undefined;
+    }
+    const current = recentSessions.getState(controller.folder);
+    const filterText =
+      (await vscode.window.showInputBox({
+        title: 'Search recent sessions',
+        prompt: 'Filter by session name, first prompt, workspace, model, or id.',
+        value: current.filterText,
+      })) ?? current.filterText;
+    recentSessions.setFilter(controller.folder, filterText.trim());
+    refreshViews();
+    return filterText.trim();
+  });
+
+  registrations.set('piRpcInternal.clearRecentSessionFilter', async () => {
+    const controller = await registry.getSelectedOrPick({
+      title: 'Choose workspace to clear search',
+    });
+    if (!controller) {
+      return undefined;
+    }
+    recentSessions.clearFilter(controller.folder);
+    refreshViews();
+    return '';
+  });
+
+  registrations.set('piRpcInternal.refreshRecentSessions', async () => {
+    const controller = await registry.getSelectedOrPick({
+      title: 'Choose workspace to refresh recent sessions',
+    });
+    if (!controller) {
+      return undefined;
+    }
+    await recentSessions.refresh(controller.folder);
+    refreshViews();
+    return controller.folder.uri.toString();
   });
 
   registrations.set('piRpcInternal.start', async () => {
@@ -148,7 +263,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       async (controller) => {
         await controller.start();
         await controller.reconcile();
-        void vscode.window.showInformationMessage(`Pi RPC started for ${controller.folder.name}`);
+        await recentSessions.refresh(controller.folder);
+        await maybeMarkWalkthroughComplete();
+        void vscode.window.showInformationMessage(`Pi started for ${controller.folder.name}`);
       },
       { autoStart: false, forcePicker: true }
     );
@@ -174,6 +291,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   registrations.set('piRpcInternal.openChat', async () => {
     await chat.show();
+    await maybeMarkWalkthroughComplete();
   });
 
   registrations.set('piRpc.prompt', async (value?: unknown) => {
@@ -232,18 +350,42 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       async (controller) => {
         const record = asRecord(value);
         const currentSession = asString(controller.snapshot.state.sessionFile);
+        if (currentSession) {
+          const confirm = await vscode.window.showWarningMessage(
+            'Start a new session? Your current conversation stays saved and can be resumed later from Recent Sessions.',
+            { modal: true },
+            'Continue'
+          );
+          if (confirm !== 'Continue') {
+            return { cancelled: true };
+          }
+        }
         let parentSession = asString(record?.parentSession);
         if (!parentSession && currentSession) {
           const choice = await vscode.window.showQuickPick(
             [
-              { label: 'Fresh session', parentSession: undefined },
-              { label: 'Track current session as parent', parentSession: currentSession },
+              {
+                label: 'Start fresh',
+                description: 'Open an empty session.',
+                parentSession: undefined,
+              },
+              {
+                label: 'Continue from this session',
+                description: 'Carry the current session forward as parent context.',
+                parentSession: currentSession,
+              },
             ],
-            { title: 'New Session' }
+            { title: 'New Session', matchOnDescription: true }
           );
-          parentSession = choice?.parentSession;
+          if (!choice) {
+            return { cancelled: true };
+          }
+          parentSession = choice.parentSession;
         }
-        return controller.newSession(parentSession);
+        const result = await controller.newSession(parentSession);
+        await recentSessions.refresh(controller.folder);
+        await maybeMarkWalkthroughComplete();
+        return result;
       },
       { requireTrust: true }
     );
@@ -400,13 +542,40 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     return withController(
       async (controller) => {
         const record = asRecord(value);
-        const sessionPath =
-          asString(record?.sessionPath) ??
-          (await vscode.window.showInputBox({ title: 'Session path' }));
-        if (sessionPath) {
-          return controller.switchSession(sessionPath);
+        const picked =
+          asString(record?.sessionPath) && asString(record?.label)
+            ? {
+                sessionPath: asString(record?.sessionPath)!,
+                label: asString(record?.label)!,
+              }
+            : asString(record?.sessionPath)
+              ? {
+                  sessionPath: asString(record?.sessionPath)!,
+                  label: asString(record?.label) ?? 'Saved session',
+                }
+              : await pickRecentSession(controller);
+        if (!picked) {
+          return { cancelled: true };
         }
-        return undefined;
+        const currentSession = asString(controller.snapshot.state.sessionFile);
+        if (currentSession === picked.sessionPath) {
+          void vscode.window.showInformationMessage(`${picked.label} is already open.`);
+          return { cancelled: true, alreadyCurrent: true };
+        }
+        if (currentSession) {
+          const confirm = await vscode.window.showWarningMessage(
+            `Resume ${picked.label}? Your current conversation stays saved and you can come back from Recent Sessions.`,
+            { modal: true },
+            'Resume Session'
+          );
+          if (confirm !== 'Resume Session') {
+            return { cancelled: true };
+          }
+        }
+        const result = await controller.switchSession(picked.sessionPath);
+        await recentSessions.refresh(controller.folder);
+        await maybeMarkWalkthroughComplete();
+        return result;
       },
       { requireTrust: true }
     );
@@ -416,27 +585,42 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       async (controller) => {
         const entryId = asString(asRecord(value)?.entryId);
         if (entryId) {
-          return controller.fork(entryId);
+          const result = await controller.fork(entryId);
+          await recentSessions.refresh(controller.folder);
+          await maybeMarkWalkthroughComplete();
+          return result;
         }
         const entries = await controller.getForkMessages();
         const picked = await vscode.window.showQuickPick(
           entries.map((entry) => ({
-            label: String(entry.entryId ?? 'entry'),
+            label: 'Start Branch',
             description: String(entry.text ?? '').slice(0, 120),
+            detail: String(entry.entryId ?? 'entry'),
             entry,
           })),
-          { title: 'Fork from user message' }
+          { title: 'Start Branch from User Message', matchOnDescription: true }
         );
         if (picked && typeof picked.entry.entryId === 'string') {
-          return controller.fork(picked.entry.entryId);
+          const result = await controller.fork(picked.entry.entryId);
+          await recentSessions.refresh(controller.folder);
+          await maybeMarkWalkthroughComplete();
+          return result;
         }
-        return undefined;
+        return { cancelled: true };
       },
       { requireTrust: true }
     );
   });
   registrations.set('piRpc.cloneSession', async () => {
-    return withController(async (controller) => controller.clone(), { requireTrust: true });
+    return withController(
+      async (controller) => {
+        const result = await controller.clone();
+        await recentSessions.refresh(controller.folder);
+        await maybeMarkWalkthroughComplete();
+        return result;
+      },
+      { requireTrust: true }
+    );
   });
   registrations.set('piRpc.showForkMessages', async () => {
     return withController(async (controller) => {
@@ -474,6 +658,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         (await vscode.window.showInputBox({ title: 'Rename session' }));
       if (name !== undefined) {
         await controller.renameSession(name);
+        await recentSessions.refresh(controller.folder);
       }
       return name;
     });

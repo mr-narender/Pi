@@ -2,7 +2,7 @@
   "name": "pi-rpc-vscode",
   "displayName": "Pi RPC",
   "description": "Direct VS Code integration for Pi 0.80.10 RPC mode",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "publisher": "local",
   "license": "MIT",
   "private": true,
@@ -87,31 +87,36 @@
       "piRpc": [
         {
           "id": "piRpc.sessions",
-          "name": "Sessions"
+          "name": "Start & Sessions"
+        },
+        {
+          "id": "piRpc.help",
+          "name": "Help & Walkthrough"
         },
         {
           "id": "piRpc.outline",
-          "name": "Conversation Outline"
+          "name": "Conversation & Branches"
         },
         {
           "id": "piRpc.queue",
-          "name": "Queue"
+          "name": "Queues"
         },
         {
           "id": "piRpc.workflow",
-          "name": "Tools & Workflow"
+          "name": "Workflow"
         },
         {
           "id": "piRpc.diagnostics",
-          "name": "Diagnostics"
+          "name": "Advanced & Diagnostics"
         }
       ]
     },
     "commands": [
       {
         "command": "piRpcInternal.start",
-        "title": "Start",
-        "category": "Pi RPC"
+        "title": "Start Pi",
+        "category": "Pi RPC",
+        "icon": "$(play-circle)"
       },
       {
         "command": "piRpcInternal.stop",
@@ -126,7 +131,8 @@
       {
         "command": "piRpcInternal.openChat",
         "title": "Open Chat",
-        "category": "Pi RPC"
+        "category": "Pi RPC",
+        "icon": "$(comment-discussion)"
       },
       {
         "command": "piRpc.prompt",
@@ -151,12 +157,31 @@
       {
         "command": "piRpc.newSession",
         "title": "New Session",
-        "category": "Pi RPC"
+        "category": "Pi RPC",
+        "icon": "$(add)"
       },
       {
         "command": "piRpc.refreshState",
         "title": "Refresh State",
         "category": "Pi RPC"
+      },
+      {
+        "command": "piRpcInternal.refreshRecentSessions",
+        "title": "Refresh Recent Sessions",
+        "category": "Pi RPC",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "piRpcInternal.filterRecentSessions",
+        "title": "Search Recent Sessions",
+        "category": "Pi RPC",
+        "icon": "$(search)"
+      },
+      {
+        "command": "piRpcInternal.clearRecentSessionFilter",
+        "title": "Clear Recent Session Search",
+        "category": "Pi RPC",
+        "icon": "$(close)"
       },
       {
         "command": "piRpc.refreshMessages",
@@ -240,22 +265,25 @@
       },
       {
         "command": "piRpc.switchSession",
-        "title": "Switch Session",
-        "category": "Pi RPC"
+        "title": "Resume Session",
+        "category": "Pi RPC",
+        "icon": "$(history)"
       },
       {
         "command": "piRpc.forkSession",
-        "title": "Fork Session",
-        "category": "Pi RPC"
+        "title": "Start Branch",
+        "category": "Pi RPC",
+        "icon": "$(git-branch)"
       },
       {
         "command": "piRpc.cloneSession",
-        "title": "Clone Session",
-        "category": "Pi RPC"
+        "title": "Duplicate Path",
+        "category": "Pi RPC",
+        "icon": "$(copy)"
       },
       {
         "command": "piRpc.showForkMessages",
-        "title": "Show Fork Messages",
+        "title": "Show Branch Starting Points",
         "category": "Pi RPC"
       },
       {
@@ -265,7 +293,7 @@
       },
       {
         "command": "piRpc.showSessionTree",
-        "title": "Show Session Tree",
+        "title": "Show Conversation Map",
         "category": "Pi RPC"
       },
       {
@@ -667,17 +695,59 @@
         {
           "command": "piRpcInternal.start",
           "when": "view == piRpc.sessions",
-          "group": "navigation"
+          "group": "navigation@1"
+        },
+        {
+          "command": "piRpc.newSession",
+          "when": "view == piRpc.sessions",
+          "group": "navigation@2"
+        },
+        {
+          "command": "piRpc.switchSession",
+          "when": "view == piRpc.sessions",
+          "group": "navigation@3"
         },
         {
           "command": "piRpcInternal.openChat",
           "when": "view == piRpc.sessions",
-          "group": "navigation"
+          "group": "navigation@4"
         },
         {
-          "command": "piRpc.refreshState",
+          "command": "piRpcInternal.filterRecentSessions",
           "when": "view == piRpc.sessions",
-          "group": "navigation"
+          "group": "navigation@5"
+        },
+        {
+          "command": "piRpcInternal.refreshRecentSessions",
+          "when": "view == piRpc.sessions",
+          "group": "navigation@6"
+        },
+        {
+          "command": "piRpc.showSessionTree",
+          "when": "view == piRpc.outline",
+          "group": "navigation@1"
+        },
+        {
+          "command": "piRpc.refreshEntries",
+          "when": "view == piRpc.outline",
+          "group": "navigation@2"
+        },
+        {
+          "command": "piRpcInternal.showHealth",
+          "when": "view == piRpc.diagnostics",
+          "group": "navigation@1"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "piRpc.switchSession",
+          "when": "view == piRpc.sessions && viewItem == piRpc.recentSession",
+          "group": "inline@1"
+        },
+        {
+          "command": "piRpc.forkSession",
+          "when": "view == piRpc.outline && viewItem == piRpc.branchableEntry",
+          "group": "inline@1"
         }
       ]
     }

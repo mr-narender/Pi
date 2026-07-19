@@ -234,6 +234,17 @@ export function createWebviewSnapshot(
     title: state.title,
     connectionState: state.connectionState,
     workspaceFolderName: state.workspaceFolderName,
+    sessionName: typeof state.state.sessionName === 'string' ? state.state.sessionName : undefined,
+    sessionId: typeof state.state.sessionId === 'string' ? state.state.sessionId : undefined,
+    sessionFile: typeof state.state.sessionFile === 'string' ? state.state.sessionFile : undefined,
+    isStreaming: state.state.isStreaming === true,
+    isCompacting: state.state.isCompacting === true,
+    messageCount:
+      typeof state.state.messageCount === 'number' ? state.state.messageCount : undefined,
+    pendingMessageCount:
+      typeof state.state.pendingMessageCount === 'number'
+        ? state.state.pendingMessageCount
+        : undefined,
     messages: state.messages
       .slice(-MAX_MESSAGES)
       .map((message, index) => toItem(message, index, state.cwd)),

@@ -136,7 +136,25 @@ Acceptance: no cross-controller state or path leakage; host labeling and process
 
 ## Accessibility and UX
 
+Visual workflow to verify during acceptance:
+
+```text
+Start & Sessions → Start Pi → New Session or Resume Session → Open Chat
+                     ↓
+           Recent Sessions (search / refresh / resume)
+                     ↓
+         Conversation & Branches → Start Branch / Conversation Map
+```
+
 Complete the whole send/steer/abort/model/session/dialog/diff workflow keyboard-only. Test NVDA or VoiceOver, 200% zoom, high-contrast themes, reduced motion, long localized strings, empty/loading/error states, and focus restoration after every XUI method. Verify throttled `aria-live` summaries and non-color statuses.
+
+Additional UX walkthrough:
+
+1. In **Start & Sessions**, verify the first visible actions are **Start Pi**, **New Session**, **Resume Session**, and **Open Chat** with plain-language labels/tooltips.
+2. Verify **Current Session** shows workspace, session, model, and status in narrow and wide sidebars.
+3. Verify **Recent Sessions** supports search/filter/refresh, shows loading/empty/error states, and never exposes unsafe transcript/secrets in labels.
+4. Open **Chat** and confirm the header shows workspace/session/model/state plus primary actions.
+5. In **Conversation & Branches**, verify **Start Branch**, **Duplicate Path**, and **Conversation Map** wording is understandable without prior Pi knowledge.
 
 Acceptance: no keyboard trap, visible focus, meaningful names/roles/statuses/alt text, no token-stream screen-reader spam, and native theme compatibility.
 

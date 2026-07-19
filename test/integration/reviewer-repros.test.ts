@@ -1,8 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { PassThrough } from 'node:stream';
 import { readFileSync } from 'node:fs';
+import { mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { PassThrough } from 'node:stream';
 import { RpcTransport } from '../../src/rpc/transport';
 import { RpcClient } from '../../src/rpc/client';
 import { createInitialControllerState } from '../../src/state/types';
@@ -10,6 +13,11 @@ import { reduceEvent, reduceExtensionUiRequest } from '../../src/state/reducer';
 import { createRedactedDiagnosticsExport } from '../../src/diagnostics/export';
 import { parseWebviewMessage } from '../../src/webview/messages';
 import { canonicalizeSessionPath } from '../../src/sessions/paths';
+import {
+  getDefaultSessionDirForWorkspace,
+  readRecentSessionsIndex,
+} from '../../src/sessions/recentSessions';
+import { createSessionSidebarModel } from '../../src/ui/trees/sessionSidebarModel';
 
 test('reviewer repro 1: no fallback no-op command handler remains', () => {
   const source = readFileSync('src/extension.ts', 'utf8');
@@ -241,4 +249,65 @@ test('reviewer repro 13: multi-root selection surface is explicit in tree and ex
   const tree = readFileSync('src/ui/trees/providers.ts', 'utf8');
   assert.ok(extension.includes('piRpcInternal.selectWorkspaceFolder'));
   assert.ok(tree.includes('piRpcInternal.selectWorkspaceFolder'));
+});
+
+test('reviewer repro 14: malformed session timestamps never surface NaNd ago', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'pi-rpc-reviewer-14-'));
+  const workspace = join(root, 'workspace');
+  const agentDir = join(root, 'agent');
+  const previous = process.env.PI_CODING_AGENT_DIR;
+  process.env.PI_CODING_AGENT_DIR = agentDir;
+  await mkdir(workspace, { recursive: true });
+  await mkdir(agentDir, { recursive: true });
+
+  try {
+    const sessionDir = getDefaultSessionDirForWorkspace(workspace, agentDir);
+    const fallbackTime = new Date('2024-01-03T00:00:00.000Z');
+    const sessionPath = join(sessionDir, 'bad.jsonl');
+    await mkdir(sessionDir, { recursive: true });
+    await writeFile(
+      sessionPath,
+      [
+        JSON.stringify({
+          type: 'session',
+          id: 'bad',
+          timestamp: 'not-a-time',
+          cwd: workspace,
+        }),
+        JSON.stringify({ type: 'session_info', name: 'Broken ts' }),
+      ].join('\n') + '\n',
+      'utf8'
+    );
+    await utimes(sessionPath, fallbackTime, fallbackTime);
+
+    const index = await readRecentSessionsIndex({
+      workspaceName: 'workspace',
+      workspacePath: workspace,
+    });
+    const model = createSessionSidebarModel({
+      activeFolderName: 'workspace',
+      recent: {
+        loading: false,
+        filterText: '',
+        items: index.sessions,
+        sessionDir,
+      },
+      isTrusted: true,
+      isFirstRun: false,
+      now: Date.UTC(2024, 0, 4, 0, 0, 0),
+    });
+    const recentNode = model[2]?.children?.[1];
+
+    assert.equal(index.sessions[0]?.createdAt, fallbackTime.getTime());
+    assert.equal(index.sessions[0]?.modifiedAt, fallbackTime.getTime());
+    assert.equal(recentNode?.description, 'workspace · 1d ago');
+    assert.ok(!recentNode?.description?.includes('NaN'));
+  } finally {
+    if (previous === undefined) {
+      delete process.env.PI_CODING_AGENT_DIR;
+    } else {
+      process.env.PI_CODING_AGENT_DIR = previous;
+    }
+    await rm(root, { recursive: true, force: true });
+  }
 });

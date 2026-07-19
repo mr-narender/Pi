@@ -154,6 +154,13 @@ export interface WebviewSnapshot {
   title: string;
   connectionState: ControllerState['connectionState'];
   workspaceFolderName: string;
+  sessionName?: string;
+  sessionId?: string;
+  sessionFile?: string;
+  isStreaming: boolean;
+  isCompacting: boolean;
+  messageCount?: number;
+  pendingMessageCount?: number;
   messages: WebviewMessageItem[];
   queue: QueueState;
   draft: string;
