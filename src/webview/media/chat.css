@@ -901,8 +901,8 @@ button.ghost:hover,
   background: #3fd08a;
 } /* green */
 .more-menu .cat-system .dot {
-  background: #ff6b6b;
-} /* red */
+  background: #8a8f98;
+} /* neutral gray (not an error) */
 
 /* ---- Header: model chip + More, consistent theme ---- */
 .brand-controls {

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.17
+
+- Model picker now shows a clean list — reasoning support, context window, max output, and image support per model (no raw JSON) — with the current model checked.
+- Rename chat and Thinking level from the More menu now apply and refresh immediately (title/state update; thinking shows a confirmation), and the current thinking level is checked.
+- Recolored the More menu System group dot from red to neutral gray so Restart/Health/Help no longer look like errors.
+
 ## 0.0.16
 
 - Simplified branding to "Pi" everywhere it showed "Pi RPC": Command Palette category, Settings section, status bar, output channel, workspace pickers, and default tab title. The extension display name stays "Pi - this one is (y)ours"; setting ids are unchanged.

@@ -31,6 +31,16 @@ function asString(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined;
 }
 
+function formatTokenCount(count: number): string {
+  if (count >= 1_000_000) {
+    return `${(count / 1_000_000).toFixed(count % 1_000_000 === 0 ? 0 : 1)}M`;
+  }
+  if (count >= 1000) {
+    return `${Math.round(count / 1000)}K`;
+  }
+  return String(count);
+}
+
 function recentRequests(controller: SessionController, method?: ExtensionUiRequest['method']) {
   return controller.snapshot.uiHistory
     .filter((item) => (method ? item.method === method : true))
@@ -582,24 +592,44 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   registrations.set('piRpc.showModels', async () => {
     return withController(async (controller) => {
       const models = await controller.getAvailableModels();
-      const picked = await vscode.window.showQuickPick(
-        models.map((model) => ({
-          label: `${String(model.provider ?? 'provider')}/${String(model.id ?? 'model')}`,
+      const current = asRecord(controller.snapshot.state.model);
+      const currentKey = current
+        ? `${asString(current.provider)}/${asString(current.id)}`
+        : undefined;
+      const items = models.map((model) => {
+        const provider = String(model.provider ?? 'provider');
+        const id = String(model.id ?? 'model');
+        const key = `${provider}/${id}`;
+        const inputs = Array.isArray(model.input) ? model.input.map(String) : [];
+        const bits = [
+          model.reasoning ? 'reasoning' : 'no reasoning',
+          typeof model.contextWindow === 'number'
+            ? `ctx ${formatTokenCount(model.contextWindow)}`
+            : undefined,
+          typeof model.maxTokens === 'number'
+            ? `out ${formatTokenCount(model.maxTokens)}`
+            : undefined,
+          inputs.includes('image') ? 'images' : undefined,
+        ].filter(Boolean);
+        return {
+          label: `${key === currentKey ? '$(check) ' : ''}${key}`,
           description: String(model.name ?? ''),
-          detail: JSON.stringify({
-            input: model.input,
-            reasoning: model.reasoning,
-            contextWindow: model.contextWindow,
-          }),
+          detail: bits.join('  \u00b7  '),
           model,
-        })),
-        { title: 'Select Pi model' }
-      );
+        };
+      });
+      const picked = await vscode.window.showQuickPick(items, {
+        title: 'Select model',
+        placeHolder: 'Pick a model (reasoning · context · max output · images)',
+        matchOnDetail: true,
+      });
       if (picked) {
         await controller.selectModel(
           String(picked.model.provider ?? ''),
           String(picked.model.id ?? '')
         );
+        await controller.refreshState();
+        refreshViews();
       }
       return models;
     });
@@ -607,14 +637,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   registrations.set('piRpc.selectModel', registrations.get('piRpc.showModels')!);
   registrations.set('piRpc.setThinkingLevel', async () => {
     return withController(async (controller) => {
+      const currentLevel = asString(controller.snapshot.state.thinkingLevel);
+      const levels = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
       const picked = await vscode.window.showQuickPick(
-        ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'],
-        {
-          title: 'Thinking level',
-        }
+        levels.map((level) => ({
+          label: `${level === currentLevel ? '$(check) ' : ''}${level}`,
+          level,
+        })),
+        { title: 'Thinking level', placeHolder: 'How much should Pi reason before replying?' }
       );
       if (picked) {
-        await controller.setThinkingLevel(picked);
+        await controller.setThinkingLevel(picked.level);
+        await controller.refreshState();
+        refreshViews();
+        void vscode.window.showInformationMessage(`Thinking level set to “${picked.level}”.`);
       }
     });
   });
@@ -938,10 +974,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     return withController(async (controller) => {
       const name =
         asString(asRecord(value)?.name) ??
-        (await vscode.window.showInputBox({ title: 'Rename session' }));
-      if (name !== undefined) {
-        await controller.renameSession(name);
+        (await vscode.window.showInputBox({
+          title: 'Rename chat',
+          value: asString(controller.snapshot.state.sessionName) ?? '',
+          prompt: 'Enter a name for this chat',
+        }));
+      if (name !== undefined && name.trim() !== '') {
+        await controller.renameSession(name.trim());
+        await controller.refreshState();
         await recentSessions.refresh(controller.folder);
+        refreshViews();
       }
       return name;
     });
