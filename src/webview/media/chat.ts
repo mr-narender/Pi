@@ -31,6 +31,23 @@ function queueFocus(targetId?: string, fallbackId = COMPOSER_FIELD_ID): void {
   pendingFocusFallbackId = fallbackId;
 }
 
+function submitComposer(command: string): void {
+  previewReturnFocusId = SEND_BUTTON_ID;
+  // Optimistically clear the input immediately on submit (native chat feel),
+  // unless there are pending attachments — those open a preview instead of
+  // sending. If the send fails, the extension restores the draft via recovery.
+  const hasPending =
+    !!currentSnapshot &&
+    (currentSnapshot.pendingContextItems.length > 0 || currentSnapshot.pendingImages.length > 0);
+  if (!hasPending) {
+    const textarea = document.getElementById(COMPOSER_FIELD_ID) as HTMLTextAreaElement | null;
+    if (textarea) {
+      textarea.value = '';
+    }
+  }
+  vscode.postMessage({ type: 'requestSend', command });
+}
+
 function focusElement(id: string | undefined): boolean {
   if (!id) {
     return false;
@@ -142,11 +159,7 @@ function render(snapshot: WebviewSnapshot): void {
       if (!sendButton || sendButton.disabled) {
         return;
       }
-      previewReturnFocusId = SEND_BUTTON_ID;
-      vscode.postMessage({
-        type: 'requestSend',
-        command: sendButton.dataset.sendCommand ?? 'prompt',
-      });
+      submitComposer(sendButton.dataset.sendCommand ?? 'prompt');
     }
   });
 
@@ -160,7 +173,7 @@ function render(snapshot: WebviewSnapshot): void {
   )) {
     button.addEventListener('click', () => {
       previewReturnFocusId = button.id || SEND_BUTTON_ID;
-      vscode.postMessage({ type: 'requestSend', command: button.dataset.sendCommand });
+      submitComposer(button.dataset.sendCommand ?? 'prompt');
     });
   }
 

@@ -697,3 +697,67 @@ button.ghost:hover,
   border-color: transparent;
   padding-left: 0;
 }
+
+/* ---- Refined chat bubbles (LOCAL-004) ---- */
+#messages {
+  padding: 8px 4px;
+  gap: 14px;
+}
+
+#messages .message-card {
+  border: none;
+  padding: 0;
+  max-width: min(72ch, 92%);
+  line-height: 1.55;
+}
+
+#messages .message-role {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.55;
+  margin-bottom: 4px;
+}
+
+#messages .message-card pre {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size, 13px);
+}
+
+/* User: compact rounded bubble on the trailing edge. */
+#messages .message-user {
+  align-self: flex-end;
+  max-width: min(64ch, 88%);
+}
+
+#messages .message-user .message-role {
+  text-align: right;
+}
+
+#messages .message-user pre {
+  background: var(--vscode-editorWidget-background, rgba(128, 128, 128, 0.14));
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 14px 14px 4px 14px;
+  padding: 8px 12px;
+}
+
+/* Assistant: clean full-width text, no box (Claude-style). */
+#messages .message-assistant {
+  align-self: stretch;
+  max-width: min(80ch, 100%);
+}
+
+#messages .message-assistant pre {
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+
+#messages .message-card .detail-stack {
+  margin-top: 6px;
+}

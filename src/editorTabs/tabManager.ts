@@ -251,6 +251,42 @@ export class ChatTabManager implements vscode.Disposable {
     }
   }
 
+  private nextSessionNumber(): number {
+    const key = 'piRpc.sessionCounter';
+    const next = (this.context.workspaceState.get<number>(key) ?? 0) + 1;
+    void this.context.workspaceState.update(key, next);
+    return next;
+  }
+
+  public async nameSessionIfUnnamed(controller: SessionController): Promise<void> {
+    const existing = controller.snapshot.state.sessionName;
+    if (typeof existing === 'string' && existing.trim()) {
+      return;
+    }
+    try {
+      await controller.renameSession(`Session ${this.nextSessionNumber()}`);
+    } catch {
+      /* naming is best-effort; the tab still works with a fallback title */
+    }
+  }
+
+  public async appendComposerCommand(text: string): Promise<void> {
+    const context = this.getActiveContext();
+    if (!context) {
+      return;
+    }
+    const state = await this.uiState.getComposerStateForIdentity(
+      context.controller,
+      context.target
+    );
+    const base = state.draft && !state.draft.endsWith(' ') ? `${state.draft} ` : state.draft;
+    state.draft = `${base}${text}`;
+    state.composerResetSeq = (state.composerResetSeq ?? 0) + 1;
+    state.focus = 'composer';
+    await this.uiState.setComposerStateForIdentity(context.controller, context.target, state);
+    await this.renderResource(context.resource);
+  }
+
   public getActiveContext(): ChatTabContext | undefined {
     const activeTab = vscode.window.tabGroups.activeTabGroup.activeTab;
     const input = (activeTab?.input ?? undefined) as
@@ -414,6 +450,7 @@ export class ChatTabManager implements vscode.Disposable {
     if (result?.cancelled === true) {
       return undefined;
     }
+    await this.nameSessionIfUnnamed(current.controller);
     const nextTarget = currentTargetForController(current.controller);
     await this.uiState.setComposerStateForIdentity(current.controller, nextTarget, draftState);
     await this.uiState.clearComposerStateForIdentity(current.controller, current.target);

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.0.10
+
+- New Chat starts a fresh session immediately with no confirmation prompt.
+- The composer now clears the moment you submit (optimistic clear), so the sent text no longer lingers.
+- Slash commands: the / button lists Pi commands and inserts the chosen command into the composer (add args, then send) instead of flickering.
+- Sessions display as "Session N" (renameable) instead of a UUID; the real id is kept internally.
+- Nicer chat bubbles: user messages are compact rounded bubbles on the right; Pi replies render as clean full-width text.
+
 ## 0.0.9
 
 - Submitting now clears the composer (authoritative reset), while typing still preserves the caret.

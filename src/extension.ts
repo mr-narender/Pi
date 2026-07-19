@@ -492,30 +492,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         sessionFile: currentSession,
         sessionId: asString(controller.snapshot.state.sessionId),
       };
-      const composer = await uiState.getComposerStateForIdentity(controller, sourceIdentity);
       await uiState.captureControllerDraftForIdentity(controller, sourceIdentity);
-      let parentSession = asString(record?.parentSession);
-      if (currentSession && !parentSession) {
-        const warning =
-          composer.draft.trim() ||
-          composer.pendingContextItems.length ||
-          composer.pendingImages.length
-            ? "\n\nUnsent draft and attachments stay in their current tab. They won't be sent or copied."
-            : '';
-        const confirm = await vscode.window.showWarningMessage(
-          `Start a new chat from this workspace.${warning}`,
-          { modal: true },
-          'Start fresh',
-          'Continue from current as parent'
-        );
-        if (!confirm) {
-          await chatTabs.focusComposer(activeContext?.resource);
-          return { cancelled: true };
-        }
-        parentSession = confirm === 'Continue from current as parent' ? currentSession : undefined;
-      }
+      // New Chat always starts a fresh session immediately — no confirmation.
+      // (Continuing from the current session as a parent stays available via the
+      // `parentSession` argument for programmatic callers.)
+      const parentSession = asString(record?.parentSession);
       await chatTabs.openDraftForWorkspace(controller, { focusComposer: true });
       const result = await controller.newSession(parentSession);
+      await chatTabs.nameSessionIfUnnamed(controller);
       await recentSessions.refresh(controller.folder);
       await uiState.restoreControllerDraft(controller);
       await chatTabs.promoteDraftToCurrentSession(controller);
@@ -937,22 +921,40 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     });
   });
   registrations.set('piRpc.showPiCommands', async () => {
-    return withController(async (controller) => {
-      const commands = await controller.getPiCommands();
-      const picked = await vscode.window.showQuickPick(
-        commands.map((command) => ({
-          label: `/${String(command.name ?? 'command')}`,
-          description: String(command.description ?? ''),
-          detail: JSON.stringify(command.sourceInfo ?? {}),
-          command,
-        })),
-        { title: 'Pi commands' }
-      );
-      if (picked && typeof picked.command.name === 'string') {
-        await controller.prompt(`/${picked.command.name}`, 'prompt');
-      }
+    const activeContext = chatTabs.getActiveContext();
+    const controller = activeContext?.controller ?? registry.getActive();
+    if (!controller) {
+      void vscode.window.showInformationMessage('Open a Pi chat first.');
+      return undefined;
+    }
+    const ready =
+      controller.snapshot.connectionState === 'ready' ||
+      controller.snapshot.connectionState === 'busy';
+    if (!ready) {
+      void vscode.window.showInformationMessage('Pi is still connecting… try again in a moment.');
+      return undefined;
+    }
+    const commands = await controller.getPiCommands();
+    if (commands.length === 0) {
+      void vscode.window.showInformationMessage('No Pi commands are available for this session.');
       return commands;
-    });
+    }
+    const picked = await vscode.window.showQuickPick(
+      commands.map((command) => ({
+        label: `/${String(command.name ?? 'command')}`,
+        description: String(command.description ?? ''),
+        detail: String(command.source ?? ''),
+        command,
+      })),
+      { title: 'Pi commands', placeHolder: 'Insert a command into the composer' }
+    );
+    if (picked && typeof picked.command.name === 'string') {
+      // Insert into the composer so the user can add arguments and send — the
+      // slash command is expanded/executed by Pi when the message is sent.
+      await chatTabs.appendComposerCommand(`/${picked.command.name} `);
+      await chatTabs.focusComposer();
+    }
+    return commands;
   });
   registrations.set('piRpc.respondExtensionUi', async () => {
     return withController(
