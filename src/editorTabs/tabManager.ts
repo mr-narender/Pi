@@ -515,7 +515,10 @@ export class ChatTabManager implements vscode.Disposable {
         state.draft = parsed.text;
         await this.uiState.setComposerStateForIdentity(context.controller, context.target, state);
         if (sameTarget(currentTargetForController(context.controller), context.target)) {
-          context.controller.setDraft(parsed.text);
+          // Silent: keep the controller draft in sync without firing a state
+          // change, which would re-render the tab and reset the caret while the
+          // user is typing.
+          context.controller.setDraft(parsed.text, { silent: true });
         }
         return;
       }

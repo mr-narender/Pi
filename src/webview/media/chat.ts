@@ -86,9 +86,33 @@ function render(snapshot: WebviewSnapshot): void {
   if (!root) {
     return;
   }
+
+  // Preserve the user's in-progress composer text, caret, and focus across a
+  // full re-render. Without this, any snapshot that arrives while the user is
+  // typing (draft echo, streaming tokens, status updates) rebuilds the DOM and
+  // resets the caret to position 0.
+  const previousComposer = document.getElementById(COMPOSER_FIELD_ID) as HTMLTextAreaElement | null;
+  const composerWasFocused = !!previousComposer && document.activeElement === previousComposer;
+  const preservedValue = composerWasFocused ? previousComposer.value : undefined;
+  const preservedStart = composerWasFocused ? previousComposer.selectionStart : undefined;
+  const preservedEnd = composerWasFocused ? previousComposer.selectionEnd : undefined;
+
   root.innerHTML = renderChatApp(snapshot);
 
   const textarea = document.getElementById(COMPOSER_FIELD_ID) as HTMLTextAreaElement | null;
+  if (textarea && composerWasFocused) {
+    if (typeof preservedValue === 'string') {
+      textarea.value = preservedValue;
+    }
+    textarea.focus();
+    const caret = preservedStart ?? textarea.value.length;
+    const caretEnd = preservedEnd ?? caret;
+    try {
+      textarea.setSelectionRange(caret, caretEnd);
+    } catch {
+      /* setSelectionRange can throw for some input types; ignore */
+    }
+  }
   textarea?.addEventListener('input', () => {
     vscode.postMessage({ type: 'setDraft', text: textarea.value });
   });

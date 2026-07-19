@@ -119,17 +119,6 @@ export function createSessionsSidebarModel(input: SidebarViewInput): SidebarNode
     return nodes;
   }
 
-  if (input.recent.items.length === 0) {
-    nodes.push({
-      id: 'sessions.empty',
-      kind: 'info',
-      label: 'No chats yet',
-      description: 'Start a new chat and it will appear here.',
-      icon: 'history',
-    });
-    return nodes;
-  }
-
   for (const session of input.recent.items.slice(0, 50)) {
     const label = sessionDisplayName(session);
     const description = [

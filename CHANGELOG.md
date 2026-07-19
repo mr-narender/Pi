@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.6
+
+- Fix: typing in the composer no longer resets the caret to the start. The webview now preserves the live composer value, caret, and focus across re-renders, and draft keystrokes no longer trigger a tab re-render.
+- Sidebar: when there are no chats, show only the New Chat button (removed the "No chats yet" row).
+
 ## 0.0.5
 
 - Fix: New Chat no longer hangs on a permanent loading spinner (webview snapshot is no longer awaited inside resolveCustomEditor; added a pi-chat FileSystemProvider and an extension-host open-tab regression test).

@@ -62,15 +62,15 @@ test('sessions sidebar model leads with New Chat then lists existing chats', () 
   assert.equal(model[2]?.label, 'Older chat');
 });
 
-test('sessions sidebar model shows an empty state with only New Chat', () => {
+test('sessions sidebar model shows only New Chat when there are no chats', () => {
   const model = createSessionsSidebarModel({
     activeFolderName: 'workspace',
     recent: baseRecent,
     hasDraft: false,
     hasPendingAttachments: false,
   });
+  assert.equal(model.length, 1);
   assert.equal(model[0]?.label, 'New Chat');
-  assert.equal(model[1]?.label, 'No chats yet');
 });
 
 test('new chat sidebar model shows primary action and unsent draft warning', () => {

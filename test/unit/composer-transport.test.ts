@@ -138,6 +138,14 @@ test('default simple mode visible controls stay compact', () => {
   assert.equal((html.match(/data-action="abort"/g) ?? []).length, 0);
 });
 
+test('composer typing is protected from caret reset and re-render loops', () => {
+  const chat = readFileSync('src/webview/media/chat.ts', 'utf8');
+  assert.match(chat, /composerWasFocused/);
+  assert.match(chat, /setSelectionRange/);
+  const tab = readFileSync('src/editorTabs/tabManager.ts', 'utf8');
+  assert.match(tab, /setDraft\(parsed\.text, \{ silent: true \}\)/);
+});
+
 test('chat css covers narrow, high-contrast, and reduced-motion modes', () => {
   const css = readFileSync('src/webview/media/chat.css', 'utf8');
   assert.match(css, /@media \(max-width: 640px\)/);

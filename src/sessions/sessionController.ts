@@ -417,9 +417,11 @@ export class SessionController implements vscode.Disposable {
     this.fire();
   }
 
-  public setDraft(draft: string): void {
+  public setDraft(draft: string, options?: { silent?: boolean }): void {
     this.state = { ...this.state, draft };
-    this.fire();
+    if (!options?.silent) {
+      this.fire();
+    }
   }
 
   public dispose(): void {
