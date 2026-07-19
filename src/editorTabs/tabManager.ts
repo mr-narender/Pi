@@ -619,7 +619,15 @@ export class ChatTabManager implements vscode.Disposable {
         await this.uiState.setFocusForIdentity(context.controller, context.target, parsed.focus);
         return;
       case 'executeCommand':
-        await vscode.commands.executeCommand(parsed.command, parsed.argument);
+        try {
+          await vscode.commands.executeCommand(parsed.command, parsed.argument);
+        } catch (error) {
+          void vscode.window.showErrorMessage(
+            `Pi: ${parsed.command} failed — ${
+              error instanceof Error ? error.message : String(error)
+            }`
+          );
+        }
         return;
       case 'pickImages':
         await this.pickImages(context.controller, context.target, host.resource);

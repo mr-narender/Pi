@@ -278,8 +278,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     if (!controller) {
       return;
     }
-    if (sessionPath && asString(controller.snapshot.state.sessionFile) !== sessionPath) {
-      await controller.switchSession(sessionPath);
+    // Reveal/open the target session so the rename applies to the right, loaded
+    // session (set_session_name always targets the client's current session).
+    if (sessionPath) {
+      if (editorTabsEnabled()) {
+        await chatTabs.openForSessionFile(controller, sessionPath, { focusComposer: false });
+      }
+      if (asString(controller.snapshot.state.sessionFile) !== sessionPath) {
+        await controller.switchSession(sessionPath);
+      }
     }
     const current = asString(controller.snapshot.state.sessionName) ?? '';
     const name = await vscode.window.showInputBox({
@@ -291,8 +298,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       return;
     }
     await controller.renameSession(name.trim());
+    await controller.refreshState();
+    await controller.reconcile();
     await recentSessions.refresh(controller.folder);
     refreshViews();
+    void vscode.window.showInformationMessage(`Renamed chat to “${name.trim()}”.`);
   });
 
   registrations.set('piRpcInternal.deleteSession', async (value?: unknown) => {
@@ -1029,8 +1039,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (name !== undefined && name.trim() !== '') {
         await controller.renameSession(name.trim());
         await controller.refreshState();
+        await controller.reconcile();
         await recentSessions.refresh(controller.folder);
         refreshViews();
+        void vscode.window.showInformationMessage(`Renamed chat to “${name.trim()}”.`);
       }
       return name;
     });
@@ -1087,7 +1099,29 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   registrations.set('piRpcInternal.showHealth', async () => {
     const controller = registry.getActive();
     const health = createRedactedDiagnosticsExport(logger, controller);
-    await showJson('health', health);
+    const state = controller?.snapshot;
+    const model = asRecord(state?.state.model);
+    const modelLabel = model
+      ? `${asString(model.provider) ?? '?'}/${asString(model.id) ?? '?'}`
+      : 'not selected';
+    const lines = [
+      `Connection: ${state?.connectionState ?? 'no active chat'}`,
+      `Workspace: ${controller?.folder.name ?? '—'}`,
+      `Session: ${asString(state?.state.sessionName) ?? '—'}`,
+      `Model: ${modelLabel}`,
+      `Thinking: ${asString(state?.state.thinkingLevel) ?? '—'}`,
+      `Messages: ${state?.messages.length ?? 0}`,
+      `Pi path: ${getSettings().executable}`,
+    ];
+    const choice = await vscode.window.showInformationMessage(
+      'Pi connection health',
+      { modal: true, detail: lines.join('\n') },
+      'Copy diagnostics'
+    );
+    if (choice === 'Copy diagnostics') {
+      await vscode.env.clipboard.writeText(JSON.stringify(health, null, 2));
+      void vscode.window.showInformationMessage('Redacted diagnostics copied to clipboard.');
+    }
     return health;
   });
   registrations.set('piRpcInternal.exportDiagnostics', async () => {

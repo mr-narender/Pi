@@ -290,123 +290,7 @@ function renderPreview(snapshot: WebviewSnapshot): string {
     </section>`;
 }
 
-function renderAdvanced(snapshot: WebviewSnapshot): string {
-  if (snapshot.uiMode !== 'advanced') {
-    return '';
-  }
-  const groups: Array<{ title: string; commands: Array<[string, string]> }> = [
-    {
-      title: 'Session',
-      commands: [
-        ['piRpcInternal.start', 'Start Pi'],
-        ['piRpcInternal.stop', 'Stop Pi'],
-        ['piRpcInternal.restart', 'Restart Pi'],
-        ['piRpc.refreshState', 'Refresh state'],
-        ['piRpc.refreshMessages', 'Refresh messages'],
-        ['piRpc.renameSession', 'Rename chat'],
-      ],
-    },
-    {
-      title: 'Branches',
-      commands: [
-        ['piRpc.forkSession', 'Start branch'],
-        ['piRpc.cloneSession', 'Duplicate path'],
-        ['piRpc.showForkMessages', 'Branch starting points'],
-        ['piRpc.refreshEntries', 'Refresh branches'],
-        ['piRpc.showSessionTree', 'Conversation map'],
-        ['piRpc.copyLastAssistant', 'Copy last assistant'],
-      ],
-    },
-    {
-      title: 'Queue & steering',
-      commands: [
-        ['piRpc.steer', 'Steer'],
-        ['piRpc.followUp', 'Follow-up'],
-        ['piRpc.setSteeringMode', 'Steering mode'],
-        ['piRpc.setFollowUpMode', 'Follow-up mode'],
-        ['piRpc.toggleAutoRetry', 'Auto retry'],
-        ['piRpc.abortRetry', 'Abort retry'],
-      ],
-    },
-    {
-      title: 'Model & thinking',
-      commands: [
-        ['piRpc.showModels', 'Choose model'],
-        ['piRpc.cycleModel', 'Cycle model'],
-        ['piRpc.setThinkingLevel', 'Thinking level'],
-        ['piRpc.cycleThinkingLevel', 'Cycle thinking'],
-      ],
-    },
-    {
-      title: 'Commands & tools',
-      commands: [
-        ['piRpc.showPiCommands', 'Pi commands'],
-        ['piRpc.compact', 'Compact conversation'],
-        ['piRpc.toggleAutoCompaction', 'Auto compaction'],
-        ['piRpc.runBash', 'Run bash'],
-        ['piRpc.abortBash', 'Abort bash'],
-      ],
-    },
-    {
-      title: 'Stats & export',
-      commands: [
-        ['piRpc.showSessionStats', 'Session stats'],
-        ['piRpc.exportHtml', 'Export HTML'],
-      ],
-    },
-    {
-      title: 'Diagnostics',
-      commands: [
-        ['piRpc.inspectRpcError', 'RPC errors'],
-        ['piRpc.inspectParseError', 'Parse errors'],
-        ['piRpc.inspectExtensionError', 'Extension errors'],
-        ['piRpc.inspectCompatibilityEvents', 'Compatibility events'],
-        ['piRpcInternal.showHealth', 'Health'],
-        ['piRpcInternal.exportDiagnostics', 'Export diagnostics'],
-      ],
-    },
-    {
-      title: 'Developer tools',
-      commands: [
-        ['piRpc.respondExtensionUi', 'Inspect responses'],
-        ['piRpc.extensionUi.select', 'Select dialog'],
-        ['piRpc.extensionUi.confirm', 'Confirm dialog'],
-        ['piRpc.extensionUi.input', 'Input dialog'],
-        ['piRpc.extensionUi.editor', 'Editor dialog'],
-        ['piRpc.extensionUi.notify', 'Notify'],
-        ['piRpc.extensionUi.setTitle', 'Set title'],
-        ['piRpc.extensionUi.setEditorText', 'Set draft'],
-        ['piRpc.extensionUiLocal.custom', 'Local UI custom'],
-      ],
-    },
-  ];
-  return `
-    <section class="advanced-panel" aria-labelledby="advanced-heading">
-      <div class="section-heading-row">
-        <h2 id="advanced-heading">Advanced</h2>
-        <button type="button" data-command="piRpc.toggleAdvancedMode">Hide Advanced</button>
-      </div>
-      ${groups
-        .map(
-          (group) => `
-            <details class="advanced-group" open>
-              <summary>${escapeHtml(group.title)}</summary>
-              <div class="button-grid">
-                ${group.commands
-                  .map(
-                    ([command, label]) =>
-                      `<button type="button" data-command="${escapeHtml(command)}">${escapeHtml(label)}</button>`
-                  )
-                  .join('')}
-              </div>
-            </details>`
-        )
-        .join('')}
-    </section>`;
-}
-
-function renderMoreMenu(snapshot: WebviewSnapshot): string {
-  const advancedLabel = snapshot.uiMode === 'advanced' ? 'Switch to Simple mode' : 'Advanced mode';
+function renderMoreMenu(_snapshot: WebviewSnapshot): string {
   return `
     <details class="menu-details more-menu" id="more-menu">
       <summary aria-label="More actions">More ▾</summary>
@@ -421,7 +305,6 @@ function renderMoreMenu(snapshot: WebviewSnapshot): string {
         <button type="button" class="menu-item cat-context" data-command="piRpc.compact"><span class="dot"></span>Compact conversation</button>
         <button type="button" class="menu-item cat-context" data-command="piRpc.showSessionStats"><span class="dot"></span>Usage &amp; cost</button>
         <div class="menu-group">System</div>
-        <button type="button" class="menu-item cat-mode" data-command="piRpc.toggleAdvancedMode"><span class="dot"></span>${advancedLabel}</button>
         <button type="button" class="menu-item cat-system" data-command="piRpcInternal.restart"><span class="dot"></span>Restart Pi</button>
         <button type="button" class="menu-item cat-system" data-command="piRpcInternal.showHealth"><span class="dot"></span>Connection health</button>
         <button type="button" class="menu-item cat-system" data-command="piRpcInternal.showHelp"><span class="dot"></span>Help</button>
@@ -521,7 +404,6 @@ export function renderChatApp(snapshot: WebviewSnapshot): string {
         </div>
       </section>
 
-      ${renderAdvanced(snapshot)}
       ${renderPreview(snapshot)}
     </div>`;
 }

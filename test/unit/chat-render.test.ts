@@ -139,9 +139,9 @@ test('renderChatApp exposes empty, restricted, preview, and attachment states ac
   assert.match(html, /Draft preserved\. Not resent\./);
 });
 
-test('renderChatApp shows advanced drawer only in advanced mode', () => {
+test('renderChatApp no longer renders the confusing Advanced drawer', () => {
   const html = renderChatApp(snapshot({ uiMode: 'advanced' }));
-  assert.match(html, /<h2 id="advanced-heading">Advanced<\/h2>/);
-  assert.match(html, /Queue &amp; steering/);
-  assert.match(html, /Diagnostics/);
+  assert.doesNotMatch(html, /advanced-heading/);
+  assert.doesNotMatch(html, /Queue &amp; steering/);
+  assert.doesNotMatch(html, /data-command="piRpc\.toggleAdvancedMode"/);
 });

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.0.19
+
+- Rename now works from both the sidebar and the More menu: it reveals the target session, applies the name, refreshes the title + sidebar, and confirms.
+- Webview command errors are now surfaced as notifications instead of failing silently (this is why rename/thinking could look like they did nothing).
+- Connection health is now a readable popover (with a "Copy diagnostics" button) instead of a raw JSON editor.
+- Removed the confusing Advanced mode drawer and its menu toggle; low-level commands remain in the Command Palette.
+- Thinking level applies and confirms with a toast; the current level is checked in the picker.
+
 ## 0.0.18
 
 - Model selection is now two-step for granularity: pick a provider (with model counts) and then a model within it. An "All providers" option keeps the flat list, and single-provider setups skip straight to models. Current provider/model are checked.
