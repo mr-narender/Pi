@@ -11,7 +11,7 @@ export interface SidebarNodeCommand {
 
 export interface SidebarNode {
   id: string;
-  kind: 'section' | 'action' | 'summary' | 'session' | 'info';
+  kind: 'action' | 'summary' | 'session' | 'info';
   label: string;
   description?: string;
   detail?: string;
@@ -20,198 +20,172 @@ export interface SidebarNode {
   contextValue?: string;
   command?: SidebarNodeCommand;
   accessibilityLabel?: string;
-  children?: SidebarNode[];
 }
 
-export interface SessionSidebarModelInput {
+export interface SidebarViewInput {
   activeFolderName?: string;
-  activeFolderUri?: string;
-  activeState?: Pick<
-    ControllerState,
-    'connectionState' | 'workspaceFolderName' | 'state' | 'leafId'
-  >;
+  activeState?: Pick<ControllerState, 'connectionState' | 'workspaceFolderName' | 'state'>;
   recent: RecentSessionsState;
-  isTrusted: boolean;
-  isFirstRun: boolean;
+  hasDraft: boolean;
+  hasPendingAttachments: boolean;
+  showWorkspacePicker?: boolean;
   now?: number;
 }
 
 function sessionDisplayName(session: RecentSessionRecord): string {
   return (
-    session.displayName || session.sessionName || session.firstPromptPreview || 'Untitled session'
+    session.displayName || session.sessionName || session.firstPromptPreview || 'Untitled chat'
   );
 }
 
-function sessionDescription(
-  session: RecentSessionRecord,
-  currentSessionPath: string | undefined,
-  now: number
-): string {
-  const bits = [session.workspaceLabel, formatRelativeTimestamp(session.modifiedAt, now)];
-  if (session.modelLabel) {
-    bits.push(session.modelLabel);
-  }
-  if (currentSessionPath === session.path) {
-    bits.push('Current');
-  }
-  return bits.join(' · ');
-}
-
-function currentSessionSummary(state: SessionSidebarModelInput['activeState']): SidebarNode[] {
+function currentStatus(state: SidebarViewInput['activeState']): string {
   if (!state) {
-    return [
-      {
-        id: 'current.empty',
-        kind: 'info',
-        label: 'No workspace selected',
-        description: 'Open a folder, then start or resume Pi.',
-        icon: 'info',
-      },
-    ];
+    return 'Ready to start';
   }
-
-  const sessionName =
-    typeof state.state.sessionName === 'string' && state.state.sessionName.length > 0
-      ? state.state.sessionName
-      : typeof state.state.sessionFile === 'string'
-        ? basename(state.state.sessionFile)
-        : 'No session yet';
-  const sessionState =
-    state.state.isStreaming === true
-      ? 'Streaming reply'
-      : state.state.isCompacting === true
-        ? 'Compacting context'
-        : state.connectionState === 'stopped'
-          ? 'Stopped'
-          : state.connectionState === 'faulted'
-            ? 'Needs attention'
-            : 'Ready';
-  const model =
-    state.state.model && typeof state.state.model.provider === 'string'
-      ? `${state.state.model.provider}/${String(state.state.model.id ?? 'model')}`
-      : 'Model not chosen yet';
-  const sessionFile =
-    typeof state.state.sessionFile === 'string' ? basename(state.state.sessionFile) : 'Not started';
-
-  return [
-    {
-      id: 'current.workspace',
-      kind: 'summary',
-      label: 'Workspace',
-      description: state.workspaceFolderName,
-      icon: 'folder-library',
-      accessibilityLabel: `Current workspace ${state.workspaceFolderName}`,
-    },
-    {
-      id: 'current.session',
-      kind: 'summary',
-      label: 'Session',
-      description: sessionName,
-      detail: sessionFile,
-      icon: 'comment-discussion',
-      accessibilityLabel: `Current session ${sessionName}`,
-    },
-    {
-      id: 'current.model',
-      kind: 'summary',
-      label: 'Model',
-      description: model,
-      icon: 'sparkle',
-      accessibilityLabel: `Current model ${model}`,
-    },
-    {
-      id: 'current.state',
-      kind: 'summary',
-      label: 'Status',
-      description: sessionState,
-      detail:
-        typeof state.state.pendingMessageCount === 'number'
-          ? `${state.state.pendingMessageCount} waiting`
-          : undefined,
-      icon: state.connectionState === 'faulted' ? 'warning' : 'pulse',
-      accessibilityLabel: `Current status ${sessionState}`,
-    },
-  ];
+  if (state.state.isStreaming === true) {
+    return 'Pi is replying';
+  }
+  if (state.state.isCompacting === true) {
+    return 'Compacting';
+  }
+  if (state.connectionState === 'faulted') {
+    return 'Needs attention';
+  }
+  if (state.connectionState === 'stopped') {
+    return 'Ready to start';
+  }
+  return 'Ready';
 }
 
-function recentSessionNodes(
-  recent: RecentSessionsState,
-  currentSessionPath: string | undefined,
-  now: number
-): SidebarNode[] {
+export function createNewChatSidebarModel(input: SidebarViewInput): SidebarNode[] {
   const nodes: SidebarNode[] = [
     {
-      id: 'recent.search',
+      id: 'new.info',
+      kind: 'info',
+      label: 'Start fresh with Pi in this workspace',
+      description: input.activeFolderName
+        ? `Workspace: ${input.activeFolderName}`
+        : 'Choose a workspace to begin.',
+      icon: 'add',
+    },
+    {
+      id: 'new.action',
       kind: 'action',
-      label: recent.filterText ? `Filter: ${recent.filterText}` : 'Search recent sessions',
-      description: recent.filterText
-        ? 'Change or clear the current filter.'
-        : 'Find by name, workspace, model, or first prompt.',
-      icon: 'search',
-      command: {
-        command: 'piRpcInternal.filterRecentSessions',
-        title: 'Search recent sessions',
-      },
-      accessibilityLabel: recent.filterText
-        ? `Recent session filter ${recent.filterText}`
-        : 'Search recent sessions',
+      label: 'New Chat',
+      description: 'Start fresh or continue from the current chat as parent.',
+      icon: 'add',
+      command: { command: 'piRpc.newSession', title: 'New Chat' },
+      accessibilityLabel: 'Start a new Pi chat',
     },
   ];
 
-  if (recent.filterText) {
+  if (input.hasDraft || input.hasPendingAttachments) {
     nodes.push({
-      id: 'recent.clear',
+      id: 'new.warning',
+      kind: 'info',
+      label: 'Unsent draft and attachments stay in Current Chat.',
+      description: "They won't be sent or copied.",
+      icon: 'warning',
+    });
+  }
+
+  return nodes;
+}
+
+export function createResumeChatSidebarModel(input: SidebarViewInput): SidebarNode[] {
+  const now = input.now ?? Date.now();
+  const currentSessionPath =
+    typeof input.activeState?.state.sessionFile === 'string'
+      ? input.activeState.state.sessionFile
+      : undefined;
+  const nodes: SidebarNode[] = [
+    {
+      id: 'resume.search',
       kind: 'action',
-      label: 'Clear session search',
-      description: 'Show the full recent session list again.',
+      label: input.recent.filterText ? `Search: ${input.recent.filterText}` : 'Search recent chats',
+      description: input.recent.filterText
+        ? 'Change or clear the current filter.'
+        : 'Find a recent chat by title, prompt, workspace, or model.',
+      icon: 'search',
+      command: { command: 'piRpcInternal.filterRecentSessions', title: 'Search recent chats' },
+    },
+    {
+      id: 'resume.refresh',
+      kind: 'action',
+      label: 'Refresh',
+      description: 'Read the latest saved chats.',
+      icon: 'refresh',
+      command: { command: 'piRpcInternal.refreshRecentSessions', title: 'Refresh recent chats' },
+    },
+  ];
+
+  if (input.recent.filterText) {
+    nodes.push({
+      id: 'resume.clear',
+      kind: 'action',
+      label: 'Clear search',
+      description: 'Show every recent chat again.',
       icon: 'close',
       command: {
         command: 'piRpcInternal.clearRecentSessionFilter',
-        title: 'Clear recent session search',
+        title: 'Clear recent chat search',
       },
     });
   }
 
-  if (recent.loading) {
+  if (input.recent.loading) {
     nodes.push({
-      id: 'recent.loading',
+      id: 'resume.loading',
       kind: 'info',
-      label: 'Loading recent sessions…',
-      description: 'Reading Pi session files safely.',
+      label: 'Loading recent chats',
+      description: 'Reading saved Pi chats.',
       icon: 'loading~spin',
     });
     return nodes;
   }
 
-  if (recent.error) {
+  if (input.recent.error) {
     nodes.push({
-      id: 'recent.error',
+      id: 'resume.error',
       kind: 'info',
-      label: 'Could not read recent sessions',
-      description: recent.error,
+      label: "Couldn't read recent chats",
+      description: input.recent.error,
       icon: 'warning',
+    });
+    nodes.push({
+      id: 'resume.retry',
+      kind: 'action',
+      label: 'Try again',
+      description: 'Refresh the recent chat list.',
+      icon: 'refresh',
+      command: { command: 'piRpcInternal.refreshRecentSessions', title: 'Try again' },
     });
     return nodes;
   }
 
-  if (recent.items.length === 0) {
+  if (input.recent.items.length === 0) {
     nodes.push({
-      id: 'recent.empty',
+      id: 'resume.empty',
       kind: 'info',
-      label: recent.filterText ? 'No sessions match this search' : 'No recent sessions yet',
-      description: recent.filterText
-        ? 'Try a different search term or clear the filter.'
-        : 'Start Pi, then create or resume a session here.',
+      label: 'No recent chats yet',
+      description: 'Start a new chat and it will appear here.',
       icon: 'history',
     });
     return nodes;
   }
 
-  for (const session of recent.items.slice(0, 25)) {
+  for (const session of input.recent.items.slice(0, 25)) {
     const label = sessionDisplayName(session);
-    const description = sessionDescription(session, currentSessionPath, now);
+    const description = [
+      session.workspaceLabel,
+      formatRelativeTimestamp(session.modifiedAt, now),
+      session.modelLabel,
+      currentSessionPath === session.path ? 'Current' : undefined,
+    ]
+      .filter(Boolean)
+      .join(' · ');
     nodes.push({
-      id: `recent.${session.id}`,
+      id: `resume.${session.id}`,
       kind: 'session',
       label,
       description,
@@ -224,7 +198,7 @@ function recentSessionNodes(
       contextValue: 'piRpc.recentSession',
       command: {
         command: 'piRpc.switchSession',
-        title: 'Resume Session',
+        title: 'Resume Chat',
         arguments: [{ sessionPath: session.path, label }],
       },
       accessibilityLabel: `${label}. ${description}`,
@@ -234,210 +208,122 @@ function recentSessionNodes(
   return nodes;
 }
 
-export function createSessionSidebarModel(input: SessionSidebarModelInput): SidebarNode[] {
-  const currentSessionPath =
-    typeof input.activeState?.state.sessionFile === 'string'
-      ? input.activeState.state.sessionFile
-      : undefined;
-  const now = input.now ?? Date.now();
+export function createCurrentChatSidebarModel(input: SidebarViewInput): SidebarNode[] {
+  if (!input.activeState) {
+    return [
+      {
+        id: 'current.empty',
+        kind: 'info',
+        label: 'No current chat',
+        description: 'Open Current Chat to start or resume a conversation.',
+        icon: 'comment-discussion',
+      },
+      {
+        id: 'current.open.empty',
+        kind: 'action',
+        label: 'Open Current Chat',
+        description: 'Open the main chat surface.',
+        icon: 'comment-discussion',
+        command: { command: 'piRpcInternal.openChat', title: 'Open Current Chat' },
+      },
+    ];
+  }
 
-  const quickStartDescription = input.isTrusted
-    ? 'Start Pi, create a fresh session, resume a saved session, or open chat.'
-    : 'Restricted Mode keeps write actions disabled until you trust this workspace.';
+  const model =
+    input.activeState.state.model && typeof input.activeState.state.model.provider === 'string'
+      ? `${input.activeState.state.model.provider}/${String(input.activeState.state.model.id ?? 'model')}`
+      : 'Model';
+  const sessionName =
+    typeof input.activeState.state.sessionName === 'string' &&
+    input.activeState.state.sessionName.length > 0
+      ? input.activeState.state.sessionName
+      : typeof input.activeState.state.sessionFile === 'string'
+        ? basename(input.activeState.state.sessionFile)
+        : 'No chat yet';
 
-  return [
-    {
-      id: 'section.quickStart',
-      kind: 'section',
-      label: 'Quick Start',
-      description: quickStartDescription,
-      icon: 'rocket',
-      children: [
-        {
-          id: 'quick.workspace',
-          kind: 'action',
-          label: 'Choose Workspace',
-          description: 'Switch the active workspace when you have more than one folder open.',
-          icon: 'folder-library',
-          command: {
-            command: 'piRpcInternal.selectWorkspaceFolder',
-            title: 'Choose Workspace',
+  const nodes: SidebarNode[] = [
+    ...(input.showWorkspacePicker
+      ? [
+          {
+            id: 'current.workspacePicker',
+            kind: 'action' as const,
+            label: 'Choose workspace',
+            description: 'Switch the active workspace folder.',
+            icon: 'folder-library',
+            command: {
+              command: 'piRpcInternal.selectWorkspaceFolder',
+              title: 'Choose workspace',
+            },
           },
-          accessibilityLabel: 'Choose the active workspace folder',
-        },
-        {
-          id: 'quick.start',
-          kind: 'action',
-          label: 'Start Pi',
-          description: 'Launch Pi for the selected workspace.',
-          icon: 'play-circle',
-          command: { command: 'piRpcInternal.start', title: 'Start Pi' },
-          accessibilityLabel: 'Start Pi for the selected workspace',
-        },
-        {
-          id: 'quick.new',
-          kind: 'action',
-          label: 'New Session',
-          description: 'Start a fresh conversation or continue from this one.',
-          icon: 'add',
-          command: { command: 'piRpc.newSession', title: 'New Session' },
-          accessibilityLabel: 'Create a new session',
-        },
-        {
-          id: 'quick.resume',
-          kind: 'action',
-          label: 'Resume Session',
-          description: 'Pick a saved session from the recent list.',
-          icon: 'history',
-          command: { command: 'piRpc.switchSession', title: 'Resume Session' },
-          accessibilityLabel: 'Resume a saved session',
-        },
-        {
-          id: 'quick.chat',
-          kind: 'action',
-          label: 'Open Chat',
-          description: 'Open the chat panel with session controls and messages.',
-          icon: 'comment-discussion',
-          command: { command: 'piRpcInternal.openChat', title: 'Open Chat' },
-          accessibilityLabel: 'Open chat',
-        },
-      ],
-    },
+        ]
+      : []),
     {
-      id: 'section.current',
-      kind: 'section',
-      label: 'Current Session',
-      description: input.activeFolderName
-        ? `Active workspace: ${input.activeFolderName}`
-        : 'Choose a workspace to see the current session.',
+      id: 'current.open',
+      kind: 'action',
+      label: 'Open Current Chat',
+      description: 'Return to the main chat surface.',
       icon: 'comment-discussion',
-      children: currentSessionSummary(input.activeState),
+      command: { command: 'piRpcInternal.openChat', title: 'Open Current Chat' },
     },
     {
-      id: 'section.recent',
-      kind: 'section',
-      label: 'Recent Sessions',
-      description: 'Saved Pi sessions for this workspace.',
-      icon: 'history',
-      children: recentSessionNodes(input.recent, currentSessionPath, now),
+      id: 'current.workspace',
+      kind: 'summary',
+      label: 'Workspace',
+      description: input.activeState.workspaceFolderName,
+      icon: 'folder-library',
     },
     {
-      id: 'section.firstRun',
-      kind: 'section',
-      label: input.isFirstRun ? 'First Run Tips' : 'Need a refresher?',
-      description: input.isFirstRun
-        ? 'Follow these steps the first time you use Pi in VS Code.'
-        : 'Helpful reminders for branching, resuming, and chat.',
-      icon: 'lightbulb',
-      children: [
-        {
-          id: 'tips.start',
-          kind: 'info',
-          label: '1. Start Pi for this workspace',
-          description: 'Use Start Pi above or the toolbar button.',
-          icon: 'play-circle',
-        },
-        {
-          id: 'tips.resume',
-          kind: 'info',
-          label: '2. Choose New Session or Resume Session',
-          description: 'New Session starts fresh. Resume Session reopens a saved conversation.',
-          icon: 'history',
-        },
-        {
-          id: 'tips.branch',
-          kind: 'info',
-          label: '3. Branches let you explore without losing your place',
-          description:
-            'In Conversation & Branches, select a user message to start a branch there. Duplicate Path copies the current path as a new branch.',
-          icon: 'git-branch',
-        },
-      ],
+      id: 'current.session',
+      kind: 'summary',
+      label: 'Session',
+      description: sessionName,
+      detail:
+        typeof input.activeState.state.sessionFile === 'string'
+          ? basename(input.activeState.state.sessionFile)
+          : undefined,
+      icon: 'comment-discussion',
+    },
+    {
+      id: 'current.model',
+      kind: 'summary',
+      label: 'Model',
+      description: model,
+      icon: 'sparkle',
+    },
+    {
+      id: 'current.status',
+      kind: 'summary',
+      label: 'Status',
+      description: currentStatus(input.activeState),
+      detail:
+        typeof input.activeState.state.pendingMessageCount === 'number'
+          ? `${input.activeState.state.pendingMessageCount} waiting`
+          : undefined,
+      icon: input.activeState.connectionState === 'faulted' ? 'warning' : 'pulse',
+    },
+    {
+      id: 'current.advanced',
+      kind: 'action',
+      label: 'Advanced',
+      description: 'Show advanced commands and diagnostics.',
+      icon: 'gear',
+      command: { command: 'piRpc.toggleAdvancedMode', title: 'Advanced' },
     },
   ];
-}
 
-export interface HelpSidebarModelInput {
-  isFirstRun: boolean;
-}
+  if (
+    input.activeState.state.isStreaming === true ||
+    input.activeState.connectionState === 'busy'
+  ) {
+    nodes.push({
+      id: 'current.stop',
+      kind: 'action',
+      label: 'Stop',
+      description: 'Abort the current Pi reply.',
+      icon: 'debug-stop',
+      command: { command: 'piRpc.abort', title: 'Stop' },
+    });
+  }
 
-export function createHelpSidebarModel(input: HelpSidebarModelInput): SidebarNode[] {
-  return [
-    {
-      id: 'help.walkthrough',
-      kind: 'section',
-      label: input.isFirstRun ? 'Start here' : 'Session guide',
-      description: input.isFirstRun
-        ? 'Everything you need for your first Pi session.'
-        : 'Quick reminders for common session tasks.',
-      icon: 'book',
-      children: [
-        {
-          id: 'help.start',
-          kind: 'action',
-          label: 'Start Pi',
-          description: 'Connect Pi to the selected workspace.',
-          icon: 'play-circle',
-          command: { command: 'piRpcInternal.start', title: 'Start Pi' },
-        },
-        {
-          id: 'help.new',
-          kind: 'action',
-          label: 'New Session',
-          description: 'Begin a fresh conversation and keep the current one saved.',
-          icon: 'add',
-          command: { command: 'piRpc.newSession', title: 'New Session' },
-        },
-        {
-          id: 'help.resume',
-          kind: 'action',
-          label: 'Resume Session',
-          description: 'Reopen a saved session from the recent list.',
-          icon: 'history',
-          command: { command: 'piRpc.switchSession', title: 'Resume Session' },
-        },
-        {
-          id: 'help.chat',
-          kind: 'action',
-          label: 'Open Chat',
-          description: 'See the active conversation, status, and controls.',
-          icon: 'comment-discussion',
-          command: { command: 'piRpcInternal.openChat', title: 'Open Chat' },
-        },
-      ],
-    },
-    {
-      id: 'help.words',
-      kind: 'section',
-      label: 'Plain-language guide',
-      description: 'What the session tools mean in this extension.',
-      icon: 'question',
-      children: [
-        {
-          id: 'help.branch',
-          kind: 'info',
-          label: 'Start Branch',
-          description:
-            'Create a new direction from an earlier user message without deleting the current path.',
-          icon: 'git-branch',
-        },
-        {
-          id: 'help.clone',
-          kind: 'info',
-          label: 'Duplicate Path',
-          description:
-            'Copy the current conversation path into a new branch so you can try another idea.',
-          icon: 'copy',
-        },
-        {
-          id: 'help.tree',
-          kind: 'info',
-          label: 'Conversation Map',
-          description:
-            'Show the saved conversation tree so you can inspect branches and the current marker.',
-          icon: 'type-hierarchy-sub',
-        },
-      ],
-    },
-  ];
+  return nodes;
 }

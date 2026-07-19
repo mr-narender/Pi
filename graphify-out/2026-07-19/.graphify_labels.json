@@ -61,16 +61,5 @@
   "59": "README.md",
   "60": "eslint.config.mjs",
   "61": "prettier.config.mjs",
-  "62": "build.mjs",
-  "63": "LOCAL-003 UX redesign — Pi RPC as a simple coding chat",
-  "64": "Wireframes",
-  "65": "Visual, spacing, type, and icon tokens",
-  "66": "LOCAL-003 — Simplify Pi RPC into a user-first interface",
-  "67": "Proposed information architecture",
-  "68": "Keyboard, focus, and accessibility",
-  "69": "Narrow, high-contrast, and reduced-motion behavior",
-  "70": "Usability validation plan",
-  "71": "Capability preservation map",
-  "72": "Component inventory and microcopy",
-  "73": "Outcome"
+  "62": "build.mjs"
 }

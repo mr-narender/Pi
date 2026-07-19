@@ -2,11 +2,15 @@ import * as vscode from 'vscode';
 import type { ExtensionUiRequest } from '../rpc/protocol';
 import { SessionRegistry } from '../sessions/sessionRegistry';
 import type { SessionController } from '../sessions/sessionController';
+import type { ChatUiState } from '../webview/composerState';
 
 export class ExtensionUiBroker implements vscode.Disposable {
   private readonly subscriptions: vscode.Disposable[] = [];
 
-  public constructor(private readonly registry: SessionRegistry) {
+  public constructor(
+    private readonly registry: SessionRegistry,
+    private readonly uiState?: ChatUiState
+  ) {
     for (const controller of registry.list()) {
       this.track(controller);
     }
@@ -136,15 +140,18 @@ export class ExtensionUiBroker implements vscode.Disposable {
           );
           if (choice === 'Replace draft') {
             controller.setDraft(request.text ?? '');
+            await this.uiState?.updateDraft(controller, request.text ?? '');
             return { replaced: true };
           }
           if (choice === 'Append to draft') {
             controller.setDraft(`${current}\n${request.text ?? ''}`.trim());
+            await this.uiState?.updateDraft(controller, `${current}\n${request.text ?? ''}`.trim());
             return { appended: true };
           }
           return { cancelled: true };
         }
         controller.setDraft(request.text ?? '');
+        await this.uiState?.updateDraft(controller, request.text ?? '');
         return { replaced: true };
       }
       case 'setStatus':

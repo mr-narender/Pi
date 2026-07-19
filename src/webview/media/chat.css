@@ -1,25 +1,12 @@
 body {
-  font-family: var(--vscode-font-family);
+  margin: 0;
   color: var(--vscode-foreground);
   background: var(--vscode-editor-background);
-  margin: 0;
-  padding: 0.75rem;
+  font-family: var(--vscode-font-family);
 }
 
-.layout {
-  display: grid;
-  gap: 0.75rem;
-}
-
-h1,
-h2,
-h3,
-p,
-dl,
-dt,
-dd,
-summary {
-  margin: 0;
+* {
+  box-sizing: border-box;
 }
 
 button,
@@ -34,176 +21,393 @@ button,
 input,
 select,
 textarea {
-  width: 100%;
-  box-sizing: border-box;
-}
-
-pre,
-textarea,
-input,
-select {
-  white-space: pre-wrap;
-  font-family: var(--vscode-editor-font-family);
+  color: inherit;
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
 }
 
 button {
-  background: var(--vscode-button-background);
+  width: auto;
+  cursor: pointer;
+  padding: 6px 12px;
   color: var(--vscode-button-foreground);
-  border: 1px solid var(--vscode-button-border, transparent);
-  padding: 0.45rem 0.8rem;
-  border-radius: 6px;
+  background: var(--vscode-button-background);
+  border-color: var(--vscode-button-border, transparent);
 }
 
-button:hover,
-summary:hover {
-  cursor: pointer;
+button:hover {
+  background: var(--vscode-button-hoverBackground);
+}
+
+textarea,
+pre,
+code,
+select,
+input {
+  font-family: var(--vscode-editor-font-family);
+}
+
+textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 120px;
+  padding: 12px;
+  border-radius: 4px;
 }
 
 button:focus-visible,
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible,
-summary:focus-visible {
-  outline: 2px solid var(--vscode-focusBorder);
+summary:focus-visible,
+.skip-link:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
   outline-offset: 2px;
 }
 
-.chat-header,
-.surface,
-.message,
-.widget,
-.queue,
-.attachment-card {
+pre {
+  margin: 0;
+  padding: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--vscode-textCodeBlock-background, transparent);
   border: 1px solid var(--vscode-panel-border);
-  border-radius: 8px;
-  padding: 0.75rem;
-  background: var(--vscode-editorWidget-background, transparent);
+}
+
+.skip-link {
+  position: absolute;
+  left: 8px;
+  top: -40px;
+  z-index: 10;
+  padding: 8px 12px;
+  color: var(--vscode-button-foreground);
+  background: var(--vscode-button-background);
+}
+
+.skip-link:focus {
+  top: 8px;
+}
+
+.layout {
+  display: grid;
+  gap: 16px;
+  padding: 16px;
+}
+
+.chat-header,
+.transcript-panel,
+.composer-panel,
+.advanced-panel,
+.banner,
+.empty-state-card,
+.message-card,
+.modal-card,
+.chip-details,
+.message-attachment,
+.advanced-group {
+  border: 1px solid var(--vscode-panel-border);
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+}
+
+.chat-header,
+.transcript-panel,
+.composer-panel,
+.advanced-panel,
+.banner,
+.empty-state-card,
+.message-card,
+.modal-card {
+  padding: 16px;
+}
+
+h1,
+h2,
+p {
+  margin: 0;
+}
+
+.header-main,
+.transcript-panel,
+.composer-panel,
+.advanced-panel,
+.detail-stack,
+.attachment-tray,
+.chip-list {
+  display: grid;
+  gap: 12px;
 }
 
 .chat-header {
   display: grid;
-  gap: 0.75rem;
+  gap: 12px;
 }
 
-.eyebrow {
+.header-summary,
+.muted,
+.meta-pill,
+.inline-select span,
+.section-label {
   color: var(--vscode-descriptionForeground);
-  font-size: 0.85rem;
-  margin-bottom: 0.35rem;
 }
 
-.header-meta {
-  display: grid;
-  gap: 0.5rem;
-  margin-top: 0.75rem;
-}
-
-.header-meta div {
-  display: grid;
-  gap: 0.15rem;
-}
-
-.header-meta dt {
-  color: var(--vscode-descriptionForeground);
-  font-size: 0.85rem;
-}
-
-.header-actions,
-.buttons,
-.header-flags {
+.header-controls,
+.button-row,
+.button-grid,
+.menu-panel,
+.section-heading-row {
   display: flex;
+  gap: 8px;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  align-items: center;
 }
 
-.header-actions button,
-.buttons button {
-  width: auto;
-  min-width: 10rem;
+.section-heading-row {
+  justify-content: space-between;
 }
 
-.surface {
+.button-grid button {
+  min-width: 136px;
+}
+
+.compact button {
+  min-width: 0;
+}
+
+.transcript-panel {
+  gap: 16px;
+}
+
+#messages {
   display: grid;
-  gap: 0.75rem;
+  gap: 12px;
 }
 
-summary {
+.message-role {
   font-weight: 600;
 }
 
-.stacked-form {
+.message-card {
   display: grid;
-  gap: 0.5rem;
+  gap: 8px;
 }
 
-.empty-state,
-.muted {
-  color: var(--vscode-descriptionForeground);
+.message-attachment,
+.chip-details,
+.advanced-group,
+.menu-details {
+  border-radius: 4px;
 }
 
-.widget-column,
-.attachment-strip {
+.chip-shell {
   display: grid;
-  gap: 0.5rem;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: start;
 }
 
-.widget {
-  border-left: 3px solid var(--vscode-textLink-foreground);
+.message-attachment,
+.chip-details,
+.advanced-group {
+  padding: 8px 12px;
 }
 
-.pill {
+.message-attachment summary,
+.chip-details summary,
+.advanced-group summary,
+.menu-details summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.chip-stale {
+  border-color: var(--vscode-inputValidation-warningBorder, var(--vscode-panel-border));
+}
+
+.warning-text {
+  color: var(--vscode-inputValidation-warningForeground, var(--vscode-editorWarning-foreground));
+}
+
+.meta-pill {
   display: inline-flex;
-  align-items: center;
-  border: 1px solid var(--vscode-badge-background);
+  padding: 2px 8px;
+  border: 1px solid var(--vscode-panel-border);
   border-radius: 999px;
-  padding: 0.15rem 0.5rem;
-  gap: 0.25rem;
 }
 
-.attachment-header {
+.link-button {
+  padding: 0;
+  border: 0;
+  color: var(--vscode-textLink-foreground);
+  background: transparent;
+}
+
+.inline-select {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
   align-items: center;
-  margin-bottom: 0.25rem;
+  gap: 8px;
 }
 
-.attachment-preview {
+.inline-select select {
+  min-width: 160px;
+  padding: 4px 8px;
+}
+
+.menu-details {
+  position: relative;
+}
+
+.menu-details summary {
+  list-style: none;
+  padding: 6px 12px;
+  color: var(--vscode-button-foreground);
+  background: var(--vscode-button-secondaryBackground, var(--vscode-button-background));
+  border: 1px solid var(--vscode-button-border, transparent);
+}
+
+.menu-details[open] .menu-panel {
   display: grid;
-  gap: 0.2rem;
-  margin: 0.25rem 0;
 }
 
-.message {
-  margin-top: 0.5rem;
+.menu-panel {
+  display: none;
+  position: absolute;
+  z-index: 2;
+  min-width: 220px;
+  margin-top: 8px;
+  padding: 8px;
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  border: 1px solid var(--vscode-panel-border);
 }
 
-.message h3 {
-  margin-bottom: 0.35rem;
+.menu-panel button {
+  text-align: left;
 }
 
-label span,
-strong {
-  display: inline-block;
-  margin-bottom: 0.2rem;
+.attachment-tray {
+  gap: 8px;
+}
+
+.chip-list {
+  gap: 8px;
+}
+
+.chip-remove-button {
+  min-width: 0;
+  padding: 6px 10px;
+  line-height: 1;
+  align-self: start;
+}
+
+.image-preview {
+  max-width: 160px;
+  border: 1px solid var(--vscode-panel-border);
+}
+
+.banner {
+  display: grid;
+  gap: 12px;
+}
+
+.empty-state-card {
+  display: grid;
+  gap: 12px;
+}
+
+.empty-title {
+  font-weight: 600;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: color-mix(in srgb, var(--vscode-editor-background) 70%, transparent);
+}
+
+.modal-card {
+  width: min(780px, 100%);
+  display: grid;
+  gap: 12px;
+}
+
+.modal-card:focus {
+  outline: none;
+}
+
+.modal-card:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+}
+
+.meta-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 @media (max-width: 640px) {
-  body {
-    padding: 0.5rem;
+  .layout {
+    gap: 12px;
+    padding: 12px;
   }
 
   .chat-header,
-  .surface,
-  .message,
-  .widget,
-  .queue,
-  .attachment-card {
-    padding: 0.6rem;
+  .transcript-panel,
+  .composer-panel,
+  .advanced-panel,
+  .banner,
+  .empty-state-card,
+  .message-card,
+  .modal-card {
+    padding: 12px;
   }
 
-  .header-actions button,
-  .buttons button {
+  .header-controls,
+  .button-row,
+  .button-grid,
+  .menu-panel,
+  .section-heading-row {
     width: 100%;
-    min-width: 0;
+  }
+
+  .button-grid button,
+  .button-row button,
+  .menu-details summary {
+    width: 100%;
+  }
+
+  .header-summary {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+}
+
+@media (forced-colors: active) {
+  .chat-header,
+  .transcript-panel,
+  .composer-panel,
+  .advanced-panel,
+  .banner,
+  .empty-state-card,
+  .message-card,
+  .modal-card,
+  .chip-details,
+  .message-attachment,
+  .advanced-group,
+  .menu-panel {
+    border: 1px solid CanvasText;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
   }
 }

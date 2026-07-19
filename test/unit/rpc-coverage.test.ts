@@ -16,6 +16,7 @@ import { RpcTransport } from '../../src/rpc/transport';
 import { createInitialControllerState } from '../../src/state/types';
 import { reduceEvent, reduceExtensionUiRequest } from '../../src/state/reducer';
 import { createWebviewSnapshot, normalizeAttachment } from '../../src/webview/model';
+import { createEmptyComposerState } from '../../src/webview/composer';
 import { LocalExtensionUiContext } from '../../src/ui/localExtensionUi';
 import evidence from '../../docs/RPC_COVERAGE_EVIDENCE.json';
 
@@ -1229,7 +1230,8 @@ test('rpc.shape.blocks', () => {
     },
   ];
   const snapshot = createWebviewSnapshot(state, 1, {
-    pendingImages: [],
+    uiMode: 'simple',
+    composer: createEmptyComposerState(),
     isTrusted: true,
     folders: [{ name: 'workspace', uri: 'file:///tmp/workspace', active: true }],
   });
@@ -1252,7 +1254,8 @@ test('rpc.shape.messages', () => {
     { id: 'cs1', role: 'compactionSummary', content: 'compacted' },
   ];
   const snapshot = createWebviewSnapshot(state, 1, {
-    pendingImages: [],
+    uiMode: 'simple',
+    composer: createEmptyComposerState(),
     isTrusted: true,
     folders: [{ name: 'workspace', uri: 'file:///tmp/workspace', active: true }],
   });
@@ -1433,15 +1436,27 @@ test('rpc.shape.attachment', () => {
   );
   assert.equal(normalized?.fileRef?.path, 'docs/photo.jpg');
 
+  const composer = createEmptyComposerState();
+  composer.pendingImages.push({
+    itemId: 'img-1',
+    name: 'image.png',
+    mimeType: 'image/png',
+    sizeBytes: 42,
+    inMemoryBase64: 'AAAA',
+    previewDataUrl: 'data:image/png;base64,AAAA',
+  });
   const snapshot = createWebviewSnapshot(state, 2, {
-    pendingImages: [{ name: 'image.png', mimeType: 'image/png', size: 42 }],
+    uiMode: 'simple',
+    composer,
     isTrusted: true,
     folders: [{ name: 'workspace', uri: 'file:///tmp/workspace', active: true }],
   });
-  assert.deepEqual(snapshot.pendingImages, [
-    { name: 'image.png', mimeType: 'image/png', size: 42 },
-  ]);
-  assert.equal('data' in (snapshot.pendingImages[0] as Record<string, unknown>), false);
+  assert.equal(snapshot.pendingImages[0]?.name, 'image.png');
+  assert.equal(snapshot.pendingImages[0]?.sizeBytes, 42);
+  assert.equal(
+    'inMemoryBase64' in (snapshot.pendingImages[0] as unknown as Record<string, unknown>),
+    false
+  );
   assert.equal(snapshot.messages[0]?.attachments[0]?.id, 'img1');
   assert.equal(snapshot.messages[0]?.attachments[0]?.fileRef?.path, 'docs/photo.jpg');
   assert.equal(snapshot.messages[0]?.attachments[1]?.fileRef, undefined);

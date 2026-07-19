@@ -8,8 +8,10 @@ import type {
   WebviewAttachmentItem,
   WebviewAttachmentPreviewItem,
   WebviewMessageItem,
+  WebviewPendingImageItem,
   WebviewSnapshot,
 } from '../state/types';
+import type { ChatUiMode, ComposerSessionState, PendingImageItem } from './composer';
 
 const MAX_MESSAGES = 200;
 const MAX_ATTACHMENT_NAME_CHARS = 160;
@@ -211,27 +213,38 @@ function toItem(message: JsonObject, index: number, cwd: string): WebviewMessage
   };
 }
 
-function normalizePendingImage(
-  image: WebviewSnapshot['pendingImages'][number]
-): WebviewSnapshot['pendingImages'][number] {
+function normalizePendingImage(image: PendingImageItem): WebviewPendingImageItem {
   return {
+    itemId: sanitizeDisplayText(image.itemId, 80),
     name: sanitizeDisplayText(image.name, MAX_ATTACHMENT_NAME_CHARS),
     mimeType: sanitizeDisplayText(image.mimeType, MAX_ATTACHMENT_MIME_CHARS),
-    size:
-      typeof image.size === 'number' && Number.isFinite(image.size) && image.size >= 0
-        ? image.size
+    sizeBytes:
+      typeof image.sizeBytes === 'number' &&
+      Number.isFinite(image.sizeBytes) &&
+      image.sizeBytes >= 0
+        ? image.sizeBytes
         : 0,
+    width: typeof image.width === 'number' ? image.width : undefined,
+    height: typeof image.height === 'number' ? image.height : undefined,
+    previewDataUrl: image.previewDataUrl,
+    requiresReselect: image.requiresReselect,
   };
 }
 
 export function createWebviewSnapshot(
   state: ControllerState,
   sequence: number,
-  extra: Pick<WebviewSnapshot, 'pendingImages' | 'isTrusted' | 'folders'>
+  extra: {
+    uiMode: ChatUiMode;
+    composer: ComposerSessionState;
+    isTrusted: boolean;
+    folders: WebviewSnapshot['folders'];
+  }
 ): WebviewSnapshot {
   return {
     sequence,
     title: state.title,
+    uiMode: extra.uiMode,
     connectionState: state.connectionState,
     workspaceFolderName: state.workspaceFolderName,
     sessionName: typeof state.state.sessionName === 'string' ? state.state.sessionName : undefined,
@@ -249,13 +262,18 @@ export function createWebviewSnapshot(
       .slice(-MAX_MESSAGES)
       .map((message, index) => toItem(message, index, state.cwd)),
     queue: state.queue,
-    draft: state.draft,
+    draft: extra.composer.draft,
     statuses: state.statuses,
     widgets: state.widgets,
     model: state.state.model,
     thinkingLevel:
       typeof state.state.thinkingLevel === 'string' ? state.state.thinkingLevel : undefined,
-    pendingImages: extra.pendingImages.map(normalizePendingImage),
+    pendingContextItems: extra.composer.pendingContextItems,
+    pendingImages: extra.composer.pendingImages.map(normalizePendingImage),
+    focus: extra.composer.focus,
+    preview: extra.composer.preview,
+    acceptedSendSnapshot: extra.composer.acceptedSendSnapshot,
+    recovery: extra.composer.recovery,
     isTrusted: extra.isTrusted,
     folders: extra.folders,
   };

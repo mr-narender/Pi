@@ -14,6 +14,8 @@ async function run() {
     'piRpc.switchSession',
     'piRpcInternal.start',
     'piRpcInternal.openChat',
+    'piRpc.toggleAdvancedMode',
+    'piRpcInternal.showHelp',
     'piRpc.extensionUi.setTitle',
     'piRpc.extensionUiLocal.setTheme',
   ]) {
@@ -27,9 +29,17 @@ async function run() {
   assert.ok(all.includes('piRpc.switchSession'));
 
   const views = extension.packageJSON.contributes.views.piRpc.map((view) => view.id);
-  assert.ok(views.includes('piRpc.sessions'));
-  assert.ok(views.includes('piRpc.help'));
-  assert.ok(views.includes('piRpc.outline'));
+  assert.ok(views.includes('piRpc.newChat'));
+  assert.ok(views.includes('piRpc.resumeChat'));
+  assert.ok(views.includes('piRpc.currentChat'));
+
+  const advancedMode = await vscode.commands.executeCommand('piRpc.toggleAdvancedMode');
+  assert.equal(advancedMode, 'advanced');
+  const simpleMode = await vscode.commands.executeCommand('piRpc.toggleAdvancedMode');
+  assert.equal(simpleMode, 'simple');
+
+  const helpUri = await vscode.commands.executeCommand('piRpcInternal.showHelp');
+  assert.ok(String(helpUri).endsWith('/README.md'));
 
   const themeResult = await vscode.commands.executeCommand('piRpc.extensionUiLocal.setTheme');
   assert.equal(themeResult.success, false);

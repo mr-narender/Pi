@@ -3,6 +3,7 @@ import { summarizeModel, summarizeQueue } from '../../state/selectors';
 import type { SessionController } from '../../sessions/sessionController';
 
 export class StatusBarController implements vscode.Disposable {
+  private mode: 'simple' | 'advanced' = 'simple';
   private readonly connection = vscode.window.createStatusBarItem(
     vscode.StatusBarAlignment.Left,
     100
@@ -23,6 +24,13 @@ export class StatusBarController implements vscode.Disposable {
     this.model.show();
     this.queue.show();
     this.usage.show();
+  }
+
+  public setMode(mode: 'simple' | 'advanced'): void {
+    this.mode = mode;
+    if (this.controller) {
+      this.render(this.controller.snapshot);
+    }
   }
 
   public bind(controller: SessionController | undefined): void {
@@ -51,6 +59,19 @@ export class StatusBarController implements vscode.Disposable {
 
   private render(state: SessionController['snapshot']): void {
     const folder = this.controller?.folder.name ?? state.workspaceFolderName;
+    const visible = this.mode === 'advanced' || state.connectionState === 'faulted';
+    if (!visible) {
+      this.connection.hide();
+      this.model.hide();
+      this.queue.hide();
+      this.usage.hide();
+      this.clearKeyed();
+      return;
+    }
+    this.connection.show();
+    this.model.show();
+    this.queue.show();
+    this.usage.show();
     this.connection.text = `$(plug) ${folder}: ${state.connectionState}`;
     this.model.text = `$(hubot) ${summarizeModel(state)}`;
     this.queue.text = `$(list-unordered) ${summarizeQueue(state)}`;

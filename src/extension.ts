@@ -12,15 +12,13 @@ import { ExtensionUiBroker } from './ui/extensionUiBroker';
 import { LocalExtensionUiContext } from './ui/localExtensionUi';
 import { openPathInNewWindow } from './ui/navigation';
 import {
-  DiagnosticsTreeProvider,
-  HelpTreeProvider,
-  OutlineTreeProvider,
-  QueueTreeProvider,
-  SessionsTreeProvider,
-  WorkflowTreeProvider,
+  CurrentChatTreeProvider,
+  NewChatTreeProvider,
+  ResumeChatTreeProvider,
 } from './ui/trees/providers';
 import { StatusBarController } from './ui/status/statusBar';
 import { ChatPanelProvider } from './webview/provider';
+import { ChatUiState } from './webview/composerState';
 import type { SessionController } from './sessions/sessionController';
 import type { ExtensionUiRequest } from './rpc/protocol';
 
@@ -57,68 +55,41 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const settings = getSettings();
   const statusBar = new StatusBarController();
   const recentSessions = new RecentSessionService();
-  const chat = new ChatPanelProvider(context, registry);
-  const broker = new ExtensionUiBroker(registry);
+  const uiState = new ChatUiState(context);
+  const chat = new ChatPanelProvider(context, registry, uiState);
+  const broker = new ExtensionUiBroker(registry, uiState);
   const localUi = new LocalExtensionUiContext();
-  const WALKTHROUGH_KEY = 'piRpc.hasCompletedSessionWalkthrough';
-  const isFirstRun = () => !context.globalState.get<boolean>(WALKTHROUGH_KEY, false);
 
-  context.subscriptions.push(logger, registry, statusBar, recentSessions, chat, broker);
+  context.subscriptions.push(logger, registry, statusBar, recentSessions, uiState, chat, broker);
 
   for (const folder of vscode.workspace.workspaceFolders ?? []) {
     const controller = registry.getOrCreate(folder);
     broker.track(controller);
   }
+  statusBar.setMode(uiState.getMode());
   statusBar.bind(registry.getActive());
   void recentSessions.refresh();
 
-  const sessionsView = new SessionsTreeProvider(registry, recentSessions, isFirstRun);
-  const helpView = new HelpTreeProvider(registry, isFirstRun);
-  const outlineView = new OutlineTreeProvider(registry);
-  const queueView = new QueueTreeProvider(registry);
-  const workflowView = new WorkflowTreeProvider(registry);
-  const diagnosticsView = new DiagnosticsTreeProvider(registry);
+  const newChatView = new NewChatTreeProvider(registry, recentSessions, uiState);
+  const resumeChatView = new ResumeChatTreeProvider(registry, recentSessions, uiState);
+  const currentChatView = new CurrentChatTreeProvider(registry, recentSessions, uiState);
 
   context.subscriptions.push(
-    vscode.window.registerTreeDataProvider('piRpc.sessions', sessionsView),
-    vscode.window.registerTreeDataProvider('piRpc.help', helpView),
-    vscode.window.registerTreeDataProvider('piRpc.outline', outlineView),
-    vscode.window.registerTreeDataProvider('piRpc.queue', queueView),
-    vscode.window.registerTreeDataProvider('piRpc.workflow', workflowView),
-    vscode.window.registerTreeDataProvider('piRpc.diagnostics', diagnosticsView),
-    sessionsView,
-    helpView,
-    outlineView,
-    queueView,
-    workflowView,
-    diagnosticsView
+    vscode.window.registerTreeDataProvider('piRpc.newChat', newChatView),
+    vscode.window.registerTreeDataProvider('piRpc.resumeChat', resumeChatView),
+    vscode.window.registerTreeDataProvider('piRpc.currentChat', currentChatView),
+    newChatView,
+    resumeChatView,
+    currentChatView
   );
 
-  const maybeMarkWalkthroughComplete = async (): Promise<void> => {
-    if (!isFirstRun()) {
-      return;
-    }
-    if (
-      registry
-        .list()
-        .some((controller) => typeof controller.snapshot.state.sessionFile === 'string')
-    ) {
-      await context.globalState.update(WALKTHROUGH_KEY, true);
-      sessionsView.refresh();
-      helpView.refresh();
-    }
-  };
-
   const refreshViews = (): void => {
-    sessionsView.refresh();
-    helpView.refresh();
-    outlineView.refresh();
-    queueView.refresh();
-    workflowView.refresh();
-    diagnosticsView.refresh();
+    newChatView.refresh();
+    resumeChatView.refresh();
+    currentChatView.refresh();
+    statusBar.setMode(uiState.getMode());
     statusBar.bind(registry.getActive());
     void chat.refresh();
-    void maybeMarkWalkthroughComplete();
   };
 
   for (const controller of registry.list()) {
@@ -135,7 +106,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   const pickRecentSession = async (
     controller: SessionController,
-    title = 'Resume Session'
+    title = 'Resume Chat'
   ): Promise<{ sessionPath: string; label: string } | undefined> => {
     let state = recentSessions.getState(controller.folder);
     if (!state.loading && state.items.length === 0 && !state.error) {
@@ -147,11 +118,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       state = recentSessions.getState(controller.folder);
     }
     if (state.error) {
-      throw new Error(`Unable to read recent sessions: ${state.error}`);
+      throw new Error(`Unable to read recent chats: ${state.error}`);
     }
     if (state.items.length === 0) {
       void vscode.window.showInformationMessage(
-        'No saved Pi sessions were found for this workspace yet.'
+        'No saved Pi chats were found for this workspace yet.'
       );
       return undefined;
     }
@@ -209,6 +180,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     if (selected) {
       statusBar.bind(selected);
       await recentSessions.refresh(selected.folder);
+      await uiState.restoreControllerDraft(selected);
       await chat.refresh();
       refreshViews();
     }
@@ -264,7 +236,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         await controller.start();
         await controller.reconcile();
         await recentSessions.refresh(controller.folder);
-        await maybeMarkWalkthroughComplete();
+        await uiState.restoreControllerDraft(controller);
         void vscode.window.showInformationMessage(`Pi started for ${controller.folder.name}`);
       },
       { autoStart: false, forcePicker: true }
@@ -291,7 +263,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   registrations.set('piRpcInternal.openChat', async () => {
     await chat.show();
-    await maybeMarkWalkthroughComplete();
+    await chat.focusComposer();
+  });
+
+  registrations.set('piRpc.toggleAdvancedMode', async () => {
+    const mode = await uiState.toggleMode();
+    statusBar.setMode(mode);
+    refreshViews();
+    return mode;
+  });
+
+  registrations.set('piRpcInternal.showHelp', async () => {
+    const readme = vscode.Uri.joinPath(context.extensionUri, 'README.md');
+    const document = await vscode.workspace.openTextDocument(readme);
+    await vscode.window.showTextDocument(document, { preview: false });
+    return readme.toString();
   });
 
   registrations.set('piRpc.prompt', async (value?: unknown) => {
@@ -350,41 +336,33 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       async (controller) => {
         const record = asRecord(value);
         const currentSession = asString(controller.snapshot.state.sessionFile);
-        if (currentSession) {
-          const confirm = await vscode.window.showWarningMessage(
-            'Start a new session? Your current conversation stays saved and can be resumed later from Recent Sessions.',
-            { modal: true },
-            'Continue'
-          );
-          if (confirm !== 'Continue') {
-            return { cancelled: true };
-          }
-        }
+        const composer = await uiState.getComposerState(controller);
+        await uiState.captureControllerDraft(controller);
         let parentSession = asString(record?.parentSession);
-        if (!parentSession && currentSession) {
-          const choice = await vscode.window.showQuickPick(
-            [
-              {
-                label: 'Start fresh',
-                description: 'Open an empty session.',
-                parentSession: undefined,
-              },
-              {
-                label: 'Continue from this session',
-                description: 'Carry the current session forward as parent context.',
-                parentSession: currentSession,
-              },
-            ],
-            { title: 'New Session', matchOnDescription: true }
+        if (currentSession && !parentSession) {
+          const warning =
+            composer.draft.trim() ||
+            composer.pendingContextItems.length ||
+            composer.pendingImages.length
+              ? "\n\nUnsent draft and attachments stay in Current Chat. They won't be sent or copied."
+              : '';
+          const confirm = await vscode.window.showWarningMessage(
+            `Start a new chat from this workspace.${warning}`,
+            { modal: true },
+            'Start fresh',
+            'Continue from current as parent'
           );
-          if (!choice) {
+          if (!confirm) {
+            await chat.focusComposer();
             return { cancelled: true };
           }
-          parentSession = choice.parentSession;
+          parentSession =
+            confirm === 'Continue from current as parent' ? currentSession : undefined;
         }
         const result = await controller.newSession(parentSession);
         await recentSessions.refresh(controller.folder);
-        await maybeMarkWalkthroughComplete();
+        await uiState.restoreControllerDraft(controller);
+        await chat.focusComposer();
         return result;
       },
       { requireTrust: true }
@@ -551,9 +529,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             : asString(record?.sessionPath)
               ? {
                   sessionPath: asString(record?.sessionPath)!,
-                  label: asString(record?.label) ?? 'Saved session',
+                  label: asString(record?.label) ?? 'Saved chat',
                 }
-              : await pickRecentSession(controller);
+              : await pickRecentSession(controller, 'Resume Chat');
         if (!picked) {
           return { cancelled: true };
         }
@@ -562,19 +540,22 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           void vscode.window.showInformationMessage(`${picked.label} is already open.`);
           return { cancelled: true, alreadyCurrent: true };
         }
+        await uiState.captureControllerDraft(controller);
         if (currentSession) {
           const confirm = await vscode.window.showWarningMessage(
-            `Resume ${picked.label}? Your current conversation stays saved and you can come back from Recent Sessions.`,
+            `Resume ${picked.label}? Your current chat stays saved and you can come back from Resume Chat.`,
             { modal: true },
-            'Resume Session'
+            'Resume Chat'
           );
-          if (confirm !== 'Resume Session') {
+          if (confirm !== 'Resume Chat') {
+            await chat.focusComposer();
             return { cancelled: true };
           }
         }
         const result = await controller.switchSession(picked.sessionPath);
         await recentSessions.refresh(controller.folder);
-        await maybeMarkWalkthroughComplete();
+        await uiState.restoreControllerDraft(controller);
+        await chat.focusComposer();
         return result;
       },
       { requireTrust: true }
@@ -585,9 +566,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       async (controller) => {
         const entryId = asString(asRecord(value)?.entryId);
         if (entryId) {
+          await uiState.captureControllerDraft(controller);
           const result = await controller.fork(entryId);
           await recentSessions.refresh(controller.folder);
-          await maybeMarkWalkthroughComplete();
+          await uiState.captureControllerDraft(controller);
+          await chat.focusComposer();
           return result;
         }
         const entries = await controller.getForkMessages();
@@ -601,9 +584,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           { title: 'Start Branch from User Message', matchOnDescription: true }
         );
         if (picked && typeof picked.entry.entryId === 'string') {
+          await uiState.captureControllerDraft(controller);
           const result = await controller.fork(picked.entry.entryId);
           await recentSessions.refresh(controller.folder);
-          await maybeMarkWalkthroughComplete();
+          await uiState.captureControllerDraft(controller);
+          await chat.focusComposer();
           return result;
         }
         return { cancelled: true };
@@ -614,9 +599,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   registrations.set('piRpc.cloneSession', async () => {
     return withController(
       async (controller) => {
+        await uiState.captureControllerDraft(controller);
         const result = await controller.clone();
         await recentSessions.refresh(controller.folder);
-        await maybeMarkWalkthroughComplete();
+        await uiState.captureControllerDraft(controller);
+        await chat.focusComposer();
         return result;
       },
       { requireTrust: true }

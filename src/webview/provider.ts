@@ -2,9 +2,20 @@ import * as vscode from 'vscode';
 import { getSettings } from '../config/settings';
 import { ensureTrustedForMutation } from '../security/trust';
 import { SessionRegistry } from '../sessions/sessionRegistry';
+import type { SessionController } from '../sessions/sessionController';
 import { createWebviewSnapshot } from './model';
 import { parseWebviewMessage } from './messages';
 import type { JsonObject } from '../rpc/protocol';
+import {
+  acceptedSnapshotFromPreview,
+  boundDiagnosticsContent,
+  boundFileContent,
+  buildSendPreview,
+  fingerprint,
+  type PendingContextItem,
+  type PendingImageItem,
+} from './composer';
+import { ChatUiState } from './composerState';
 
 const IMAGE_MIME_BY_EXTENSION: Record<string, string> = {
   '.png': 'image/png',
@@ -15,17 +26,55 @@ const IMAGE_MIME_BY_EXTENSION: Record<string, string> = {
   '.bmp': 'image/bmp',
 };
 
+function makeId(prefix: string): string {
+  return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+}
+
+function relativeWorkspacePath(
+  folder: vscode.WorkspaceFolder,
+  uri: vscode.Uri
+): string | undefined {
+  if (uri.scheme !== 'file' || folder.uri.scheme !== 'file') {
+    return undefined;
+  }
+  const owningFolder = vscode.workspace.getWorkspaceFolder(uri);
+  if (!owningFolder || owningFolder.uri.toString() !== folder.uri.toString()) {
+    return undefined;
+  }
+  const relative = vscode.workspace.asRelativePath(uri, false);
+  return relative.startsWith('..') ? undefined : relative.replaceAll('\\', '/');
+}
+
+function diagnosticSeverity(
+  diagnostics: readonly vscode.Diagnostic[]
+): 'error' | 'warning' | 'info' | 'hint' | 'mixed' {
+  const severities = new Set(diagnostics.map((item) => item.severity));
+  if (severities.size > 1) {
+    return 'mixed';
+  }
+  const only = diagnostics[0]?.severity;
+  if (only === vscode.DiagnosticSeverity.Error) {
+    return 'error';
+  }
+  if (only === vscode.DiagnosticSeverity.Warning) {
+    return 'warning';
+  }
+  if (only === vscode.DiagnosticSeverity.Information) {
+    return 'info';
+  }
+  return 'hint';
+}
+
 export class ChatPanelProvider implements vscode.Disposable {
   private panel: vscode.WebviewPanel | undefined;
   private sequence = 0;
   private subscription: vscode.Disposable | undefined;
-  private pendingImages: Array<{ uri: vscode.Uri; name: string; mimeType: string; size: number }> =
-    [];
   private attachmentFileUris = new Set<string>();
 
   public constructor(
     private readonly context: vscode.ExtensionContext,
-    private readonly registry: SessionRegistry
+    private readonly registry: SessionRegistry,
+    private readonly uiState: ChatUiState
   ) {}
 
   public async show(): Promise<void> {
@@ -36,7 +85,7 @@ export class ChatPanelProvider implements vscode.Disposable {
     }
     this.panel = vscode.window.createWebviewPanel(
       'piRpc.chat',
-      'Pi RPC Chat',
+      'Current Chat',
       vscode.ViewColumn.Beside,
       {
         enableScripts: true,
@@ -65,6 +114,16 @@ export class ChatPanelProvider implements vscode.Disposable {
     await this.postSnapshot();
   }
 
+  public async focusComposer(): Promise<void> {
+    const controller = this.registry.getActive();
+    if (!controller) {
+      return;
+    }
+    await this.show();
+    await this.uiState.setFocus(controller, 'composer');
+    await this.postSnapshot(controller);
+  }
+
   public dispose(): void {
     this.subscription?.dispose();
     this.panel?.dispose();
@@ -77,7 +136,47 @@ export class ChatPanelProvider implements vscode.Disposable {
       return;
     }
     this.registry.setActive(controller);
-    this.subscription = controller.onDidChangeState(() => void this.postSnapshot());
+    this.subscription = controller.onDidChangeState(() => {
+      void this.syncControllerState(controller);
+    });
+    await this.syncControllerState(controller);
+  }
+
+  private async syncControllerState(controller: SessionController): Promise<void> {
+    await this.uiState.restoreControllerDraft(controller);
+    const composer = await this.uiState.getComposerState(controller);
+    if (
+      controller.snapshot.lastEventType === 'agent_settled' &&
+      composer.acceptedSendSnapshot?.state === 'accepted'
+    ) {
+      composer.acceptedSendSnapshot = undefined;
+      composer.recovery = undefined;
+      await this.uiState.setComposerState(controller, composer);
+    } else if (controller.snapshot.connectionState === 'faulted') {
+      if (composer.acceptedSendSnapshot) {
+        composer.acceptedSendSnapshot = {
+          ...composer.acceptedSendSnapshot,
+          state: 'failed',
+          errorMessage:
+            composer.acceptedSendSnapshot.errorMessage ?? 'Pi disconnected before the run settled.',
+        };
+        composer.recovery = {
+          kind: 'sendFailure',
+          title: 'Draft preserved. Not resent.',
+          detail: 'Pi disconnected before the last accepted send settled.',
+        };
+      } else {
+        composer.recovery = {
+          kind: 'disconnected',
+          title: 'Pi disconnected. Your last confirmed chat is safe.',
+          detail: 'Show details in Advanced or restart Pi to reconcile the current workspace.',
+        };
+      }
+      await this.uiState.setComposerState(controller, composer);
+    } else if (composer.recovery?.kind === 'disconnected') {
+      composer.recovery = undefined;
+      await this.uiState.setComposerState(controller, composer);
+    }
     await this.postSnapshot(controller);
   }
 
@@ -85,12 +184,10 @@ export class ChatPanelProvider implements vscode.Disposable {
     if (!this.panel || !controller) {
       return;
     }
+    const composer = await this.uiState.getComposerState(controller);
     const snapshot = createWebviewSnapshot(controller.snapshot, ++this.sequence, {
-      pendingImages: this.pendingImages.map(({ name, mimeType, size }) => ({
-        name,
-        mimeType,
-        size,
-      })),
+      uiMode: this.uiState.getMode(),
+      composer,
       isTrusted: vscode.workspace.isTrusted,
       folders: this.registry.list().map((item) => ({
         name: item.folder.name,
@@ -105,7 +202,7 @@ export class ChatPanelProvider implements vscode.Disposable {
           .filter((uri): uri is string => typeof uri === 'string')
       )
     );
-    this.panel.title = snapshot.title;
+    this.panel.title = snapshot.sessionName ?? snapshot.workspaceFolderName ?? 'Current Chat';
     await this.panel.webview.postMessage({ type: 'snapshot', snapshot });
   }
 
@@ -116,51 +213,94 @@ export class ChatPanelProvider implements vscode.Disposable {
       return;
     }
     switch (parsed.type) {
-      case 'send': {
-        ensureTrustedForMutation();
-        controller.setDraft(parsed.text);
-        if (controller.snapshot.connectionState === 'stopped') {
-          await controller.start();
-        }
-        const images = await this.loadPendingImages();
-        await controller.prompt(parsed.text, parsed.mode, images);
-        controller.setDraft('');
-        this.pendingImages = [];
+      case 'requestSend':
+        await this.handleRequestSend(controller, parsed.command);
+        return;
+      case 'acceptPreview':
+        await this.acceptPreview(controller);
+        return;
+      case 'cancelPreview': {
+        const state = await this.uiState.getComposerState(controller);
+        state.preview = undefined;
+        state.focus = 'composer';
+        await this.uiState.setComposerState(controller, state);
         await this.postSnapshot(controller);
+        return;
+      }
+      case 'copyAcceptedSnapshot':
+        await this.uiState.copyAcceptedSnapshotToComposer(controller);
+        await this.postSnapshot(controller);
+        return;
+      case 'sendAcceptedSnapshotAgain': {
+        const state = await this.uiState.getComposerState(controller);
+        const command = state.acceptedSendSnapshot?.command;
+        await this.uiState.copyAcceptedSnapshotToComposer(controller);
+        if (command) {
+          await this.handleRequestSend(controller, command);
+        } else {
+          await this.postSnapshot(controller);
+        }
         return;
       }
       case 'abort':
         await controller.abort();
         return;
-      case 'refresh':
-        await controller.reconcile();
-        return;
       case 'setDraft':
         controller.setDraft(parsed.text);
+        await this.uiState.updateDraft(controller, parsed.text);
+        return;
+      case 'setFocus':
+        await this.uiState.setFocus(controller, parsed.focus);
         return;
       case 'executeCommand':
         await vscode.commands.executeCommand(parsed.command, parsed.argument);
         return;
       case 'pickImages':
-        await this.pickImages();
+        await this.pickImages(controller);
         return;
-      case 'clearImages':
-        this.pendingImages = [];
+      case 'clearAttachments':
+        await this.uiState.clearAttachments(controller);
         await this.postSnapshot(controller);
         return;
-      case 'appendActiveFile':
-        controller.setDraft(`${controller.snapshot.draft}${await this.activeFileContext()}`.trim());
+      case 'appendActiveFile': {
+        const item = await this.captureActiveFile(controller);
+        if (item) {
+          await this.uiState.addContextItem(controller, item);
+          await this.postSnapshot(controller);
+        }
         return;
-      case 'appendSelection':
-        controller.setDraft(`${controller.snapshot.draft}${this.activeSelectionContext()}`.trim());
+      }
+      case 'appendSelection': {
+        const item = await this.captureSelection(controller);
+        if (item) {
+          await this.uiState.addContextItem(controller, item);
+          await this.postSnapshot(controller);
+        }
         return;
-      case 'appendDiagnostics':
-        controller.setDraft(
-          `${controller.snapshot.draft}${this.activeDiagnosticsContext()}`.trim()
-        );
+      }
+      case 'appendDiagnostics': {
+        const item = await this.captureDiagnostics(controller);
+        if (item) {
+          await this.uiState.addContextItem(controller, item);
+          await this.postSnapshot(controller);
+        }
         return;
-      case 'appendPickedFile':
-        controller.setDraft(`${controller.snapshot.draft}${await this.pickedFileContext()}`.trim());
+      }
+      case 'appendPickedFile': {
+        const item = await this.capturePickedFile(controller);
+        if (item) {
+          await this.uiState.addContextItem(controller, item);
+          await this.postSnapshot(controller);
+        }
+        return;
+      }
+      case 'removeContextItem':
+        await this.uiState.removeContextItem(controller, parsed.itemId);
+        await this.postSnapshot(controller);
+        return;
+      case 'removeImageItem':
+        await this.uiState.removeImageItem(controller, parsed.itemId);
+        await this.postSnapshot(controller);
         return;
       case 'openAttachment':
         if (!this.attachmentFileUris.has(parsed.uri)) {
@@ -180,7 +320,132 @@ export class ChatPanelProvider implements vscode.Disposable {
     }
   }
 
-  private async pickImages(): Promise<void> {
+  private async handleRequestSend(
+    controller: SessionController,
+    command: 'prompt' | 'follow_up' | 'steer'
+  ): Promise<void> {
+    ensureTrustedForMutation();
+    const state = await this.uiState.getComposerState(controller);
+    state.recovery = undefined;
+    state.preview = undefined;
+    try {
+      const preview = buildSendPreview(command, state);
+      if (state.pendingContextItems.length > 0 || state.pendingImages.length > 0) {
+        state.preview = preview;
+        state.focus = 'preview';
+        await this.uiState.setComposerState(controller, state);
+        await this.postSnapshot(controller);
+        return;
+      }
+      await this.sendPreview(controller, state, preview);
+    } catch (error) {
+      state.recovery = {
+        kind: 'preflightError',
+        title: 'Attachments need attention.',
+        detail: error instanceof Error ? error.message : String(error),
+      };
+      await this.uiState.setComposerState(controller, state);
+      await this.postSnapshot(controller);
+    }
+  }
+
+  private async acceptPreview(controller: SessionController): Promise<void> {
+    const state = await this.uiState.getComposerState(controller);
+    if (!state.preview) {
+      return;
+    }
+    await this.sendPreview(controller, state, state.preview);
+  }
+
+  private async sendPreview(
+    controller: SessionController,
+    state: Awaited<ReturnType<ChatUiState['getComposerState']>>,
+    preview: NonNullable<Awaited<ReturnType<ChatUiState['getComposerState']>>['preview']>
+  ): Promise<void> {
+    const accepted = acceptedSnapshotFromPreview(preview, state.pendingContextItems);
+    state.acceptedSendSnapshot = accepted;
+    state.preview = undefined;
+    state.pendingContextItems = [];
+    state.pendingImages = [];
+    state.draft = '';
+    state.focus = 'composer';
+    state.recovery = undefined;
+    controller.setDraft('');
+    await this.uiState.setComposerState(controller, state);
+    await this.postSnapshot(controller);
+    try {
+      if (controller.snapshot.connectionState === 'stopped') {
+        try {
+          await controller.start();
+        } catch (error) {
+          const current = await this.uiState.getComposerState(controller);
+          current.acceptedSendSnapshot = undefined;
+          current.pendingContextItems = accepted.contextItems;
+          current.pendingImages = preview.imageItems.map((item, index) => ({
+            itemId: item.itemId,
+            name: item.name,
+            mimeType: item.mimeType,
+            sizeBytes: item.sizeBytes,
+            inMemoryBase64: preview.rpcImages[index]?.data,
+            previewDataUrl: preview.rpcImages[index]
+              ? `data:${preview.rpcImages[index]!.mimeType};base64,${preview.rpcImages[index]!.data}`
+              : undefined,
+            requiresReselect: item.requiresReselect,
+          }));
+          current.draft = accepted.draft;
+          current.recovery = {
+            kind: 'startFailure',
+            title: 'Pi could not start.',
+            detail: error instanceof Error ? error.message : String(error),
+          };
+          await this.uiState.setComposerState(controller, current);
+          controller.setDraft(current.draft);
+          await this.postSnapshot(controller);
+          return;
+        }
+      }
+      if (preview.command === 'prompt') {
+        await controller.prompt(preview.rpcMessage, 'prompt', this.asRpcImages(preview.rpcImages));
+      } else if (preview.command === 'follow_up') {
+        await controller.prompt(
+          preview.rpcMessage,
+          'followUp',
+          this.asRpcImages(preview.rpcImages)
+        );
+      } else {
+        await controller.prompt(preview.rpcMessage, 'steer', this.asRpcImages(preview.rpcImages));
+      }
+    } catch (error) {
+      const current = await this.uiState.getComposerState(controller);
+      current.acceptedSendSnapshot = {
+        ...accepted,
+        state: 'failed',
+        errorMessage: error instanceof Error ? error.message : String(error),
+      };
+      current.recovery = {
+        kind: 'sendFailure',
+        title: 'Draft preserved. Not resent.',
+        detail: error instanceof Error ? error.message : String(error),
+      };
+      await this.uiState.setComposerState(controller, current);
+      await this.postSnapshot(controller);
+    }
+  }
+
+  private asRpcImages(
+    images: Array<{ type: 'image'; data: string; mimeType: string }>
+  ): JsonObject[] | undefined {
+    if (images.length === 0) {
+      return undefined;
+    }
+    return images.map((image) => ({
+      type: image.type,
+      data: image.data,
+      mimeType: image.mimeType,
+    }));
+  }
+
+  private async pickImages(controller: SessionController): Promise<void> {
     const settings = getSettings();
     const picked = await vscode.window.showOpenDialog({
       canSelectMany: true,
@@ -189,7 +454,7 @@ export class ChatPanelProvider implements vscode.Disposable {
     if (!picked) {
       return;
     }
-    const selected: Array<{ uri: vscode.Uri; name: string; mimeType: string; size: number }> = [];
+    const selected: PendingImageItem[] = [];
     for (const uri of picked.slice(0, settings.maxImagesPerPrompt)) {
       const stat = await vscode.workspace.fs.stat(uri);
       if (stat.size > settings.maxImageBytes) {
@@ -198,97 +463,180 @@ export class ChatPanelProvider implements vscode.Disposable {
         );
         continue;
       }
+      const bytes = await vscode.workspace.fs.readFile(uri);
       const lower = uri.path.toLowerCase();
       const extension = Object.keys(IMAGE_MIME_BY_EXTENSION).find((suffix) =>
         lower.endsWith(suffix)
       );
+      const mimeType = extension
+        ? (IMAGE_MIME_BY_EXTENSION[extension] ?? 'application/octet-stream')
+        : 'application/octet-stream';
+      const base64 = Buffer.from(bytes).toString('base64');
       selected.push({
-        uri,
+        itemId: makeId('image'),
         name: uri.path.split('/').at(-1) ?? uri.path,
-        mimeType: extension
-          ? (IMAGE_MIME_BY_EXTENSION[extension] ?? 'application/octet-stream')
-          : 'application/octet-stream',
-        size: stat.size,
+        mimeType,
+        sizeBytes: stat.size,
+        inMemoryBase64: base64,
+        previewDataUrl: `data:${mimeType};base64,${base64}`,
       });
     }
-    this.pendingImages = selected;
-    await this.postSnapshot();
+    await this.uiState.addImageItems(controller, selected);
+    await this.postSnapshot(controller);
   }
 
-  private async loadPendingImages(): Promise<JsonObject[]> {
-    const images: JsonObject[] = [];
-    for (const image of this.pendingImages) {
-      const bytes = await vscode.workspace.fs.readFile(image.uri);
-      images.push({
-        type: 'image',
-        data: Buffer.from(bytes).toString('base64'),
-        mimeType: image.mimeType,
-      });
-    }
-    return images;
-  }
-
-  private async activeFileContext(): Promise<string> {
+  private async captureActiveFile(
+    controller: SessionController
+  ): Promise<PendingContextItem | undefined> {
     const editor = vscode.window.activeTextEditor;
     if (!editor) {
-      return '';
+      return undefined;
     }
-    const text = editor.document.getText();
-    return `\n\n[File: ${editor.document.uri.fsPath}]\n\n\
-\
-${text.slice(0, 4000)}\n\
-\
-`;
+    return this.captureFileLike(controller, editor.document, 'activeFile');
   }
 
-  private activeSelectionContext(): string {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor || editor.selection.isEmpty) {
-      return '';
-    }
-    const text = editor.document.getText(editor.selection);
-    return `\n\n[Selection: ${editor.document.uri.fsPath}]\n\n\
-\
-${text.slice(0, 4000)}\n\
-\
-`;
-  }
-
-  private activeDiagnosticsContext(): string {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) {
-      return '';
-    }
-    const diagnostics = vscode.languages.getDiagnostics(editor.document.uri);
-    if (diagnostics.length === 0) {
-      return '\n\n[Diagnostics]\nNo diagnostics.';
-    }
-    const summary = diagnostics
-      .slice(0, 20)
-      .map((item) => {
-        const severity =
-          item.severity === vscode.DiagnosticSeverity.Error
-            ? 'error'
-            : item.severity === vscode.DiagnosticSeverity.Warning
-              ? 'warning'
-              : 'info';
-        return `${severity} L${item.range.start.line + 1}: ${item.message}`;
-      })
-      .join('\n');
-    return `\n\n[Diagnostics]\n${summary}`;
-  }
-
-  private async pickedFileContext(): Promise<string> {
+  private async capturePickedFile(
+    controller: SessionController
+  ): Promise<PendingContextItem | undefined> {
     const picked = await vscode.window.showOpenDialog({ canSelectMany: false });
     if (!picked?.[0]) {
-      return '';
+      return undefined;
     }
     const document = await vscode.workspace.openTextDocument(picked[0]);
-    return `\n\n[File: ${document.uri.fsPath}]\n\n\
-\
-${document.getText().slice(0, 4000)}\n\
-\
-`;
+    return this.captureFileLike(controller, document, 'pickedFile');
+  }
+
+  private async captureFileLike(
+    controller: SessionController,
+    document: vscode.TextDocument,
+    kind: 'activeFile' | 'pickedFile'
+  ): Promise<PendingContextItem | undefined> {
+    const workspaceRelativePath = relativeWorkspacePath(controller.folder, document.uri);
+    if (!workspaceRelativePath) {
+      void vscode.window.showWarningMessage(
+        'Only files inside the active workspace can be attached.'
+      );
+      return undefined;
+    }
+    const content = boundFileContent(document.getText());
+    const lineEnd = Math.min(document.lineCount, content.split('\n').length);
+    return {
+      kind,
+      itemId: makeId(kind),
+      workspaceFolder: controller.folder.uri.fsPath,
+      workspaceRelativePath,
+      lineStart: 1,
+      lineEnd,
+      languageId: document.languageId,
+      sanitizedContent: content,
+      capturedAt: new Date().toISOString(),
+      persistedRef: {
+        workspaceRelativePath,
+        lineStart: 1,
+        lineEnd,
+        languageId: document.languageId,
+        contentFingerprint: fingerprint(content),
+      },
+    };
+  }
+
+  private async captureSelection(
+    controller: SessionController
+  ): Promise<PendingContextItem | undefined> {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor || editor.selection.isEmpty) {
+      return undefined;
+    }
+    const workspaceRelativePath = relativeWorkspacePath(controller.folder, editor.document.uri);
+    if (!workspaceRelativePath) {
+      void vscode.window.showWarningMessage(
+        'Only selections inside the active workspace can be attached.'
+      );
+      return undefined;
+    }
+    const content = boundFileContent(editor.document.getText(editor.selection));
+    const lineStart = editor.selection.start.line + 1;
+    const lineEnd = editor.selection.end.line + 1;
+    return {
+      kind: 'selection',
+      itemId: makeId('selection'),
+      workspaceFolder: controller.folder.uri.fsPath,
+      workspaceRelativePath,
+      lineStart,
+      lineEnd,
+      languageId: editor.document.languageId,
+      sanitizedContent: content,
+      capturedAt: new Date().toISOString(),
+      persistedRef: {
+        workspaceRelativePath,
+        lineStart,
+        lineEnd,
+        languageId: editor.document.languageId,
+        contentFingerprint: fingerprint(content),
+      },
+    };
+  }
+
+  private async captureDiagnostics(
+    controller: SessionController
+  ): Promise<PendingContextItem | undefined> {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor) {
+      return undefined;
+    }
+    const workspaceRelativePath = relativeWorkspacePath(controller.folder, editor.document.uri);
+    if (!workspaceRelativePath) {
+      void vscode.window.showWarningMessage(
+        'Only diagnostics inside the active workspace can be attached.'
+      );
+      return undefined;
+    }
+    const diagnostics = vscode.languages.getDiagnostics(editor.document.uri);
+    const lineStart =
+      diagnostics.length > 0
+        ? Math.min(...diagnostics.map((item) => item.range.start.line + 1))
+        : 1;
+    const lineEnd =
+      diagnostics.length > 0 ? Math.max(...diagnostics.map((item) => item.range.end.line + 1)) : 1;
+    const severity = diagnosticSeverity(diagnostics);
+    const content = boundDiagnosticsContent(
+      diagnostics.length === 0
+        ? 'INFO L1: No diagnostics.'
+        : diagnostics
+            .slice(0, 100)
+            .map((item) => {
+              const level =
+                item.severity === vscode.DiagnosticSeverity.Error
+                  ? 'ERROR'
+                  : item.severity === vscode.DiagnosticSeverity.Warning
+                    ? 'WARNING'
+                    : item.severity === vscode.DiagnosticSeverity.Information
+                      ? 'INFO'
+                      : 'HINT';
+              return `${level} L${item.range.start.line + 1}: ${item.message}`;
+            })
+            .join('\n')
+    );
+    return {
+      kind: 'diagnostics',
+      itemId: makeId('diagnostics'),
+      workspaceFolder: controller.folder.uri.fsPath,
+      workspaceRelativePath,
+      lineStart,
+      lineEnd,
+      severity,
+      issueCount: diagnostics.length,
+      sanitizedContent: content,
+      capturedAt: new Date().toISOString(),
+      persistedRef: {
+        workspaceRelativePath,
+        lineStart,
+        lineEnd,
+        severity,
+        issueCount: diagnostics.length,
+        diagnosticFingerprint: fingerprint(content),
+      },
+    };
   }
 
   private renderHtml(webview: vscode.Webview): string {
@@ -317,7 +665,7 @@ ${document.getText().slice(0, 4000)}\n\
     <meta http-equiv="Content-Security-Policy" content="${csp}" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="stylesheet" href="${styleUri}" />
-    <title>Pi RPC Chat</title>
+    <title>Current Chat</title>
   </head>
   <body>
     <div id="app"></div>

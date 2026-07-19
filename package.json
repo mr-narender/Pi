@@ -2,7 +2,7 @@
   "name": "pi-rpc-vscode",
   "displayName": "Pi RPC",
   "description": "Direct VS Code integration for Pi 0.80.10 RPC mode",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "publisher": "local",
   "license": "MIT",
   "private": true,
@@ -86,28 +86,16 @@
     "views": {
       "piRpc": [
         {
-          "id": "piRpc.sessions",
-          "name": "Start & Sessions"
+          "id": "piRpc.newChat",
+          "name": "New Chat"
         },
         {
-          "id": "piRpc.help",
-          "name": "Help & Walkthrough"
+          "id": "piRpc.resumeChat",
+          "name": "Resume Chat"
         },
         {
-          "id": "piRpc.outline",
-          "name": "Conversation & Branches"
-        },
-        {
-          "id": "piRpc.queue",
-          "name": "Queues"
-        },
-        {
-          "id": "piRpc.workflow",
-          "name": "Workflow"
-        },
-        {
-          "id": "piRpc.diagnostics",
-          "name": "Advanced & Diagnostics"
+          "id": "piRpc.currentChat",
+          "name": "Current Chat"
         }
       ]
     },
@@ -130,7 +118,7 @@
       },
       {
         "command": "piRpcInternal.openChat",
-        "title": "Open Chat",
+        "title": "Open Current Chat",
         "category": "Pi RPC",
         "icon": "$(comment-discussion)"
       },
@@ -156,7 +144,7 @@
       },
       {
         "command": "piRpc.newSession",
-        "title": "New Session",
+        "title": "New Chat",
         "category": "Pi RPC",
         "icon": "$(add)"
       },
@@ -265,7 +253,7 @@
       },
       {
         "command": "piRpc.switchSession",
-        "title": "Resume Session",
+        "title": "Resume Chat",
         "category": "Pi RPC",
         "icon": "$(history)"
       },
@@ -585,6 +573,17 @@
         "command": "piRpcInternal.openWorktree",
         "title": "Open Worktree",
         "category": "Pi RPC"
+      },
+      {
+        "command": "piRpc.toggleAdvancedMode",
+        "title": "Toggle Advanced Mode",
+        "category": "Pi RPC",
+        "icon": "$(gear)"
+      },
+      {
+        "command": "piRpcInternal.showHelp",
+        "title": "Help",
+        "category": "Pi RPC"
       }
     ],
     "configuration": {
@@ -687,66 +686,50 @@
           "type": "boolean",
           "default": false,
           "description": "Reserved local extension telemetry switch. No telemetry is sent by default."
+        },
+        "piRpc.defaultViewMode": {
+          "type": "string",
+          "enum": [
+            "simple",
+            "advanced"
+          ],
+          "default": "simple",
+          "description": "Default Pi RPC UI mode. Simple keeps chat focused. Advanced keeps the Advanced panel visible."
         }
       }
     },
     "menus": {
       "view/title": [
         {
-          "command": "piRpcInternal.start",
-          "when": "view == piRpc.sessions",
-          "group": "navigation@1"
-        },
-        {
           "command": "piRpc.newSession",
-          "when": "view == piRpc.sessions",
-          "group": "navigation@2"
-        },
-        {
-          "command": "piRpc.switchSession",
-          "when": "view == piRpc.sessions",
-          "group": "navigation@3"
-        },
-        {
-          "command": "piRpcInternal.openChat",
-          "when": "view == piRpc.sessions",
-          "group": "navigation@4"
+          "when": "view == piRpc.newChat",
+          "group": "navigation@1"
         },
         {
           "command": "piRpcInternal.filterRecentSessions",
-          "when": "view == piRpc.sessions",
-          "group": "navigation@5"
+          "when": "view == piRpc.resumeChat",
+          "group": "navigation@1"
         },
         {
           "command": "piRpcInternal.refreshRecentSessions",
-          "when": "view == piRpc.sessions",
-          "group": "navigation@6"
-        },
-        {
-          "command": "piRpc.showSessionTree",
-          "when": "view == piRpc.outline",
-          "group": "navigation@1"
-        },
-        {
-          "command": "piRpc.refreshEntries",
-          "when": "view == piRpc.outline",
+          "when": "view == piRpc.resumeChat",
           "group": "navigation@2"
         },
         {
-          "command": "piRpcInternal.showHealth",
-          "when": "view == piRpc.diagnostics",
+          "command": "piRpcInternal.openChat",
+          "when": "view == piRpc.currentChat",
           "group": "navigation@1"
+        },
+        {
+          "command": "piRpc.toggleAdvancedMode",
+          "when": "view == piRpc.currentChat",
+          "group": "navigation@2"
         }
       ],
       "view/item/context": [
         {
           "command": "piRpc.switchSession",
-          "when": "view == piRpc.sessions && viewItem == piRpc.recentSession",
-          "group": "inline@1"
-        },
-        {
-          "command": "piRpc.forkSession",
-          "when": "view == piRpc.outline && viewItem == piRpc.branchableEntry",
+          "when": "view == piRpc.resumeChat && viewItem == piRpc.recentSession",
           "group": "inline@1"
         }
       ]

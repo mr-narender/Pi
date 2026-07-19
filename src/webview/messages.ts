@@ -1,15 +1,24 @@
 export type WebviewInboundMessage =
-  | { type: 'send'; mode: 'prompt' | 'steer' | 'followUp'; text: string }
+  | { type: 'requestSend'; command: 'prompt' | 'follow_up' | 'steer' }
+  | { type: 'acceptPreview' }
+  | { type: 'cancelPreview' }
+  | { type: 'copyAcceptedSnapshot' }
+  | { type: 'sendAcceptedSnapshotAgain' }
   | { type: 'abort' }
-  | { type: 'refresh' }
   | { type: 'setDraft'; text: string }
+  | {
+      type: 'setFocus';
+      focus: 'composer' | 'attach' | 'contextChip' | 'imageChip' | 'preview' | 'none';
+    }
   | { type: 'executeCommand'; command: string; argument?: unknown }
   | { type: 'pickImages' }
-  | { type: 'clearImages' }
+  | { type: 'clearAttachments' }
   | { type: 'appendActiveFile' }
   | { type: 'appendSelection' }
   | { type: 'appendDiagnostics' }
   | { type: 'appendPickedFile' }
+  | { type: 'removeContextItem'; itemId: string }
+  | { type: 'removeImageItem'; itemId: string }
   | { type: 'openAttachment'; uri: string }
   | { type: 'switchFolder'; folderUri: string };
 
@@ -25,18 +34,22 @@ export function parseWebviewMessage(value: unknown): WebviewInboundMessage | und
     return undefined;
   }
   switch (record.type) {
-    case 'send':
+    case 'requestSend':
       if (
-        typeof record.text === 'string' &&
-        (record.mode === 'prompt' || record.mode === 'steer' || record.mode === 'followUp')
+        record.command === 'prompt' ||
+        record.command === 'follow_up' ||
+        record.command === 'steer'
       ) {
-        return { type: 'send', mode: record.mode, text: record.text };
+        return { type: 'requestSend', command: record.command };
       }
       return undefined;
+    case 'acceptPreview':
+    case 'cancelPreview':
+    case 'copyAcceptedSnapshot':
+    case 'sendAcceptedSnapshotAgain':
     case 'abort':
-    case 'refresh':
     case 'pickImages':
-    case 'clearImages':
+    case 'clearAttachments':
     case 'appendActiveFile':
     case 'appendSelection':
     case 'appendDiagnostics':
@@ -44,9 +57,23 @@ export function parseWebviewMessage(value: unknown): WebviewInboundMessage | und
       return { type: record.type };
     case 'setDraft':
       return typeof record.text === 'string' ? { type: 'setDraft', text: record.text } : undefined;
+    case 'setFocus':
+      return record.focus === 'composer' ||
+        record.focus === 'attach' ||
+        record.focus === 'contextChip' ||
+        record.focus === 'imageChip' ||
+        record.focus === 'preview' ||
+        record.focus === 'none'
+        ? { type: 'setFocus', focus: record.focus }
+        : undefined;
     case 'executeCommand':
       return typeof record.command === 'string'
         ? { type: 'executeCommand', command: record.command, argument: record.argument }
+        : undefined;
+    case 'removeContextItem':
+    case 'removeImageItem':
+      return typeof record.itemId === 'string'
+        ? { type: record.type, itemId: record.itemId }
         : undefined;
     case 'openAttachment':
       return typeof record.uri === 'string'

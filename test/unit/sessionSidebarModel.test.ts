@@ -1,43 +1,32 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  createSessionSidebarModel,
-  createHelpSidebarModel,
+  createCurrentChatSidebarModel,
+  createNewChatSidebarModel,
+  createResumeChatSidebarModel,
 } from '../../src/ui/trees/sessionSidebarModel';
 
 const baseRecent = { loading: false, filterText: '', items: [] };
 
-test('session sidebar model highlights first-run quick start and empty recent sessions', () => {
-  const model = createSessionSidebarModel({
+test('new chat sidebar model shows primary action and unsent draft warning', () => {
+  const model = createNewChatSidebarModel({
     activeFolderName: 'workspace',
-    activeState: {
-      connectionState: 'stopped',
-      workspaceFolderName: 'workspace',
-      state: {},
-      leafId: null,
-    },
     recent: baseRecent,
-    isTrusted: true,
-    isFirstRun: true,
-    now: Date.UTC(2024, 0, 2, 12, 0, 0),
+    hasDraft: true,
+    hasPendingAttachments: true,
   });
 
-  assert.equal(model[0]?.label, 'Quick Start');
-  assert.deepEqual(
-    model[0]?.children?.map((item) => item.label),
-    ['Choose Workspace', 'Start Pi', 'New Session', 'Resume Session', 'Open Chat']
-  );
-  assert.equal(model[2]?.children?.[1]?.label, 'No recent sessions yet');
-  assert.equal(model[3]?.label, 'First Run Tips');
+  assert.equal(model[0]?.label, 'Start fresh with Pi in this workspace');
+  assert.equal(model[1]?.label, 'New Chat');
+  assert.equal(model[2]?.label, 'Unsent draft and attachments stay in Current Chat.');
 });
 
-test('session sidebar model renders current session marker, filter state, and accessibility text', () => {
-  const model = createSessionSidebarModel({
+test('resume chat sidebar model renders filter state and current marker', () => {
+  const model = createResumeChatSidebarModel({
     activeFolderName: 'workspace-a',
     activeState: {
       connectionState: 'ready',
       workspaceFolderName: 'workspace-a',
-      leafId: 'leaf',
       state: {
         sessionFile: '/tmp/sessions/current.jsonl',
         sessionName: 'Current Session',
@@ -67,22 +56,20 @@ test('session sidebar model renders current session marker, filter state, and ac
       ],
       sessionDir: '/tmp/sessions',
     },
-    isTrusted: false,
-    isFirstRun: false,
+    hasDraft: false,
+    hasPendingAttachments: false,
     now: Date.UTC(2024, 0, 2, 12, 0, 0),
   });
 
-  const recentSection = model[2];
-  assert.equal(recentSection?.children?.[0]?.label, 'Filter: bug');
-  assert.equal(recentSection?.children?.[1]?.label, 'Clear session search');
-  assert.match(recentSection?.children?.[2]?.description ?? '', /Current/);
-  assert.match(recentSection?.children?.[2]?.accessibilityLabel ?? '', /Current Session/);
-  assert.match(model[0]?.description ?? '', /Restricted Mode/);
-  assert.equal(model[1]?.children?.[2]?.description, 'mock/model');
+  assert.equal(model[0]?.label, 'Search: bug');
+  assert.equal(model[1]?.label, 'Refresh');
+  assert.equal(model[2]?.label, 'Clear search');
+  assert.match(model[3]?.description ?? '', /Current/);
+  assert.match(model[3]?.accessibilityLabel ?? '', /Current Session/);
 });
 
-test('session sidebar model renders unknown session times without NaN labels', () => {
-  const model = createSessionSidebarModel({
+test('resume chat sidebar model renders unknown session times without NaN labels', () => {
+  const model = createResumeChatSidebarModel({
     activeFolderName: 'workspace-a',
     recent: {
       loading: false,
@@ -102,41 +89,59 @@ test('session sidebar model renders unknown session times without NaN labels', (
       ],
       sessionDir: '/tmp/sessions',
     },
-    isTrusted: true,
-    isFirstRun: false,
+    hasDraft: false,
+    hasPendingAttachments: false,
     now: Date.UTC(2024, 0, 2, 12, 0, 0),
   });
 
-  const recentNode = model[2]?.children?.[1];
+  const recentNode = model[2];
   assert.equal(recentNode?.description, 'workspace-a · Unknown');
   assert.ok(!recentNode?.description?.includes('NaN'));
   assert.match(recentNode?.tooltip ?? '', /Unknown/);
 });
 
-test('session sidebar model shows loading and error states for recent sessions', () => {
-  const loadingModel = createSessionSidebarModel({
+test('resume chat sidebar model shows loading and error states for recent chats', () => {
+  const loadingModel = createResumeChatSidebarModel({
     recent: { ...baseRecent, loading: true },
-    isTrusted: true,
-    isFirstRun: false,
+    hasDraft: false,
+    hasPendingAttachments: false,
   });
-  assert.equal(loadingModel[2]?.children?.[1]?.label, 'Loading recent sessions…');
+  assert.equal(loadingModel[2]?.label, 'Loading recent chats');
 
-  const errorModel = createSessionSidebarModel({
+  const errorModel = createResumeChatSidebarModel({
     recent: { ...baseRecent, error: 'permission denied' },
-    isTrusted: true,
-    isFirstRun: false,
+    hasDraft: false,
+    hasPendingAttachments: false,
   });
-  assert.equal(errorModel[2]?.children?.[1]?.label, 'Could not read recent sessions');
+  assert.equal(errorModel[2]?.label, "Couldn't read recent chats");
+  assert.equal(errorModel[3]?.label, 'Try again');
 });
 
-test('help sidebar model explains branch terminology in plain language', () => {
-  const model = createHelpSidebarModel({ isFirstRun: true });
-  assert.equal(model[0]?.label, 'Start here');
-  assert.deepEqual(
-    model[0]?.children?.map((item) => item.label),
-    ['Start Pi', 'New Session', 'Resume Session', 'Open Chat']
-  );
-  assert.equal(model[1]?.children?.[0]?.label, 'Start Branch');
-  assert.match(model[1]?.children?.[1]?.description ?? '', /Copy the current conversation path/);
-  assert.match(model[1]?.children?.[2]?.description ?? '', /current marker/);
+test('current chat sidebar model summarizes workspace, model, status, and stop action', () => {
+  const model = createCurrentChatSidebarModel({
+    activeFolderName: 'workspace-a',
+    activeState: {
+      connectionState: 'busy',
+      workspaceFolderName: 'workspace-a',
+      state: {
+        sessionFile: '/tmp/sessions/current.jsonl',
+        sessionName: 'Current Session',
+        sessionId: 'sid',
+        isStreaming: true,
+        isCompacting: false,
+        model: { provider: 'mock', id: 'model' },
+        pendingMessageCount: 1,
+      },
+    },
+    recent: baseRecent,
+    hasDraft: false,
+    hasPendingAttachments: false,
+  });
+
+  assert.equal(model[0]?.label, 'Open Current Chat');
+  assert.equal(model[1]?.description, 'workspace-a');
+  assert.equal(model[3]?.description, 'mock/model');
+  assert.equal(model[4]?.description, 'Pi is replying');
+  assert.equal(model[5]?.label, 'Advanced');
+  assert.equal(model[6]?.label, 'Stop');
 });

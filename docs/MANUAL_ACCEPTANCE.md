@@ -22,7 +22,7 @@ Use isolated `--user-data-dir` and `--extensions-dir`.
 
 1. Install the VSIX with `code --install-extension <vsix> --force` (or the matching remote CLI when testing remote).
 2. Launch the throwaway workspace with Extension Development Host logging disabled for secrets.
-3. Confirm Activity Bar container, five views, chat, output channel, commands, settings, and status items exist. No Pi process starts before explicit Start.
+3. Confirm Activity Bar container, the three default views (`New Chat`, `Resume Chat`, `Current Chat`), chat panel, commands, settings, and advanced-mode surfaces exist. No Pi process starts before explicit Start or first trusted send/start action.
 4. Configure mock executable; run `Pi RPC: Start`. Confirm version check, handshake, ready state, and Health report.
 5. Reload window. Confirm safe reattach prompt, no duplicate process/views/listeners, and successful reconciliation.
 6. Stop, uninstall, relaunch, reinstall, and relaunch. Confirm clean deactivation, no orphan child, and no secret/session content in global state.
@@ -99,13 +99,16 @@ Acceptance: all X-rows match installed Pi semantics exactly, emit no extra wire 
 ## Images, files, diffs, editor context, diagnostics
 
 1. Attach valid PNG/JPEG/GIF/WebP by picker/paste; invalid MIME, corrupt base64, huge dimensions/bytes, too many images, and text-only model.
-2. Add active editor selection, file reference, and VS Code diagnostic to composer; inspect preview before send.
-3. Exercise read/write/edit plus multi-edit, parallel tools, create/delete, failed edit, external modification race, unified patch/details diff, and snapshot fallback.
-4. Open/reveal each safe file; navigate next/previous diff; attempt outside-workspace and remote paths.
-5. Open Health and redacted diagnostic export during idle/run/retry/compaction/fault.
-6. Select/open a verified worktree path in a new window; cancel once. Confirm the extension performs no git mutation.
+2. Add active editor selection, file reference, and VS Code diagnostic to composer; confirm each becomes an explicit removable context chip backed by structured client context, not silently inserted prose; inspect preview, scope, size, privacy text, and the exact serialized context envelope before send.
+3. Verify the send boundary request shape exactly: non-image chips are appended to `message` inside the deterministic `<pi-vscode-context-v1>` envelope, images remain RPC `images` and are omitted entirely when empty, idle send uses `prompt`, busy send-next uses `follow_up`, and Advanced steer uses `steer`.
+4. Force each invalidation path: edit/move/delete the referenced file, change diagnostics, switch workspace/session, downgrade trust, and restart VS Code. Confirm stale local refs are blocked from send, only safe refs/metadata survive restart, and base64 images never survive restart.
+5. Force an accepted-send failure before `agent_settled`; confirm the immutable send snapshot is kept, nothing auto-resends, `Copy to composer` restores text plus still-valid local refs, and expired images require explicit reselection.
+6. Exercise read/write/edit plus multi-edit, parallel tools, create/delete, failed edit, external modification race, unified patch/details diff, and snapshot fallback.
+7. Open/reveal each safe file; navigate next/previous diff; attempt outside-workspace and remote paths.
+8. Open Health and redacted diagnostic export during idle/run/retry/compaction/fault.
+9. Select/open a verified worktree path in a new window; cancel once. Confirm the extension performs no git mutation.
 
-Acceptance: images are validated and never logged; editor context is explicit; diffs are readonly/accurately labeled; path/remote policy holds; diagnostics are useful and redacted.
+Acceptance: images are validated and never logged; editor context is explicit; serialized preview matches the exact outbound request; send-state recovery is deterministic; diffs are readonly/accurately labeled; path/remote policy holds; diagnostics are useful and redacted.
 
 ## Sessions, packages, and workflow compatibility
 
@@ -139,24 +142,39 @@ Acceptance: no cross-controller state or path leakage; host labeling and process
 Visual workflow to verify during acceptance:
 
 ```text
-Start & Sessions → Start Pi → New Session or Resume Session → Open Chat
-                     ↓
-           Recent Sessions (search / refresh / resume)
-                     ↓
-         Conversation & Branches → Start Branch / Conversation Map
+New Chat | Resume Chat | Current Chat
+                 ↓
+      Current Chat → Attach / Send / Stop / Model
+                 ↓
+              Advanced
 ```
 
 Complete the whole send/steer/abort/model/session/dialog/diff workflow keyboard-only. Test NVDA or VoiceOver, 200% zoom, high-contrast themes, reduced motion, long localized strings, empty/loading/error states, and focus restoration after every XUI method. Verify throttled `aria-live` summaries and non-color statuses.
 
 Additional UX walkthrough:
 
-1. In **Start & Sessions**, verify the first visible actions are **Start Pi**, **New Session**, **Resume Session**, and **Open Chat** with plain-language labels/tooltips.
-2. Verify **Current Session** shows workspace, session, model, and status in narrow and wide sidebars.
-3. Verify **Recent Sessions** supports search/filter/refresh, shows loading/empty/error states, and never exposes unsafe transcript/secrets in labels.
-4. Open **Chat** and confirm the header shows workspace/session/model/state plus primary actions.
-5. In **Conversation & Branches**, verify **Start Branch**, **Duplicate Path**, and **Conversation Map** wording is understandable without prior Pi knowledge.
+1. Verify the default sidebar exposes only **New Chat**, **Resume Chat**, and **Current Chat** with one clear primary action in each view.
+2. Verify **Resume Chat** supports search/filter/refresh, shows loading/empty/error states, and never exposes unsafe transcript/secrets in labels.
+3. Verify **Current Chat** shows workspace, session, model, and status in narrow and wide sidebars and offers **Open Current Chat**, **Advanced**, and **Stop** only when relevant.
+4. Open **Current Chat** and confirm the header shows workspace/session/status plus **Model**, **New**, **Resume**, and **More** only.
+5. Verify advanced session/branch/diagnostic/tooling actions remain reachable through **Advanced** or unchanged command ids.
 
 Acceptance: no keyboard trap, visible focus, meaningful names/roles/statuses/alt text, no token-stream screen-reader spam, and native theme compatibility.
+
+### LOCAL-003 acceptance addendum
+
+Run the UX acceptance addendum in [UX_REDESIGN.md](UX_REDESIGN.md) before release:
+
+1. In default **Simple Mode**, verify the sidebar exposes only **New Chat**, **Resume Chat**, and **Current Chat**; **Help & Walkthrough**, **Conversation & Branches**, **Queues**, **Workflow**, and **Advanced & Diagnostics** are not visible as default destinations.
+2. Verify the default chat surface shows only the header, transcript, composer, attachments entry point, **Send**, **Stop**, and model selection; queue, bash, diagnostics, extension UI preview, and branching controls appear only in **Advanced** or the Command Palette.
+3. Verify `New Chat` is one primary action: with no current chat it starts fresh immediately; with a current chat it shows only `Start fresh` _(default)_ and `Continue from current as parent`; when an unsent draft/chip exists it warns that the draft/attachments stay on the current chat; `Cancel` preserves everything and returns focus to the composer.
+4. Verify `Attach` creates explicit removable chips by source: images show thumbnail/name, and active file, picked file, selection, and diagnostics show structured context chips with preview, scope, size, removal, clear-all, and privacy labels; no hidden prose is inserted into the draft.
+5. Verify every chip-bearing send opens a preflight preview that shows the exact final `message` body, including the literal `<pi-vscode-context-v1>` envelope, plus the exact RPC `images` list that will be sent.
+6. Verify switching/resuming chats and both `New Chat` paths preserve drafts, chip state, in-memory images, accepted-send snapshot ownership, and focus restoration to the composer.
+7. Verify recovery labels and transitions are error-class specific: start failure => `Start again`; disconnect/crash => `Restart Pi` plus reconciliation; accepted-prompt failure => no auto-resend, immutable snapshot retained until `agent_settled`, explicit `Copy to composer` / `Send again`, and expired images require reselection; preflight rejection => draft/chips/images return unchanged.
+8. Verify only safe refs/metadata for local file/selection/diagnostic chips persist across restart, base64 images do not, and stale refs are blocked until refreshed or removed.
+9. Verify **Advanced Mode** is opt-in, persistent, reversible, and that every current RPC capability remains reachable through **Advanced** or unchanged command ids in the Command Palette.
+10. Re-run the keyboard-only, screen-reader, 200% zoom, high-contrast, reduced-motion, empty/loading/error-state walkthroughs against the simplified layout.
 
 ## Final acceptance record
 

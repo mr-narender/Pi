@@ -90,7 +90,7 @@ Tests: arbitrary chunk boundaries, split multibyte code points, CRLF, literal U+
 - `SessionRegistry` keys controllers by canonical workspace-folder URI, not path string. Multi-root commands require a folder Quick Pick and remember the active controller in workspace state. Never merge sessions across folders.
 - Spawn cwd is the selected folder’s `fsPath`; non-file virtual workspaces are unsupported with a clear message. In Remote SSH/WSL/Dev Container/Codespaces, extension kind is workspace so Pi runs where files and terminal live. Executable resolution and PATH checks happen on the remote extension host.
 - Session paths and tool paths belong to the process host. Use `Uri.file` only in that host and require a path to be within a workspace or explicitly confirmed before opening. Handle Windows `pi.cmd` with argv-safe spawn rules; never concatenate a shell command.
-- Persist only controller selection, session file/id, last acknowledged entry cursor, and non-secret UI preferences. On activation, ask before reattaching; then `--session <path>` and reconcile. Session switching to another cwd may alter trust/resources, so update ownership or reject cross-folder switches after confirmation.
+- Persist only controller selection, session file/id, last acknowledged entry cursor, non-secret UI preferences, and safe per-workspace/session composer metadata. Persist draft text, focus target, and safe refs/metadata for local file/selection/diagnostic chips only; never persist file snapshots, diagnostic bodies, accepted-send payloads, or base64 image bytes across VS Code restart. On activation, ask before reattaching; then `--session <path>` and reconcile. Session switching to another cwd may alter trust/resources, so update ownership or reject cross-folder switches after confirmation.
 - Worktree command: resolve a returned/selected filesystem path, verify directory, then `vscode.openFolder(uri, {forceNewWindow:true})`; no git mutation is performed by the extension.
 
 ## VS Code surface design
@@ -98,6 +98,11 @@ Tests: arbitrary chunk boundaries, split multibyte code points, CRLF, literal U+
 ### Chat
 
 - User composer supports text, editor selection/reference insertion, diagnostic insertion, files, and PNG/JPEG/GIF/WebP images. Validate MIME by bytes, cap count/decoded size/dimensions, optionally resize locally, strip metadata where practical, and warn if selected model lacks image input or Pi blocks images.
+- Define a client-side `PendingContextItem` discriminated union for `activeFile`, `pickedFile`, `selection`, and `diagnostics`. Each item carries workspace-relative path, bounded line range, sanitized captured content, and safe persisted metadata; diagnostics additionally carry bounded severity/issue metadata. Keep a per-workspace/session composer state with `draft`, `pendingContextItems`, `pendingImages`, `focus`, and `acceptedSendSnapshot`.
+- Non-image chips are never sent as synthetic RPC attachments. At the send boundary, serialize them deterministically into one escaped text envelope appended to the RPC `message`; images remain exact RPC `images` objects `{type:'image',data,mimeType}` and are omitted entirely when there are no pending images. Preview must show the exact final `message` string and exact `images` list before send acceptance.
+- Composer sends map to exact wire shapes only: idle send => `prompt`, busy send-next => `follow_up`, advanced steer => `steer`. Do not invent a separate `context` or non-image `images` payload, and do not rely on `prompt.streamingBehavior` for Simple Mode sends.
+- After preflight acceptance, move draft, chips, images, serialized envelope, and exact RPC payload into an immutable `acceptedSendSnapshot` until `agent_settled`. On accepted-send failure, never auto-resend; `Copy to composer` reconstructs user text plus still-valid local refs, restores only still-in-memory images, and requires explicit reselection for expired images.
+- Invalidate local context chips on file/workspace/session/trust changes, file content drift, diagnostic drift, and explicit removal. Stale chips stay visible but blocked from send until refreshed or removed.
 - Stream text by content index. Render sanitized markdown with no raw HTML/script execution; links require explicit open and safe schemes. Thinking is collapsed by default and labeled for screen readers. Tool calls show name, validated args, status, incremental output, error state, and file/diff actions.
 - Composer switches among normal prompt, steer, and follow-up while running. Queue view mirrors authoritative `queue_update`; abort explains that Pi restores/clears queue semantics and reconciliation follows.
 - `set_editor_text` updates draft without stealing focus or silently overwriting non-empty text: prompt to replace/append unless unchanged.
@@ -163,9 +168,9 @@ Bundle production dependencies, exclude source maps/secrets/fixtures as policy d
 
 ## Test strategy
 
-- Unit: parser/writer/codecs/reducer/state machines/redaction/argv/trust/path/image/markdown/diff/session discovery.
-- Property/fuzz: random chunking and Unicode JSON records; event sequences; hostile webview messages and paths.
-- Mock RPC integration: executable fixtures for every command response, event, UI request, malformed/flood/backpressure/exit/race scenario.
+- Unit: parser/writer/codecs/reducer/state machines/redaction/argv/trust/path/image/markdown/diff/session discovery plus composer-state serialization, invalidation, restart persistence, accepted-send snapshot, and `Copy to composer` recovery.
+- Property/fuzz: random chunking and Unicode JSON records; event sequences; hostile webview messages and paths; deterministic context-envelope escaping and size-cap boundaries.
+- Mock RPC integration: executable fixtures for every command response, event, UI request, malformed/flood/backpressure/exit/race scenario, and exact `prompt`/`follow_up`/`steer` request-shape verification with message-envelope + RPC-image transport.
 - Pi integration: installed 0.80.10 with isolated config and official RPC UI demo; no unapproved remote writes or paid provider calls.
 - VS Code Extension Host: activation, commands/views/status/webview messaging, multi-root, trust change, workspace close, remote URI assumptions, diff/open-folder behavior.
 - VSIX: contents snapshot, install into `--user-data-dir` and `--extensions-dir`, launch/smoke, upgrade, uninstall, offline start.

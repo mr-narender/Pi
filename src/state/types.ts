@@ -5,6 +5,14 @@ import type {
   QueueState,
   SessionState,
 } from '../rpc/protocol';
+import type {
+  AcceptedSendSnapshot,
+  ChatUiMode,
+  ComposerFocusTarget,
+  PendingContextItem,
+  RecoveryState,
+  SendPreviewState,
+} from '../webview/composer';
 
 export interface DiagnosticItem {
   id: string;
@@ -149,9 +157,21 @@ export interface WebviewMessageItem {
   attachments: WebviewAttachmentItem[];
 }
 
+export interface WebviewPendingImageItem {
+  itemId: string;
+  name: string;
+  mimeType: string;
+  sizeBytes: number;
+  width?: number;
+  height?: number;
+  previewDataUrl?: string;
+  requiresReselect?: boolean;
+}
+
 export interface WebviewSnapshot {
   sequence: number;
   title: string;
+  uiMode: ChatUiMode;
   connectionState: ControllerState['connectionState'];
   workspaceFolderName: string;
   sessionName?: string;
@@ -168,7 +188,12 @@ export interface WebviewSnapshot {
   widgets: WidgetState[];
   model?: ModelInfo | null;
   thinkingLevel?: string;
-  pendingImages: Array<{ name: string; mimeType: string; size: number }>;
+  pendingContextItems: PendingContextItem[];
+  pendingImages: WebviewPendingImageItem[];
+  focus: ComposerFocusTarget;
+  preview?: SendPreviewState;
+  acceptedSendSnapshot?: AcceptedSendSnapshot;
+  recovery?: RecoveryState;
   isTrusted: boolean;
   folders: Array<{ name: string; uri: string; active: boolean }>;
 }

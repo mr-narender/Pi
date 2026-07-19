@@ -46,7 +46,7 @@ Protected assets include provider credentials/OAuth tokens, environment variable
 - `localResourceRoots` includes only packaged media; workspace resources are converted to bounded in-memory/data representations after host validation, not generally exposed.
 - CSP example target: `default-src 'none'; img-src <webview-source> data:; style-src <webview-source> 'nonce-…'; script-src 'nonce-…'; font-src <webview-source>; connect-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'`. Tighten style nonce based on implementation and avoid `unsafe-inline`.
 - Use DOM text APIs, a configured markdown sanitizer, and no `innerHTML` from protocol values. Tool JSON is text. Links allow `https`, `http` (confirmation as configured), `mailto`, and validated workspace `file` actions mediated by host; reject `javascript`, `command`, arbitrary `vscode`, and data links.
-- Webview state contains presentation state only, never complete base64 images, secrets, raw environment, unrestricted filesystem paths, or pending UI response capabilities. On restore request a generation-tagged snapshot.
+- Webview state contains presentation state only, never complete base64 images, secrets, raw environment, unrestricted filesystem paths, accepted-send payloads, or pending UI response capabilities. Persist only safe local-context refs/metadata (workspace-relative path, bounded range, severity/count metadata, focus target, draft text) and re-resolve them after restore inside the current trusted workspace. On restore request a generation-tagged snapshot.
 
 ## Logging, diagnostics, and telemetry
 
@@ -62,7 +62,7 @@ In SSH/WSL/containers/Codespaces, Pi, credentials, sessions, extensions, and pat
 
 ## Incident/failure response
 
-On protocol/security-limit fault: stop accepting actions, reject pending requests, terminate only the owned child, clear UI capabilities and image/snapshot buffers, preserve a redacted health record, and require user-visible recovery. Never silently skip malformed stdout. On suspected secret leakage, do not include the suspect value in notification or telemetry; direct users to rotate credentials and delete diagnostics explicitly.
+On protocol/security-limit fault: stop accepting actions, reject pending requests, terminate only the owned child, clear UI capabilities and image/snapshot buffers, preserve a redacted health record, and require user-visible recovery. Accepted-send snapshots never auto-replay after reconnect/restart; recovery must flow through explicit `Copy to composer` / reselect actions only. Never silently skip malformed stdout. On suspected secret leakage, do not include the suspect value in notification or telemetry; direct users to rotate credentials and delete diagnostics explicitly.
 
 ## Release security gate
 

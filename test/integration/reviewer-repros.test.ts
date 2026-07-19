@@ -17,7 +17,18 @@ import {
   getDefaultSessionDirForWorkspace,
   readRecentSessionsIndex,
 } from '../../src/sessions/recentSessions';
-import { createSessionSidebarModel } from '../../src/ui/trees/sessionSidebarModel';
+import { createResumeChatSidebarModel } from '../../src/ui/trees/sessionSidebarModel';
+import {
+  ATTACH_TRIGGER_ID,
+  PREVIEW_ACCEPT_BUTTON_ID,
+  PREVIEW_DESCRIPTION_ID,
+  contextChipRemoveButtonId,
+  focusTargetFromSnapshot,
+  imageChipRemoveButtonId,
+  planChipRemovalFocus,
+  renderChatApp,
+} from '../../src/webview/render';
+import type { WebviewSnapshot } from '../../src/state/types';
 
 test('reviewer repro 1: no fallback no-op command handler remains', () => {
   const source = readFileSync('src/extension.ts', 'utf8');
@@ -56,8 +67,11 @@ test('reviewer repro 3: reducer replaces streamed partials instead of duplicatin
 test('reviewer repro 4: webview send path is trust-gated and validated', () => {
   const provider = readFileSync('src/webview/provider.ts', 'utf8');
   assert.ok(provider.includes('ensureTrustedForMutation();'));
-  assert.equal(parseWebviewMessage({ type: 'send', mode: 'prompt', text: 'ok' })?.type, 'send');
-  assert.equal(parseWebviewMessage({ type: 'send', mode: 'evil', text: 'ok' }), undefined);
+  assert.equal(
+    parseWebviewMessage({ type: 'requestSend', command: 'prompt' })?.type,
+    'requestSend'
+  );
+  assert.equal(parseWebviewMessage({ type: 'requestSend', command: 'evil' }), undefined);
 });
 
 test('reviewer repro 5: RPC timeout clears pending slot and ignores late response', async () => {
@@ -246,12 +260,98 @@ test('reviewer repro 12: malformed correlated response still disconnects', async
 
 test('reviewer repro 13: multi-root selection surface is explicit in tree and extension', () => {
   const extension = readFileSync('src/extension.ts', 'utf8');
-  const tree = readFileSync('src/ui/trees/providers.ts', 'utf8');
+  const tree = readFileSync('src/ui/trees/sessionSidebarModel.ts', 'utf8');
   assert.ok(extension.includes('piRpcInternal.selectWorkspaceFolder'));
   assert.ok(tree.includes('piRpcInternal.selectWorkspaceFolder'));
 });
 
-test('reviewer repro 14: malformed session timestamps never surface NaNd ago', async () => {
+function webviewSnapshot(overrides: Partial<WebviewSnapshot> = {}): WebviewSnapshot {
+  return {
+    sequence: 1,
+    title: 'Current Chat',
+    uiMode: 'simple',
+    connectionState: 'ready',
+    workspaceFolderName: 'workspace',
+    sessionName: 'Demo Session',
+    sessionId: 'sid',
+    sessionFile: '/tmp/workspace/session.jsonl',
+    isStreaming: false,
+    isCompacting: false,
+    messageCount: 0,
+    pendingMessageCount: 0,
+    messages: [],
+    queue: { steering: [], followUp: [] },
+    draft: 'draft',
+    statuses: {},
+    widgets: [],
+    model: { provider: 'mock', id: 'model' },
+    thinkingLevel: 'medium',
+    pendingContextItems: [],
+    pendingImages: [],
+    focus: 'composer',
+    isTrusted: true,
+    folders: [{ name: 'workspace', uri: 'file:///tmp/workspace', active: true }],
+    ...overrides,
+  };
+}
+
+test('reviewer repro 14: preview dialog and chip focus affordances are wired accessibly', () => {
+  const snapshot = webviewSnapshot({
+    focus: 'imageChip',
+    pendingContextItems: [
+      {
+        kind: 'selection',
+        itemId: 'ctx-1',
+        workspaceFolder: '/tmp/workspace',
+        workspaceRelativePath: 'src/app.ts',
+        lineStart: 2,
+        lineEnd: 4,
+        languageId: 'typescript',
+        sanitizedContent: 'const value = 1;',
+        capturedAt: '2024-01-01T00:00:00.000Z',
+        persistedRef: {
+          workspaceRelativePath: 'src/app.ts',
+          lineStart: 2,
+          lineEnd: 4,
+          languageId: 'typescript',
+          contentFingerprint: 'abc',
+        },
+      },
+    ],
+    pendingImages: [
+      {
+        itemId: 'img-1',
+        name: 'diagram.png',
+        mimeType: 'image/png',
+        sizeBytes: 42,
+      },
+    ],
+    preview: {
+      command: 'prompt',
+      draft: 'hello',
+      rpcMessage: 'hello',
+      rpcImages: [],
+      imageItems: [],
+    },
+  });
+  const html = renderChatApp(snapshot);
+  const chatSource = readFileSync('src/webview/media/chat.ts', 'utf8');
+
+  assert.equal(focusTargetFromSnapshot(snapshot), PREVIEW_ACCEPT_BUTTON_ID);
+  assert.deepEqual(planChipRemovalFocus(snapshot, 'ctx-1'), {
+    targetId: imageChipRemoveButtonId('img-1'),
+    fallbackId: ATTACH_TRIGGER_ID,
+  });
+  assert.match(html, new RegExp(`id="${PREVIEW_ACCEPT_BUTTON_ID}"`));
+  assert.match(html, new RegExp(`aria-describedby="${PREVIEW_DESCRIPTION_ID}"`));
+  assert.match(html, new RegExp(`id="${contextChipRemoveButtonId('ctx-1')}"`));
+  assert.match(html, new RegExp(`id="${imageChipRemoveButtonId('img-1')}"`));
+  assert.match(chatSource, /event\.key === 'Escape'/);
+  assert.match(chatSource, /nextPreviewTrapTarget/);
+  assert.match(chatSource, /focus: 'none'/);
+});
+
+test('reviewer repro 15: malformed session timestamps never surface NaNd ago', async () => {
   const root = await mkdtemp(join(tmpdir(), 'pi-rpc-reviewer-14-'));
   const workspace = join(root, 'workspace');
   const agentDir = join(root, 'agent');
@@ -284,7 +384,7 @@ test('reviewer repro 14: malformed session timestamps never surface NaNd ago', a
       workspaceName: 'workspace',
       workspacePath: workspace,
     });
-    const model = createSessionSidebarModel({
+    const model = createResumeChatSidebarModel({
       activeFolderName: 'workspace',
       recent: {
         loading: false,
@@ -292,11 +392,11 @@ test('reviewer repro 14: malformed session timestamps never surface NaNd ago', a
         items: index.sessions,
         sessionDir,
       },
-      isTrusted: true,
-      isFirstRun: false,
+      hasDraft: false,
+      hasPendingAttachments: false,
       now: Date.UTC(2024, 0, 4, 0, 0, 0),
     });
-    const recentNode = model[2]?.children?.[1];
+    const recentNode = model[2];
 
     assert.equal(index.sessions[0]?.createdAt, fallbackTime.getTime());
     assert.equal(index.sessions[0]?.modifiedAt, fallbackTime.getTime());
