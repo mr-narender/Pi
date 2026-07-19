@@ -138,6 +138,18 @@ test('default simple mode visible controls stay compact', () => {
   assert.equal((html.match(/data-action="abort"/g) ?? []).length, 0);
 });
 
+test('composer is disabled with a connecting spinner until Pi is ready', () => {
+  const connecting = renderChatApp(snapshot({ connectionState: 'handshaking', messages: [] }));
+  assert.match(connecting, /Connecting to Pi/);
+  assert.match(connecting, /class="spinner"/);
+  assert.match(connecting, /id="composer-field"[^>]*disabled/);
+  assert.match(connecting, /id="composer-send-button"[^>]*disabled/);
+
+  const ready = renderChatApp(snapshot({ connectionState: 'ready', messages: [] }));
+  assert.doesNotMatch(ready, /id="composer-field"[^>]*disabled/);
+  assert.match(ready, /What to do first/);
+});
+
 test('composer typing is protected from caret reset and re-render loops', () => {
   const chat = readFileSync('src/webview/media/chat.ts', 'utf8');
   assert.match(chat, /composerWasFocused/);

@@ -239,6 +239,16 @@ export class ChatTabManager implements vscode.Disposable {
     if (panel.active) {
       await this.activateResource(document.uri, { startIfStopped: false });
     }
+    // Auto-start Pi in the background so the tab transitions from a
+    // "Connecting…" state to an interactive composer without the user having
+    // to trigger it. The webview keeps the composer disabled until the
+    // connection is ready; start failures surface as the faulted state.
+    const openContext = this.contextForResource(document.uri);
+    if (openContext && openContext.controller.snapshot.connectionState === 'stopped') {
+      void this.startResource(document.uri).catch(() => {
+        /* faulted connection state is rendered by renderResource */
+      });
+    }
   }
 
   public getActiveContext(): ChatTabContext | undefined {

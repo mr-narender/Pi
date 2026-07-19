@@ -419,6 +419,10 @@ function renderMoreMenu(snapshot: WebviewSnapshot): string {
 
 export function renderChatApp(snapshot: WebviewSnapshot): string {
   const busy = snapshot.isStreaming || snapshot.connectionState === 'busy';
+  const interactive = snapshot.connectionState === 'ready' || snapshot.connectionState === 'busy';
+  const faulted = snapshot.connectionState === 'faulted';
+  const connecting = !interactive && !faulted;
+  const disabledAttr = interactive ? '' : 'disabled';
   const sendLabel = busy ? 'Send next' : 'Send';
   const sendCommand = busy ? 'follow_up' : 'prompt';
   const bindingLabel =
@@ -462,7 +466,13 @@ export function renderChatApp(snapshot: WebviewSnapshot): string {
       ${restrictedBanner}
       ${renderRecovery(snapshot)}
 
-      <main class="conversation" id="messages" role="log" aria-live="polite" aria-relevant="additions text">${renderMessages(snapshot)}</main>
+      <main class="conversation" id="messages" role="log" aria-live="polite" aria-relevant="additions text">${
+        connecting && snapshot.messages.length === 0
+          ? `<div class="connecting-state" role="status" aria-live="polite"><span class="spinner" aria-hidden="true"></span><p class="empty-copy">Connecting to Pi…</p></div>`
+          : faulted && snapshot.messages.length === 0
+            ? `<div class="empty-state"><p class="empty-copy">Couldn’t start Pi for this workspace.</p><button type="button" data-command="piRpcInternal.restart">Try again</button></div>`
+            : renderMessages(snapshot)
+      }</main>
 
       <section class="composer-dock" aria-labelledby="composer-heading">
         <h2 id="composer-heading" class="visually-hidden">Message Pi</h2>
@@ -476,11 +486,11 @@ export function renderChatApp(snapshot: WebviewSnapshot): string {
                 )}${renderImageChip(snapshot)}</div><button type="button" data-action="clearAttachments">Clear attachments</button></div>`
             : ''
         }
-        <div class="composer-card">
-          <textarea id="${COMPOSER_FIELD_ID}" rows="3" placeholder="Ask Pi to edit…">${escapeHtml(snapshot.draft)}</textarea>
+        <div class="composer-card${connecting ? ' is-connecting' : ''}" aria-busy="${connecting ? 'true' : 'false'}">
+          <textarea id="${COMPOSER_FIELD_ID}" rows="3" placeholder="${connecting ? 'Connecting to Pi…' : 'Ask Pi to edit…'}" ${disabledAttr}>${escapeHtml(snapshot.draft)}</textarea>
           <div class="composer-actions" aria-label="Composer actions">
             <div class="composer-actions-left">
-              <details class="menu-details" id="attach-menu">
+              <details class="menu-details" id="attach-menu"${interactive ? '' : ' aria-disabled="true"'}>
                 <summary id="attach-trigger" class="icon-button" title="Attach" aria-label="Attach">+</summary>
                 <div class="menu-panel">
                   <button type="button" data-action="pickImages">Image…</button>
@@ -491,11 +501,11 @@ export function renderChatApp(snapshot: WebviewSnapshot): string {
                   ${attachmentsVisible ? '<button type="button" data-action="clearAttachments">Clear attachments</button>' : ''}
                 </div>
               </details>
-              <button type="button" class="icon-button" data-command="piRpc.showPiCommands" title="Commands" aria-label="Commands">/</button>
+              <button type="button" class="icon-button" data-command="piRpc.showPiCommands" title="Commands" aria-label="Commands" ${disabledAttr}>/</button>
             </div>
             <div class="composer-actions-right">
               ${busy ? '<button type="button" class="ghost" data-action="abort">Stop</button>' : ''}
-              <button type="button" id="${SEND_BUTTON_ID}" class="send-button" data-send-command="${sendCommand}" title="${sendLabel}" aria-label="${sendLabel}">↑</button>
+              <button type="button" id="${SEND_BUTTON_ID}" class="send-button" data-send-command="${sendCommand}" title="${sendLabel}" aria-label="${sendLabel}" ${disabledAttr}>↑</button>
             </div>
           </div>
         </div>

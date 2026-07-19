@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.7
+
+- Pi now starts automatically in the background when a chat tab opens.
+- While connecting, the chat shows a "Connecting to Pi…" spinner and the composer (input, attach, commands, send) is disabled so you can't interact until Pi is ready.
+- If Pi fails to start, the tab shows a clear error with a Try again action instead of throwing "Pi RPC is not started".
+
 ## 0.0.6
 
 - Fix: typing in the composer no longer resets the caret to the start. The webview now preserves the live composer value, caret, and focus across re-renders, and draft keystrokes no longer trigger a tab re-render.
