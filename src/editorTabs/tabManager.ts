@@ -459,11 +459,40 @@ export class ChatTabManager implements vscode.Disposable {
     return this.activateResource(nextResource, { startIfStopped: false });
   }
 
+  private findTabUriForSessionFile(sessionFile: string): vscode.Uri | undefined {
+    for (const group of vscode.window.tabGroups.all) {
+      for (const tab of group.tabs) {
+        const input = (tab.input ?? undefined) as
+          | { uri?: vscode.Uri; viewType?: string }
+          | undefined;
+        if (input?.viewType !== CHAT_EDITOR_VIEW_TYPE || !input.uri) {
+          continue;
+        }
+        const target = parseChatUri(input.uri);
+        if (target?.kind === 'sessionFile' && target.sessionFile === sessionFile) {
+          return input.uri;
+        }
+      }
+    }
+    return undefined;
+  }
+
   public async openForSessionFile(
     controller: SessionController,
     sessionFile: string,
     options?: { focusComposer?: boolean }
   ): Promise<vscode.Uri> {
+    // If a tab for this exact session is already open, reveal it instead of
+    // opening a duplicate editor.
+    const existing = this.findTabUriForSessionFile(sessionFile);
+    if (existing) {
+      const context = this.contextForResource(existing);
+      if (context && options?.focusComposer) {
+        await this.uiState.setFocusForIdentity(context.controller, context.target, 'composer');
+      }
+      await this.openResource(existing);
+      return existing;
+    }
     return this.openTarget(
       {
         workspaceFolderUri: controller.folder.uri.toString(),

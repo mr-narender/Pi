@@ -805,3 +805,13 @@ button.ghost:hover,
   border: 1px solid var(--vscode-panel-border);
   border-radius: 14px 14px 14px 4px;
 }
+
+/* ---- Center the empty / connecting states within the flex column ---- */
+#messages .empty-state,
+#messages .connecting-state,
+.conversation > .empty-state,
+.conversation > .connecting-state {
+  align-self: stretch;
+  width: 100%;
+  margin: auto 0;
+}

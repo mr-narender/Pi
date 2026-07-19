@@ -1,1 +1,14 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Pi RPC icon"><rect width="128" height="128" rx="24" fill="#1f6feb"/><path d="M34 28h24c18 0 30 11 30 28s-12 28-30 28H48v16H34V28zm14 14v28h10c10 0 16-5 16-14s-6-14-16-14H48z" fill="#fff"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" role="img" aria-label="Pi">
+  <!-- Monochrome activity-bar mark: a pi glyph fused with an angular code cut.
+       VS Code masks this to the theme color, so it is drawn in currentColor. -->
+  <g fill="currentColor">
+    <!-- top bar of pi, angled on the right like a code ribbon -->
+    <path d="M3.2 5.4 L20 5.4 L18.4 8 L4.8 8 Z" />
+    <!-- left leg -->
+    <rect x="6.1" y="8" width="2.7" height="10.6" rx="1.1" />
+    <!-- right leg with a slight diagonal foot (VS Code angular nod) -->
+    <path d="M14.4 8 h2.7 v8.4 l-2.7 2.2 Z" />
+    <!-- small chevron accent hinting </> -->
+    <path d="M9.8 19.2 l2.1 -1.6 l-2.1 -1.6 v3.2 Z" opacity="0.9" />
+  </g>
+</svg>

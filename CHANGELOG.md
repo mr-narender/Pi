@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.12
+
+- Clicking a chat now reveals its existing editor tab instead of opening a duplicate.
+- Centered the empty-state ("What to do first?") in the editor.
+- New original Pi x VS Code fusion icon: an angular pi mark for the activity bar and a full-color orange/smoke gallery logo (not derived from the official Pi logo).
+
 ## 0.0.11
 
 - New sidebar: a big edge-to-edge "New Chat" button, a search box, and the session list, built as a native webview (Claude-style).

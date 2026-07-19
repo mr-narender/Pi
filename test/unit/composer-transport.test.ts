@@ -158,6 +158,12 @@ test('composer typing is protected from caret reset and re-render loops', () => 
   assert.match(tab, /setDraft\(parsed\.text, \{ silent: true \}\)/);
 });
 
+test('opening a saved session reveals an existing tab instead of duplicating', () => {
+  const tab = readFileSync('src/editorTabs/tabManager.ts', 'utf8');
+  assert.match(tab, /findTabUriForSessionFile/);
+  assert.match(tab, /opening a duplicate/);
+});
+
 test('sending clears the composer via an authoritative reset', () => {
   const chat = readFileSync('src/webview/media/chat.ts', 'utf8');
   assert.match(chat, /authoritativeReset/);
