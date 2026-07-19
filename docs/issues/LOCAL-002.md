@@ -3,6 +3,7 @@
 State: closed
 Agent: pi
 Kind: UX enhancement
+Closed with: `fc2f698`
 
 ## Acceptance criteria
 
@@ -22,4 +23,4 @@ User testing found the initial sidebar confusing, especially locating start/new/
 
 ## Closure notes
 
-Implemented a new Start & Sessions information architecture, a read-only recent-session index sourced from Pi session files/header metadata, a first-run help view, safer resume/new-session flows, clearer branch terminology, and updated chat header/actions. Verified with unit, integration, extension host, package, and isolated VSIX install smoke.
+Implemented a new Start & Sessions information architecture, a read-only recent-session index sourced from Pi session files/header metadata, a first-run help view, safer resume/new-session flows, clearer branch terminology, and updated chat header/actions. Verified with unit, integration, extension host, package, and isolated VSIX install smoke. VSIX `0.0.2` was installed locally for continued user testing.
