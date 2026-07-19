@@ -1,0 +1,892 @@
+import * as vscode from 'vscode';
+import { COMMAND_IDS, CONTRIBUTED_COMMANDS } from './config/commands';
+import { getSettings } from './config/settings';
+import { createRedactedDiagnosticsExport } from './diagnostics/export';
+import { DiagnosticsLogger } from './diagnostics/logger';
+import { redactJsonValue } from './diagnostics/redaction';
+import { ensureWorkspaceAvailable, ensureTrustedForMutation } from './security/trust';
+import { SessionRegistry } from './sessions/sessionRegistry';
+import { ExtensionUiBroker } from './ui/extensionUiBroker';
+import { LocalExtensionUiContext } from './ui/localExtensionUi';
+import { openPathInNewWindow } from './ui/navigation';
+import {
+  DiagnosticsTreeProvider,
+  OutlineTreeProvider,
+  QueueTreeProvider,
+  SessionsTreeProvider,
+  WorkflowTreeProvider,
+} from './ui/trees/providers';
+import { StatusBarController } from './ui/status/statusBar';
+import { ChatPanelProvider } from './webview/provider';
+import type { SessionController } from './sessions/sessionController';
+import type { ExtensionUiRequest } from './rpc/protocol';
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function asString(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined;
+}
+
+function recentRequests(controller: SessionController, method?: ExtensionUiRequest['method']) {
+  return controller.snapshot.uiHistory
+    .filter((item) => (method ? item.method === method : true))
+    .map((item) => item.data);
+}
+
+function compatibilityEvents(controller: SessionController) {
+  return controller.snapshot.eventHistory
+    .filter((item) => item.data.compatibility === true)
+    .map((item) => ({
+      id: item.id,
+      type: item.type,
+      timestamp: item.timestamp,
+      data: redactJsonValue(item.data),
+    }));
+}
+
+export async function activate(context: vscode.ExtensionContext): Promise<void> {
+  const logger = new DiagnosticsLogger();
+  const registry = new SessionRegistry(logger);
+  const settings = getSettings();
+  const statusBar = new StatusBarController();
+  const chat = new ChatPanelProvider(context, registry);
+  const broker = new ExtensionUiBroker(registry);
+  const localUi = new LocalExtensionUiContext();
+
+  context.subscriptions.push(logger, registry, statusBar, chat, broker);
+
+  for (const folder of vscode.workspace.workspaceFolders ?? []) {
+    const controller = registry.getOrCreate(folder);
+    broker.track(controller);
+  }
+  statusBar.bind(registry.getActive());
+
+  const sessionsView = new SessionsTreeProvider(registry);
+  const outlineView = new OutlineTreeProvider(registry);
+  const queueView = new QueueTreeProvider(registry);
+  const workflowView = new WorkflowTreeProvider(registry);
+  const diagnosticsView = new DiagnosticsTreeProvider(registry);
+
+  context.subscriptions.push(
+    vscode.window.registerTreeDataProvider('piRpc.sessions', sessionsView),
+    vscode.window.registerTreeDataProvider('piRpc.outline', outlineView),
+    vscode.window.registerTreeDataProvider('piRpc.queue', queueView),
+    vscode.window.registerTreeDataProvider('piRpc.workflow', workflowView),
+    vscode.window.registerTreeDataProvider('piRpc.diagnostics', diagnosticsView),
+    sessionsView,
+    outlineView,
+    queueView,
+    workflowView,
+    diagnosticsView
+  );
+
+  const refreshViews = (): void => {
+    sessionsView.refresh();
+    outlineView.refresh();
+    queueView.refresh();
+    workflowView.refresh();
+    diagnosticsView.refresh();
+    statusBar.bind(registry.getActive());
+    void chat.refresh();
+  };
+
+  for (const controller of registry.list()) {
+    context.subscriptions.push(controller.onDidChangeState(refreshViews));
+  }
+
+  const showJson = async (_title: string, data: unknown): Promise<void> => {
+    const doc = await vscode.workspace.openTextDocument({
+      content: JSON.stringify(data, null, 2),
+      language: 'json',
+    });
+    await vscode.window.showTextDocument(doc, { preview: false });
+  };
+
+  const withController = async (
+    action: (controller: SessionController) => Promise<unknown>,
+    options?: { requireTrust?: boolean; autoStart?: boolean; forcePicker?: boolean }
+  ): Promise<unknown> => {
+    ensureWorkspaceAvailable();
+    if (options?.requireTrust) {
+      ensureTrustedForMutation();
+    }
+    const controller = await registry.getSelectedOrPick({ forcePicker: options?.forcePicker });
+    if (!controller) {
+      return undefined;
+    }
+    registry.setActive(controller);
+    statusBar.bind(controller);
+    if (options?.autoStart !== false && controller.snapshot.connectionState === 'stopped') {
+      await controller.start();
+    }
+    const result = await action(controller);
+    refreshViews();
+    return result;
+  };
+
+  const registrations = new Map<string, (...args: unknown[]) => Promise<unknown>>();
+
+  registrations.set('piRpcInternal.selectWorkspaceFolder', async (folderUri?: unknown) => {
+    const selected =
+      typeof folderUri === 'string'
+        ? registry.setActive(folderUri)
+        : await registry.getSelectedOrPick({ forcePicker: true });
+    if (selected) {
+      statusBar.bind(selected);
+      await chat.refresh();
+      refreshViews();
+    }
+    return selected?.folder.uri.toString();
+  });
+
+  registrations.set('piRpcInternal.start', async () => {
+    return withController(
+      async (controller) => {
+        await controller.start();
+        await controller.reconcile();
+        void vscode.window.showInformationMessage(`Pi RPC started for ${controller.folder.name}`);
+      },
+      { autoStart: false, forcePicker: true }
+    );
+  });
+
+  registrations.set('piRpcInternal.stop', async () => {
+    return withController(
+      async (controller) => {
+        await controller.stop();
+      },
+      { autoStart: false }
+    );
+  });
+
+  registrations.set('piRpcInternal.restart', async () => {
+    return withController(
+      async (controller) => {
+        await controller.restart();
+      },
+      { autoStart: false }
+    );
+  });
+
+  registrations.set('piRpcInternal.openChat', async () => {
+    await chat.show();
+  });
+
+  registrations.set('piRpc.prompt', async (value?: unknown) => {
+    return withController(
+      async (controller) => {
+        const record = asRecord(value);
+        const message =
+          asString(value) ??
+          asString(record?.message) ??
+          (await vscode.window.showInputBox({ title: 'Prompt Pi' }));
+        if (message) {
+          await controller.prompt(message, 'prompt');
+          await chat.show();
+        }
+      },
+      { requireTrust: true }
+    );
+  });
+
+  registrations.set('piRpc.steer', async (value?: unknown) => {
+    return withController(
+      async (controller) => {
+        const record = asRecord(value);
+        const message =
+          asString(value) ??
+          asString(record?.message) ??
+          (await vscode.window.showInputBox({ title: 'Steer message' }));
+        if (message) {
+          await controller.prompt(message, 'steer');
+        }
+      },
+      { requireTrust: true }
+    );
+  });
+
+  registrations.set('piRpc.followUp', async (value?: unknown) => {
+    return withController(
+      async (controller) => {
+        const record = asRecord(value);
+        const message =
+          asString(value) ??
+          asString(record?.message) ??
+          (await vscode.window.showInputBox({ title: 'Follow-up message' }));
+        if (message) {
+          await controller.prompt(message, 'followUp');
+        }
+      },
+      { requireTrust: true }
+    );
+  });
+
+  registrations.set('piRpc.abort', async () => withController((controller) => controller.abort()));
+
+  registrations.set('piRpc.newSession', async (value?: unknown) => {
+    return withController(
+      async (controller) => {
+        const record = asRecord(value);
+        const currentSession = asString(controller.snapshot.state.sessionFile);
+        let parentSession = asString(record?.parentSession);
+        if (!parentSession && currentSession) {
+          const choice = await vscode.window.showQuickPick(
+            [
+              { label: 'Fresh session', parentSession: undefined },
+              { label: 'Track current session as parent', parentSession: currentSession },
+            ],
+            { title: 'New Session' }
+          );
+          parentSession = choice?.parentSession;
+        }
+        return controller.newSession(parentSession);
+      },
+      { requireTrust: true }
+    );
+  });
+
+  registrations.set('piRpc.refreshState', async () =>
+    withController((controller) => controller.refreshState())
+  );
+  registrations.set('piRpc.refreshMessages', async () =>
+    withController((controller) => controller.refreshMessages())
+  );
+  registrations.set('piRpc.cycleModel', async () =>
+    withController((controller) => controller.cycleModel())
+  );
+  registrations.set('piRpc.showModels', async () => {
+    return withController(async (controller) => {
+      const models = await controller.getAvailableModels();
+      const picked = await vscode.window.showQuickPick(
+        models.map((model) => ({
+          label: `${String(model.provider ?? 'provider')}/${String(model.id ?? 'model')}`,
+          description: String(model.name ?? ''),
+          detail: JSON.stringify({
+            input: model.input,
+            reasoning: model.reasoning,
+            contextWindow: model.contextWindow,
+          }),
+          model,
+        })),
+        { title: 'Select Pi model' }
+      );
+      if (picked) {
+        await controller.selectModel(
+          String(picked.model.provider ?? ''),
+          String(picked.model.id ?? '')
+        );
+      }
+      return models;
+    });
+  });
+  registrations.set('piRpc.selectModel', registrations.get('piRpc.showModels')!);
+  registrations.set('piRpc.setThinkingLevel', async () => {
+    return withController(async (controller) => {
+      const picked = await vscode.window.showQuickPick(
+        ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'],
+        {
+          title: 'Thinking level',
+        }
+      );
+      if (picked) {
+        await controller.setThinkingLevel(picked);
+      }
+    });
+  });
+  registrations.set('piRpc.cycleThinkingLevel', async () =>
+    withController((controller) => controller.cycleThinkingLevel())
+  );
+  registrations.set('piRpc.setSteeringMode', async () => {
+    return withController(async (controller) => {
+      const picked = await vscode.window.showQuickPick(['all', 'one-at-a-time'], {
+        title: 'Steering mode',
+      });
+      if (picked) {
+        await controller.setSteeringMode(picked);
+      }
+    });
+  });
+  registrations.set('piRpc.setFollowUpMode', async () => {
+    return withController(async (controller) => {
+      const picked = await vscode.window.showQuickPick(['all', 'one-at-a-time'], {
+        title: 'Follow-up mode',
+      });
+      if (picked) {
+        await controller.setFollowUpMode(picked);
+      }
+    });
+  });
+  registrations.set('piRpc.compact', async () => {
+    return withController(
+      async (controller) => {
+        const customInstructions = await vscode.window.showInputBox({
+          title: 'Compaction instructions (optional)',
+        });
+        return controller.compact(customInstructions);
+      },
+      { requireTrust: true }
+    );
+  });
+  registrations.set('piRpc.toggleAutoCompaction', async () =>
+    withController((controller) => controller.toggleAutoCompaction())
+  );
+  registrations.set('piRpc.toggleAutoRetry', async () => {
+    return withController(async (controller) => {
+      const enabled = await vscode.window.showQuickPick(['Enable', 'Disable'], {
+        title: 'Auto retry',
+      });
+      if (enabled) {
+        await controller.toggleAutoRetry(enabled === 'Enable');
+      }
+    });
+  });
+  registrations.set('piRpc.abortRetry', async () =>
+    withController((controller) => controller.abortRetry())
+  );
+  registrations.set('piRpc.runBash', async (value?: unknown) => {
+    return withController(
+      async (controller) => {
+        ensureTrustedForMutation();
+        const record = asRecord(value);
+        const command =
+          asString(record?.command) ??
+          (await vscode.window.showInputBox({ title: 'Run bash command' }));
+        if (!command) {
+          return undefined;
+        }
+        const excludeFromContext =
+          record?.excludeFromContext === true ||
+          (await vscode.window.showQuickPick(
+            ['Include in next prompt context', 'Exclude from next prompt context'],
+            {
+              title: 'Bash result context policy',
+            }
+          )) === 'Exclude from next prompt context';
+        const result = await controller.runBash(command, excludeFromContext);
+        await showJson('bash', result ?? {});
+        return result;
+      },
+      { requireTrust: true }
+    );
+  });
+  registrations.set('piRpc.abortBash', async () =>
+    withController((controller) => controller.abortBash())
+  );
+  registrations.set('piRpc.showSessionStats', async () => {
+    return withController(async (controller) => {
+      const stats = await controller.showSessionStats();
+      await showJson('stats', stats ?? {});
+      return stats;
+    });
+  });
+  registrations.set('piRpc.exportHtml', async () => {
+    return withController(
+      async (controller) => {
+        const target = await vscode.window.showSaveDialog({ filters: { HTML: ['html'] } });
+        const result = await controller.exportHtml(target?.fsPath);
+        if (typeof result?.path === 'string') {
+          void vscode.window.showInformationMessage(`Exported ${result.path}`);
+        }
+        return result;
+      },
+      { requireTrust: true }
+    );
+  });
+  registrations.set('piRpc.switchSession', async (value?: unknown) => {
+    return withController(
+      async (controller) => {
+        const record = asRecord(value);
+        const sessionPath =
+          asString(record?.sessionPath) ??
+          (await vscode.window.showInputBox({ title: 'Session path' }));
+        if (sessionPath) {
+          return controller.switchSession(sessionPath);
+        }
+        return undefined;
+      },
+      { requireTrust: true }
+    );
+  });
+  registrations.set('piRpc.forkSession', async (value?: unknown) => {
+    return withController(
+      async (controller) => {
+        const entryId = asString(asRecord(value)?.entryId);
+        if (entryId) {
+          return controller.fork(entryId);
+        }
+        const entries = await controller.getForkMessages();
+        const picked = await vscode.window.showQuickPick(
+          entries.map((entry) => ({
+            label: String(entry.entryId ?? 'entry'),
+            description: String(entry.text ?? '').slice(0, 120),
+            entry,
+          })),
+          { title: 'Fork from user message' }
+        );
+        if (picked && typeof picked.entry.entryId === 'string') {
+          return controller.fork(picked.entry.entryId);
+        }
+        return undefined;
+      },
+      { requireTrust: true }
+    );
+  });
+  registrations.set('piRpc.cloneSession', async () => {
+    return withController(async (controller) => controller.clone(), { requireTrust: true });
+  });
+  registrations.set('piRpc.showForkMessages', async () => {
+    return withController(async (controller) => {
+      const entries = await controller.getForkMessages();
+      await showJson('fork-messages', entries);
+      return entries;
+    });
+  });
+  registrations.set('piRpc.refreshEntries', async () =>
+    withController((controller) => controller.refreshEntries())
+  );
+  registrations.set('piRpc.showSessionTree', async () => {
+    return withController(async (controller) => {
+      await controller.refreshTree();
+      await showJson('tree', controller.snapshot.tree);
+      return controller.snapshot.tree;
+    });
+  });
+  registrations.set('piRpc.copyLastAssistant', async () => {
+    return withController(async (controller) => {
+      const text = await controller.copyLastAssistantText();
+      if (text) {
+        await vscode.env.clipboard.writeText(text);
+        void vscode.window.showInformationMessage('Copied last assistant response');
+      } else {
+        void vscode.window.showInformationMessage('No assistant response available');
+      }
+      return text;
+    });
+  });
+  registrations.set('piRpc.renameSession', async (value?: unknown) => {
+    return withController(async (controller) => {
+      const name =
+        asString(asRecord(value)?.name) ??
+        (await vscode.window.showInputBox({ title: 'Rename session' }));
+      if (name !== undefined) {
+        await controller.renameSession(name);
+      }
+      return name;
+    });
+  });
+  registrations.set('piRpc.showPiCommands', async () => {
+    return withController(async (controller) => {
+      const commands = await controller.getPiCommands();
+      const picked = await vscode.window.showQuickPick(
+        commands.map((command) => ({
+          label: `/${String(command.name ?? 'command')}`,
+          description: String(command.description ?? ''),
+          detail: JSON.stringify(command.sourceInfo ?? {}),
+          command,
+        })),
+        { title: 'Pi commands' }
+      );
+      if (picked && typeof picked.command.name === 'string') {
+        await controller.prompt(`/${picked.command.name}`, 'prompt');
+      }
+      return commands;
+    });
+  });
+  registrations.set('piRpc.respondExtensionUi', async () => {
+    return withController(
+      async (controller) => {
+        const payload = {
+          pending: controller.snapshot.pendingUi,
+          history: controller.snapshot.uiHistory,
+        };
+        await showJson('extension-ui', payload);
+        return payload;
+      },
+      { autoStart: false }
+    );
+  });
+  registrations.set('piRpcInternal.showHealth', async () => {
+    const controller = registry.getActive();
+    const health = createRedactedDiagnosticsExport(logger, controller);
+    await showJson('health', health);
+    return health;
+  });
+  registrations.set('piRpcInternal.exportDiagnostics', async () => {
+    ensureTrustedForMutation();
+    const target = await vscode.window.showSaveDialog({ filters: { JSON: ['json'] } });
+    if (!target) {
+      return undefined;
+    }
+    const payload = createRedactedDiagnosticsExport(logger, registry.getActive());
+    await vscode.workspace.fs.writeFile(
+      target,
+      Buffer.from(JSON.stringify(payload, null, 2), 'utf8')
+    );
+    void vscode.window.showInformationMessage(`Exported diagnostics to ${target.fsPath}`);
+    return target.fsPath;
+  });
+  registrations.set('piRpcInternal.openWorktree', async () => {
+    ensureTrustedForMutation();
+    const path = await vscode.window.showInputBox({ title: 'Open worktree directory' });
+    if (path) {
+      await openPathInNewWindow(path);
+    }
+    return path;
+  });
+
+  const inspectEvent = (type: string) => async () =>
+    withController(
+      async (controller) => {
+        const payload = controller.snapshot.eventHistory.filter((event) => event.type === type);
+        await showJson(type, payload);
+        return payload;
+      },
+      { autoStart: false }
+    );
+
+  registrations.set('piRpc.inspectAgentStart', inspectEvent('agent_start'));
+  registrations.set('piRpc.inspectAgentEnd', inspectEvent('agent_end'));
+  registrations.set('piRpc.inspectAgentSettled', inspectEvent('agent_settled'));
+  registrations.set('piRpc.inspectTurnStart', inspectEvent('turn_start'));
+  registrations.set('piRpc.inspectTurnEnd', inspectEvent('turn_end'));
+  registrations.set('piRpc.inspectMessageStart', inspectEvent('message_start'));
+  registrations.set('piRpc.inspectMessageUpdate', inspectEvent('message_update'));
+  registrations.set('piRpc.inspectMessageEnd', inspectEvent('message_end'));
+  registrations.set('piRpc.inspectToolStart', inspectEvent('tool_execution_start'));
+  registrations.set('piRpc.inspectToolUpdate', inspectEvent('tool_execution_update'));
+  registrations.set('piRpc.inspectToolEnd', inspectEvent('tool_execution_end'));
+  registrations.set('piRpc.inspectQueueUpdate', inspectEvent('queue_update'));
+  registrations.set('piRpc.inspectCompactionStart', inspectEvent('compaction_start'));
+  registrations.set('piRpc.inspectCompactionEnd', inspectEvent('compaction_end'));
+  registrations.set('piRpc.inspectRetryStart', inspectEvent('auto_retry_start'));
+  registrations.set('piRpc.inspectRetryEnd', inspectEvent('auto_retry_end'));
+  registrations.set('piRpc.inspectEntryAppended', inspectEvent('entry_appended'));
+  registrations.set('piRpc.inspectSessionInfoChanged', inspectEvent('session_info_changed'));
+  registrations.set('piRpc.inspectThinkingChanged', inspectEvent('thinking_level_changed'));
+  registrations.set('piRpc.inspectExtensionError', async () =>
+    withController(
+      async (controller) => {
+        const payload = controller.snapshot.diagnostics.filter((item) =>
+          item.message.includes('Extension')
+        );
+        await showJson('extension-errors', payload);
+        return payload;
+      },
+      { autoStart: false }
+    )
+  );
+  registrations.set('piRpc.inspectCompatibilityEvents', async () =>
+    withController(
+      async (controller) => {
+        const payload = compatibilityEvents(controller);
+        await showJson('compatibility-events', payload);
+        return payload;
+      },
+      { autoStart: false }
+    )
+  );
+  registrations.set('piRpc.inspectRpcError', async () =>
+    withController(
+      async (controller) => {
+        const payload = controller.snapshot.diagnostics.filter((item) =>
+          item.message.includes('RPC response failed')
+        );
+        await showJson('rpc-errors', payload);
+        return payload;
+      },
+      { autoStart: false }
+    )
+  );
+  registrations.set('piRpc.inspectParseError', async () =>
+    withController(
+      async (controller) => {
+        const payload = controller.snapshot.diagnostics.filter(
+          (item) => item.message.includes('parse') || item.detail?.includes('parse')
+        );
+        await showJson('parse-errors', payload);
+        return payload;
+      },
+      { autoStart: false }
+    )
+  );
+
+  const previewRequest = async (
+    method: ExtensionUiRequest['method'],
+    seed: (controller: SessionController, value?: unknown) => Promise<ExtensionUiRequest>
+  ) =>
+    withController(
+      async (controller) => {
+        const request = await seed(controller);
+        const result = await broker.previewRequest(controller, request);
+        await showJson(`extension-ui-${method}`, {
+          recent: recentRequests(controller, method),
+          result,
+        });
+        return result;
+      },
+      { autoStart: false }
+    );
+
+  registrations.set('piRpc.extensionUi.select', async () =>
+    previewRequest('select', async (controller) => ({
+      type: 'extension_ui_request',
+      id: `preview-select-${Date.now()}`,
+      method: 'select',
+      title: 'Pi RPC preview select',
+      options: recentRequests(controller, 'select').at(-1)?.options ?? [
+        'Open session tree',
+        'Show models',
+        'Cancel',
+      ],
+      timeout: 5000,
+    }))
+  );
+  registrations.set('piRpc.extensionUi.confirm', async () =>
+    previewRequest('confirm', async () => ({
+      type: 'extension_ui_request',
+      id: `preview-confirm-${Date.now()}`,
+      method: 'confirm',
+      title: 'Pi RPC preview confirm',
+      message: 'Confirm a preview action',
+      timeout: 5000,
+    }))
+  );
+  registrations.set('piRpc.extensionUi.input', async () =>
+    previewRequest('input', async () => ({
+      type: 'extension_ui_request',
+      id: `preview-input-${Date.now()}`,
+      method: 'input',
+      title: 'Pi RPC preview input',
+      placeholder: 'type a value',
+      timeout: 5000,
+    }))
+  );
+  registrations.set('piRpc.extensionUi.editor', async () =>
+    previewRequest('editor', async () => ({
+      type: 'extension_ui_request',
+      id: `preview-editor-${Date.now()}`,
+      method: 'editor',
+      title: 'Pi RPC preview editor',
+      prefill: registry.getActive()?.snapshot.draft ?? '',
+    }))
+  );
+  registrations.set('piRpc.extensionUi.notify', async () =>
+    previewRequest('notify', async () => ({
+      type: 'extension_ui_request',
+      id: `preview-notify-${Date.now()}`,
+      method: 'notify',
+      message: 'Pi RPC preview notification',
+      notifyType: 'info',
+    }))
+  );
+  registrations.set('piRpc.extensionUi.setStatus', async (value?: unknown) =>
+    withController(
+      async (controller) => {
+        const record = asRecord(value);
+        const key =
+          asString(record?.key) ?? (await vscode.window.showInputBox({ title: 'Status key' }));
+        if (!key) {
+          return undefined;
+        }
+        const text =
+          'text' in (record ?? {})
+            ? (asString(record?.text) ?? '')
+            : ((await vscode.window.showInputBox({ title: 'Status text (blank clears)' })) ?? '');
+        const request: ExtensionUiRequest = {
+          type: 'extension_ui_request',
+          id: `preview-status-${Date.now()}`,
+          method: 'setStatus',
+          statusKey: key,
+          statusText: text || undefined,
+        };
+        controller.applyExtensionUiRequest(request);
+        await showJson('status', {
+          statuses: controller.snapshot.statuses,
+          recent: recentRequests(controller, 'setStatus'),
+        });
+        return controller.snapshot.statuses;
+      },
+      { autoStart: false }
+    )
+  );
+  registrations.set('piRpc.extensionUi.setWidget', async (value?: unknown) =>
+    withController(
+      async (controller) => {
+        const record = asRecord(value);
+        const key =
+          asString(record?.key) ?? (await vscode.window.showInputBox({ title: 'Widget key' }));
+        if (!key) {
+          return undefined;
+        }
+        const placement =
+          asString(record?.placement) === 'belowEditor' ? 'belowEditor' : 'aboveEditor';
+        const linesValue =
+          asString(record?.lines) ??
+          (await vscode.window.showInputBox({ title: 'Widget lines (use | as separator)' }));
+        const request: ExtensionUiRequest = {
+          type: 'extension_ui_request',
+          id: `preview-widget-${Date.now()}`,
+          method: 'setWidget',
+          widgetKey: key,
+          widgetLines: linesValue
+            ? linesValue
+                .split(/\r?\n|\|/)
+                .map((item) => item.trim())
+                .filter(Boolean)
+            : undefined,
+          widgetPlacement: placement,
+        };
+        controller.applyExtensionUiRequest(request);
+        await showJson('widget', {
+          widgets: controller.snapshot.widgets,
+          recent: recentRequests(controller, 'setWidget'),
+        });
+        return controller.snapshot.widgets;
+      },
+      { autoStart: false }
+    )
+  );
+  registrations.set('piRpc.extensionUi.setTitle', async (value?: unknown) =>
+    withController(
+      async (controller) => {
+        const title =
+          asString(asRecord(value)?.title) ??
+          (await vscode.window.showInputBox({ title: 'Chat title' }));
+        if (!title) {
+          return undefined;
+        }
+        controller.applyExtensionUiRequest({
+          type: 'extension_ui_request',
+          id: `preview-title-${Date.now()}`,
+          method: 'setTitle',
+          title,
+        });
+        await chat.refresh();
+        return controller.snapshot.title;
+      },
+      { autoStart: false }
+    )
+  );
+  registrations.set('piRpc.extensionUi.setEditorText', async (value?: unknown) =>
+    withController(
+      async (controller) => {
+        const text =
+          asString(asRecord(value)?.text) ??
+          (await vscode.window.showInputBox({ title: 'Draft text' }));
+        if (text === undefined) {
+          return undefined;
+        }
+        const request: ExtensionUiRequest = {
+          type: 'extension_ui_request',
+          id: `preview-set-editor-${Date.now()}`,
+          method: 'set_editor_text',
+          text,
+        };
+        return broker.previewRequest(controller, request);
+      },
+      { requireTrust: true, autoStart: false }
+    )
+  );
+
+  const capability = async (title: string, data: unknown): Promise<unknown> => {
+    await showJson(title, data);
+    return data;
+  };
+
+  registrations.set('piRpc.extensionUiLocal.onTerminalInput', async () =>
+    capability('onTerminalInput', { disposer: typeof localUi.onTerminalInput().dispose })
+  );
+  registrations.set('piRpc.extensionUiLocal.setWorkingMessage', async () =>
+    capability('setWorkingMessage', { ignored: true })
+  );
+  registrations.set('piRpc.extensionUiLocal.setWorkingVisible', async () =>
+    capability('setWorkingVisible', { ignored: true })
+  );
+  registrations.set('piRpc.extensionUiLocal.setWorkingIndicator', async () =>
+    capability('setWorkingIndicator', { ignored: true })
+  );
+  registrations.set('piRpc.extensionUiLocal.setHiddenThinkingLabel', async () =>
+    capability('setHiddenThinkingLabel', { ignored: true })
+  );
+  registrations.set('piRpc.extensionUiLocal.setFooter', async () =>
+    capability('setFooter', { ignored: true })
+  );
+  registrations.set('piRpc.extensionUiLocal.setHeader', async () =>
+    capability('setHeader', { ignored: true })
+  );
+  registrations.set('piRpc.extensionUiLocal.custom', async () =>
+    capability('custom', await localUi.custom())
+  );
+  registrations.set('piRpc.extensionUiLocal.pasteToEditor', async () =>
+    withController(
+      async (controller) => {
+        const request = localUi.pasteToEditor(controller, 'Pasted from compatibility surface');
+        await chat.refresh();
+        return capability('pasteToEditor', request);
+      },
+      { requireTrust: true, autoStart: false }
+    )
+  );
+  registrations.set('piRpc.extensionUiLocal.getEditorText', async () =>
+    capability('getEditorText', localUi.getEditorText())
+  );
+  registrations.set('piRpc.extensionUiLocal.addAutocompleteProvider', async () =>
+    capability('addAutocompleteProvider', { ignored: true })
+  );
+  registrations.set('piRpc.extensionUiLocal.setEditorComponent', async () =>
+    capability('setEditorComponent', { ignored: true })
+  );
+  registrations.set('piRpc.extensionUiLocal.getEditorComponent', async () =>
+    capability('getEditorComponent', localUi.getEditorComponent())
+  );
+  registrations.set('piRpc.extensionUiLocal.themeGetter', async () =>
+    capability('themeGetter', localUi.theme)
+  );
+  registrations.set('piRpc.extensionUiLocal.getAllThemes', async () =>
+    capability('getAllThemes', localUi.getAllThemes())
+  );
+  registrations.set('piRpc.extensionUiLocal.getTheme', async () =>
+    capability('getTheme', localUi.getTheme())
+  );
+  registrations.set('piRpc.extensionUiLocal.setTheme', async () =>
+    capability('setTheme', localUi.setTheme())
+  );
+  registrations.set('piRpc.extensionUiLocal.getToolsExpanded', async () =>
+    capability('getToolsExpanded', localUi.getToolsExpanded())
+  );
+  registrations.set('piRpc.extensionUiLocal.setToolsExpanded', async () =>
+    capability('setToolsExpanded', { ignored: true })
+  );
+
+  const missing = COMMAND_IDS.filter((id) => !registrations.has(id));
+  if (missing.length > 0) {
+    throw new Error(`Missing command handlers: ${missing.join(', ')}`);
+  }
+
+  for (const [id, handler] of registrations) {
+    context.subscriptions.push(vscode.commands.registerCommand(id, handler));
+  }
+
+  const contributedIds = new Set(CONTRIBUTED_COMMANDS.map((command) => command.id));
+  logger.info(
+    `Registered ${registrations.size} command handlers for ${contributedIds.size} contributed commands`
+  );
+
+  const firstFolder = vscode.workspace.workspaceFolders?.[0];
+  if (settings.autoStart && vscode.workspace.isTrusted && firstFolder) {
+    const controller = registry.getOrCreate(firstFolder);
+    broker.track(controller);
+    registry.setActive(controller);
+    statusBar.bind(controller);
+    await controller.start();
+    refreshViews();
+  }
+}
+
+export function deactivate(): void {
+  // VS Code disposes subscriptions.
+}

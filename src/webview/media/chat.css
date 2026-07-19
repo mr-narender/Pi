@@ -1,0 +1,102 @@
+body {
+  font-family: var(--vscode-font-family);
+  color: var(--vscode-foreground);
+  background: var(--vscode-editor-background);
+  padding: 0.75rem;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0 0 0.5rem;
+}
+
+header,
+section {
+  margin-bottom: 1rem;
+}
+
+.message,
+.widget,
+form,
+.queue,
+.attachment-card {
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 6px;
+  padding: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+pre,
+textarea,
+input,
+select {
+  white-space: pre-wrap;
+  width: 100%;
+  box-sizing: border-box;
+  font-family: var(--vscode-editor-font-family);
+}
+
+.buttons {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+button {
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  border: 1px solid var(--vscode-button-border, transparent);
+  padding: 0.4rem 0.8rem;
+}
+
+button:hover {
+  cursor: pointer;
+}
+
+.stacked-form {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.widget-column {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.widget {
+  border-left: 3px solid var(--vscode-textLink-foreground);
+}
+
+.pill {
+  display: inline-block;
+  border: 1px solid var(--vscode-badge-background);
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem;
+  margin-right: 0.25rem;
+  margin-bottom: 0.25rem;
+}
+
+.attachment-strip {
+  margin-top: 0.5rem;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.attachment-header {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.25rem;
+}
+
+.attachment-preview {
+  display: grid;
+  gap: 0.2rem;
+  margin: 0.25rem 0;
+}
+
+.muted {
+  opacity: 0.8;
+}
