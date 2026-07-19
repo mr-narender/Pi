@@ -17,6 +17,7 @@ import {
   summarizeChip,
 } from './composer';
 import type { SessionController } from '../sessions/sessionController';
+import type { ChatTabTarget } from '../editorTabs/uri';
 
 const STORAGE_KEY = 'piRpc.composerState.v1';
 const UI_MODE_KEY = 'piRpc.uiMode';
@@ -25,16 +26,28 @@ function workspaceFolderUri(controller: SessionController): string {
   return controller.folder.uri.toString();
 }
 
-function currentStateKey(controller: SessionController): string {
-  return canonicalSessionKey(
-    workspaceFolderUri(controller),
-    typeof controller.snapshot.state.sessionFile === 'string'
-      ? controller.snapshot.state.sessionFile
-      : undefined,
-    typeof controller.snapshot.state.sessionId === 'string'
-      ? controller.snapshot.state.sessionId
-      : undefined
-  );
+function currentIdentity(controller: SessionController): ChatTabTarget {
+  return {
+    workspaceFolderUri: workspaceFolderUri(controller),
+    kind:
+      typeof controller.snapshot.state.sessionFile === 'string'
+        ? 'sessionFile'
+        : typeof controller.snapshot.state.sessionId === 'string'
+          ? 'sessionId'
+          : 'workspaceDraft',
+    sessionFile:
+      typeof controller.snapshot.state.sessionFile === 'string'
+        ? controller.snapshot.state.sessionFile
+        : undefined,
+    sessionId:
+      typeof controller.snapshot.state.sessionId === 'string'
+        ? controller.snapshot.state.sessionId
+        : undefined,
+  };
+}
+
+function sessionStateKeyForIdentity(identity: ChatTabTarget): string {
+  return canonicalSessionKey(identity.workspaceFolderUri, identity.sessionFile, identity.sessionId);
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
@@ -81,7 +94,14 @@ export class ChatUiState implements vscode.Disposable {
   }
 
   public async getComposerState(controller: SessionController): Promise<ComposerSessionState> {
-    const key = currentStateKey(controller);
+    return this.getComposerStateForIdentity(controller, currentIdentity(controller));
+  }
+
+  public async getComposerStateForIdentity(
+    controller: SessionController,
+    identity: ChatTabTarget
+  ): Promise<ComposerSessionState> {
+    const key = sessionStateKeyForIdentity(identity);
     if (!this.loadedKeys.has(key)) {
       const persisted = this.readPersistedState()[key];
       this.composerStates.set(key, await this.restorePersistedState(controller, persisted));
@@ -97,92 +117,200 @@ export class ChatUiState implements vscode.Disposable {
     controller: SessionController,
     state: ComposerSessionState
   ): Promise<void> {
-    const key = currentStateKey(controller);
+    await this.setComposerStateForIdentity(controller, currentIdentity(controller), state);
+  }
+
+  public async setComposerStateForIdentity(
+    controller: SessionController,
+    identity: ChatTabTarget,
+    state: ComposerSessionState
+  ): Promise<void> {
+    const key = sessionStateKeyForIdentity(identity);
     this.composerStates.set(key, cloneComposerState(state));
     await this.persist();
+    if (sessionStateKeyForIdentity(currentIdentity(controller)) === key) {
+      controller.setDraft(state.draft);
+    }
+    this.emitter.fire();
+  }
+
+  public async clearComposerStateForIdentity(
+    _controller: SessionController,
+    identity: ChatTabTarget
+  ): Promise<void> {
+    const key = sessionStateKeyForIdentity(identity);
+    this.composerStates.delete(key);
+    this.loadedKeys.delete(key);
+    const current = this.readPersistedState();
+    delete current[key];
+    await this.context.workspaceState.update(STORAGE_KEY, current);
     this.emitter.fire();
   }
 
   public async updateDraft(controller: SessionController, draft: string): Promise<void> {
-    const state = await this.getComposerState(controller);
+    await this.updateDraftForIdentity(controller, currentIdentity(controller), draft);
+  }
+
+  public async updateDraftForIdentity(
+    controller: SessionController,
+    identity: ChatTabTarget,
+    draft: string
+  ): Promise<void> {
+    const state = await this.getComposerStateForIdentity(controller, identity);
     state.draft = draft;
-    await this.setComposerState(controller, state);
+    await this.setComposerStateForIdentity(controller, identity, state);
   }
 
   public async restoreControllerDraft(controller: SessionController): Promise<void> {
-    const state = await this.getComposerState(controller);
+    await this.restoreControllerDraftForIdentity(controller, currentIdentity(controller));
+  }
+
+  public async restoreControllerDraftForIdentity(
+    controller: SessionController,
+    identity: ChatTabTarget
+  ): Promise<void> {
+    const state = await this.getComposerStateForIdentity(controller, identity);
     if (controller.snapshot.draft !== state.draft) {
       controller.setDraft(state.draft);
     }
   }
 
   public async captureControllerDraft(controller: SessionController): Promise<void> {
-    const state = await this.getComposerState(controller);
+    await this.captureControllerDraftForIdentity(controller, currentIdentity(controller));
+  }
+
+  public async captureControllerDraftForIdentity(
+    controller: SessionController,
+    identity: ChatTabTarget
+  ): Promise<void> {
+    const state = await this.getComposerStateForIdentity(controller, identity);
     if (state.draft !== controller.snapshot.draft) {
       state.draft = controller.snapshot.draft;
-      await this.setComposerState(controller, state);
+      await this.setComposerStateForIdentity(controller, identity, state);
     }
   }
 
   public async removeContextItem(controller: SessionController, itemId: string): Promise<void> {
-    const state = await this.getComposerState(controller);
+    await this.removeContextItemForIdentity(controller, currentIdentity(controller), itemId);
+  }
+
+  public async removeContextItemForIdentity(
+    controller: SessionController,
+    identity: ChatTabTarget,
+    itemId: string
+  ): Promise<void> {
+    const state = await this.getComposerStateForIdentity(controller, identity);
     state.pendingContextItems = state.pendingContextItems.filter((item) => item.itemId !== itemId);
-    await this.setComposerState(controller, state);
+    await this.setComposerStateForIdentity(controller, identity, state);
   }
 
   public async removeImageItem(controller: SessionController, itemId: string): Promise<void> {
-    const state = await this.getComposerState(controller);
+    await this.removeImageItemForIdentity(controller, currentIdentity(controller), itemId);
+  }
+
+  public async removeImageItemForIdentity(
+    controller: SessionController,
+    identity: ChatTabTarget,
+    itemId: string
+  ): Promise<void> {
+    const state = await this.getComposerStateForIdentity(controller, identity);
     state.pendingImages = state.pendingImages.filter((item) => item.itemId !== itemId);
-    await this.setComposerState(controller, state);
+    await this.setComposerStateForIdentity(controller, identity, state);
   }
 
   public async clearAttachments(controller: SessionController): Promise<void> {
-    const state = await this.getComposerState(controller);
+    await this.clearAttachmentsForIdentity(controller, currentIdentity(controller));
+  }
+
+  public async clearAttachmentsForIdentity(
+    controller: SessionController,
+    identity: ChatTabTarget
+  ): Promise<void> {
+    const state = await this.getComposerStateForIdentity(controller, identity);
     state.pendingContextItems = [];
     state.pendingImages = [];
-    await this.setComposerState(controller, state);
+    await this.setComposerStateForIdentity(controller, identity, state);
   }
 
   public async setRecovery(
     controller: SessionController,
     recovery: RecoveryState | undefined
   ): Promise<void> {
-    const state = await this.getComposerState(controller);
+    await this.setRecoveryForIdentity(controller, currentIdentity(controller), recovery);
+  }
+
+  public async setRecoveryForIdentity(
+    controller: SessionController,
+    identity: ChatTabTarget,
+    recovery: RecoveryState | undefined
+  ): Promise<void> {
+    const state = await this.getComposerStateForIdentity(controller, identity);
     state.recovery = recovery;
-    await this.setComposerState(controller, state);
+    await this.setComposerStateForIdentity(controller, identity, state);
   }
 
   public async setFocus(
     controller: SessionController,
     focus: ComposerSessionState['focus']
   ): Promise<void> {
-    const state = await this.getComposerState(controller);
+    await this.setFocusForIdentity(controller, currentIdentity(controller), focus);
+  }
+
+  public async setFocusForIdentity(
+    controller: SessionController,
+    identity: ChatTabTarget,
+    focus: ComposerSessionState['focus']
+  ): Promise<void> {
+    const state = await this.getComposerStateForIdentity(controller, identity);
     state.focus = focus;
-    await this.setComposerState(controller, state);
+    await this.setComposerStateForIdentity(controller, identity, state);
   }
 
   public async addContextItem(
     controller: SessionController,
     item: PendingContextItem
   ): Promise<void> {
-    const state = await this.getComposerState(controller);
+    await this.addContextItemForIdentity(controller, currentIdentity(controller), item);
+  }
+
+  public async addContextItemForIdentity(
+    controller: SessionController,
+    identity: ChatTabTarget,
+    item: PendingContextItem
+  ): Promise<void> {
+    const state = await this.getComposerStateForIdentity(controller, identity);
     state.pendingContextItems = [...state.pendingContextItems, item];
     state.focus = 'contextChip';
-    await this.setComposerState(controller, state);
+    await this.setComposerStateForIdentity(controller, identity, state);
   }
 
   public async addImageItems(
     controller: SessionController,
     items: PendingImageItem[]
   ): Promise<void> {
-    const state = await this.getComposerState(controller);
+    await this.addImageItemsForIdentity(controller, currentIdentity(controller), items);
+  }
+
+  public async addImageItemsForIdentity(
+    controller: SessionController,
+    identity: ChatTabTarget,
+    items: PendingImageItem[]
+  ): Promise<void> {
+    const state = await this.getComposerStateForIdentity(controller, identity);
     state.pendingImages = [...state.pendingImages, ...items];
     state.focus = 'imageChip';
-    await this.setComposerState(controller, state);
+    await this.setComposerStateForIdentity(controller, identity, state);
   }
 
   public async copyAcceptedSnapshotToComposer(controller: SessionController): Promise<void> {
-    const state = await this.getComposerState(controller);
+    await this.copyAcceptedSnapshotToComposerForIdentity(controller, currentIdentity(controller));
+  }
+
+  public async copyAcceptedSnapshotToComposerForIdentity(
+    controller: SessionController,
+    identity: ChatTabTarget
+  ): Promise<void> {
+    const state = await this.getComposerStateForIdentity(controller, identity);
     const snapshot = state.acceptedSendSnapshot;
     if (!snapshot) {
       return;
@@ -207,8 +335,13 @@ export class ChatUiState implements vscode.Disposable {
     state.recovery = undefined;
     state.preview = undefined;
     state.focus = 'composer';
-    await this.setComposerState(controller, state);
-    controller.setDraft(state.draft);
+    await this.setComposerStateForIdentity(controller, identity, state);
+    if (
+      sessionStateKeyForIdentity(currentIdentity(controller)) ===
+      sessionStateKeyForIdentity(identity)
+    ) {
+      controller.setDraft(state.draft);
+    }
   }
 
   public async invalidateForWorkspaceFolder(folderUri: string): Promise<void> {
@@ -225,7 +358,7 @@ export class ChatUiState implements vscode.Disposable {
   }
 
   public currentSessionKey(controller: SessionController): string {
-    return currentStateKey(controller);
+    return sessionStateKeyForIdentity(currentIdentity(controller));
   }
 
   public describeContextItem(item: PendingContextItem): {
@@ -279,7 +412,15 @@ export class ChatUiState implements vscode.Disposable {
           this.restorePersistedContextItem(controller, item as PendingContextItem)
         )
       ),
-      pendingImages: [],
+      pendingImages: (persisted.pendingImages ?? []).map((item) => ({
+        itemId: item.itemId,
+        name: item.name,
+        mimeType: item.mimeType,
+        sizeBytes: item.sizeBytes,
+        width: item.width,
+        height: item.height,
+        requiresReselect: true,
+      })),
       focus: persisted.focus ?? 'composer',
     };
   }

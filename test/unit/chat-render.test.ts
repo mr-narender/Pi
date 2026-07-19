@@ -16,6 +16,7 @@ function snapshot(overrides: Partial<WebviewSnapshot> = {}): WebviewSnapshot {
   return {
     sequence: 1,
     title: 'Current Chat',
+    bindingState: 'current',
     uiMode: 'simple',
     connectionState: 'ready',
     workspaceFolderName: 'workspace',
@@ -51,7 +52,7 @@ test('renderChatApp keeps simple mode focused on chat essentials', () => {
   assert.match(html, /Skip to composer/);
   assert.match(html, /Message Pi/);
   assert.match(html, />New</);
-  assert.match(html, />Resume</);
+  assert.match(html, />History</);
   assert.match(html, />More</);
   assert.match(html, />Attach</);
   assert.match(html, />Send</);

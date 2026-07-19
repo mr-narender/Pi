@@ -11,14 +11,12 @@ import { SessionRegistry } from './sessions/sessionRegistry';
 import { ExtensionUiBroker } from './ui/extensionUiBroker';
 import { LocalExtensionUiContext } from './ui/localExtensionUi';
 import { openPathInNewWindow } from './ui/navigation';
-import {
-  CurrentChatTreeProvider,
-  NewChatTreeProvider,
-  ResumeChatTreeProvider,
-} from './ui/trees/providers';
+import { NewChatTreeProvider, ResumeChatTreeProvider } from './ui/trees/providers';
 import { StatusBarController } from './ui/status/statusBar';
 import { ChatPanelProvider } from './webview/provider';
 import { ChatUiState } from './webview/composerState';
+import { ChatEditorProvider } from './editorTabs/provider';
+import { ChatTabManager } from './editorTabs/tabManager';
 import type { SessionController } from './sessions/sessionController';
 import type { ExtensionUiRequest } from './rpc/protocol';
 
@@ -53,18 +51,37 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const logger = new DiagnosticsLogger();
   const registry = new SessionRegistry(logger);
   const settings = getSettings();
+  const editorTabsEnabled = () => getSettings().editorTabsEnabled;
   const statusBar = new StatusBarController();
   const recentSessions = new RecentSessionService();
   const uiState = new ChatUiState(context);
   const chat = new ChatPanelProvider(context, registry, uiState);
+  const chatTabs = new ChatTabManager(context, registry, uiState);
+  const chatEditorProvider = new ChatEditorProvider(chatTabs);
   const broker = new ExtensionUiBroker(registry, uiState);
   const localUi = new LocalExtensionUiContext();
 
-  context.subscriptions.push(logger, registry, statusBar, recentSessions, uiState, chat, broker);
+  context.subscriptions.push(
+    logger,
+    registry,
+    statusBar,
+    recentSessions,
+    uiState,
+    chat,
+    chatTabs,
+    broker,
+    vscode.window.registerCustomEditorProvider('piRpc.chatEditor', chatEditorProvider, {
+      supportsMultipleEditorsPerDocument: false,
+      webviewOptions: {
+        retainContextWhenHidden: true,
+      },
+    })
+  );
 
   for (const folder of vscode.workspace.workspaceFolders ?? []) {
     const controller = registry.getOrCreate(folder);
     broker.track(controller);
+    chatTabs.trackController(controller);
   }
   statusBar.setMode(uiState.getMode());
   statusBar.bind(registry.getActive());
@@ -72,24 +89,24 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   const newChatView = new NewChatTreeProvider(registry, recentSessions, uiState);
   const resumeChatView = new ResumeChatTreeProvider(registry, recentSessions, uiState);
-  const currentChatView = new CurrentChatTreeProvider(registry, recentSessions, uiState);
 
   context.subscriptions.push(
     vscode.window.registerTreeDataProvider('piRpc.newChat', newChatView),
     vscode.window.registerTreeDataProvider('piRpc.resumeChat', resumeChatView),
-    vscode.window.registerTreeDataProvider('piRpc.currentChat', currentChatView),
     newChatView,
-    resumeChatView,
-    currentChatView
+    resumeChatView
   );
 
   const refreshViews = (): void => {
     newChatView.refresh();
     resumeChatView.refresh();
-    currentChatView.refresh();
     statusBar.setMode(uiState.getMode());
     statusBar.bind(registry.getActive());
-    void chat.refresh();
+    if (editorTabsEnabled()) {
+      void chatTabs.refreshVisibleTabs();
+    } else {
+      void chat.refresh();
+    }
   };
 
   for (const controller of registry.list()) {
@@ -156,6 +173,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     if (options?.requireTrust) {
       ensureTrustedForMutation();
     }
+    if (editorTabsEnabled()) {
+      const activeContext = chatTabs.getActiveContext();
+      if (activeContext) {
+        registry.setActive(activeContext.controller);
+        statusBar.bind(activeContext.controller);
+        await chatTabs.activateResource(activeContext.resource, {
+          startIfStopped: options?.autoStart !== false,
+        });
+        const result = await action(activeContext.controller);
+        refreshViews();
+        return result;
+      }
+    }
     const controller = await registry.getSelectedOrPick({ forcePicker: options?.forcePicker });
     if (!controller) {
       return undefined;
@@ -181,7 +211,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       statusBar.bind(selected);
       await recentSessions.refresh(selected.folder);
       await uiState.restoreControllerDraft(selected);
-      await chat.refresh();
+      if (editorTabsEnabled()) {
+        await chatTabs.openCurrentChat({ folderUri: selected.folder.uri.toString() });
+      } else {
+        await chat.refresh();
+      }
       refreshViews();
     }
     return selected?.folder.uri.toString();
@@ -231,6 +265,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   });
 
   registrations.set('piRpcInternal.start', async () => {
+    if (editorTabsEnabled()) {
+      const activeContext = chatTabs.getActiveContext();
+      if (activeContext) {
+        await chatTabs.startResource(activeContext.resource);
+        await recentSessions.refresh(activeContext.controller.folder);
+        await uiState.restoreControllerDraft(activeContext.controller);
+        void vscode.window.showInformationMessage(
+          `Pi started for ${activeContext.controller.folder.name}`
+        );
+        refreshViews();
+        return activeContext.controller.folder.uri.toString();
+      }
+    }
     return withController(
       async (controller) => {
         await controller.start();
@@ -262,6 +309,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   });
 
   registrations.set('piRpcInternal.openChat', async () => {
+    if (editorTabsEnabled()) {
+      await chatTabs.openCurrentChat({ focusComposer: true });
+      return;
+    }
     await chat.show();
     await chat.focusComposer();
   });
@@ -281,6 +332,26 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   });
 
   registrations.set('piRpc.prompt', async (value?: unknown) => {
+    if (editorTabsEnabled()) {
+      const activeContext = chatTabs.getActiveContext();
+      if (activeContext) {
+        ensureTrustedForMutation();
+        const record = asRecord(value);
+        const message =
+          asString(value) ??
+          asString(record?.message) ??
+          (await vscode.window.showInputBox({ title: 'Prompt Pi' }));
+        if (message) {
+          const prepared = await chatTabs.preparePromptContext(activeContext.resource);
+          if (prepared) {
+            await prepared.controller.prompt(message, 'prompt');
+            await chatTabs.focusComposer(prepared.resource);
+          }
+        }
+        refreshViews();
+        return undefined;
+      }
+    }
     return withController(
       async (controller) => {
         const record = asRecord(value);
@@ -290,7 +361,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           (await vscode.window.showInputBox({ title: 'Prompt Pi' }));
         if (message) {
           await controller.prompt(message, 'prompt');
-          await chat.show();
+          if (editorTabsEnabled()) {
+            await chatTabs.openCurrentChat({ focusComposer: true });
+          } else {
+            await chat.show();
+          }
         }
       },
       { requireTrust: true }
@@ -298,6 +373,23 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   });
 
   registrations.set('piRpc.steer', async (value?: unknown) => {
+    if (editorTabsEnabled()) {
+      const activeContext = chatTabs.getActiveContext();
+      if (activeContext) {
+        ensureTrustedForMutation();
+        const record = asRecord(value);
+        const message =
+          asString(value) ??
+          asString(record?.message) ??
+          (await vscode.window.showInputBox({ title: 'Steer message' }));
+        if (message) {
+          const prepared = await chatTabs.preparePromptContext(activeContext.resource);
+          await prepared?.controller.prompt(message, 'steer');
+        }
+        refreshViews();
+        return undefined;
+      }
+    }
     return withController(
       async (controller) => {
         const record = asRecord(value);
@@ -314,6 +406,23 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   });
 
   registrations.set('piRpc.followUp', async (value?: unknown) => {
+    if (editorTabsEnabled()) {
+      const activeContext = chatTabs.getActiveContext();
+      if (activeContext) {
+        ensureTrustedForMutation();
+        const record = asRecord(value);
+        const message =
+          asString(value) ??
+          asString(record?.message) ??
+          (await vscode.window.showInputBox({ title: 'Follow-up message' }));
+        if (message) {
+          const prepared = await chatTabs.preparePromptContext(activeContext.resource);
+          await prepared?.controller.prompt(message, 'followUp');
+        }
+        refreshViews();
+        return undefined;
+      }
+    }
     return withController(
       async (controller) => {
         const record = asRecord(value);
@@ -332,6 +441,56 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   registrations.set('piRpc.abort', async () => withController((controller) => controller.abort()));
 
   registrations.set('piRpc.newSession', async (value?: unknown) => {
+    if (editorTabsEnabled()) {
+      ensureWorkspaceAvailable();
+      ensureTrustedForMutation();
+      const activeContext = chatTabs.getActiveContext();
+      const controller =
+        activeContext?.controller ?? (await registry.getSelectedOrPick({ forcePicker: false }));
+      if (!controller) {
+        return undefined;
+      }
+      registry.setActive(controller);
+      statusBar.bind(controller);
+      const record = asRecord(value);
+      const currentSession = asString(controller.snapshot.state.sessionFile);
+      const sourceIdentity = activeContext?.target ?? {
+        workspaceFolderUri: controller.folder.uri.toString(),
+        kind: currentSession ? ('sessionFile' as const) : ('workspaceDraft' as const),
+        sessionFile: currentSession,
+        sessionId: asString(controller.snapshot.state.sessionId),
+      };
+      const composer = await uiState.getComposerStateForIdentity(controller, sourceIdentity);
+      await uiState.captureControllerDraftForIdentity(controller, sourceIdentity);
+      let parentSession = asString(record?.parentSession);
+      if (currentSession && !parentSession) {
+        const warning =
+          composer.draft.trim() ||
+          composer.pendingContextItems.length ||
+          composer.pendingImages.length
+            ? "\n\nUnsent draft and attachments stay in their current tab. They won't be sent or copied."
+            : '';
+        const confirm = await vscode.window.showWarningMessage(
+          `Start a new chat from this workspace.${warning}`,
+          { modal: true },
+          'Start fresh',
+          'Continue from current as parent'
+        );
+        if (!confirm) {
+          await chatTabs.focusComposer(activeContext?.resource);
+          return { cancelled: true };
+        }
+        parentSession = confirm === 'Continue from current as parent' ? currentSession : undefined;
+      }
+      await chatTabs.openDraftForWorkspace(controller, { focusComposer: true });
+      const result = await controller.newSession(parentSession);
+      await recentSessions.refresh(controller.folder);
+      await uiState.restoreControllerDraft(controller);
+      await chatTabs.promoteDraftToCurrentSession(controller);
+      await chatTabs.focusComposer();
+      refreshViews();
+      return result;
+    }
     return withController(
       async (controller) => {
         const record = asRecord(value);
@@ -344,7 +503,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             composer.draft.trim() ||
             composer.pendingContextItems.length ||
             composer.pendingImages.length
-              ? "\n\nUnsent draft and attachments stay in Current Chat. They won't be sent or copied."
+              ? "\n\nUnsent draft and attachments stay in the active chat tab. They won't be sent or copied."
               : '';
           const confirm = await vscode.window.showWarningMessage(
             `Start a new chat from this workspace.${warning}`,
@@ -517,6 +676,42 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     );
   });
   registrations.set('piRpc.switchSession', async (value?: unknown) => {
+    if (editorTabsEnabled()) {
+      ensureWorkspaceAvailable();
+      ensureTrustedForMutation();
+      const activeContext = chatTabs.getActiveContext();
+      const controller =
+        activeContext?.controller ??
+        (await registry.getSelectedOrPick({
+          title: 'Choose workspace for session history',
+        }));
+      if (!controller) {
+        return undefined;
+      }
+      const record = asRecord(value);
+      const picked =
+        asString(record?.sessionPath) && asString(record?.label)
+          ? {
+              sessionPath: asString(record?.sessionPath)!,
+              label: asString(record?.label)!,
+            }
+          : asString(record?.sessionPath)
+            ? {
+                sessionPath: asString(record?.sessionPath)!,
+                label: asString(record?.label) ?? 'Saved chat',
+              }
+            : await pickRecentSession(controller, 'Resume Chat');
+      if (!picked) {
+        return { cancelled: true };
+      }
+      await recentSessions.refresh(controller.folder);
+      const resource = await chatTabs.openForSessionFile(controller, picked.sessionPath, {
+        focusComposer: true,
+      });
+      await chatTabs.activateResource(resource, { startIfStopped: false });
+      refreshViews();
+      return picked;
+    }
     return withController(
       async (controller) => {
         const record = asRecord(value);
@@ -562,6 +757,46 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     );
   });
   registrations.set('piRpc.forkSession', async (value?: unknown) => {
+    if (editorTabsEnabled()) {
+      const activeContext = chatTabs.getActiveContext();
+      if (activeContext) {
+        ensureTrustedForMutation();
+        const live = await chatTabs.activateResource(activeContext.resource, {
+          startIfStopped: true,
+        });
+        if (!live) {
+          return undefined;
+        }
+        const entryId = asString(asRecord(value)?.entryId);
+        const pickForkEntryId = async (): Promise<string | undefined> => {
+          if (entryId) {
+            return entryId;
+          }
+          const entries = await live.controller.getForkMessages();
+          const picked = await vscode.window.showQuickPick(
+            entries.map((entry) => ({
+              label: 'Start Branch',
+              description: String(entry.text ?? '').slice(0, 120),
+              detail: String(entry.entryId ?? 'entry'),
+              entry,
+            })),
+            { title: 'Start Branch from User Message', matchOnDescription: true }
+          );
+          return typeof picked?.entry.entryId === 'string' ? picked.entry.entryId : undefined;
+        };
+        const chosenEntryId = await pickForkEntryId();
+        if (!chosenEntryId) {
+          return { cancelled: true };
+        }
+        await uiState.captureControllerDraftForIdentity(live.controller, live.target);
+        const result = await live.controller.fork(chosenEntryId);
+        await recentSessions.refresh(live.controller.folder);
+        await uiState.captureControllerDraft(live.controller);
+        const resource = await chatTabs.openCurrentChat({ focusComposer: true });
+        refreshViews();
+        return resource ? result : { cancelled: true };
+      }
+    }
     return withController(
       async (controller) => {
         const entryId = asString(asRecord(value)?.entryId);
@@ -597,6 +832,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     );
   });
   registrations.set('piRpc.cloneSession', async () => {
+    if (editorTabsEnabled()) {
+      const activeContext = chatTabs.getActiveContext();
+      if (activeContext) {
+        ensureTrustedForMutation();
+        const live = await chatTabs.activateResource(activeContext.resource, {
+          startIfStopped: true,
+        });
+        if (!live) {
+          return undefined;
+        }
+        await uiState.captureControllerDraftForIdentity(live.controller, live.target);
+        const result = await live.controller.clone();
+        await recentSessions.refresh(live.controller.folder);
+        await uiState.captureControllerDraft(live.controller);
+        await chatTabs.openCurrentChat({ focusComposer: true });
+        refreshViews();
+        return result;
+      }
+    }
     return withController(
       async (controller) => {
         await uiState.captureControllerDraft(controller);
@@ -937,7 +1191,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           method: 'setTitle',
           title,
         });
-        await chat.refresh();
+        if (editorTabsEnabled()) {
+          await chatTabs.refreshVisibleTabs();
+        } else {
+          await chat.refresh();
+        }
         return controller.snapshot.title;
       },
       { autoStart: false }
@@ -997,7 +1255,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     withController(
       async (controller) => {
         const request = localUi.pasteToEditor(controller, 'Pasted from compatibility surface');
-        await chat.refresh();
+        if (editorTabsEnabled()) {
+          await chatTabs.refreshVisibleTabs();
+        } else {
+          await chat.refresh();
+        }
         return capability('pasteToEditor', request);
       },
       { requireTrust: true, autoStart: false }

@@ -29,9 +29,19 @@ async function run() {
   assert.ok(all.includes('piRpc.switchSession'));
 
   const views = extension.packageJSON.contributes.views.piRpc.map((view) => view.id);
-  assert.ok(views.includes('piRpc.newChat'));
-  assert.ok(views.includes('piRpc.resumeChat'));
-  assert.ok(views.includes('piRpc.currentChat'));
+  assert.deepEqual(views, ['piRpc.newChat', 'piRpc.resumeChat']);
+
+  const customEditor = extension.packageJSON.contributes.customEditors.find(
+    (item) => item.viewType === 'piRpc.chatEditor'
+  );
+  assert.ok(customEditor, 'missing pi chat custom editor contribution');
+
+  const editorTitleMenu = extension.packageJSON.contributes.menus['editor/title'];
+  assert.ok(editorTitleMenu.some((item) => item.command === 'piRpcInternal.openChat'));
+  assert.ok(editorTitleMenu.some((item) => item.command === 'piRpc.newSession'));
+
+  const viewTitleMenu = extension.packageJSON.contributes.menus['view/title'];
+  assert.ok(!viewTitleMenu.some((item) => String(item.when).includes('piRpc.currentChat')));
 
   const advancedMode = await vscode.commands.executeCommand('piRpc.toggleAdvancedMode');
   assert.equal(advancedMode, 'advanced');

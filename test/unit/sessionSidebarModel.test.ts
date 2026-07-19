@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  createCurrentChatSidebarModel,
   createNewChatSidebarModel,
   createResumeChatSidebarModel,
 } from '../../src/ui/trees/sessionSidebarModel';
@@ -18,7 +17,7 @@ test('new chat sidebar model shows primary action and unsent draft warning', () 
 
   assert.equal(model[0]?.label, 'Start fresh with Pi in this workspace');
   assert.equal(model[1]?.label, 'New Chat');
-  assert.equal(model[2]?.label, 'Unsent draft and attachments stay in Current Chat.');
+  assert.equal(model[2]?.label, 'Unsent draft and attachments stay in the active chat tab.');
 });
 
 test('resume chat sidebar model renders filter state and current marker', () => {
@@ -115,33 +114,4 @@ test('resume chat sidebar model shows loading and error states for recent chats'
   });
   assert.equal(errorModel[2]?.label, "Couldn't read recent chats");
   assert.equal(errorModel[3]?.label, 'Try again');
-});
-
-test('current chat sidebar model summarizes workspace, model, status, and stop action', () => {
-  const model = createCurrentChatSidebarModel({
-    activeFolderName: 'workspace-a',
-    activeState: {
-      connectionState: 'busy',
-      workspaceFolderName: 'workspace-a',
-      state: {
-        sessionFile: '/tmp/sessions/current.jsonl',
-        sessionName: 'Current Session',
-        sessionId: 'sid',
-        isStreaming: true,
-        isCompacting: false,
-        model: { provider: 'mock', id: 'model' },
-        pendingMessageCount: 1,
-      },
-    },
-    recent: baseRecent,
-    hasDraft: false,
-    hasPendingAttachments: false,
-  });
-
-  assert.equal(model[0]?.label, 'Open Current Chat');
-  assert.equal(model[1]?.description, 'workspace-a');
-  assert.equal(model[3]?.description, 'mock/model');
-  assert.equal(model[4]?.description, 'Pi is replying');
-  assert.equal(model[5]?.label, 'Advanced');
-  assert.equal(model[6]?.label, 'Stop');
 });

@@ -6,10 +6,10 @@ Direct VS Code integration for Pi `0.80.10` RPC mode.
 
 - One Pi RPC subprocess per selected workspace folder
 - Strict UTF-8 LF-only JSONL transport with correlated requests
-- Start & Sessions sidebar with Quick Start, Current Session, Recent Sessions, and Help
+- Activity Bar launcher/history sidebar with New Chat, Resume Chat, and recent-session search
+- Stable `pi-chat:` custom editor tabs with native reveal/dedup, multi-session/multi-root isolation, and reopen-safe session identity
 - Safe recent-session discovery from Pi session files/session metadata, with search, refresh, current markers, and resume actions
-- Conversation & Branches, Queues, Workflow, and Advanced & Diagnostics views with clearer plain-language labels
-- Secure chat webview with streamed transcript, current session header, queue controls, status/widgets/title support, and progressive disclosure
+- Secure in-editor Pi chat surface with streamed transcript, per-tab composer/attachments, status/widgets/title support, and progressive disclosure
 - Direct `get_commands` discovery for Pi extensions, prompts, skills, and packages
 - Restricted-mode aware startup with `--no-approve`
 - Redacted diagnostics and health export
@@ -17,19 +17,16 @@ Direct VS Code integration for Pi `0.80.10` RPC mode.
 ## Session workflow
 
 ```text
-Start & Sessions
-  ├─ Start Pi
-  ├─ New Session / Resume Session
-  ├─ Open Chat
-  └─ Recent Sessions (search, refresh, resume)
+Sidebar
+  ├─ New Chat
+  └─ Resume Chat / Search / Recent Sessions
 
-Open Chat
-  ├─ Current workspace / session / model / status
-  ├─ Ask Pi
-  └─ Conversation, Queues, Workflow, Session Tools, Advanced
-
-Conversation & Branches
-  └─ Start Branch from an earlier user message or open the Conversation Map
+Pi editor tab
+  ├─ Current session status in the active tab
+  ├─ Model / New / History / More
+  ├─ Current or cached transcript
+  ├─ Composer, attachments, preview, and send/stop
+  └─ Advanced commands, diagnostics, widgets, and context tools
 ```
 
 ## Settings

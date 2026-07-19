@@ -3,7 +3,6 @@ import type { RecentSessionService } from '../../sessions/recentSessionService';
 import type { SessionRegistry } from '../../sessions/sessionRegistry';
 import type { SessionController } from '../../sessions/sessionController';
 import {
-  createCurrentChatSidebarModel,
   createNewChatSidebarModel,
   createResumeChatSidebarModel,
   type SidebarNode,
@@ -119,23 +118,5 @@ export class ResumeChatTreeProvider extends RegistryTreeProvider {
       return [];
     }
     return createResumeChatSidebarModel(await this.sidebarInput(this.recentSessions));
-  }
-}
-
-export class CurrentChatTreeProvider extends RegistryTreeProvider {
-  public constructor(
-    registry: SessionRegistry,
-    private readonly recentSessions: RecentSessionService,
-    uiState: ChatUiState
-  ) {
-    super(registry, uiState);
-    this.recentSessions.onDidChange(() => this.refresh());
-  }
-
-  public async getChildren(element?: SidebarNode): Promise<SidebarNode[]> {
-    if (element) {
-      return [];
-    }
-    return createCurrentChatSidebarModel(await this.sidebarInput(this.recentSessions));
   }
 }

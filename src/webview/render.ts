@@ -154,7 +154,7 @@ function renderMessages(snapshot: WebviewSnapshot): string {
         <p class="empty-copy">Start a new chat, resume a saved chat, or type below.</p>
         <div class="button-row compact">
           <button type="button" data-command="piRpc.newSession">New Chat</button>
-          <button type="button" data-command="piRpc.switchSession">Resume Chat</button>
+          <button type="button" data-command="piRpc.switchSession">History</button>
         </div>
         <button type="button" class="link-button" data-command="piRpcInternal.showHelp">Help</button>
       </div>`;
@@ -419,7 +419,13 @@ export function renderChatApp(snapshot: WebviewSnapshot): string {
   const busy = snapshot.isStreaming || snapshot.connectionState === 'busy';
   const sendLabel = busy ? 'Send next' : 'Send';
   const sendCommand = busy ? 'follow_up' : 'prompt';
-  const summaryLine = `${snapshot.workspaceFolderName} · ${sessionLabel(snapshot)} · ${statusLabel(snapshot)}`;
+  const bindingLabel =
+    snapshot.bindingState === 'cached'
+      ? 'Cached'
+      : snapshot.bindingState === 'draft'
+        ? 'New draft'
+        : 'Current';
+  const summaryLine = `${bindingLabel} · ${snapshot.workspaceFolderName} · ${sessionLabel(snapshot)} · ${statusLabel(snapshot)}`;
   const attachmentsVisible =
     snapshot.pendingContextItems.length > 0 || snapshot.pendingImages.length > 0;
   const restrictedBanner = snapshot.isTrusted
@@ -437,7 +443,7 @@ export function renderChatApp(snapshot: WebviewSnapshot): string {
         <div class="header-controls">
           <button type="button" data-command="piRpc.showModels">${escapeHtml(modelLabel(snapshot))}</button>
           <button type="button" data-command="piRpc.newSession">New</button>
-          <button type="button" data-command="piRpc.switchSession">Resume</button>
+          <button type="button" data-command="piRpc.switchSession">History</button>
           ${renderMoreMenu(snapshot)}
         </div>
       </header>

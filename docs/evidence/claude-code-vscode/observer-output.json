@@ -1,0 +1,1627 @@
+{
+  "startedAt": "2026-07-19T19:44:14.298Z",
+  "vscodeVersion": "1.129.1",
+  "env": {
+    "home": "<redacted:c28680d4>",
+    "workspaceFolders": ["file://<redacted>/workspace"]
+  },
+  "extensions": [
+    {
+      "id": "local.claude-observer",
+      "isActive": true,
+      "extensionPath": "/tmp/claude-observer"
+    }
+  ],
+  "commands": [
+    "claude-code.acceptProposedDiff",
+    "claude-code.insertAtMentioned",
+    "claude-code.rejectProposedDiff",
+    "claude-vscode.acceptProposedDiff",
+    "claude-vscode.blur",
+    "claude-vscode.editor.open",
+    "claude-vscode.editor.openLast",
+    "claude-vscode.focus",
+    "claude-vscode.insertAtMention",
+    "claude-vscode.logout",
+    "claude-vscode.newConversation",
+    "claude-vscode.openWalkthrough",
+    "claude-vscode.primaryEditor.open",
+    "claude-vscode.rejectProposedDiff",
+    "claude-vscode.reopenClosedSession",
+    "claude-vscode.showLogs",
+    "claude-vscode.sidebar.open",
+    "claude-vscode.terminal.open",
+    "claude-vscode.terminal.open.keyboard",
+    "claude-vscode.toggleDictation",
+    "claude-vscode.window.open"
+  ],
+  "events": [
+    {
+      "type": "capture",
+      "label": "initial",
+      "at": "2026-07-19T19:44:22.303Z",
+      "state": {
+        "isTrusted": true,
+        "activeTextEditor": null,
+        "visibleTextEditors": [],
+        "tabSnapshot": {
+          "activeGroupIndex": 0,
+          "groups": [
+            {
+              "groupIndex": 0,
+              "isActive": true,
+              "viewColumn": 1,
+              "tabs": [
+                {
+                  "tabIndex": 0,
+                  "label": "<redacted:ea164d63>",
+                  "isActive": true,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:df171f93>"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "config": {
+          "preferredLocation": "<label:320e00e7>",
+          "useTerminal": false,
+          "enableNewConversationShortcut": false,
+          "enableReopenClosedSessionShortcut": true
+        }
+      }
+    },
+    {
+      "type": "command",
+      "command": "claude-vscode.editor.openLast",
+      "at": "2026-07-19T19:44:22.304Z",
+      "before": {
+        "isTrusted": true,
+        "activeTextEditor": null,
+        "visibleTextEditors": [],
+        "tabSnapshot": {
+          "activeGroupIndex": 0,
+          "groups": [
+            {
+              "groupIndex": 0,
+              "isActive": true,
+              "viewColumn": 1,
+              "tabs": [
+                {
+                  "tabIndex": 0,
+                  "label": "<redacted:ea164d63>",
+                  "isActive": true,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:df171f93>"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "config": {
+          "preferredLocation": "<label:320e00e7>",
+          "useTerminal": false,
+          "enableNewConversationShortcut": false,
+          "enableReopenClosedSessionShortcut": true
+        }
+      },
+      "after": {
+        "isTrusted": true,
+        "activeTextEditor": null,
+        "visibleTextEditors": [],
+        "tabSnapshot": {
+          "activeGroupIndex": 1,
+          "groups": [
+            {
+              "groupIndex": 0,
+              "isActive": false,
+              "viewColumn": 1,
+              "tabs": [
+                {
+                  "tabIndex": 0,
+                  "label": "<redacted:ea164d63>",
+                  "isActive": true,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:df171f93>"
+                  }
+                }
+              ]
+            },
+            {
+              "groupIndex": 1,
+              "isActive": true,
+              "viewColumn": 2,
+              "tabs": [
+                {
+                  "tabIndex": 0,
+                  "label": "Claude Code",
+                  "isActive": true,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:f53a372a>",
+                    "viewType": "<redacted:94bf1797>"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "config": {
+          "preferredLocation": "<label:320e00e7>",
+          "useTerminal": false,
+          "enableNewConversationShortcut": false,
+          "enableReopenClosedSessionShortcut": true
+        }
+      }
+    },
+    {
+      "type": "command",
+      "command": "claude-vscode.editor.openLast",
+      "at": "2026-07-19T19:44:24.350Z",
+      "before": {
+        "isTrusted": true,
+        "activeTextEditor": null,
+        "visibleTextEditors": [],
+        "tabSnapshot": {
+          "activeGroupIndex": 1,
+          "groups": [
+            {
+              "groupIndex": 0,
+              "isActive": false,
+              "viewColumn": 1,
+              "tabs": [
+                {
+                  "tabIndex": 0,
+                  "label": "<redacted:ea164d63>",
+                  "isActive": true,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:df171f93>"
+                  }
+                }
+              ]
+            },
+            {
+              "groupIndex": 1,
+              "isActive": true,
+              "viewColumn": 2,
+              "tabs": [
+                {
+                  "tabIndex": 0,
+                  "label": "Claude Code",
+                  "isActive": true,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:f53a372a>",
+                    "viewType": "<redacted:94bf1797>"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "config": {
+          "preferredLocation": "<label:320e00e7>",
+          "useTerminal": false,
+          "enableNewConversationShortcut": false,
+          "enableReopenClosedSessionShortcut": true
+        }
+      },
+      "after": {
+        "isTrusted": true,
+        "activeTextEditor": null,
+        "visibleTextEditors": [],
+        "tabSnapshot": {
+          "activeGroupIndex": 1,
+          "groups": [
+            {
+              "groupIndex": 0,
+              "isActive": false,
+              "viewColumn": 1,
+              "tabs": [
+                {
+                  "tabIndex": 0,
+                  "label": "<redacted:ea164d63>",
+                  "isActive": true,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:df171f93>"
+                  }
+                }
+              ]
+            },
+            {
+              "groupIndex": 1,
+              "isActive": true,
+              "viewColumn": 2,
+              "tabs": [
+                {
+                  "tabIndex": 0,
+                  "label": "Claude Code",
+                  "isActive": false,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:f53a372a>",
+                    "viewType": "<redacted:94bf1797>"
+                  }
+                },
+                {
+                  "tabIndex": 1,
+                  "label": "Claude Code",
+                  "isActive": true,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:f53a372a>",
+                    "viewType": "<redacted:94bf1797>"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "config": {
+          "preferredLocation": "<label:320e00e7>",
+          "useTerminal": false,
+          "enableNewConversationShortcut": false,
+          "enableReopenClosedSessionShortcut": true
+        }
+      }
+    },
+    {
+      "type": "command",
+      "command": "claude-vscode.editor.open",
+      "at": "2026-07-19T19:44:26.373Z",
+      "before": {
+        "isTrusted": true,
+        "activeTextEditor": null,
+        "visibleTextEditors": [],
+        "tabSnapshot": {
+          "activeGroupIndex": 1,
+          "groups": [
+            {
+              "groupIndex": 0,
+              "isActive": false,
+              "viewColumn": 1,
+              "tabs": [
+                {
+                  "tabIndex": 0,
+                  "label": "<redacted:ea164d63>",
+                  "isActive": true,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:df171f93>"
+                  }
+                }
+              ]
+            },
+            {
+              "groupIndex": 1,
+              "isActive": true,
+              "viewColumn": 2,
+              "tabs": [
+                {
+                  "tabIndex": 0,
+                  "label": "Claude Code",
+                  "isActive": false,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:f53a372a>",
+                    "viewType": "<redacted:94bf1797>"
+                  }
+                },
+                {
+                  "tabIndex": 1,
+                  "label": "Claude Code",
+                  "isActive": true,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:f53a372a>",
+                    "viewType": "<redacted:94bf1797>"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "config": {
+          "preferredLocation": "<label:320e00e7>",
+          "useTerminal": false,
+          "enableNewConversationShortcut": false,
+          "enableReopenClosedSessionShortcut": true
+        }
+      },
+      "after": {
+        "isTrusted": true,
+        "activeTextEditor": null,
+        "visibleTextEditors": [],
+        "tabSnapshot": {
+          "activeGroupIndex": 1,
+          "groups": [
+            {
+              "groupIndex": 0,
+              "isActive": false,
+              "viewColumn": 1,
+              "tabs": [
+                {
+                  "tabIndex": 0,
+                  "label": "<redacted:ea164d63>",
+                  "isActive": true,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:df171f93>"
+                  }
+                }
+              ]
+            },
+            {
+              "groupIndex": 1,
+              "isActive": true,
+              "viewColumn": 2,
+              "tabs": [
+                {
+                  "tabIndex": 0,
+                  "label": "Claude Code",
+                  "isActive": false,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:f53a372a>",
+                    "viewType": "<redacted:94bf1797>"
+                  }
+                },
+                {
+                  "tabIndex": 1,
+                  "label": "Claude Code",
+                  "isActive": false,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:f53a372a>",
+                    "viewType": "<redacted:94bf1797>"
+                  }
+                },
+                {
+                  "tabIndex": 2,
+                  "label": "Claude Code",
+                  "isActive": true,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:f53a372a>",
+                    "viewType": "<redacted:94bf1797>"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "config": {
+          "preferredLocation": "<label:320e00e7>",
+          "useTerminal": false,
+          "enableNewConversationShortcut": false,
+          "enableReopenClosedSessionShortcut": true
+        }
+      }
+    },
+    {
+      "type": "command",
+      "command": "claude-vscode.primaryEditor.open",
+      "at": "2026-07-19T19:44:28.400Z",
+      "before": {
+        "isTrusted": true,
+        "activeTextEditor": null,
+        "visibleTextEditors": [],
+        "tabSnapshot": {
+          "activeGroupIndex": 1,
+          "groups": [
+            {
+              "groupIndex": 0,
+              "isActive": false,
+              "viewColumn": 1,
+              "tabs": [
+                {
+                  "tabIndex": 0,
+                  "label": "<redacted:ea164d63>",
+                  "isActive": true,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:df171f93>"
+                  }
+                }
+              ]
+            },
+            {
+              "groupIndex": 1,
+              "isActive": true,
+              "viewColumn": 2,
+              "tabs": [
+                {
+                  "tabIndex": 0,
+                  "label": "Claude Code",
+                  "isActive": false,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:f53a372a>",
+                    "viewType": "<redacted:94bf1797>"
+                  }
+                },
+                {
+                  "tabIndex": 1,
+                  "label": "Claude Code",
+                  "isActive": false,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:f53a372a>",
+                    "viewType": "<redacted:94bf1797>"
+                  }
+                },
+                {
+                  "tabIndex": 2,
+                  "label": "Claude Code",
+                  "isActive": true,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:f53a372a>",
+                    "viewType": "<redacted:94bf1797>"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "config": {
+          "preferredLocation": "<label:320e00e7>",
+          "useTerminal": false,
+          "enableNewConversationShortcut": false,
+          "enableReopenClosedSessionShortcut": true
+        }
+      },
+      "after": {
+        "isTrusted": true,
+        "activeTextEditor": null,
+        "visibleTextEditors": [],
+        "tabSnapshot": {
+          "activeGroupIndex": 0,
+          "groups": [
+            {
+              "groupIndex": 0,
+              "isActive": true,
+              "viewColumn": 1,
+              "tabs": [
+                {
+                  "tabIndex": 0,
+                  "label": "<redacted:ea164d63>",
+                  "isActive": false,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:df171f93>"
+                  }
+                },
+                {
+                  "tabIndex": 1,
+                  "label": "Claude Code",
+                  "isActive": true,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:f53a372a>",
+                    "viewType": "<redacted:94bf1797>"
+                  }
+                }
+              ]
+            },
+            {
+              "groupIndex": 1,
+              "isActive": false,
+              "viewColumn": 2,
+              "tabs": [
+                {
+                  "tabIndex": 0,
+                  "label": "Claude Code",
+                  "isActive": false,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:f53a372a>",
+                    "viewType": "<redacted:94bf1797>"
+                  }
+                },
+                {
+                  "tabIndex": 1,
+                  "label": "Claude Code",
+                  "isActive": false,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:f53a372a>",
+                    "viewType": "<redacted:94bf1797>"
+                  }
+                },
+                {
+                  "tabIndex": 2,
+                  "label": "Claude Code",
+                  "isActive": true,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:f53a372a>",
+                    "viewType": "<redacted:94bf1797>"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "config": {
+          "preferredLocation": "<label:320e00e7>",
+          "useTerminal": false,
+          "enableNewConversationShortcut": false,
+          "enableReopenClosedSessionShortcut": true
+        }
+      }
+    },
+    {
+      "type": "command",
+      "command": "claude-vscode.sidebar.open",
+      "at": "2026-07-19T19:44:30.423Z",
+      "before": {
+        "isTrusted": true,
+        "activeTextEditor": null,
+        "visibleTextEditors": [],
+        "tabSnapshot": {
+          "activeGroupIndex": 0,
+          "groups": [
+            {
+              "groupIndex": 0,
+              "isActive": true,
+              "viewColumn": 1,
+              "tabs": [
+                {
+                  "tabIndex": 0,
+                  "label": "<redacted:ea164d63>",
+                  "isActive": false,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:df171f93>"
+                  }
+                },
+                {
+                  "tabIndex": 1,
+                  "label": "Claude Code",
+                  "isActive": true,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:f53a372a>",
+                    "viewType": "<redacted:94bf1797>"
+                  }
+                }
+              ]
+            },
+            {
+              "groupIndex": 1,
+              "isActive": false,
+              "viewColumn": 2,
+              "tabs": [
+                {
+                  "tabIndex": 0,
+                  "label": "Claude Code",
+                  "isActive": false,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:f53a372a>",
+                    "viewType": "<redacted:94bf1797>"
+                  }
+                },
+                {
+                  "tabIndex": 1,
+                  "label": "Claude Code",
+                  "isActive": false,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:f53a372a>",
+                    "viewType": "<redacted:94bf1797>"
+                  }
+                },
+                {
+                  "tabIndex": 2,
+                  "label": "Claude Code",
+                  "isActive": true,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:f53a372a>",
+                    "viewType": "<redacted:94bf1797>"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "config": {
+          "preferredLocation": "<label:320e00e7>",
+          "useTerminal": false,
+          "enableNewConversationShortcut": false,
+          "enableReopenClosedSessionShortcut": true
+        }
+      },
+      "after": {
+        "isTrusted": true,
+        "activeTextEditor": null,
+        "visibleTextEditors": [],
+        "tabSnapshot": {
+          "activeGroupIndex": 0,
+          "groups": [
+            {
+              "groupIndex": 0,
+              "isActive": true,
+              "viewColumn": 1,
+              "tabs": [
+                {
+                  "tabIndex": 0,
+                  "label": "<redacted:ea164d63>",
+                  "isActive": false,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:df171f93>"
+                  }
+                },
+                {
+                  "tabIndex": 1,
+                  "label": "Claude Code",
+                  "isActive": true,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:f53a372a>",
+                    "viewType": "<redacted:94bf1797>"
+                  }
+                }
+              ]
+            },
+            {
+              "groupIndex": 1,
+              "isActive": false,
+              "viewColumn": 2,
+              "tabs": [
+                {
+                  "tabIndex": 0,
+                  "label": "Claude Code",
+                  "isActive": false,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:f53a372a>",
+                    "viewType": "<redacted:94bf1797>"
+                  }
+                },
+                {
+                  "tabIndex": 1,
+                  "label": "Claude Code",
+                  "isActive": false,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:f53a372a>",
+                    "viewType": "<redacted:94bf1797>"
+                  }
+                },
+                {
+                  "tabIndex": 2,
+                  "label": "Claude Code",
+                  "isActive": true,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:f53a372a>",
+                    "viewType": "<redacted:94bf1797>"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "config": {
+          "preferredLocation": "<label:320e00e7>",
+          "useTerminal": false,
+          "enableNewConversationShortcut": false,
+          "enableReopenClosedSessionShortcut": true
+        }
+      }
+    },
+    {
+      "type": "command",
+      "command": "claude-vscode.newConversation",
+      "at": "2026-07-19T19:44:32.441Z",
+      "before": {
+        "isTrusted": true,
+        "activeTextEditor": null,
+        "visibleTextEditors": [],
+        "tabSnapshot": {
+          "activeGroupIndex": 0,
+          "groups": [
+            {
+              "groupIndex": 0,
+              "isActive": true,
+              "viewColumn": 1,
+              "tabs": [
+                {
+                  "tabIndex": 0,
+                  "label": "<redacted:ea164d63>",
+                  "isActive": false,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:df171f93>"
+                  }
+                },
+                {
+                  "tabIndex": 1,
+                  "label": "Claude Code",
+                  "isActive": true,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:f53a372a>",
+                    "viewType": "<redacted:94bf1797>"
+                  }
+                }
+              ]
+            },
+            {
+              "groupIndex": 1,
+              "isActive": false,
+              "viewColumn": 2,
+              "tabs": [
+                {
+                  "tabIndex": 0,
+                  "label": "Claude Code",
+                  "isActive": false,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:f53a372a>",
+                    "viewType": "<redacted:94bf1797>"
+                  }
+                },
+                {
+                  "tabIndex": 1,
+                  "label": "Claude Code",
+                  "isActive": false,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:f53a372a>",
+                    "viewType": "<redacted:94bf1797>"
+                  }
+                },
+                {
+                  "tabIndex": 2,
+                  "label": "Claude Code",
+                  "isActive": true,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:f53a372a>",
+                    "viewType": "<redacted:94bf1797>"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "config": {
+          "preferredLocation": "<label:320e00e7>",
+          "useTerminal": false,
+          "enableNewConversationShortcut": false,
+          "enableReopenClosedSessionShortcut": true
+        }
+      },
+      "after": {
+        "isTrusted": true,
+        "activeTextEditor": null,
+        "visibleTextEditors": [],
+        "tabSnapshot": {
+          "activeGroupIndex": 0,
+          "groups": [
+            {
+              "groupIndex": 0,
+              "isActive": true,
+              "viewColumn": 1,
+              "tabs": [
+                {
+                  "tabIndex": 0,
+                  "label": "<redacted:ea164d63>",
+                  "isActive": false,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:df171f93>"
+                  }
+                },
+                {
+                  "tabIndex": 1,
+                  "label": "Claude Code",
+                  "isActive": true,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:f53a372a>",
+                    "viewType": "<redacted:94bf1797>"
+                  }
+                }
+              ]
+            },
+            {
+              "groupIndex": 1,
+              "isActive": false,
+              "viewColumn": 2,
+              "tabs": [
+                {
+                  "tabIndex": 0,
+                  "label": "Claude Code",
+                  "isActive": false,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:f53a372a>",
+                    "viewType": "<redacted:94bf1797>"
+                  }
+                },
+                {
+                  "tabIndex": 1,
+                  "label": "Claude Code",
+                  "isActive": false,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:f53a372a>",
+                    "viewType": "<redacted:94bf1797>"
+                  }
+                },
+                {
+                  "tabIndex": 2,
+                  "label": "Claude Code",
+                  "isActive": true,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:f53a372a>",
+                    "viewType": "<redacted:94bf1797>"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "config": {
+          "preferredLocation": "<label:320e00e7>",
+          "useTerminal": false,
+          "enableNewConversationShortcut": false,
+          "enableReopenClosedSessionShortcut": true
+        }
+      }
+    },
+    {
+      "type": "command",
+      "command": "workbench.action.closeActiveEditor",
+      "at": "2026-07-19T19:44:34.444Z",
+      "before": {
+        "isTrusted": true,
+        "activeTextEditor": null,
+        "visibleTextEditors": [],
+        "tabSnapshot": {
+          "activeGroupIndex": 0,
+          "groups": [
+            {
+              "groupIndex": 0,
+              "isActive": true,
+              "viewColumn": 1,
+              "tabs": [
+                {
+                  "tabIndex": 0,
+                  "label": "<redacted:ea164d63>",
+                  "isActive": false,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:df171f93>"
+                  }
+                },
+                {
+                  "tabIndex": 1,
+                  "label": "Claude Code",
+                  "isActive": true,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:f53a372a>",
+                    "viewType": "<redacted:94bf1797>"
+                  }
+                }
+              ]
+            },
+            {
+              "groupIndex": 1,
+              "isActive": false,
+              "viewColumn": 2,
+              "tabs": [
+                {
+                  "tabIndex": 0,
+                  "label": "Claude Code",
+                  "isActive": false,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:f53a372a>",
+                    "viewType": "<redacted:94bf1797>"
+                  }
+                },
+                {
+                  "tabIndex": 1,
+                  "label": "Claude Code",
+                  "isActive": false,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:f53a372a>",
+                    "viewType": "<redacted:94bf1797>"
+                  }
+                },
+                {
+                  "tabIndex": 2,
+                  "label": "Claude Code",
+                  "isActive": true,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:f53a372a>",
+                    "viewType": "<redacted:94bf1797>"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "config": {
+          "preferredLocation": "<label:320e00e7>",
+          "useTerminal": false,
+          "enableNewConversationShortcut": false,
+          "enableReopenClosedSessionShortcut": true
+        }
+      },
+      "result": [null],
+      "after": {
+        "isTrusted": true,
+        "activeTextEditor": null,
+        "visibleTextEditors": [],
+        "tabSnapshot": {
+          "activeGroupIndex": 0,
+          "groups": [
+            {
+              "groupIndex": 0,
+              "isActive": true,
+              "viewColumn": 1,
+              "tabs": [
+                {
+                  "tabIndex": 0,
+                  "label": "<redacted:ea164d63>",
+                  "isActive": true,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:df171f93>"
+                  }
+                }
+              ]
+            },
+            {
+              "groupIndex": 1,
+              "isActive": false,
+              "viewColumn": 2,
+              "tabs": [
+                {
+                  "tabIndex": 0,
+                  "label": "Claude Code",
+                  "isActive": false,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:f53a372a>",
+                    "viewType": "<redacted:94bf1797>"
+                  }
+                },
+                {
+                  "tabIndex": 1,
+                  "label": "Claude Code",
+                  "isActive": false,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:f53a372a>",
+                    "viewType": "<redacted:94bf1797>"
+                  }
+                },
+                {
+                  "tabIndex": 2,
+                  "label": "Claude Code",
+                  "isActive": true,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:f53a372a>",
+                    "viewType": "<redacted:94bf1797>"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "config": {
+          "preferredLocation": "<label:320e00e7>",
+          "useTerminal": false,
+          "enableNewConversationShortcut": false,
+          "enableReopenClosedSessionShortcut": true
+        }
+      }
+    },
+    {
+      "type": "command",
+      "command": "claude-vscode.reopenClosedSession",
+      "at": "2026-07-19T19:44:36.458Z",
+      "before": {
+        "isTrusted": true,
+        "activeTextEditor": null,
+        "visibleTextEditors": [],
+        "tabSnapshot": {
+          "activeGroupIndex": 0,
+          "groups": [
+            {
+              "groupIndex": 0,
+              "isActive": true,
+              "viewColumn": 1,
+              "tabs": [
+                {
+                  "tabIndex": 0,
+                  "label": "<redacted:ea164d63>",
+                  "isActive": true,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:df171f93>"
+                  }
+                }
+              ]
+            },
+            {
+              "groupIndex": 1,
+              "isActive": false,
+              "viewColumn": 2,
+              "tabs": [
+                {
+                  "tabIndex": 0,
+                  "label": "Claude Code",
+                  "isActive": false,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:f53a372a>",
+                    "viewType": "<redacted:94bf1797>"
+                  }
+                },
+                {
+                  "tabIndex": 1,
+                  "label": "Claude Code",
+                  "isActive": false,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:f53a372a>",
+                    "viewType": "<redacted:94bf1797>"
+                  }
+                },
+                {
+                  "tabIndex": 2,
+                  "label": "Claude Code",
+                  "isActive": true,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:f53a372a>",
+                    "viewType": "<redacted:94bf1797>"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "config": {
+          "preferredLocation": "<label:320e00e7>",
+          "useTerminal": false,
+          "enableNewConversationShortcut": false,
+          "enableReopenClosedSessionShortcut": true
+        }
+      },
+      "after": {
+        "isTrusted": true,
+        "activeTextEditor": null,
+        "visibleTextEditors": [],
+        "tabSnapshot": {
+          "activeGroupIndex": 0,
+          "groups": [
+            {
+              "groupIndex": 0,
+              "isActive": true,
+              "viewColumn": 1,
+              "tabs": [
+                {
+                  "tabIndex": 0,
+                  "label": "<redacted:ea164d63>",
+                  "isActive": true,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:df171f93>"
+                  }
+                }
+              ]
+            },
+            {
+              "groupIndex": 1,
+              "isActive": false,
+              "viewColumn": 2,
+              "tabs": [
+                {
+                  "tabIndex": 0,
+                  "label": "Claude Code",
+                  "isActive": false,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:f53a372a>",
+                    "viewType": "<redacted:94bf1797>"
+                  }
+                },
+                {
+                  "tabIndex": 1,
+                  "label": "Claude Code",
+                  "isActive": false,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:f53a372a>",
+                    "viewType": "<redacted:94bf1797>"
+                  }
+                },
+                {
+                  "tabIndex": 2,
+                  "label": "Claude Code",
+                  "isActive": true,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:f53a372a>",
+                    "viewType": "<redacted:94bf1797>"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "config": {
+          "preferredLocation": "<label:320e00e7>",
+          "useTerminal": false,
+          "enableNewConversationShortcut": false,
+          "enableReopenClosedSessionShortcut": true
+        }
+      }
+    },
+    {
+      "type": "command",
+      "command": "claude-vscode.showLogs",
+      "at": "2026-07-19T19:44:38.464Z",
+      "before": {
+        "isTrusted": true,
+        "activeTextEditor": null,
+        "visibleTextEditors": [],
+        "tabSnapshot": {
+          "activeGroupIndex": 0,
+          "groups": [
+            {
+              "groupIndex": 0,
+              "isActive": true,
+              "viewColumn": 1,
+              "tabs": [
+                {
+                  "tabIndex": 0,
+                  "label": "<redacted:ea164d63>",
+                  "isActive": true,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:df171f93>"
+                  }
+                }
+              ]
+            },
+            {
+              "groupIndex": 1,
+              "isActive": false,
+              "viewColumn": 2,
+              "tabs": [
+                {
+                  "tabIndex": 0,
+                  "label": "Claude Code",
+                  "isActive": false,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:f53a372a>",
+                    "viewType": "<redacted:94bf1797>"
+                  }
+                },
+                {
+                  "tabIndex": 1,
+                  "label": "Claude Code",
+                  "isActive": false,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:f53a372a>",
+                    "viewType": "<redacted:94bf1797>"
+                  }
+                },
+                {
+                  "tabIndex": 2,
+                  "label": "Claude Code",
+                  "isActive": true,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:f53a372a>",
+                    "viewType": "<redacted:94bf1797>"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "config": {
+          "preferredLocation": "<label:320e00e7>",
+          "useTerminal": false,
+          "enableNewConversationShortcut": false,
+          "enableReopenClosedSessionShortcut": true
+        }
+      },
+      "after": {
+        "isTrusted": true,
+        "activeTextEditor": null,
+        "visibleTextEditors": [],
+        "tabSnapshot": {
+          "activeGroupIndex": 0,
+          "groups": [
+            {
+              "groupIndex": 0,
+              "isActive": true,
+              "viewColumn": 1,
+              "tabs": [
+                {
+                  "tabIndex": 0,
+                  "label": "<redacted:ea164d63>",
+                  "isActive": true,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:df171f93>"
+                  }
+                }
+              ]
+            },
+            {
+              "groupIndex": 1,
+              "isActive": false,
+              "viewColumn": 2,
+              "tabs": [
+                {
+                  "tabIndex": 0,
+                  "label": "Claude Code",
+                  "isActive": false,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:f53a372a>",
+                    "viewType": "<redacted:94bf1797>"
+                  }
+                },
+                {
+                  "tabIndex": 1,
+                  "label": "Claude Code",
+                  "isActive": false,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:f53a372a>",
+                    "viewType": "<redacted:94bf1797>"
+                  }
+                },
+                {
+                  "tabIndex": 2,
+                  "label": "Claude Code",
+                  "isActive": true,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:f53a372a>",
+                    "viewType": "<redacted:94bf1797>"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "config": {
+          "preferredLocation": "<label:320e00e7>",
+          "useTerminal": false,
+          "enableNewConversationShortcut": false,
+          "enableReopenClosedSessionShortcut": true
+        }
+      }
+    },
+    {
+      "type": "command",
+      "command": "claude-vscode.openWalkthrough",
+      "at": "2026-07-19T19:44:40.468Z",
+      "before": {
+        "isTrusted": true,
+        "activeTextEditor": null,
+        "visibleTextEditors": [],
+        "tabSnapshot": {
+          "activeGroupIndex": 0,
+          "groups": [
+            {
+              "groupIndex": 0,
+              "isActive": true,
+              "viewColumn": 1,
+              "tabs": [
+                {
+                  "tabIndex": 0,
+                  "label": "<redacted:ea164d63>",
+                  "isActive": true,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:df171f93>"
+                  }
+                }
+              ]
+            },
+            {
+              "groupIndex": 1,
+              "isActive": false,
+              "viewColumn": 2,
+              "tabs": [
+                {
+                  "tabIndex": 0,
+                  "label": "Claude Code",
+                  "isActive": false,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:f53a372a>",
+                    "viewType": "<redacted:94bf1797>"
+                  }
+                },
+                {
+                  "tabIndex": 1,
+                  "label": "Claude Code",
+                  "isActive": false,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:f53a372a>",
+                    "viewType": "<redacted:94bf1797>"
+                  }
+                },
+                {
+                  "tabIndex": 2,
+                  "label": "Claude Code",
+                  "isActive": true,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:f53a372a>",
+                    "viewType": "<redacted:94bf1797>"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "config": {
+          "preferredLocation": "<label:320e00e7>",
+          "useTerminal": false,
+          "enableNewConversationShortcut": false,
+          "enableReopenClosedSessionShortcut": true
+        }
+      },
+      "after": {
+        "isTrusted": true,
+        "activeTextEditor": null,
+        "visibleTextEditors": [],
+        "tabSnapshot": {
+          "activeGroupIndex": 0,
+          "groups": [
+            {
+              "groupIndex": 0,
+              "isActive": true,
+              "viewColumn": 1,
+              "tabs": [
+                {
+                  "tabIndex": 0,
+                  "label": "<redacted:ea164d63>",
+                  "isActive": true,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:df171f93>"
+                  }
+                }
+              ]
+            },
+            {
+              "groupIndex": 1,
+              "isActive": false,
+              "viewColumn": 2,
+              "tabs": [
+                {
+                  "tabIndex": 0,
+                  "label": "Claude Code",
+                  "isActive": false,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:f53a372a>",
+                    "viewType": "<redacted:94bf1797>"
+                  }
+                },
+                {
+                  "tabIndex": 1,
+                  "label": "Claude Code",
+                  "isActive": false,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:f53a372a>",
+                    "viewType": "<redacted:94bf1797>"
+                  }
+                },
+                {
+                  "tabIndex": 2,
+                  "label": "Claude Code",
+                  "isActive": true,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:f53a372a>",
+                    "viewType": "<redacted:94bf1797>"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "config": {
+          "preferredLocation": "<label:320e00e7>",
+          "useTerminal": false,
+          "enableNewConversationShortcut": false,
+          "enableReopenClosedSessionShortcut": true
+        }
+      }
+    },
+    {
+      "type": "capture",
+      "label": "final",
+      "at": "2026-07-19T19:44:42.470Z",
+      "state": {
+        "isTrusted": true,
+        "activeTextEditor": null,
+        "visibleTextEditors": [],
+        "tabSnapshot": {
+          "activeGroupIndex": 0,
+          "groups": [
+            {
+              "groupIndex": 0,
+              "isActive": true,
+              "viewColumn": 1,
+              "tabs": [
+                {
+                  "tabIndex": 0,
+                  "label": "<redacted:ea164d63>",
+                  "isActive": true,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:df171f93>"
+                  }
+                }
+              ]
+            },
+            {
+              "groupIndex": 1,
+              "isActive": false,
+              "viewColumn": 2,
+              "tabs": [
+                {
+                  "tabIndex": 0,
+                  "label": "Claude Code",
+                  "isActive": false,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:f53a372a>",
+                    "viewType": "<redacted:94bf1797>"
+                  }
+                },
+                {
+                  "tabIndex": 1,
+                  "label": "Claude Code",
+                  "isActive": false,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:f53a372a>",
+                    "viewType": "<redacted:94bf1797>"
+                  }
+                },
+                {
+                  "tabIndex": 2,
+                  "label": "Claude Code",
+                  "isActive": true,
+                  "isDirty": false,
+                  "isPinned": false,
+                  "input": {
+                    "kind": "<redacted:f53a372a>",
+                    "viewType": "<redacted:94bf1797>"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "config": {
+          "preferredLocation": "<label:320e00e7>",
+          "useTerminal": false,
+          "enableNewConversationShortcut": false,
+          "enableReopenClosedSessionShortcut": true
+        }
+      }
+    }
+  ]
+}

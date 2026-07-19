@@ -1,4 +1,3 @@
-import { basename } from 'node:path';
 import type { ControllerState } from '../../state/types';
 import { formatRelativeTimestamp, type RecentSessionRecord } from '../../sessions/recentSessions';
 import type { RecentSessionsState } from '../../sessions/recentSessionService';
@@ -38,25 +37,6 @@ function sessionDisplayName(session: RecentSessionRecord): string {
   );
 }
 
-function currentStatus(state: SidebarViewInput['activeState']): string {
-  if (!state) {
-    return 'Ready to start';
-  }
-  if (state.state.isStreaming === true) {
-    return 'Pi is replying';
-  }
-  if (state.state.isCompacting === true) {
-    return 'Compacting';
-  }
-  if (state.connectionState === 'faulted') {
-    return 'Needs attention';
-  }
-  if (state.connectionState === 'stopped') {
-    return 'Ready to start';
-  }
-  return 'Ready';
-}
-
 export function createNewChatSidebarModel(input: SidebarViewInput): SidebarNode[] {
   const nodes: SidebarNode[] = [
     {
@@ -83,7 +63,7 @@ export function createNewChatSidebarModel(input: SidebarViewInput): SidebarNode[
     nodes.push({
       id: 'new.warning',
       kind: 'info',
-      label: 'Unsent draft and attachments stay in Current Chat.',
+      label: 'Unsent draft and attachments stay in the active chat tab.',
       description: "They won't be sent or copied.",
       icon: 'warning',
     });
@@ -202,126 +182,6 @@ export function createResumeChatSidebarModel(input: SidebarViewInput): SidebarNo
         arguments: [{ sessionPath: session.path, label }],
       },
       accessibilityLabel: `${label}. ${description}`,
-    });
-  }
-
-  return nodes;
-}
-
-export function createCurrentChatSidebarModel(input: SidebarViewInput): SidebarNode[] {
-  if (!input.activeState) {
-    return [
-      {
-        id: 'current.empty',
-        kind: 'info',
-        label: 'No current chat',
-        description: 'Open Current Chat to start or resume a conversation.',
-        icon: 'comment-discussion',
-      },
-      {
-        id: 'current.open.empty',
-        kind: 'action',
-        label: 'Open Current Chat',
-        description: 'Open the main chat surface.',
-        icon: 'comment-discussion',
-        command: { command: 'piRpcInternal.openChat', title: 'Open Current Chat' },
-      },
-    ];
-  }
-
-  const model =
-    input.activeState.state.model && typeof input.activeState.state.model.provider === 'string'
-      ? `${input.activeState.state.model.provider}/${String(input.activeState.state.model.id ?? 'model')}`
-      : 'Model';
-  const sessionName =
-    typeof input.activeState.state.sessionName === 'string' &&
-    input.activeState.state.sessionName.length > 0
-      ? input.activeState.state.sessionName
-      : typeof input.activeState.state.sessionFile === 'string'
-        ? basename(input.activeState.state.sessionFile)
-        : 'No chat yet';
-
-  const nodes: SidebarNode[] = [
-    ...(input.showWorkspacePicker
-      ? [
-          {
-            id: 'current.workspacePicker',
-            kind: 'action' as const,
-            label: 'Choose workspace',
-            description: 'Switch the active workspace folder.',
-            icon: 'folder-library',
-            command: {
-              command: 'piRpcInternal.selectWorkspaceFolder',
-              title: 'Choose workspace',
-            },
-          },
-        ]
-      : []),
-    {
-      id: 'current.open',
-      kind: 'action',
-      label: 'Open Current Chat',
-      description: 'Return to the main chat surface.',
-      icon: 'comment-discussion',
-      command: { command: 'piRpcInternal.openChat', title: 'Open Current Chat' },
-    },
-    {
-      id: 'current.workspace',
-      kind: 'summary',
-      label: 'Workspace',
-      description: input.activeState.workspaceFolderName,
-      icon: 'folder-library',
-    },
-    {
-      id: 'current.session',
-      kind: 'summary',
-      label: 'Session',
-      description: sessionName,
-      detail:
-        typeof input.activeState.state.sessionFile === 'string'
-          ? basename(input.activeState.state.sessionFile)
-          : undefined,
-      icon: 'comment-discussion',
-    },
-    {
-      id: 'current.model',
-      kind: 'summary',
-      label: 'Model',
-      description: model,
-      icon: 'sparkle',
-    },
-    {
-      id: 'current.status',
-      kind: 'summary',
-      label: 'Status',
-      description: currentStatus(input.activeState),
-      detail:
-        typeof input.activeState.state.pendingMessageCount === 'number'
-          ? `${input.activeState.state.pendingMessageCount} waiting`
-          : undefined,
-      icon: input.activeState.connectionState === 'faulted' ? 'warning' : 'pulse',
-    },
-    {
-      id: 'current.advanced',
-      kind: 'action',
-      label: 'Advanced',
-      description: 'Show advanced commands and diagnostics.',
-      icon: 'gear',
-      command: { command: 'piRpc.toggleAdvancedMode', title: 'Advanced' },
-    },
-  ];
-
-  if (
-    input.activeState.state.isStreaming === true ||
-    input.activeState.connectionState === 'busy'
-  ) {
-    nodes.push({
-      id: 'current.stop',
-      kind: 'action',
-      label: 'Stop',
-      description: 'Abort the current Pi reply.',
-      icon: 'debug-stop',
-      command: { command: 'piRpc.abort', title: 'Stop' },
     });
   }
 

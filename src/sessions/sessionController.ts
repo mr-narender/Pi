@@ -69,7 +69,7 @@ export class SessionController implements vscode.Disposable {
     return this.supervisor.currentGeneration;
   }
 
-  public async start(): Promise<void> {
+  public async start(sessionFile = this.state.state.sessionFile): Promise<void> {
     if (this.state.connectionState === 'ready' || this.state.connectionState === 'busy') {
       return;
     }
@@ -77,9 +77,13 @@ export class SessionController implements vscode.Disposable {
       throw new Error('Virtual workspaces are unsupported for Pi RPC');
     }
     this.stopping = false;
-    this.state = { ...this.state, connectionState: 'starting' };
+    this.state = {
+      ...this.state,
+      state: { ...this.state.state, sessionFile },
+      connectionState: 'starting',
+    };
     this.fire();
-    const client = await this.supervisor.start(this.state.state.sessionFile);
+    const client = await this.supervisor.start(sessionFile);
     client.onEvent((event) => this.onEvent(event));
     client.onExtensionUi((request) => this.onExtensionUi(request));
     client.onResponseFailure((response) => {

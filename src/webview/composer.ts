@@ -153,6 +153,11 @@ export interface PersistedComposerSessionState {
       sanitizedContent?: string;
     }
   >;
+  pendingImages?: Array<
+    Pick<PendingImageItem, 'itemId' | 'name' | 'mimeType' | 'sizeBytes' | 'width' | 'height'> & {
+      requiresReselect?: boolean;
+    }
+  >;
   focus: ComposerFocusTarget;
 }
 
@@ -354,6 +359,15 @@ export function persistableComposerState(
       delete clone.sanitizedContent;
       return clone;
     }),
+    pendingImages: state.pendingImages.map((item) => ({
+      itemId: item.itemId,
+      name: item.name,
+      mimeType: item.mimeType,
+      sizeBytes: item.sizeBytes,
+      width: item.width,
+      height: item.height,
+      requiresReselect: true,
+    })),
     focus: state.focus,
   };
 }

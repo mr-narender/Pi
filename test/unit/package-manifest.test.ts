@@ -24,3 +24,15 @@ test('coverage row inventory totals stay stable', () => {
   assert.equal((coverage.match(/\| X-\d+/g) ?? []).length, 19);
   assert.equal((coverage.match(/\| D-\d+/g) ?? []).length, 8);
 });
+
+test('manifest contributes only launcher/history sidebar views', () => {
+  assert.deepEqual(
+    packageJson.contributes.views.piRpc.map((view) => view.id),
+    ['piRpc.newChat', 'piRpc.resumeChat']
+  );
+  assert.ok(
+    !packageJson.contributes.menus['view/title'].some((item) =>
+      String(item.when).includes('piRpc.currentChat')
+    )
+  );
+});

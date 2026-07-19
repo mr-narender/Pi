@@ -258,11 +258,11 @@ test('reviewer repro 12: malformed correlated response still disconnects', async
   assert.equal(disconnected, 'Unexpected compatibility envelope for pending id: 1');
 });
 
-test('reviewer repro 13: multi-root selection surface is explicit in tree and extension', () => {
+test('reviewer repro 13: multi-root selection surface is explicit in extension and editor tab', () => {
   const extension = readFileSync('src/extension.ts', 'utf8');
-  const tree = readFileSync('src/ui/trees/sessionSidebarModel.ts', 'utf8');
+  const chatScript = readFileSync('src/webview/media/chat.ts', 'utf8');
   assert.ok(extension.includes('piRpcInternal.selectWorkspaceFolder'));
-  assert.ok(tree.includes('piRpcInternal.selectWorkspaceFolder'));
+  assert.ok(chatScript.includes("type: 'switchFolder'"));
 });
 
 function webviewSnapshot(overrides: Partial<WebviewSnapshot> = {}): WebviewSnapshot {

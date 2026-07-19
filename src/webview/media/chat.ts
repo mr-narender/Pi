@@ -1,4 +1,8 @@
-declare function acquireVsCodeApi(): { postMessage(message: unknown): void };
+declare function acquireVsCodeApi(): {
+  postMessage(message: unknown): void;
+  setState(state: unknown): void;
+  getState(): unknown;
+};
 
 import type { WebviewSnapshot } from '../../state/types';
 import {
@@ -19,6 +23,7 @@ let currentSnapshot: WebviewSnapshot | undefined;
 let pendingFocusTargetId: string | undefined;
 let pendingFocusFallbackId: string | undefined;
 let previewReturnFocusId: string | undefined;
+let restoredScrollTop = 0;
 
 function queueFocus(targetId?: string, fallbackId = COMPOSER_FIELD_ID): void {
   pendingFocusTargetId = targetId;
@@ -57,6 +62,23 @@ function handlePreviewKeydown(event: KeyboardEvent): void {
   focusElement(
     nextPreviewTrapTarget((document.activeElement as HTMLElement | null)?.id, event.shiftKey)
   );
+}
+
+function persistViewState(): void {
+  const messages = document.getElementById('messages');
+  vscode.setState({
+    scrollTop: messages?.scrollTop ?? 0,
+    activeElementId: (document.activeElement as HTMLElement | null)?.id,
+  });
+}
+
+function restoreViewState(): void {
+  const saved = vscode.getState() as { scrollTop?: number } | undefined;
+  restoredScrollTop = typeof saved?.scrollTop === 'number' ? saved.scrollTop : 0;
+  const messages = document.getElementById('messages');
+  if (messages) {
+    messages.scrollTop = restoredScrollTop;
+  }
 }
 
 function render(snapshot: WebviewSnapshot): void {
@@ -170,6 +192,11 @@ function render(snapshot: WebviewSnapshot): void {
 
   document.getElementById(PREVIEW_DIALOG_ID)?.addEventListener('keydown', handlePreviewKeydown);
 
+  document.getElementById('messages')?.addEventListener('scroll', persistViewState, {
+    passive: true,
+  });
+
+  restoreViewState();
   applyFocus();
 }
 
@@ -196,6 +223,8 @@ function applyFocus(): void {
   }
   focusElement(COMPOSER_FIELD_ID);
 }
+
+window.addEventListener('beforeunload', persistViewState);
 
 window.addEventListener(
   'message',

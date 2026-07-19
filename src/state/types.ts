@@ -171,6 +171,7 @@ export interface WebviewPendingImageItem {
 export interface WebviewSnapshot {
   sequence: number;
   title: string;
+  bindingState?: 'current' | 'cached' | 'draft';
   uiMode: ChatUiMode;
   connectionState: ControllerState['connectionState'];
   workspaceFolderName: string;

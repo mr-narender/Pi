@@ -1,0 +1,23 @@
+2026-07-19 15:44:14.302 [info] AuthManager initialized
+2026-07-19 15:44:14.302 [info] Claude code extension is now active?
+2026-07-19 15:44:14.302 [info] MCP Server running on port 56123 (localhost only)
+2026-07-19 15:44:22.347 [info] Getting authentication status
+2026-07-19 15:44:22.347 [info] Keychain read failed, trying file fallback
+2026-07-19 15:44:22.347 [info] No authentication found
+2026-07-19 15:44:22.347 [info] AuthManager initialized
+2026-07-19 15:44:24.371 [info] Getting authentication status
+2026-07-19 15:44:24.371 [info] Keychain read failed, trying file fallback
+2026-07-19 15:44:24.371 [info] No authentication found
+2026-07-19 15:44:24.371 [info] AuthManager initialized
+2026-07-19 15:44:26.397 [info] Getting authentication status
+2026-07-19 15:44:26.397 [info] Keychain read failed, trying file fallback
+2026-07-19 15:44:26.397 [info] No authentication found
+2026-07-19 15:44:26.397 [info] AuthManager initialized
+2026-07-19 15:44:28.421 [info] Getting authentication status
+2026-07-19 15:44:28.421 [info] Keychain read failed, trying file fallback
+2026-07-19 15:44:28.421 [info] No authentication found
+2026-07-19 15:44:28.421 [info] AuthManager initialized
+2026-07-19 15:44:30.461 [info] Getting authentication status
+2026-07-19 15:44:30.461 [info] Keychain read failed, trying file fallback
+2026-07-19 15:44:30.461 [info] No authentication found
+2026-07-19 15:44:30.461 [info] AuthManager initialized

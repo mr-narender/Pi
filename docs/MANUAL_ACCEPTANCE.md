@@ -22,7 +22,7 @@ Use isolated `--user-data-dir` and `--extensions-dir`.
 
 1. Install the VSIX with `code --install-extension <vsix> --force` (or the matching remote CLI when testing remote).
 2. Launch the throwaway workspace with Extension Development Host logging disabled for secrets.
-3. Confirm Activity Bar container, the three default views (`New Chat`, `Resume Chat`, `Current Chat`), chat panel, commands, settings, and advanced-mode surfaces exist. No Pi process starts before explicit Start or first trusted send/start action.
+3. Confirm Activity Bar container, the two default views (`New Chat`, `Resume Chat`), center editor tab journeys, commands, settings, and advanced-mode surfaces exist. No Pi process starts before explicit Start or first trusted send/start action.
 4. Configure mock executable; run `Pi RPC: Start`. Confirm version check, handshake, ready state, and Health report.
 5. Reload window. Confirm safe reattach prompt, no duplicate process/views/listeners, and successful reconciliation.
 6. Stop, uninstall, relaunch, reinstall, and relaunch. Confirm clean deactivation, no orphan child, and no secret/session content in global state.
@@ -142,22 +142,21 @@ Acceptance: no cross-controller state or path leakage; host labeling and process
 Visual workflow to verify during acceptance:
 
 ```text
-New Chat | Resume Chat | Current Chat
-                 ↓
-      Current Chat → Attach / Send / Stop / Model
-                 ↓
-              Advanced
+New Chat | Resume Chat
+        ↓
+Current editor tab → Attach / Send / Stop / Model
+        ↓
+     Advanced
 ```
 
 Complete the whole send/steer/abort/model/session/dialog/diff workflow keyboard-only. Test NVDA or VoiceOver, 200% zoom, high-contrast themes, reduced motion, long localized strings, empty/loading/error states, and focus restoration after every XUI method. Verify throttled `aria-live` summaries and non-color statuses.
 
 Additional UX walkthrough:
 
-1. Verify the default sidebar exposes only **New Chat**, **Resume Chat**, and **Current Chat** with one clear primary action in each view.
+1. Verify the default sidebar exposes only **New Chat** and **Resume Chat** with one clear primary action in each view.
 2. Verify **Resume Chat** supports search/filter/refresh, shows loading/empty/error states, and never exposes unsafe transcript/secrets in labels.
-3. Verify **Current Chat** shows workspace, session, model, and status in narrow and wide sidebars and offers **Open Current Chat**, **Advanced**, and **Stop** only when relevant.
-4. Open **Current Chat** and confirm the header shows workspace/session/status plus **Model**, **New**, **Resume**, and **More** only.
-5. Verify advanced session/branch/diagnostic/tooling actions remain reachable through **Advanced** or unchanged command ids.
+3. Open the current chat in the center editor tab and confirm workspace/session/status live there with **Model**, **New**, **Resume**, and **More** only.
+4. Verify advanced session/branch/diagnostic/tooling actions remain reachable through **Advanced** or unchanged command ids.
 
 Acceptance: no keyboard trap, visible focus, meaningful names/roles/statuses/alt text, no token-stream screen-reader spam, and native theme compatibility.
 
@@ -165,9 +164,9 @@ Acceptance: no keyboard trap, visible focus, meaningful names/roles/statuses/alt
 
 Run the UX acceptance addendum in [UX_REDESIGN.md](UX_REDESIGN.md) before release:
 
-1. In default **Simple Mode**, verify the sidebar exposes only **New Chat**, **Resume Chat**, and **Current Chat**; **Help & Walkthrough**, **Conversation & Branches**, **Queues**, **Workflow**, and **Advanced & Diagnostics** are not visible as default destinations.
+1. In default **Simple Mode**, verify the sidebar exposes only **New Chat** and **Resume Chat**; **Current Chat**, **Help & Walkthrough**, **Conversation & Branches**, **Queues**, **Workflow**, and **Advanced & Diagnostics** are not visible as default destinations.
 2. Verify the default chat surface shows only the header, transcript, composer, attachments entry point, **Send**, **Stop**, and model selection; queue, bash, diagnostics, extension UI preview, and branching controls appear only in **Advanced** or the Command Palette.
-3. Verify `New Chat` is one primary action: with no current chat it starts fresh immediately; with a current chat it shows only `Start fresh` _(default)_ and `Continue from current as parent`; when an unsent draft/chip exists it warns that the draft/attachments stay on the current chat; `Cancel` preserves everything and returns focus to the composer.
+3. Verify `New Chat` is one primary action: with no current chat it starts fresh immediately; with a current chat it shows only `Start fresh` _(default)_ and `Continue from current as parent`; when an unsent draft/chip exists it warns that the draft/attachments stay on the active chat tab; `Cancel` preserves everything and returns focus to the composer.
 4. Verify `Attach` creates explicit removable chips by source: images show thumbnail/name, and active file, picked file, selection, and diagnostics show structured context chips with preview, scope, size, removal, clear-all, and privacy labels; no hidden prose is inserted into the draft.
 5. Verify every chip-bearing send opens a preflight preview that shows the exact final `message` body, including the literal `<pi-vscode-context-v1>` envelope, plus the exact RPC `images` list that will be sent.
 6. Verify switching/resuming chats and both `New Chat` paths preserve drafts, chip state, in-memory images, accepted-send snapshot ownership, and focus restoration to the composer.

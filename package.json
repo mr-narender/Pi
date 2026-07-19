@@ -2,7 +2,7 @@
   "name": "pi-rpc-vscode",
   "displayName": "Pi RPC",
   "description": "Direct VS Code integration for Pi 0.80.10 RPC mode",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "publisher": "local",
   "license": "MIT",
   "private": true,
@@ -29,7 +29,8 @@
   "icon": "media/icon.png",
   "main": "./dist/extension.js",
   "activationEvents": [
-    "onStartupFinished"
+    "onStartupFinished",
+    "onCustomEditor:piRpc.chatEditor"
   ],
   "extensionKind": [
     "workspace"
@@ -92,13 +93,21 @@
         {
           "id": "piRpc.resumeChat",
           "name": "Resume Chat"
-        },
-        {
-          "id": "piRpc.currentChat",
-          "name": "Current Chat"
         }
       ]
     },
+    "customEditors": [
+      {
+        "viewType": "piRpc.chatEditor",
+        "displayName": "Pi Chat",
+        "selector": [
+          {
+            "filenamePattern": "*.chat"
+          }
+        ],
+        "priority": "default"
+      }
+    ],
     "commands": [
       {
         "command": "piRpcInternal.start",
@@ -695,10 +704,27 @@
           ],
           "default": "simple",
           "description": "Default Pi RPC UI mode. Simple keeps chat focused. Advanced keeps the Advanced panel visible."
+        },
+        "piRpc.editorTabs.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Open Pi chats as native editor tabs backed by pi-chat: resources. Turn off only to roll back to the legacy shared panel during migration."
         }
       }
     },
     "menus": {
+      "editor/title": [
+        {
+          "command": "piRpcInternal.openChat",
+          "when": "resourceScheme == file || resourceScheme == untitled || resourceScheme == pi-chat",
+          "group": "navigation@1"
+        },
+        {
+          "command": "piRpc.newSession",
+          "when": "resourceScheme == file || resourceScheme == untitled || resourceScheme == pi-chat",
+          "group": "navigation@2"
+        }
+      ],
       "view/title": [
         {
           "command": "piRpc.newSession",
@@ -713,16 +739,6 @@
         {
           "command": "piRpcInternal.refreshRecentSessions",
           "when": "view == piRpc.resumeChat",
-          "group": "navigation@2"
-        },
-        {
-          "command": "piRpcInternal.openChat",
-          "when": "view == piRpc.currentChat",
-          "group": "navigation@1"
-        },
-        {
-          "command": "piRpc.toggleAdvancedMode",
-          "when": "view == piRpc.currentChat",
           "group": "navigation@2"
         }
       ],
