@@ -71,12 +71,38 @@ function shallowMerge(
   return { ...base, ...incoming };
 }
 
-function messageIndex(messages: JsonObject[], id: string | undefined): number {
-  return id ? messages.findIndex((message) => message.id === id) : -1;
+// Pi RPC messages do not carry a stable `id`. Session ids live on entries, not
+// on the message objects streamed through events. To dedupe the streaming
+// message lifecycle (message_start -> many message_update -> message_end, plus
+// turn_end / agent_end that re-send the same message) we derive a stable key
+// from `id` when present, otherwise from role + timestamp (the timestamp is
+// assigned once when the message is created and stays constant while it
+// streams). For tool results we also fold in toolCallId.
+function messageKey(message: JsonObject | undefined): string | undefined {
+  if (!message) {
+    return undefined;
+  }
+  if (typeof message.id === 'string' && message.id) {
+    return message.id;
+  }
+  const role = typeof message.role === 'string' ? message.role : 'unknown';
+  const timestamp =
+    typeof message.timestamp === 'number' || typeof message.timestamp === 'string'
+      ? String(message.timestamp)
+      : undefined;
+  const toolCallId = typeof message.toolCallId === 'string' ? message.toolCallId : undefined;
+  if (timestamp === undefined && toolCallId === undefined) {
+    return undefined;
+  }
+  return `${role}:${toolCallId ?? ''}:${timestamp ?? ''}`;
 }
 
-function messageAt(messages: JsonObject[], id: string | undefined): JsonObject | undefined {
-  const index = messageIndex(messages, id);
+function messageIndex(messages: JsonObject[], key: string | undefined): number {
+  return key ? messages.findIndex((message) => messageKey(message) === key) : -1;
+}
+
+function messageAt(messages: JsonObject[], key: string | undefined): JsonObject | undefined {
+  const index = messageIndex(messages, key);
   return index === -1 ? undefined : asObject(messages[index]);
 }
 
@@ -88,8 +114,8 @@ function upsertMessage(
   if (!incoming) {
     return messages;
   }
-  const id = typeof incoming.id === 'string' ? incoming.id : undefined;
-  const index = messageIndex(messages, id);
+  const key = messageKey(incoming);
+  const index = messageIndex(messages, key);
   if (index === -1) {
     return [...messages, incoming].slice(-400);
   }
@@ -318,8 +344,7 @@ export function reduceEvent(state: ControllerState, event: RpcEvent): Controller
     }
     case 'message_update': {
       const current = asObject(event.message);
-      const id = typeof current?.id === 'string' ? current.id : undefined;
-      const stored = messageAt(next.messages, id);
+      const stored = messageAt(next.messages, messageKey(current));
       const mergedSnapshot = stored
         ? {
             ...stored,

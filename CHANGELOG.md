@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.8
+
+- Submit a message with Cmd+Enter (macOS) or Ctrl+Enter.
+- Fix: a single submission now shows one clean exchange. Pi RPC messages have no id, so the transcript was appending a duplicate bubble on every streaming event/delta; messages are now keyed stably and the finished turn is resynced from the authoritative message list.
+
 ## 0.0.7
 
 - Pi now starts automatically in the background when a chat tab opens.

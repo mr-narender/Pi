@@ -2,7 +2,7 @@
   "name": "pi-rpc-vscode",
   "displayName": "Pi RPC",
   "description": "Direct VS Code integration for Pi 0.80.10 RPC mode",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "publisher": "local",
   "license": "MIT",
   "private": true,

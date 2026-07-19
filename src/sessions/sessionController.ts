@@ -458,6 +458,15 @@ export class SessionController implements vscode.Disposable {
     }
     this.state = reduceEvent(next, event);
     this.fire();
+    // When a run settles, resync the transcript from the authoritative
+    // get_messages list. Streaming events are keyed heuristically (Pi messages
+    // have no id), so this guarantees the finished conversation is exactly what
+    // Pi holds — no duplicated or partial bubbles.
+    if (event.type === 'agent_end' || event.type === 'agent_settled') {
+      void this.refreshMessages().catch(() => {
+        /* best-effort resync; live state already rendered */
+      });
+    }
   }
 
   private onExtensionUi(request: ExtensionUiRequest): void {

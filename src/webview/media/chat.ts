@@ -119,6 +119,21 @@ function render(snapshot: WebviewSnapshot): void {
   textarea?.addEventListener('focus', () => {
     vscode.postMessage({ type: 'setFocus', focus: 'composer' });
   });
+  textarea?.addEventListener('keydown', (event) => {
+    // Submit with Cmd+Enter (macOS) or Ctrl+Enter.
+    if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+      event.preventDefault();
+      const sendButton = document.getElementById(SEND_BUTTON_ID) as HTMLButtonElement | null;
+      if (!sendButton || sendButton.disabled) {
+        return;
+      }
+      previewReturnFocusId = SEND_BUTTON_ID;
+      vscode.postMessage({
+        type: 'requestSend',
+        command: sendButton.dataset.sendCommand ?? 'prompt',
+      });
+    }
+  });
 
   document.getElementById('folder-select')?.addEventListener('change', (event) => {
     const target = event.target as HTMLSelectElement;
