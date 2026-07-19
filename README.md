@@ -1,4 +1,11 @@
-<h1 align="center">Pi RPC for VS Code</h1>
+<h1 align="center">Pi — this one is (y)ours</h1>
+
+<p align="center"><em>An unofficial, personal VS Code chat UI for the Pi coding agent.</em></p>
+
+> **Disclaimer.** I have **no affiliation with [pi.dev](https://pi.dev)**. I genuinely
+> appreciate their work — this extension simply builds a GUI on top of Pi’s public RPC
+> protocol. I made it for myself and I’m sharing it for anyone who wants to use it.
+> It is provided as-is, with no warranty, and “Pi” belongs to its respective owners.
 
 <p align="center">
   The <strong>Pi coding agent</strong>, natively in VS Code — the same power as the
@@ -107,6 +114,13 @@ The **More ▾** menu in a chat groups actions with color tags for quick scannin
 
 - One Pi process per workspace folder; multi-root workspaces are isolated.
 - The Activity Bar icon and gallery logo are an original Pi × VS Code fusion mark.
+
+## Credits & affiliation
+
+This is an **independent, unofficial** project. I am **not affiliated with pi.dev** and
+claim no endorsement by them. All credit for the Pi coding agent goes to its authors at
+[pi.dev](https://pi.dev); this extension only talks to Pi over its documented RPC protocol.
+Built for personal use and shared freely for anyone who finds it useful.
 
 ## License
 

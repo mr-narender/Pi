@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.15
+
+- Renamed the extension to "Pi - this one is (y)ours".
+- Added a clear disclaimer: no affiliation with pi.dev; built for personal use and shared for anyone who wants it.
+
 ## 0.0.14
 
 - Gallery logo is now a true full-bleed image (no white edges); rendered directly so it covers the whole icon.

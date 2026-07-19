@@ -1,8 +1,8 @@
 {
   "name": "pi-rpc-vscode",
-  "displayName": "Pi RPC",
-  "description": "Direct VS Code integration for Pi 0.80.10 RPC mode",
-  "version": "0.0.14",
+  "displayName": "Pi - this one is (y)ours",
+  "description": "An unofficial, personal VS Code chat UI for the Pi coding agent (pi.dev). Not affiliated with pi.dev — shared for anyone who wants it.",
+  "version": "0.0.15",
   "publisher": "local",
   "license": "MIT",
   "private": true,
@@ -79,7 +79,7 @@
       "activitybar": [
         {
           "id": "piRpc",
-          "title": "Pi RPC",
+          "title": "Pi",
           "icon": "media/icon.svg"
         }
       ]
