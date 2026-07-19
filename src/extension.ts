@@ -19,7 +19,7 @@ import { ChatEditorProvider } from './editorTabs/provider';
 import { ChatFileSystemProvider } from './editorTabs/fileSystemProvider';
 import { ChatTabManager } from './editorTabs/tabManager';
 import type { SessionController } from './sessions/sessionController';
-import type { ExtensionUiRequest } from './rpc/protocol';
+import type { ExtensionUiRequest, JsonObject } from './rpc/protocol';
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -593,10 +593,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     return withController(async (controller) => {
       const models = await controller.getAvailableModels();
       const current = asRecord(controller.snapshot.state.model);
+      const currentProvider = current ? asString(current.provider) : undefined;
       const currentKey = current
         ? `${asString(current.provider)}/${asString(current.id)}`
         : undefined;
-      const items = models.map((model) => {
+
+      // Group models by provider for a two-step picker: provider -> model.
+      const byProvider = new Map<string, JsonObject[]>();
+      for (const model of models) {
+        const provider = String(model.provider ?? 'provider');
+        (byProvider.get(provider) ?? byProvider.set(provider, []).get(provider)!).push(model);
+      }
+      const providers = Array.from(byProvider.keys()).sort();
+
+      const modelItem = (model: JsonObject) => {
         const provider = String(model.provider ?? 'provider');
         const id = String(model.id ?? 'model');
         const key = `${provider}/${id}`;
@@ -612,17 +622,54 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           inputs.includes('image') ? 'images' : undefined,
         ].filter(Boolean);
         return {
-          label: `${key === currentKey ? '$(check) ' : ''}${key}`,
+          label: `${key === currentKey ? '$(check) ' : ''}${id}`,
           description: String(model.name ?? ''),
           detail: bits.join('  \u00b7  '),
           model,
         };
-      });
-      const picked = await vscode.window.showQuickPick(items, {
-        title: 'Select model',
-        placeHolder: 'Pick a model (reasoning · context · max output · images)',
-        matchOnDetail: true,
-      });
+      };
+
+      const pickModelsFrom = async (list: JsonObject[], title: string) => {
+        const items = list
+          .slice()
+          .sort((a, b) => String(a.id ?? '').localeCompare(String(b.id ?? '')))
+          .map(modelItem);
+        return vscode.window.showQuickPick(items, {
+          title,
+          placeHolder: 'reasoning · context · max output · images',
+          matchOnDetail: true,
+        });
+      };
+
+      let picked;
+      if (providers.length <= 1) {
+        picked = await pickModelsFrom(models, 'Select model');
+      } else {
+        // Step 1: pick a provider (with an "All providers" escape hatch).
+        const ALL = '$(list-flat) All providers';
+        const providerPick = await vscode.window.showQuickPick(
+          [
+            { label: ALL, provider: undefined as string | undefined },
+            ...providers.map((provider) => ({
+              label: `${provider === currentProvider ? '$(check) ' : ''}${provider}`,
+              description: `${byProvider.get(provider)?.length ?? 0} model(s)`,
+              provider,
+            })),
+          ],
+          { title: 'Select provider', placeHolder: 'Choose a provider, then a model' }
+        );
+        if (!providerPick) {
+          return models;
+        }
+        // Step 2: pick a model within the provider (or across all).
+        picked = providerPick.provider
+          ? await pickModelsFrom(
+              byProvider.get(providerPick.provider) ?? [],
+              `${providerPick.provider} — select model`
+            )
+          : await pickModelsFrom(models, 'Select model');
+      }
+
       if (picked) {
         await controller.selectModel(
           String(picked.model.provider ?? ''),

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.18
+
+- Model selection is now two-step for granularity: pick a provider (with model counts) and then a model within it. An "All providers" option keeps the flat list, and single-provider setups skip straight to models. Current provider/model are checked.
+
 ## 0.0.17
 
 - Model picker now shows a clean list — reasoning support, context window, max output, and image support per model (no raw JSON) — with the current model checked.
