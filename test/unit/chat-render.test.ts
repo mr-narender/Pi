@@ -57,7 +57,7 @@ test('renderChatApp renders the native brand + docked composer layout', () => {
   assert.match(html, /aria-label="More actions"/);
   assert.doesNotMatch(html, /data-command="piRpc\.newSession"/);
   assert.doesNotMatch(html, /data-command="piRpc\.switchSession"/);
-  assert.match(html, /aria-label="Attach"/);
+  assert.match(html, /aria-label="Add a file"/);
   assert.match(html, /id="composer-send-button"/);
   assert.match(html, /data-command="piRpc.showPiCommands"/);
   assert.doesNotMatch(html, /Queue & steering/);

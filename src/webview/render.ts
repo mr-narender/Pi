@@ -383,17 +383,7 @@ export function renderChatApp(snapshot: WebviewSnapshot): string {
           <textarea id="${COMPOSER_FIELD_ID}" rows="3" placeholder="${connecting ? 'Connecting to Pi…' : 'Ask Pi to edit…'}" ${disabledAttr}>${escapeHtml(snapshot.draft)}</textarea>
           <div class="composer-actions" aria-label="Composer actions">
             <div class="composer-actions-left">
-              <details class="menu-details" id="attach-menu"${interactive ? '' : ' aria-disabled="true"'}>
-                <summary id="attach-trigger" class="icon-button" title="Attach" aria-label="Attach">+</summary>
-                <div class="menu-panel">
-                  <button type="button" data-action="pickImages">Image…</button>
-                  <button type="button" data-action="appendActiveFile">Active file</button>
-                  <button type="button" data-action="appendPickedFile">Pick file…</button>
-                  <button type="button" data-action="appendSelection">Current selection</button>
-                  <button type="button" data-action="appendDiagnostics">Diagnostics</button>
-                  ${attachmentsVisible ? '<button type="button" data-action="clearAttachments">Clear attachments</button>' : ''}
-                </div>
-              </details>
+              <button type="button" id="${ATTACH_TRIGGER_ID}" class="icon-button" data-action="appendPickedFile" title="Add a file" aria-label="Add a file" ${disabledAttr}>+</button>
               <button type="button" class="icon-button" data-command="piRpc.showPiCommands" title="Commands" aria-label="Commands" ${disabledAttr}>/</button>
             </div>
             <div class="composer-actions-right">

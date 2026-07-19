@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.21
+
+- Usage & cost is now a readable popover (messages, tokens, context, cost) with a "Copy JSON" option — no JSON editor. All other info commands also show notifications with copy-to-clipboard instead of opening JSON files.
+- Fixed the slash / picker flicker: the webview no longer steals focus back while a native picker/dialog is open (also hardens thinking/model/rename pickers).
+- Simplified the + button in the composer: it now directly opens a file picker (any file) instead of a menu.
+
 ## 0.0.20
 
 - Fixed the thinking-level flicker: menu commands (thinking, model, rename) no longer re-render the webview before opening the picker, which was stealing focus and instantly closing it.

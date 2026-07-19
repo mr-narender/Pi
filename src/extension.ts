@@ -163,12 +163,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     context.subscriptions.push(controller.onDidChangeState(refreshViews));
   }
 
-  const showJson = async (_title: string, data: unknown): Promise<void> => {
-    const doc = await vscode.workspace.openTextDocument({
-      content: JSON.stringify(data, null, 2),
-      language: 'json',
+  // Never open JSON/Markdown editors for information. Show a notification and
+  // offer to copy the raw JSON to the clipboard for anyone who wants the detail.
+  // Fire-and-forget so callers that await it never block on the notification's
+  // button (which would hang in a headless/non-interactive host).
+  const showJson = (title: string, data: unknown): void => {
+    void vscode.window.showInformationMessage(`Pi — ${title}`, 'Copy JSON').then((choice) => {
+      if (choice === 'Copy JSON') {
+        void vscode.env.clipboard.writeText(JSON.stringify(data, null, 2));
+        void vscode.window.showInformationMessage('Copied to clipboard.');
+      }
     });
-    await vscode.window.showTextDocument(doc, { preview: false });
   };
 
   const pickRecentSession = async (
@@ -855,11 +860,41 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     withController((controller) => controller.abortBash())
   );
   registrations.set('piRpc.showSessionStats', async () => {
-    return withController(async (controller) => {
-      const stats = await controller.showSessionStats();
-      await showJson('stats', stats ?? {});
-      return stats;
-    });
+    const controller = activeController();
+    if (!controller) {
+      void vscode.window.showInformationMessage('Open a Pi chat first.');
+      return undefined;
+    }
+    const stats = (await controller.showSessionStats()) ?? {};
+    const tokens = asRecord(stats.tokens) ?? {};
+    const ctx = asRecord(stats.contextUsage);
+    const num = (v: unknown) => (typeof v === 'number' ? v : 0);
+    const cost = num(stats.cost);
+    const lines = [
+      `Messages: ${num(stats.userMessages)} you · ${num(stats.assistantMessages)} Pi`,
+      `Tool calls: ${num(stats.toolCalls)}`,
+      `Tokens: ${formatTokenCount(num(tokens.total))} total  (in ${formatTokenCount(
+        num(tokens.input)
+      )} · out ${formatTokenCount(num(tokens.output))} · cache ${formatTokenCount(
+        num(tokens.cacheRead)
+      )})`,
+      ctx
+        ? `Context: ${formatTokenCount(num(ctx.tokens))} / ${formatTokenCount(
+            num(ctx.contextWindow)
+          )}  (${num(ctx.percent)}%)`
+        : undefined,
+      `Cost: $${cost.toFixed(cost < 1 ? 4 : 2)}`,
+    ].filter(Boolean) as string[];
+    const choice = await vscode.window.showInformationMessage(
+      'Usage & cost',
+      { modal: true, detail: lines.join('\n') },
+      'Copy JSON'
+    );
+    if (choice === 'Copy JSON') {
+      await vscode.env.clipboard.writeText(JSON.stringify(stats, null, 2));
+      void vscode.window.showInformationMessage('Copied usage details to clipboard.');
+    }
+    return stats;
   });
   registrations.set('piRpc.exportHtml', async () => {
     return withController(

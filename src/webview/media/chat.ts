@@ -141,7 +141,7 @@ function render(snapshot: WebviewSnapshot): void {
   }
 
   const textarea = document.getElementById(COMPOSER_FIELD_ID) as HTMLTextAreaElement | null;
-  if (textarea && composerWasFocused && !authoritativeReset) {
+  if (textarea && composerWasFocused && !authoritativeReset && document.hasFocus()) {
     if (typeof preservedValue === 'string') {
       textarea.value = preservedValue;
     }
@@ -153,7 +153,7 @@ function render(snapshot: WebviewSnapshot): void {
     } catch {
       /* setSelectionRange can throw for some input types; ignore */
     }
-  } else if (textarea && composerWasFocused && authoritativeReset) {
+  } else if (textarea && composerWasFocused && authoritativeReset && document.hasFocus()) {
     textarea.focus();
     const end = textarea.value.length;
     try {
@@ -288,6 +288,12 @@ function render(snapshot: WebviewSnapshot): void {
 
 function applyFocus(): void {
   if (!root || !currentSnapshot) {
+    return;
+  }
+  // Never grab focus while a native picker/dialog (QuickPick, InputBox) is open.
+  // The webview loses document focus then; focusing our composer would steal it
+  // back and instantly dismiss the picker (a flicker).
+  if (!document.hasFocus()) {
     return;
   }
   const pendingTargetId = pendingFocusTargetId;
