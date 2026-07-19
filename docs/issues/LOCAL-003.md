@@ -3,6 +3,7 @@
 State: closed
 Agent: pi
 Kind: UX redesign
+Closed with: `8a3d712`
 
 ## Acceptance criteria
 
@@ -29,3 +30,4 @@ User reported that exposing comprehensive RPC controls made the extension confus
 - Advanced capability preserved behind the persistent `piRpc.toggleAdvancedMode` surface and unchanged command IDs.
 - Deterministic context envelope, accepted-send snapshot recovery, per-session draft/chip persistence, and stale ref invalidation implemented in `src/webview/composer.ts`, `src/webview/composerState.ts`, and `src/webview/provider.ts`.
 - UX, transport, DOM, CSS accessibility, integration, Extension Host, coverage, and reviewer repro suites pass.
+- VSIX `0.0.3` installed locally as `local.pi-rpc-vscode@0.0.3` for user testing.
