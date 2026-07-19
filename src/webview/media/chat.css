@@ -761,3 +761,47 @@ button.ghost:hover,
 #messages .message-card .detail-stack {
   margin-top: 6px;
 }
+
+/* ---- Consistent, intuitive chat bubbles (LOCAL-004) ---- */
+#messages .message-card {
+  border: none;
+  padding: 0;
+  line-height: 1.55;
+}
+
+#messages .message-card pre {
+  margin: 0;
+  padding: 9px 13px;
+  border-radius: 14px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size, 13px);
+}
+
+/* User: accent bubble on the trailing edge. */
+#messages .message-user {
+  align-self: flex-end;
+  max-width: min(64ch, 88%);
+}
+#messages .message-user .message-role {
+  text-align: right;
+}
+#messages .message-user pre {
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  border-radius: 14px 14px 4px 14px;
+}
+
+/* Assistant: neutral surface bubble on the leading edge (same shape language). */
+#messages .message-assistant {
+  align-self: flex-start;
+  max-width: min(74ch, 92%);
+}
+#messages .message-assistant pre {
+  background: var(--vscode-editorWidget-background, rgba(128, 128, 128, 0.12));
+  color: var(--vscode-foreground);
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 14px 14px 14px 4px;
+}

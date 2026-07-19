@@ -11,7 +11,7 @@ import { SessionRegistry } from './sessions/sessionRegistry';
 import { ExtensionUiBroker } from './ui/extensionUiBroker';
 import { LocalExtensionUiContext } from './ui/localExtensionUi';
 import { openPathInNewWindow } from './ui/navigation';
-import { SessionsTreeProvider } from './ui/trees/providers';
+import { SessionsWebviewProvider } from './ui/sidebar/sessionsWebview';
 import { StatusBarController } from './ui/status/statusBar';
 import { ChatPanelProvider } from './webview/provider';
 import { ChatUiState } from './webview/composerState';
@@ -98,11 +98,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     });
   }
 
-  const sessionsView = new SessionsTreeProvider(registry, recentSessions, uiState);
+  const sessionsView = new SessionsWebviewProvider(context.extensionUri, registry, recentSessions);
 
   context.subscriptions.push(
-    vscode.window.registerTreeDataProvider('piRpc.sessions', sessionsView),
-    sessionsView
+    vscode.window.registerWebviewViewProvider(SessionsWebviewProvider.viewType, sessionsView, {
+      webviewOptions: { retainContextWhenHidden: true },
+    }),
+    recentSessions.onDidChange(() => sessionsView.refresh())
   );
 
   const refreshViews = (): void => {
@@ -257,6 +259,30 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     recentSessions.clearFilter(controller.folder);
     refreshViews();
     return '';
+  });
+
+  registrations.set('piRpcInternal.renameSession', async (value?: unknown) => {
+    const rec = asRecord(value);
+    const sessionPath = asString(rec?.sessionPath);
+    const controller = registry.getActive() ?? (await registry.getSelectedOrPick());
+    if (!controller) {
+      return;
+    }
+    if (sessionPath && asString(controller.snapshot.state.sessionFile) !== sessionPath) {
+      await controller.switchSession(sessionPath);
+    }
+    const current = asString(controller.snapshot.state.sessionName) ?? '';
+    const name = await vscode.window.showInputBox({
+      title: 'Rename chat',
+      value: current,
+      prompt: 'Enter a name for this chat',
+    });
+    if (name === undefined || name.trim() === '') {
+      return;
+    }
+    await controller.renameSession(name.trim());
+    await recentSessions.refresh(controller.folder);
+    refreshViews();
   });
 
   registrations.set('piRpcInternal.deleteSession', async (value?: unknown) => {

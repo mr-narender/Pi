@@ -25,24 +25,19 @@ test('coverage row inventory totals stay stable', () => {
   assert.equal((coverage.match(/\| D-\d+/g) ?? []).length, 8);
 });
 
-test('manifest contributes a single Chats launcher sidebar view', () => {
+test('manifest contributes a single Chats webview sidebar', () => {
+  const view = packageJson.contributes.views.piRpc;
   assert.deepEqual(
-    packageJson.contributes.views.piRpc.map((view) => view.id),
+    view.map((entry) => entry.id),
     ['piRpc.sessions']
   );
+  assert.equal(view[0]?.type, 'webview');
   const allMenus = JSON.stringify(packageJson.contributes.menus ?? {});
   assert.ok(!allMenus.includes('piRpc.currentChat'));
 });
 
-test('manifest exposes an inline trash action to delete a chat session', () => {
-  const command = packageJson.contributes.commands.find(
-    (item) => item.command === 'piRpcInternal.deleteSession'
-  );
-  assert.ok(command, 'missing piRpcInternal.deleteSession command');
-  assert.equal(command.icon, '$(trash)');
-  const itemMenus = packageJson.contributes.menus['view/item/context'] ?? [];
-  const inline = itemMenus.find((item) => item.command === 'piRpcInternal.deleteSession');
-  assert.ok(inline, 'missing inline delete menu');
-  assert.equal(inline.group, 'inline');
-  assert.match(String(inline.when), /piRpc\.recentSession/);
+test('manifest exposes delete and rename chat commands for the sidebar', () => {
+  const commands = packageJson.contributes.commands.map((item) => item.command);
+  assert.ok(commands.includes('piRpcInternal.deleteSession'));
+  assert.ok(commands.includes('piRpcInternal.renameSession'));
 });

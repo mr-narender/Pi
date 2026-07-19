@@ -2,7 +2,7 @@
   "name": "pi-rpc-vscode",
   "displayName": "Pi RPC",
   "description": "Direct VS Code integration for Pi 0.80.10 RPC mode",
-  "version": "0.0.10",
+  "version": "0.0.11",
   "publisher": "local",
   "license": "MIT",
   "private": true,
@@ -88,7 +88,8 @@
       "piRpc": [
         {
           "id": "piRpc.sessions",
-          "name": "Chats"
+          "name": "Chats",
+          "type": "webview"
         }
       ]
     },
@@ -595,6 +596,12 @@
         "title": "Delete Chat",
         "category": "Pi RPC",
         "icon": "$(trash)"
+      },
+      {
+        "command": "piRpcInternal.renameSession",
+        "title": "Rename Chat",
+        "category": "Pi RPC",
+        "icon": "$(edit)"
       }
     ],
     "configuration": {
@@ -727,16 +734,13 @@
           "group": "navigation@2"
         }
       ],
-      "view/item/context": [
-        {
-          "command": "piRpcInternal.deleteSession",
-          "when": "view == piRpc.sessions && viewItem == piRpc.recentSession",
-          "group": "inline"
-        }
-      ],
       "commandPalette": [
         {
           "command": "piRpcInternal.deleteSession",
+          "when": "false"
+        },
+        {
+          "command": "piRpcInternal.renameSession",
           "when": "false"
         }
       ]

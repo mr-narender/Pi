@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.0.11
+
+- New sidebar: a big edge-to-edge "New Chat" button, a search box, and the session list, built as a native webview (Claude-style).
+- Rename a chat: hover a session and click the pencil icon (or it prompts inline); the display name updates everywhere.
+- Delete a chat: hover and click the ✕ icon (with confirmation).
+- Chat bubbles are now consistent: user messages are accent bubbles on the right, Pi replies are neutral bubbles on the left, same shape/typography.
+
 ## 0.0.10
 
 - New Chat starts a fresh session immediately with no confirmation prompt.
