@@ -121,7 +121,24 @@ function render(snapshot: WebviewSnapshot): void {
   const authoritativeReset = resetSeq !== undefined && resetSeq !== lastComposerResetSeq;
   lastComposerResetSeq = resetSeq;
 
+  // Preserve open dropdown menus across re-render so passive snapshots
+  // (streaming, status) don't close the More/Attach menu mid-interaction.
+  const openMenus = new Set<string>();
+  for (const id of ['more-menu', 'attach-menu']) {
+    const el = document.getElementById(id) as HTMLDetailsElement | null;
+    if (el?.open) {
+      openMenus.add(id);
+    }
+  }
+
   root.innerHTML = renderChatApp(snapshot);
+
+  for (const id of openMenus) {
+    const el = document.getElementById(id) as HTMLDetailsElement | null;
+    if (el) {
+      el.open = true;
+    }
+  }
 
   const textarea = document.getElementById(COMPOSER_FIELD_ID) as HTMLTextAreaElement | null;
   if (textarea && composerWasFocused && !authoritativeReset) {
@@ -215,6 +232,8 @@ function render(snapshot: WebviewSnapshot): void {
     root.querySelectorAll<HTMLButtonElement>('button[data-command]')
   )) {
     button.addEventListener('click', () => {
+      // Close the containing dropdown menu (if any) so it doesn't linger.
+      button.closest('details')?.removeAttribute('open');
       vscode.postMessage({ type: 'executeCommand', command: button.dataset.command });
     });
   }

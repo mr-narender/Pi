@@ -142,12 +142,13 @@ test('editorTabs.open.multiRootIsolation', () => {
   assert.notEqual(left, right);
 });
 
-test('editorTabs.render.headerHasNewHistoryModelMore', () => {
+test('editorTabs.render.headerHasModelChipAndMore', () => {
   const html = renderChatApp(snapshot());
-  assert.match(html, />New</);
-  assert.match(html, />History</);
+  assert.match(html, /class="model-chip"/);
   assert.match(html, /mock\/model/);
   assert.match(html, /aria-label="More actions"/);
+  assert.doesNotMatch(html, />New</);
+  assert.doesNotMatch(html, />History</);
   assert.match(html, /Current · workspace · Demo Session · Ready/);
 });
 

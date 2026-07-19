@@ -903,3 +903,37 @@ button.ghost:hover,
 .more-menu .cat-system .dot {
   background: #ff6b6b;
 } /* red */
+
+/* ---- Header: model chip + More, consistent theme ---- */
+.brand-controls {
+  gap: 8px;
+}
+.model-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 10px;
+  font-size: 12px;
+  border-radius: 999px;
+  color: var(--vscode-foreground);
+  background: var(--vscode-editorWidget-background, rgba(128, 128, 128, 0.12));
+  border: 1px solid var(--vscode-panel-border);
+}
+.model-chip:hover {
+  background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.2));
+}
+.model-chip .model-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #ff8c42;
+  flex: 0 0 auto;
+}
+.more-menu > summary {
+  font-size: 12px;
+  opacity: 0.85;
+}
+.more-menu > summary:hover {
+  opacity: 1;
+  background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.15));
+}

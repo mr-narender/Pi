@@ -467,9 +467,7 @@ export function renderChatApp(snapshot: WebviewSnapshot): string {
         <div class="brand" aria-label="Pi"><span class="brand-mark" aria-hidden="true">✻</span> Pi</div>
         <div class="brand-controls">
           ${folderSelect}
-          <button type="button" class="ghost" data-command="piRpc.showModels" title="Model">${escapeHtml(modelLabel(snapshot))}</button>
-          <button type="button" class="ghost" data-command="piRpc.newSession" title="New">New</button>
-          <button type="button" class="ghost" data-command="piRpc.switchSession" title="History">History</button>
+          <button type="button" class="model-chip" data-command="piRpc.showModels" title="Choose model"><span class="model-dot"></span>${escapeHtml(modelLabel(snapshot))}</button>
           ${renderMoreMenu(snapshot)}
         </div>
       </header>

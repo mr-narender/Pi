@@ -53,9 +53,10 @@ test('renderChatApp renders the native brand + docked composer layout', () => {
   assert.match(html, /class="composer-dock"/);
   assert.match(html, /class="composer-card"/);
   assert.match(html, /placeholder="Ask Pi to edit/);
-  assert.match(html, />New</);
-  assert.match(html, />History</);
+  assert.match(html, /class="model-chip"/);
   assert.match(html, /aria-label="More actions"/);
+  assert.doesNotMatch(html, /data-command="piRpc\.newSession"/);
+  assert.doesNotMatch(html, /data-command="piRpc\.switchSession"/);
   assert.match(html, /aria-label="Attach"/);
   assert.match(html, /id="composer-send-button"/);
   assert.match(html, /data-command="piRpc.showPiCommands"/);

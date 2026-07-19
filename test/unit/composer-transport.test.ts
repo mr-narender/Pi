@@ -125,10 +125,11 @@ test('buildSendPreview appends deterministic envelope and exact rpc images', () 
 
 test('default simple mode keeps the header primary controls and a grouped More menu', () => {
   const html = renderChatApp(snapshot());
-  // Primary header controls are present.
-  assert.match(html, /data-command="piRpc\.newSession"/);
-  assert.match(html, /data-command="piRpc\.switchSession"/);
+  // Header keeps the model chip + More only (New/History live in the sidebar).
+  assert.match(html, /class="model-chip"/);
   assert.match(html, /aria-label="More actions"/);
+  assert.doesNotMatch(html, /data-command="piRpc\.newSession"/);
+  assert.doesNotMatch(html, /data-command="piRpc\.switchSession"/);
   // The composer exposes attach, send, and slash commands.
   assert.match(html, /id="attach-trigger"/);
   assert.match(html, /id="composer-send-button"/);

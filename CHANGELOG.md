@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.14
+
+- Gallery logo is now a true full-bleed image (no white edges); rendered directly so it covers the whole icon.
+- More menu: open state is preserved across re-renders and items close the menu on click, so it no longer flickers or fails to open.
+- Header cleanup: removed the New and History buttons (they already live in the sidebar) — the chat header now shows just a model chip and the More menu, consistent with the theme.
+
 ## 0.0.13
 
 - Full-bleed extension logo (fills the whole icon) shared by the Activity Bar and the gallery.
