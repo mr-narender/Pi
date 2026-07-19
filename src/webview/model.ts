@@ -263,6 +263,7 @@ export function createWebviewSnapshot(
       .map((message, index) => toItem(message, index, state.cwd)),
     queue: state.queue,
     draft: extra.composer.draft,
+    composerResetSeq: extra.composer.composerResetSeq ?? 0,
     statuses: state.statuses,
     widgets: state.widgets,
     model: state.state.model,

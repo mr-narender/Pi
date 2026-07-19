@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.0.9
+
+- Submitting now clears the composer (authoritative reset), while typing still preserves the caret.
+- Chat bubbles hug their content and wrap/grow as the model streams (no more full-width boxes); user right-aligned, Pi left-aligned.
+- Pi RPC warm-starts as soon as the extension activates, so the first chat is ready immediately.
+- Delete a saved chat from the sidebar via an inline trash icon (with confirmation); closes its tab and removes the session file.
+
 ## 0.0.8
 
 - Submit a message with Cmd+Enter (macOS) or Ctrl+Enter.

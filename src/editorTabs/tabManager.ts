@@ -268,6 +268,23 @@ export class ChatTabManager implements vscode.Disposable {
     }
   }
 
+  public async closeForSessionFile(sessionFile: string): Promise<void> {
+    for (const group of vscode.window.tabGroups.all) {
+      for (const tab of group.tabs) {
+        const input = (tab.input ?? undefined) as
+          | { uri?: vscode.Uri; viewType?: string }
+          | undefined;
+        if (input?.viewType !== CHAT_EDITOR_VIEW_TYPE || !input.uri) {
+          continue;
+        }
+        const target = parseChatUri(input.uri);
+        if (target?.kind === 'sessionFile' && target.sessionFile === sessionFile) {
+          await vscode.window.tabGroups.close(tab);
+        }
+      }
+    }
+  }
+
   public async focusComposer(resource = this.getActiveContext()?.resource): Promise<void> {
     if (!resource) {
       return;
@@ -691,6 +708,7 @@ export class ChatTabManager implements vscode.Disposable {
     state.pendingContextItems = [];
     state.pendingImages = [];
     state.draft = '';
+    state.composerResetSeq = (state.composerResetSeq ?? 0) + 1;
     state.focus = 'composer';
     state.recovery = undefined;
     controller.setDraft('');

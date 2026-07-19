@@ -19,6 +19,8 @@ export interface SidebarNode {
   contextValue?: string;
   command?: SidebarNodeCommand;
   accessibilityLabel?: string;
+  sessionPath?: string;
+  sessionLabel?: string;
 }
 
 export interface SidebarViewInput {
@@ -145,6 +147,8 @@ export function createSessionsSidebarModel(input: SidebarViewInput): SidebarNode
         title: 'Open Chat',
         arguments: [{ sessionPath: session.path, label }],
       },
+      sessionPath: session.path,
+      sessionLabel: label,
       accessibilityLabel: `${label}. ${description}`,
     });
   }

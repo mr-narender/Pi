@@ -316,6 +316,7 @@ export class ChatUiState implements vscode.Disposable {
       return;
     }
     state.draft = snapshot.draft;
+    state.composerResetSeq = (state.composerResetSeq ?? 0) + 1;
     state.pendingContextItems = await this.revalidateRestoredContextItems(
       controller,
       snapshot.contextItems

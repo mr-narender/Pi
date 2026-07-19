@@ -24,6 +24,7 @@ let pendingFocusTargetId: string | undefined;
 let pendingFocusFallbackId: string | undefined;
 let previewReturnFocusId: string | undefined;
 let restoredScrollTop = 0;
+let lastComposerResetSeq: number | undefined;
 
 function queueFocus(targetId?: string, fallbackId = COMPOSER_FIELD_ID): void {
   pendingFocusTargetId = targetId;
@@ -97,10 +98,16 @@ function render(snapshot: WebviewSnapshot): void {
   const preservedStart = composerWasFocused ? previousComposer.selectionStart : undefined;
   const preservedEnd = composerWasFocused ? previousComposer.selectionEnd : undefined;
 
+  // An authoritative composer reset (send-clear, copy-to-composer, restore)
+  // must overwrite the field even if it was focused.
+  const resetSeq = snapshot.composerResetSeq;
+  const authoritativeReset = resetSeq !== undefined && resetSeq !== lastComposerResetSeq;
+  lastComposerResetSeq = resetSeq;
+
   root.innerHTML = renderChatApp(snapshot);
 
   const textarea = document.getElementById(COMPOSER_FIELD_ID) as HTMLTextAreaElement | null;
-  if (textarea && composerWasFocused) {
+  if (textarea && composerWasFocused && !authoritativeReset) {
     if (typeof preservedValue === 'string') {
       textarea.value = preservedValue;
     }
@@ -111,6 +118,14 @@ function render(snapshot: WebviewSnapshot): void {
       textarea.setSelectionRange(caret, caretEnd);
     } catch {
       /* setSelectionRange can throw for some input types; ignore */
+    }
+  } else if (textarea && composerWasFocused && authoritativeReset) {
+    textarea.focus();
+    const end = textarea.value.length;
+    try {
+      textarea.setSelectionRange(end, end);
+    } catch {
+      /* ignore */
     }
   }
   textarea?.addEventListener('input', () => {

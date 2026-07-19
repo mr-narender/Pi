@@ -2,7 +2,7 @@
   "name": "pi-rpc-vscode",
   "displayName": "Pi RPC",
   "description": "Direct VS Code integration for Pi 0.80.10 RPC mode",
-  "version": "0.0.8",
+  "version": "0.0.9",
   "publisher": "local",
   "license": "MIT",
   "private": true,
@@ -589,6 +589,12 @@
         "command": "piRpcInternal.showHelp",
         "title": "Help",
         "category": "Pi RPC"
+      },
+      {
+        "command": "piRpcInternal.deleteSession",
+        "title": "Delete Chat",
+        "category": "Pi RPC",
+        "icon": "$(trash)"
       }
     ],
     "configuration": {
@@ -719,6 +725,19 @@
           "command": "piRpc.newSession",
           "when": "resourceScheme == file || resourceScheme == untitled || resourceScheme == pi-chat",
           "group": "navigation@2"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "piRpcInternal.deleteSession",
+          "when": "view == piRpc.sessions && viewItem == piRpc.recentSession",
+          "group": "inline"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "piRpcInternal.deleteSession",
+          "when": "false"
         }
       ]
     }

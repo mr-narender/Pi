@@ -89,6 +89,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   statusBar.bind(registry.getActive());
   void recentSessions.refresh();
 
+  // Warm-start Pi as soon as the extension activates so the first chat is ready
+  // immediately instead of connecting on demand.
+  const warmController = registry.getActive() ?? registry.list()[0];
+  if (warmController && warmController.snapshot.connectionState === 'stopped') {
+    void warmController.start().catch(() => {
+      /* best-effort warm start; connection state surfaces failures */
+    });
+  }
+
   const sessionsView = new SessionsTreeProvider(registry, recentSessions, uiState);
 
   context.subscriptions.push(
@@ -248,6 +257,31 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     recentSessions.clearFilter(controller.folder);
     refreshViews();
     return '';
+  });
+
+  registrations.set('piRpcInternal.deleteSession', async (value?: unknown) => {
+    const node = asRecord(value);
+    const sessionPath = asString(node?.sessionPath);
+    if (!sessionPath) {
+      return;
+    }
+    const label = asString(node?.sessionLabel) ?? sessionPath.split('/').pop() ?? 'this chat';
+    const confirm = await vscode.window.showWarningMessage(
+      `Delete chat "${label}"? This permanently removes its saved session file.`,
+      { modal: true },
+      'Delete'
+    );
+    if (confirm !== 'Delete') {
+      return;
+    }
+    await chatTabs.closeForSessionFile(sessionPath);
+    try {
+      await vscode.workspace.fs.delete(vscode.Uri.file(sessionPath));
+    } catch {
+      /* file may already be gone; still refresh the list */
+    }
+    await recentSessions.refresh();
+    refreshViews();
   });
 
   registrations.set('piRpcInternal.refreshRecentSessions', async () => {

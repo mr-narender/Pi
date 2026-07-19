@@ -158,6 +158,14 @@ test('composer typing is protected from caret reset and re-render loops', () => 
   assert.match(tab, /setDraft\(parsed\.text, \{ silent: true \}\)/);
 });
 
+test('sending clears the composer via an authoritative reset', () => {
+  const chat = readFileSync('src/webview/media/chat.ts', 'utf8');
+  assert.match(chat, /authoritativeReset/);
+  assert.match(chat, /composerResetSeq/);
+  const tab = readFileSync('src/editorTabs/tabManager.ts', 'utf8');
+  assert.match(tab, /state\.composerResetSeq = \(state\.composerResetSeq \?\? 0\) \+ 1/);
+});
+
 test('chat css covers narrow, high-contrast, and reduced-motion modes', () => {
   const css = readFileSync('src/webview/media/chat.css', 'utf8');
   assert.match(css, /@media \(max-width: 640px\)/);

@@ -33,3 +33,16 @@ test('manifest contributes a single Chats launcher sidebar view', () => {
   const allMenus = JSON.stringify(packageJson.contributes.menus ?? {});
   assert.ok(!allMenus.includes('piRpc.currentChat'));
 });
+
+test('manifest exposes an inline trash action to delete a chat session', () => {
+  const command = packageJson.contributes.commands.find(
+    (item) => item.command === 'piRpcInternal.deleteSession'
+  );
+  assert.ok(command, 'missing piRpcInternal.deleteSession command');
+  assert.equal(command.icon, '$(trash)');
+  const itemMenus = packageJson.contributes.menus['view/item/context'] ?? [];
+  const inline = itemMenus.find((item) => item.command === 'piRpcInternal.deleteSession');
+  assert.ok(inline, 'missing inline delete menu');
+  assert.equal(inline.group, 'inline');
+  assert.match(String(inline.when), /piRpc\.recentSession/);
+});

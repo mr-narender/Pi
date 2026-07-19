@@ -656,3 +656,44 @@ button.ghost:hover,
     animation: none;
   }
 }
+
+/* ---- Chat bubbles: fit content, wrap, grow while streaming (LOCAL-004) ---- */
+#messages {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+#messages .message-card {
+  width: fit-content;
+  max-width: min(80ch, 100%);
+  padding: 8px 12px;
+  border-radius: 12px;
+}
+
+#messages .message-card pre {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  font-family: var(--vscode-font-family);
+}
+
+#messages .message-role {
+  font-size: 11px;
+  opacity: 0.65;
+  margin-bottom: 2px;
+}
+
+#messages .message-user {
+  align-self: flex-end;
+  background: var(--vscode-editorWidget-background, rgba(128, 128, 128, 0.12));
+}
+
+#messages .message-assistant {
+  align-self: flex-start;
+  background: transparent;
+  border-color: transparent;
+  padding-left: 0;
+}

@@ -138,6 +138,7 @@ export interface RecoveryState {
 
 export interface ComposerSessionState {
   draft: string;
+  composerResetSeq?: number;
   pendingContextItems: PendingContextItem[];
   pendingImages: PendingImageItem[];
   focus: ComposerFocusTarget;
