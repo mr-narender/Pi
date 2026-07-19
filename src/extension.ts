@@ -31,6 +31,37 @@ function asString(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined;
 }
 
+async function appendSessionInfoName(sessionPath: string, name: string): Promise<void> {
+  const { readFile, appendFile } = await import('node:fs/promises');
+  let parentId: string | null = null;
+  try {
+    const text = await readFile(sessionPath, 'utf8');
+    const lines = text.split('\n').filter((line) => line.trim());
+    for (let i = lines.length - 1; i >= 0; i--) {
+      try {
+        const obj = JSON.parse(lines[i] as string) as { id?: unknown };
+        if (typeof obj.id === 'string') {
+          parentId = obj.id;
+          break;
+        }
+      } catch {
+        /* skip unparseable line */
+      }
+    }
+  } catch {
+    /* new or unreadable file */
+  }
+  const id = Math.random().toString(16).slice(2, 10).padEnd(8, '0');
+  const entry = {
+    type: 'session_info',
+    id,
+    parentId,
+    timestamp: new Date().toISOString(),
+    name,
+  };
+  await appendFile(sessionPath, `${JSON.stringify(entry)}\n`, 'utf8');
+}
+
 function formatTokenCount(count: number): string {
   if (count >= 1_000_000) {
     return `${(count / 1_000_000).toFixed(count % 1_000_000 === 0 ? 0 : 1)}M`;
@@ -219,6 +250,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     return result;
   };
 
+  // Resolve the active chat's controller WITHOUT re-rendering the webview.
+  // Rendering before opening a QuickPick/InputBox lets the webview steal focus
+  // back and dismiss the picker (a flicker), so menu commands use this instead.
+  const activeController = (): SessionController | undefined =>
+    chatTabs.getActiveContext()?.controller ?? registry.getActive();
+
   const registrations = new Map<string, (...args: unknown[]) => Promise<unknown>>();
 
   registrations.set('piRpcInternal.selectWorkspaceFolder', async (folderUri?: unknown) => {
@@ -274,21 +311,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   registrations.set('piRpcInternal.renameSession', async (value?: unknown) => {
     const rec = asRecord(value);
     const sessionPath = asString(rec?.sessionPath);
-    const controller = registry.getActive() ?? (await registry.getSelectedOrPick());
-    if (!controller) {
+    if (!sessionPath) {
       return;
     }
-    // Reveal/open the target session so the rename applies to the right, loaded
-    // session (set_session_name always targets the client's current session).
-    if (sessionPath) {
-      if (editorTabsEnabled()) {
-        await chatTabs.openForSessionFile(controller, sessionPath, { focusComposer: false });
-      }
-      if (asString(controller.snapshot.state.sessionFile) !== sessionPath) {
-        await controller.switchSession(sessionPath);
-      }
-    }
-    const current = asString(controller.snapshot.state.sessionName) ?? '';
+    // Prompt FIRST (do not open a tab beforehand — that steals focus and
+    // dismisses the input box).
+    const current = asString(rec?.sessionLabel) ?? '';
     const name = await vscode.window.showInputBox({
       title: 'Rename chat',
       value: current,
@@ -297,12 +325,24 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     if (name === undefined || name.trim() === '') {
       return;
     }
-    await controller.renameSession(name.trim());
-    await controller.refreshState();
-    await controller.reconcile();
-    await recentSessions.refresh(controller.folder);
+    const trimmed = name.trim();
+    // If this session is the live/loaded one, rename via Pi so its in-memory
+    // state updates too; otherwise write the name into the session file
+    // directly (no disruption, works for any saved chat).
+    const live = registry
+      .list()
+      .find((entry) => asString(entry.snapshot.state.sessionFile) === sessionPath);
+    if (live && live.snapshot.connectionState !== 'stopped') {
+      await live.renameSession(trimmed);
+      await live.refreshState();
+      await live.reconcile();
+      await recentSessions.refresh(live.folder);
+    } else {
+      await appendSessionInfoName(sessionPath, trimmed);
+      await recentSessions.refresh();
+    }
     refreshViews();
-    void vscode.window.showInformationMessage(`Renamed chat to “${name.trim()}”.`);
+    void vscode.window.showInformationMessage(`Renamed chat to “${trimmed}”.`);
   });
 
   registrations.set('piRpcInternal.deleteSession', async (value?: unknown) => {
@@ -403,10 +443,26 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   });
 
   registrations.set('piRpcInternal.showHelp', async () => {
-    const readme = vscode.Uri.joinPath(context.extensionUri, 'README.md');
-    const document = await vscode.workspace.openTextDocument(readme);
-    await vscode.window.showTextDocument(document, { preview: false });
-    return readme.toString();
+    const detail = [
+      'New Chat: sidebar (+ New Chat) or the Command Palette.',
+      'Resume: click a chat in the sidebar; rename/delete via the hover icons.',
+      'Send: type and press Cmd+Enter / Ctrl+Enter.',
+      'Attach: use + in the composer (file, selection, diagnostics, image).',
+      'Slash commands: press / in the composer actions to insert a Pi command.',
+      'Model & thinking: the model chip and More menu.',
+      '',
+      'Requires the Pi CLI installed and logged in (pi --version, /login).',
+    ].join('\n');
+    const choice = await vscode.window.showInformationMessage(
+      'Pi — quick help',
+      { modal: true, detail },
+      'Open full README'
+    );
+    if (choice === 'Open full README') {
+      const readme = vscode.Uri.joinPath(context.extensionUri, 'README.md');
+      await vscode.commands.executeCommand('markdown.showPreview', readme);
+    }
+    return 'help';
   });
 
   registrations.set('piRpc.prompt', async (value?: unknown) => {
@@ -600,7 +656,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     withController((controller) => controller.cycleModel())
   );
   registrations.set('piRpc.showModels', async () => {
-    return withController(async (controller) => {
+    const controller = activeController();
+    if (!controller) {
+      void vscode.window.showInformationMessage('Open a Pi chat first.');
+      return undefined;
+    }
+    {
       const models = await controller.getAvailableModels();
       const current = asRecord(controller.snapshot.state.model);
       const currentProvider = current ? asString(current.provider) : undefined;
@@ -689,27 +750,30 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         refreshViews();
       }
       return models;
-    });
+    }
   });
   registrations.set('piRpc.selectModel', registrations.get('piRpc.showModels')!);
   registrations.set('piRpc.setThinkingLevel', async () => {
-    return withController(async (controller) => {
-      const currentLevel = asString(controller.snapshot.state.thinkingLevel);
-      const levels = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
-      const picked = await vscode.window.showQuickPick(
-        levels.map((level) => ({
-          label: `${level === currentLevel ? '$(check) ' : ''}${level}`,
-          level,
-        })),
-        { title: 'Thinking level', placeHolder: 'How much should Pi reason before replying?' }
-      );
-      if (picked) {
-        await controller.setThinkingLevel(picked.level);
-        await controller.refreshState();
-        refreshViews();
-        void vscode.window.showInformationMessage(`Thinking level set to “${picked.level}”.`);
-      }
-    });
+    const controller = activeController();
+    if (!controller) {
+      void vscode.window.showInformationMessage('Open a Pi chat first.');
+      return;
+    }
+    const currentLevel = asString(controller.snapshot.state.thinkingLevel);
+    const levels = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
+    const picked = await vscode.window.showQuickPick(
+      levels.map((level) => ({
+        label: `${level === currentLevel ? '$(check) ' : ''}${level}`,
+        level,
+      })),
+      { title: 'Thinking level', placeHolder: 'How much should Pi reason before replying?' }
+    );
+    if (picked) {
+      await controller.setThinkingLevel(picked.level);
+      await controller.refreshState();
+      refreshViews();
+      void vscode.window.showInformationMessage(`Thinking level set to “${picked.level}”.`);
+    }
   });
   registrations.set('piRpc.cycleThinkingLevel', async () =>
     withController((controller) => controller.cycleThinkingLevel())
@@ -1028,24 +1092,27 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     });
   });
   registrations.set('piRpc.renameSession', async (value?: unknown) => {
-    return withController(async (controller) => {
-      const name =
-        asString(asRecord(value)?.name) ??
-        (await vscode.window.showInputBox({
-          title: 'Rename chat',
-          value: asString(controller.snapshot.state.sessionName) ?? '',
-          prompt: 'Enter a name for this chat',
-        }));
-      if (name !== undefined && name.trim() !== '') {
-        await controller.renameSession(name.trim());
-        await controller.refreshState();
-        await controller.reconcile();
-        await recentSessions.refresh(controller.folder);
-        refreshViews();
-        void vscode.window.showInformationMessage(`Renamed chat to “${name.trim()}”.`);
-      }
-      return name;
-    });
+    const controller = activeController();
+    if (!controller) {
+      void vscode.window.showInformationMessage('Open a Pi chat first.');
+      return undefined;
+    }
+    const name =
+      asString(asRecord(value)?.name) ??
+      (await vscode.window.showInputBox({
+        title: 'Rename chat',
+        value: asString(controller.snapshot.state.sessionName) ?? '',
+        prompt: 'Enter a name for this chat',
+      }));
+    if (name !== undefined && name.trim() !== '') {
+      await controller.renameSession(name.trim());
+      await controller.refreshState();
+      await controller.reconcile();
+      await recentSessions.refresh(controller.folder);
+      refreshViews();
+      void vscode.window.showInformationMessage(`Renamed chat to “${name.trim()}”.`);
+    }
+    return name;
   });
   registrations.set('piRpc.showPiCommands', async () => {
     const activeContext = chatTabs.getActiveContext();

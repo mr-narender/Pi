@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.20
+
+- Fixed the thinking-level flicker: menu commands (thinking, model, rename) no longer re-render the webview before opening the picker, which was stealing focus and instantly closing it.
+- Sidebar rename now works reliably: it prompts first, then renames the live session via Pi or writes the name directly into the saved session file for non-open chats — no tab hijack.
+- Help is now a readable popover with an "Open full README" button instead of dumping the README into an editor.
+
 ## 0.0.19
 
 - Rename now works from both the sidebar and the More menu: it reveals the target session, applies the name, refreshes the title + sidebar, and confirms.
