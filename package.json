@@ -8,7 +8,7 @@
   "private": true,
   "repository": {
     "type": "git",
-    "url": "https://example.invalid/local/pi-rpc-vscode.git"
+    "url": "git+https://github.com/mr-narender/Pi.git"
   },
   "engines": {
     "vscode": "^1.95.0",
@@ -745,5 +745,9 @@
         }
       ]
     }
+  },
+  "homepage": "https://github.com/mr-narender/Pi#readme",
+  "bugs": {
+    "url": "https://github.com/mr-narender/Pi/issues"
   }
 }
