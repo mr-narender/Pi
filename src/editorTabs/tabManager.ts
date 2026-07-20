@@ -1095,6 +1095,7 @@ export class ChatTabManager implements vscode.Disposable {
       canSelectMany: false,
       openLabel: 'Attach',
       title: 'Add a file to the chat',
+      defaultUri: controller.folder.uri,
     });
     const uri = picked?.[0];
     if (!uri) {

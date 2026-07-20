@@ -937,3 +937,124 @@ button.ghost:hover,
   opacity: 1;
   background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.15));
 }
+
+/* ---- Compact, modern attachment chips ---- */
+.attachment-tray {
+  display: block;
+  padding: 0;
+  margin-bottom: 8px;
+  background: transparent;
+  border: none;
+}
+.attachment-tray .section-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  opacity: 0.5;
+  margin-bottom: 5px;
+}
+.attachment-tray .chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.attachment-tray > button[data-action='clearAttachments'] {
+  margin-top: 6px;
+  padding: 2px 8px;
+  font-size: 11px;
+  background: transparent;
+  color: var(--vscode-descriptionForeground);
+  border: none;
+  cursor: pointer;
+}
+.attachment-tray > button[data-action='clearAttachments']:hover {
+  color: var(--vscode-foreground);
+  text-decoration: underline;
+}
+
+.chip-shell {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  max-width: 220px;
+  padding: 0 2px 0 0;
+  border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
+  background: var(--vscode-editorWidget-background, rgba(128, 128, 128, 0.1));
+  border-radius: 999px;
+}
+.chip-shell .chip-details {
+  display: inline-flex;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  border-radius: inherit;
+}
+.chip-shell .chip-details > summary {
+  list-style: none;
+  cursor: pointer;
+  max-width: 172px;
+  padding: 3px 4px 3px 10px;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-radius: inherit;
+}
+.chip-shell .chip-details > summary::-webkit-details-marker {
+  display: none;
+}
+.chip-shell .chip-details.chip-stale > summary {
+  color: var(--vscode-editorWarning-foreground, #d19a66);
+}
+.chip-shell .chip-remove-button {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--vscode-descriptionForeground);
+  border-radius: 50%;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+.chip-shell .chip-remove-button:hover {
+  background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.25));
+  color: var(--vscode-foreground);
+}
+
+/* Expanded chip detail becomes a small popover, not an inline block. */
+.chip-shell .chip-details[open] .detail-stack {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 30;
+  display: grid;
+  gap: 6px;
+  width: max-content;
+  max-width: 340px;
+  max-height: 260px;
+  overflow: auto;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  border: 1px solid var(--vscode-panel-border);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+.chip-shell .chip-details .detail-stack pre {
+  margin: 0;
+  max-height: 160px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+}
+.chip-shell .image-preview {
+  max-width: 220px;
+  max-height: 140px;
+  border-radius: 6px;
+}

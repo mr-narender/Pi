@@ -6,7 +6,6 @@ declare function acquireVsCodeApi(): {
 
 import type { WebviewSnapshot } from '../../state/types';
 import {
-  ATTACH_TRIGGER_ID,
   COMPOSER_FIELD_ID,
   PREVIEW_DIALOG_ID,
   SEND_BUTTON_ID,
@@ -271,10 +270,6 @@ function render(snapshot: WebviewSnapshot): void {
       vscode.postMessage({ type: 'openAttachment', uri: button.dataset.attachmentUri });
     });
   }
-
-  document.getElementById(ATTACH_TRIGGER_ID)?.addEventListener('focus', () => {
-    vscode.postMessage({ type: 'setFocus', focus: 'attach' });
-  });
 
   document.getElementById(PREVIEW_DIALOG_ID)?.addEventListener('keydown', handlePreviewKeydown);
 

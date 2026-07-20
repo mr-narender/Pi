@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.23
+
+- Fixed the + button: the first click now opens the file dialog. A leftover focus handler was re-rendering the composer and replacing the button mid-click, so the first click was lost (which caused the double-dialog/slow behavior).
+- Attachment chips are now compact, modern pills (filename + remove ×) that wrap inline; expanding a chip shows its details in a small popover instead of a full-width block.
+
 ## 0.0.22
 
 - Attaching a file with + is now fast and non-blocking: it checks workspace containment and file size first, then reads bytes directly (up to 512 KB) instead of opening a full TextDocument (which made VS Code tokenize/language-process the whole file). Large files show a clear warning instead of freezing the UI.
