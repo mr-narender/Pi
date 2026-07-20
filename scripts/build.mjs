@@ -10,7 +10,7 @@ await build({
   bundle: true,
   platform: 'node',
   format: 'cjs',
-  target: 'node22',
+  target: 'node18',
   external: ['vscode'],
   sourcemap: false,
   legalComments: 'none',
