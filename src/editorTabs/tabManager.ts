@@ -1091,12 +1091,76 @@ export class ChatTabManager implements vscode.Disposable {
   private async capturePickedFile(
     controller: SessionController
   ): Promise<PendingContextItem | undefined> {
-    const picked = await vscode.window.showOpenDialog({ canSelectMany: false });
-    if (!picked?.[0]) {
+    const picked = await vscode.window.showOpenDialog({
+      canSelectMany: false,
+      openLabel: 'Attach',
+      title: 'Add a file to the chat',
+    });
+    const uri = picked?.[0];
+    if (!uri) {
       return undefined;
     }
-    const document = await vscode.workspace.openTextDocument(picked[0]);
-    return this.captureFileLike(controller, document, 'pickedFile');
+    // Containment check first — cheap, avoids any read for out-of-workspace files.
+    const workspaceRelativePath = relativeWorkspacePath(controller.folder, uri);
+    if (!workspaceRelativePath) {
+      void vscode.window.showWarningMessage(
+        'Only files inside the active workspace can be attached.'
+      );
+      return undefined;
+    }
+    // Size guard BEFORE reading, so a huge/binary file cannot freeze the UI.
+    const MAX_ATTACH_BYTES = 512 * 1024;
+    let size = 0;
+    try {
+      const stat = await vscode.workspace.fs.stat(uri);
+      if (stat.type & vscode.FileType.Directory) {
+        void vscode.window.showWarningMessage('Pick a file, not a folder.');
+        return undefined;
+      }
+      size = stat.size;
+    } catch {
+      void vscode.window.showWarningMessage('Could not read that file.');
+      return undefined;
+    }
+    if (size > MAX_ATTACH_BYTES) {
+      void vscode.window.showWarningMessage(
+        `That file is too large to attach (${Math.round(size / 1024)} KB > ${
+          MAX_ATTACH_BYTES / 1024
+        } KB). Attach a smaller file or a selection.`
+      );
+      return undefined;
+    }
+    // Read bytes directly (fast) instead of opening a full TextDocument, which
+    // makes VS Code tokenize/language-process the whole file.
+    let text: string;
+    try {
+      const bytes = await vscode.workspace.fs.readFile(uri);
+      text = new TextDecoder('utf-8', { fatal: false }).decode(bytes);
+    } catch {
+      void vscode.window.showWarningMessage('Could not read that file.');
+      return undefined;
+    }
+    const content = boundFileContent(text);
+    const lineEnd = content.split('\n').length;
+    const languageId = basename(uri.fsPath).split('.').pop() || 'plaintext';
+    return {
+      kind: 'pickedFile',
+      itemId: makeId('pickedFile'),
+      workspaceFolder: controller.folder.uri.fsPath,
+      workspaceRelativePath,
+      lineStart: 1,
+      lineEnd,
+      languageId,
+      sanitizedContent: content,
+      capturedAt: new Date().toISOString(),
+      persistedRef: {
+        workspaceRelativePath,
+        lineStart: 1,
+        lineEnd,
+        languageId,
+        contentFingerprint: fingerprint(content),
+      },
+    };
   }
 
   private async captureFileLike(

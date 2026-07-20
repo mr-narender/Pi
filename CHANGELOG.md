@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.22
+
+- Attaching a file with + is now fast and non-blocking: it checks workspace containment and file size first, then reads bytes directly (up to 512 KB) instead of opening a full TextDocument (which made VS Code tokenize/language-process the whole file). Large files show a clear warning instead of freezing the UI.
+
 ## 0.0.21
 
 - Usage & cost is now a readable popover (messages, tokens, context, cost) with a "Copy JSON" option — no JSON editor. All other info commands also show notifications with copy-to-clipboard instead of opening JSON files.
