@@ -3,7 +3,7 @@
   "displayName": "Pi - this one is (y)ours",
   "description": "An unofficial, personal VS Code chat UI for the Pi coding agent (pi.dev). Not affiliated with pi.dev — shared for anyone who wants it.",
   "version": "0.0.23",
-  "publisher": "local",
+  "publisher": "mr-narender",
   "license": "MIT",
   "private": true,
   "repository": {
