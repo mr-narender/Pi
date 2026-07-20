@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 
 async function run() {
   const vscode = require('vscode');
-  const extension = vscode.extensions.getExtension('local.pi-rpc-vscode');
+  const extension = vscode.extensions.getExtension('mr-narender.pi');
   assert.ok(extension, 'extension not found');
   await extension.activate();
 

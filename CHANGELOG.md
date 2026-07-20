@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.24
+
+- Streamlined the extension id to mr-narender.pi (was mr-narender.pi-rpc-vscode). Install with: code --install-extension mr-narender.pi
+
 ## 0.0.23
 
 - Fixed the + button: the first click now opens the file dialog. A leftover focus handler was re-rendering the composer and replacing the button mid-click, so the first click was lost (which caused the double-dialog/slow behavior).
