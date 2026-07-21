@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.37
+
+- Fix (Windows): loading a saved chat session could fail with "ENOENT: no such file or directory, realpath 'C:\\--c--Users-...--'". canonicalizeSessionPath used realpath purely to normalize symlinks but let it throw; on Windows realpath can fail even for a valid resolved path, aborting the load. It now falls back to the resolved absolute path when realpath fails, so the session loads. (Our session-dir encoding already matches Pi's exactly.)
+- Tests: canonicalizeSessionPath returns an absolute path for an existing file, does not throw when realpath fails, and resolves relative paths against the cwd.
+
 ## 0.0.36
 
 - Clearer transcript layout: user and agent text stay in solid, per-role chat bubbles, while thinking, tool calls, tool results, and images now render as SEPARATE, lighter, dashed "meta" cards outside the bubble. This keeps the actual conversation prominent while agent internals feel granular and distinct (dim text, type-colored badges, collapsible thinking/results).
