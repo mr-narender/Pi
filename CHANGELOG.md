@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.0.28
+
+- Fix chat bubble rendering: removed three stacked, conflicting bubble style blocks that were fighting in the CSS cascade and made the "You" message look heavy/sluggish. Now a single coherent design:
+  - The card is a transparent shell; the visible bubble is only the message text (no grey box around the "You" label).
+  - "You" is an accent bubble hugging the trailing edge (fit-content width); Pi is a neutral surface bubble on the leading edge — same rounded shape language.
+  - Spacing is driven by one flex `gap` (no doubled margins), with consistent padding and wrapping.
+
 ## 0.0.27
 
 - Much clearer error logging for easy debugging:

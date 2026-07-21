@@ -657,57 +657,24 @@ button.ghost:hover,
   }
 }
 
-/* ---- Chat bubbles: fit content, wrap, grow while streaming (LOCAL-004) ---- */
+/* ---- Chat bubbles: one coherent, intuitive design (LOCAL-004) ---- */
 #messages {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  align-items: flex-start;
-}
-
-#messages .message-card {
-  width: fit-content;
-  max-width: min(80ch, 100%);
-  padding: 8px 12px;
-  border-radius: 12px;
-}
-
-#messages .message-card pre {
-  margin: 0;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  word-break: break-word;
-  font-family: var(--vscode-font-family);
-}
-
-#messages .message-role {
-  font-size: 11px;
-  opacity: 0.65;
-  margin-bottom: 2px;
-}
-
-#messages .message-user {
-  align-self: flex-end;
-  background: var(--vscode-editorWidget-background, rgba(128, 128, 128, 0.12));
-}
-
-#messages .message-assistant {
-  align-self: flex-start;
-  background: transparent;
-  border-color: transparent;
-  padding-left: 0;
-}
-
-/* ---- Refined chat bubbles (LOCAL-004) ---- */
-#messages {
-  padding: 8px 4px;
+  align-items: stretch;
   gap: 14px;
+  padding: 12px 8px;
 }
 
+/* Base card is just a positioning shell; the visible bubble is the <pre>. */
 #messages .message-card {
+  display: flex;
+  flex-direction: column;
   border: none;
+  background: none;
   padding: 0;
-  max-width: min(72ch, 92%);
+  margin: 0;
+  min-width: 0;
   line-height: 1.55;
 }
 
@@ -722,55 +689,6 @@ button.ghost:hover,
 
 #messages .message-card pre {
   margin: 0;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  word-break: break-word;
-  font-family: var(--vscode-font-family);
-  font-size: var(--vscode-font-size, 13px);
-}
-
-/* User: compact rounded bubble on the trailing edge. */
-#messages .message-user {
-  align-self: flex-end;
-  max-width: min(64ch, 88%);
-}
-
-#messages .message-user .message-role {
-  text-align: right;
-}
-
-#messages .message-user pre {
-  background: var(--vscode-editorWidget-background, rgba(128, 128, 128, 0.14));
-  border: 1px solid var(--vscode-panel-border);
-  border-radius: 14px 14px 4px 14px;
-  padding: 8px 12px;
-}
-
-/* Assistant: clean full-width text, no box (Claude-style). */
-#messages .message-assistant {
-  align-self: stretch;
-  max-width: min(80ch, 100%);
-}
-
-#messages .message-assistant pre {
-  background: transparent;
-  border: none;
-  padding: 0;
-}
-
-#messages .message-card .detail-stack {
-  margin-top: 6px;
-}
-
-/* ---- Consistent, intuitive chat bubbles (LOCAL-004) ---- */
-#messages .message-card {
-  border: none;
-  padding: 0;
-  line-height: 1.55;
-}
-
-#messages .message-card pre {
-  margin: 0;
   padding: 9px 13px;
   border-radius: 14px;
   white-space: pre-wrap;
@@ -778,32 +696,45 @@ button.ghost:hover,
   word-break: break-word;
   font-family: var(--vscode-font-family);
   font-size: var(--vscode-font-size, 13px);
+  box-sizing: border-box;
 }
 
-/* User: accent bubble on the trailing edge. */
+/* User: accent bubble hugging the trailing edge. */
 #messages .message-user {
   align-self: flex-end;
+  align-items: flex-end;
   max-width: min(64ch, 88%);
 }
 #messages .message-user .message-role {
   text-align: right;
 }
 #messages .message-user pre {
+  align-self: flex-end;
+  width: fit-content;
+  max-width: 100%;
   background: var(--vscode-button-background);
   color: var(--vscode-button-foreground);
   border-radius: 14px 14px 4px 14px;
 }
 
-/* Assistant: neutral surface bubble on the leading edge (same shape language). */
+/* Assistant: neutral surface bubble on the leading edge, same shape language. */
 #messages .message-assistant {
   align-self: flex-start;
+  align-items: flex-start;
   max-width: min(74ch, 92%);
 }
 #messages .message-assistant pre {
+  align-self: flex-start;
+  width: fit-content;
+  max-width: 100%;
   background: var(--vscode-editorWidget-background, rgba(128, 128, 128, 0.12));
   color: var(--vscode-foreground);
   border: 1px solid var(--vscode-panel-border);
   border-radius: 14px 14px 14px 4px;
+}
+
+#messages .message-card .detail-stack {
+  margin-top: 6px;
 }
 
 /* ---- Center the empty / connecting states within the flex column ---- */
