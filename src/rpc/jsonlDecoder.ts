@@ -15,6 +15,14 @@ export class JsonlDecoder {
   public push(chunk: Uint8Array): string[] {
     this.append(chunk);
     this.split(false);
+    // Bound only the UNPARSED residual (an incomplete trailing record). A large
+    // burst of complete, newline-delimited records — e.g. a full session replay
+    // on resume — is split out above and must NOT trip this limit. Checking the
+    // transient combined buffer here was the cause of "Pending stdout buffer
+    // exceeded limit" when resuming sessions.
+    if (this.buffer.length > this.options.maxBufferBytes) {
+      throw new JsonlProtocolError('Pending stdout buffer exceeded limit');
+    }
     return this.drainRecords();
   }
 
@@ -28,9 +36,6 @@ export class JsonlDecoder {
     next.set(this.buffer, 0);
     next.set(chunk, this.buffer.length);
     this.buffer = next;
-    if (this.buffer.length > this.options.maxBufferBytes) {
-      throw new JsonlProtocolError('Pending stdout buffer exceeded limit');
-    }
   }
 
   private split(final: boolean): void {

@@ -88,7 +88,10 @@ export class PiProcessSupervisor extends TypedEmitter implements vscode.Disposab
     });
     const transport = new RpcTransport(child.stdin, child.stdout, child.stderr, {
       maxRecordBytes: this.settings.maxRecordBytes,
-      maxBufferBytes: this.settings.maxRecordBytes,
+      // The residual buffer only ever holds one partial record, so it needs at
+      // least maxRecordBytes; give generous headroom so resuming a large session
+      // (a big stdout replay burst) never trips the limit.
+      maxBufferBytes: Math.max(this.settings.maxRecordBytes * 2, 16 * 1024 * 1024),
       maxPendingRequests: this.settings.maxPendingRequests,
       maxQueuedWrites: this.settings.maxQueuedWrites,
     });

@@ -54,6 +54,41 @@ test('jsonlDecoder enforces record size limits', () => {
   assert.throws(() => decoder.push(Buffer.from('{"long":true}\n', 'utf8')), JsonlProtocolError);
 });
 
+test('jsonlDecoder accepts a large burst of complete records in one chunk (session resume)', () => {
+  // Simulates Pi replaying a whole session on resume: many small, complete
+  // newline-delimited records arriving in a single stdout chunk whose total
+  // size far exceeds maxBufferBytes. Each record is well under maxRecordBytes,
+  // so every one must decode without a "Pending stdout buffer exceeded limit".
+  const decoder = new JsonlDecoder({ maxRecordBytes: 256, maxBufferBytes: 512 });
+  const records = Array.from({ length: 500 }, (_, i) => `{"i":${i},"role":"user"}`);
+  const bytes = Buffer.from(records.join('\n') + '\n', 'utf8');
+  assert.ok(bytes.length > 512, 'burst must exceed the buffer limit to be meaningful');
+  const out = decoder.push(bytes);
+  assert.equal(out.length, records.length);
+  assert.deepEqual(out, records);
+});
+
+test('jsonlDecoder accepts a big single record within maxRecordBytes across many chunks', () => {
+  const decoder = new JsonlDecoder({ maxRecordBytes: 1_000_000, maxBufferBytes: 2_000_000 });
+  const big = `{"text":"${'x'.repeat(500_000)}"}`;
+  const bytes = Buffer.from(big + '\n', 'utf8');
+  const out: string[] = [];
+  for (let i = 0; i < bytes.length; i += 60_000) {
+    out.push(...decoder.push(bytes.subarray(i, Math.min(bytes.length, i + 60_000))));
+  }
+  assert.deepEqual(out, [big]);
+});
+
+test('jsonlDecoder rejects an unterminated residual that exceeds maxBufferBytes', () => {
+  const decoder = new JsonlDecoder({ maxRecordBytes: 64, maxBufferBytes: 32 });
+  // No newline: the residual grows unbounded and must be capped.
+  assert.throws(
+    () => decoder.push(Buffer.from('x'.repeat(64), 'utf8')),
+    JsonlProtocolError,
+    'residual over the buffer limit must throw'
+  );
+});
+
 test('jsonlDecoder random chunking property', () => {
   const source = ['{"a":1}', '{"b":"two"}', '{"c":[1,2,3]}'].join('\n');
   for (let seed = 1; seed < 50; seed += 1) {

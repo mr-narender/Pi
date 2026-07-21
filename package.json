@@ -2,7 +2,7 @@
   "name": "pi",
   "displayName": "Pi – this one is (y)ours",
   "description": "An unofficial, personal VS Code chat UI for the Pi coding agent (pi.dev). Not affiliated with pi.dev — shared for anyone who wants it.",
-  "version": "0.0.28",
+  "version": "0.0.29",
   "publisher": "mr-narender",
   "license": "MIT",
   "private": true,
@@ -655,9 +655,9 @@
         },
         "piRpc.maxRecordBytes": {
           "type": "number",
-          "default": 1048576,
+          "default": 16777216,
           "minimum": 1024,
-          "description": "Maximum JSONL record size accepted from Pi stdout."
+          "description": "Maximum JSONL record size accepted from Pi stdout. Large enough to resume sessions with big messages or tool outputs."
         },
         "piRpc.maxPendingRequests": {
           "type": "number",

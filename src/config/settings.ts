@@ -30,7 +30,7 @@ export function getSettings(): PiRpcSettings {
     allowApproveInTrustedWorkspace: config.get<boolean>('allowApproveInTrustedWorkspace', false),
     responseTimeoutMs: config.get<number>('responseTimeoutMs', 15000),
     longRunningTimeoutMs: config.get<number>('longRunningTimeoutMs', 120000),
-    maxRecordBytes: config.get<number>('maxRecordBytes', 1048576),
+    maxRecordBytes: config.get<number>('maxRecordBytes', 16777216),
     maxPendingRequests: config.get<number>('maxPendingRequests', 256),
     maxQueuedWrites: config.get<number>('maxQueuedWrites', 256),
     maxTranscriptItems: config.get<number>('maxTranscriptItems', 400),

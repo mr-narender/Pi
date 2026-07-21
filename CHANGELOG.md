@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.29
+
+- Fix: resuming a session could crash with "Pending stdout buffer exceeded limit" (and a follow-on VS Code "Argument is undefined or null" when opening the editor). On resume, Pi replays the whole transcript as one large stdout burst; the decoder was checking the transient combined buffer instead of the unparsed residual, so a burst of many small, complete records tripped the limit. The decoder now bounds only the incomplete trailing record, so full session replays stream through.
+- Raised the default max JSONL record size to 16 MiB and decoupled the stdout buffer headroom so large messages/tool outputs in a resumed session no longer break the stream.
+- Added tests: large resume burst in one chunk, big single record across many chunks, and an unterminated-residual overflow guard.
+
 ## 0.0.28
 
 - Fix chat bubble rendering: removed three stacked, conflicting bubble style blocks that were fighting in the CSS cascade and made the "You" message look heavy/sluggish. Now a single coherent design:
