@@ -7,6 +7,7 @@ import type {
   WebviewAttachmentFileRef,
   WebviewAttachmentItem,
   WebviewAttachmentPreviewItem,
+  WebviewMessageBlock,
   WebviewMessageItem,
   WebviewPendingImageItem,
   WebviewSnapshot,
@@ -231,11 +232,53 @@ function normalizeAttachments(value: unknown, cwd: string): WebviewAttachmentIte
     : [];
 }
 
+function toBlocks(message: JsonObject): WebviewMessageBlock[] {
+  const content = message.content;
+  if (typeof content === 'string') {
+    return content.trim().length > 0 ? [{ kind: 'text', text: content }] : [];
+  }
+  if (!Array.isArray(content)) {
+    return [];
+  }
+  const blocks: WebviewMessageBlock[] = [];
+  for (const raw of content) {
+    if (!raw || typeof raw !== 'object') {
+      continue;
+    }
+    const typed = raw as Record<string, unknown>;
+    if (typed.type === 'text' && typeof typed.text === 'string') {
+      blocks.push({ kind: 'text', text: typed.text });
+    } else if (typed.type === 'thinking' && typeof typed.thinking === 'string') {
+      blocks.push({ kind: 'thinking', text: typed.thinking });
+    } else if (typed.type === 'toolCall') {
+      blocks.push({
+        kind: 'tool',
+        name: String(typed.name ?? 'tool'),
+        args:
+          typed.arguments !== undefined && typed.arguments !== null
+            ? JSON.stringify(typed.arguments, null, 2)
+            : undefined,
+      });
+    } else if (typed.type === 'toolResult') {
+      blocks.push({
+        kind: 'toolResult',
+        name: typeof typed.name === 'string' ? typed.name : undefined,
+        text: typeof typed.content === 'string' ? typed.content : messageText(raw as JsonObject),
+        isError: typed.isError === true,
+      });
+    } else if (typed.type === 'image') {
+      blocks.push({ kind: 'image', mimeType: String(typed.mimeType ?? 'image') });
+    }
+  }
+  return blocks;
+}
+
 function toItem(message: JsonObject, index: number, cwd: string): WebviewMessageItem {
   return {
     id: typeof message.id === 'string' ? message.id : `m${index}`,
     role: typeof message.role === 'string' ? message.role : 'unknown',
     text: messageText(message),
+    blocks: toBlocks(message),
     attachments: normalizeAttachments(message.attachments, cwd),
   };
 }

@@ -130,13 +130,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   statusBar.bind(registry.getActive());
   void recentSessions.refresh();
 
-  // Warm-start Pi as soon as the extension activates so the first chat is ready
-  // immediately instead of connecting on demand.
-  const warmController = registry.getActive() ?? registry.list()[0];
-  if (warmController && warmController.snapshot.connectionState === 'stopped') {
-    void warmController.start().catch((error) => {
-      logger.error(`Warm-start of Pi failed for '${warmController.folder.name}'`, error);
-    });
+  // Warm-start Pi for every workspace folder as soon as the extension activates
+  // so the RPC connection is already live and clicking "New Chat" opens an
+  // interactive composer instantly instead of connecting on demand.
+  const warmFolders = vscode.workspace.workspaceFolders ?? [];
+  for (const folder of warmFolders) {
+    const controller = registry.getOrCreate(folder);
+    if (controller.snapshot.connectionState === 'stopped') {
+      logger.info(`Warm-starting Pi for '${folder.name}' on activation`);
+      void controller.start().catch((error) => {
+        logger.error(`Warm-start of Pi failed for '${folder.name}'`, error);
+      });
+    }
   }
 
   const sessionsView = new SessionsWebviewProvider(context.extensionUri, registry, recentSessions);

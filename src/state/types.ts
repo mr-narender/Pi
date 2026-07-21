@@ -150,10 +150,22 @@ export interface WebviewAttachmentItem {
   fileRef?: WebviewAttachmentFileRef;
 }
 
+export type WebviewMessageBlock =
+  | { kind: 'text'; text: string }
+  | { kind: 'thinking'; text: string }
+  | { kind: 'tool'; name: string; args?: string }
+  | { kind: 'toolResult'; name?: string; text: string; isError?: boolean }
+  | { kind: 'image'; mimeType: string };
+
 export interface WebviewMessageItem {
   id: string;
   role: string;
+  // Flattened plain text (used for previews/search and as a fallback).
   text: string;
+  // Structured content so the webview can render thinking, tool calls, tool
+  // results, images, and fenced code distinctly. Optional for backward-compat
+  // with persisted snapshots; the webview falls back to `text`.
+  blocks?: WebviewMessageBlock[];
   attachments: WebviewAttachmentItem[];
 }
 

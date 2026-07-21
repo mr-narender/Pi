@@ -234,7 +234,7 @@ export class ChatTabManager implements vscode.Disposable {
     document: ChatEditorDocument,
     panel: vscode.WebviewPanel
   ): Promise<void> {
-    const key = document.uri.toString();
+    const key = this.keyFor(document.uri);
     this.hosts.get(key)?.dispose();
     const host = new ChatEditorHost(this.context.extensionUri, document, panel, this);
     this.hosts.set(key, host);
@@ -536,7 +536,7 @@ export class ChatTabManager implements vscode.Disposable {
   }
 
   public async onHostDisposed(host: ChatEditorHost): Promise<void> {
-    const key = host.resource.toString();
+    const key = this.keyFor(host.resource);
     if (this.hosts.get(key) === host) {
       this.hosts.delete(key);
     }
@@ -840,6 +840,16 @@ export class ChatTabManager implements vscode.Disposable {
     }));
   }
 
+  /**
+   * Stable identity key for a chat resource. Derived from the parsed target
+   * (workspace + session), NOT the raw URI string, so tabs are keyed by what
+   * they represent even if the cosmetic URI path/label changes.
+   */
+  private keyFor(resource: vscode.Uri): string {
+    const target = parseChatUri(resource);
+    return target ? chatTargetSessionKey(target) : resource.toString();
+  }
+
   private contextForResource(resource: vscode.Uri): ChatTabContext | undefined {
     const target = parseChatUri(resource);
     if (!target) {
@@ -853,7 +863,7 @@ export class ChatTabManager implements vscode.Disposable {
   }
 
   private nextSequence(resource: vscode.Uri): number {
-    const key = resource.toString();
+    const key = this.keyFor(resource);
     const next = (this.resourceSequence.get(key) ?? 0) + 1;
     this.resourceSequence.set(key, next);
     return next;
@@ -880,7 +890,7 @@ export class ChatTabManager implements vscode.Disposable {
     }
     const snapshot = await this.buildSnapshot(context, options?.active ?? false);
     const title = this.titleForContext(context, snapshot);
-    const host = this.hosts.get(resource.toString());
+    const host = this.hosts.get(this.keyFor(resource));
     if (host) {
       await host.postSnapshot(snapshot, title);
     }
@@ -918,14 +928,14 @@ export class ChatTabManager implements vscode.Disposable {
   }
 
   private revealedMessageCountFor(resource: vscode.Uri): number {
-    const key = resource.toString();
+    const key = this.keyFor(resource);
     const stored = this.revealedMessageCounts.get(key);
     return typeof stored === 'number' && stored > 0 ? stored : getSettings().messageWindowSize;
   }
 
   /** Grow the revealed window for a resource by one page and re-render it. */
   private async revealOlderMessages(resource: vscode.Uri): Promise<void> {
-    const key = resource.toString();
+    const key = this.keyFor(resource);
     const step = getSettings().messageWindowSize;
     const context = this.contextForResource(resource);
     const total = context?.controller.snapshot.messages.length ?? 0;
@@ -1062,11 +1072,14 @@ export class ChatTabManager implements vscode.Disposable {
   }
 
   private findTab(resource: vscode.Uri): vscode.Tab | undefined {
-    const resourceKey = resource.toString();
+    const resourceKey = this.keyFor(resource);
     for (const group of vscode.window.tabGroups.all) {
       for (const tab of group.tabs) {
         const input = tab.input as { uri?: vscode.Uri; viewType?: string };
-        if (input.viewType === CHAT_EDITOR_VIEW_TYPE && input.uri?.toString() === resourceKey) {
+        if (input.viewType !== CHAT_EDITOR_VIEW_TYPE || !input.uri) {
+          continue;
+        }
+        if (this.keyFor(input.uri) === resourceKey) {
           return tab;
         }
       }

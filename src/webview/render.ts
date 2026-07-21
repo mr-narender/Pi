@@ -80,6 +80,77 @@ export function shouldClearSnapshotFocus(
   return focus === 'contextChip' || focus === 'imageChip' || focus === 'preview';
 }
 
+function renderMessageBlocks(message: WebviewSnapshot['messages'][number]): string {
+  const blocks = message.blocks && message.blocks.length > 0 ? message.blocks : undefined;
+  if (!blocks) {
+    // Fallback for older/persisted snapshots without structured blocks.
+    return `<div class="msg-text">${renderRichText(message.text)}</div>`;
+  }
+  return blocks.map(renderMessageBlock).join('');
+}
+
+function renderMessageBlock(
+  block: NonNullable<WebviewSnapshot['messages'][number]['blocks']>[number]
+): string {
+  switch (block.kind) {
+    case 'text':
+      return `<div class="msg-text">${renderRichText(block.text)}</div>`;
+    case 'thinking':
+      return `<details class="msg-thinking"><summary><span class="block-badge badge-thinking">Thinking</span></summary><div class="msg-thinking-body">${renderRichText(block.text)}</div></details>`;
+    case 'tool':
+      return `<div class="msg-tool"><div class="tool-head"><span class="block-badge badge-tool">Tool</span><code class="tool-name">${escapeHtml(block.name)}</code></div>${block.args ? `<pre class="code-block tool-args"><code>${escapeHtml(block.args)}</code></pre>` : ''}</div>`;
+    case 'toolResult':
+      return `<details class="msg-tool-result${block.isError ? ' is-error' : ''}"><summary><span class="block-badge badge-result${block.isError ? ' badge-error' : ''}">${block.isError ? 'Tool error' : 'Tool result'}</span>${block.name ? `<code class="tool-name">${escapeHtml(block.name)}</code>` : ''}</summary><pre class="code-block"><code>${escapeHtml(block.text)}</code></pre></details>`;
+    case 'image':
+      return `<div class="msg-image"><span class="block-badge badge-image">Image</span> ${escapeHtml(block.mimeType)}</div>`;
+    default:
+      return '';
+  }
+}
+
+/**
+ * Render message text with fenced code blocks (```lang) and inline `code`.
+ * Everything is HTML-escaped first; no raw markup is ever emitted.
+ */
+export function renderRichText(raw: string): string {
+  const lines = raw.split('\n');
+  const out: string[] = [];
+  let paragraph: string[] = [];
+  const flushParagraph = (): void => {
+    if (paragraph.length === 0) {
+      return;
+    }
+    const escaped = escapeHtml(paragraph.join('\n'));
+    const withInline = escaped.replace(/`([^`\n]+)`/g, '<code class="inline-code">$1</code>');
+    out.push(`<p class="msg-para">${withInline}</p>`);
+    paragraph = [];
+  };
+  let index = 0;
+  while (index < lines.length) {
+    const fence = /^```(\w*)\s*$/.exec(lines[index] ?? '');
+    if (fence) {
+      flushParagraph();
+      const language = fence[1] ?? '';
+      const code: string[] = [];
+      index += 1;
+      while (index < lines.length && !/^```\s*$/.test(lines[index] ?? '')) {
+        code.push(lines[index] ?? '');
+        index += 1;
+      }
+      index += 1; // skip closing fence
+      const langLabel = language ? `<div class="code-lang">${escapeHtml(language)}</div>` : '';
+      out.push(
+        `<div class="code-wrap">${langLabel}<pre class="code-block"><code>${escapeHtml(code.join('\n'))}</code></pre></div>`
+      );
+    } else {
+      paragraph.push(lines[index] ?? '');
+      index += 1;
+    }
+  }
+  flushParagraph();
+  return out.join('');
+}
+
 function escapeHtml(value: string): string {
   return value
     .replaceAll('&', '&amp;')
@@ -171,7 +242,7 @@ function renderMessages(snapshot: WebviewSnapshot): string {
         (message) => `
         <article class="message-card message-${escapeHtml(message.role)}">
           <div class="message-role">${escapeHtml(message.role === 'assistant' ? 'Pi' : message.role === 'user' ? 'You' : message.role)}</div>
-          <pre>${escapeHtml(message.text)}</pre>
+          <div class="message-body">${renderMessageBlocks(message)}</div>
           ${message.attachments.length > 0 ? `<div class="detail-stack">${message.attachments.map((attachment) => renderAttachment(attachment)).join('')}</div>` : ''}
         </article>`
       )

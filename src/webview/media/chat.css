@@ -705,16 +705,24 @@ button.ghost:hover,
   margin-bottom: 4px;
 }
 
-#messages .message-card pre {
-  margin: 0;
-  padding: 9px 13px;
+/* The visible bubble is the message body; blocks stack inside it. */
+#messages .message-body {
+  box-sizing: border-box;
+  width: fit-content;
+  max-width: 100%;
+  padding: 8px 13px;
   border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: var(--vscode-font-size, 13px);
+}
+
+#messages .msg-para {
+  margin: 0;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   word-break: break-word;
-  font-family: var(--vscode-font-family);
-  font-size: var(--vscode-font-size, 13px);
-  box-sizing: border-box;
 }
 
 /* User: accent bubble hugging the trailing edge. */
@@ -726,10 +734,8 @@ button.ghost:hover,
 #messages .message-user .message-role {
   text-align: right;
 }
-#messages .message-user pre {
+#messages .message-user .message-body {
   align-self: flex-end;
-  width: fit-content;
-  max-width: 100%;
   background: var(--vscode-button-background);
   color: var(--vscode-button-foreground);
   border-radius: 14px 14px 4px 14px;
@@ -739,16 +745,135 @@ button.ghost:hover,
 #messages .message-assistant {
   align-self: flex-start;
   align-items: flex-start;
-  max-width: min(74ch, 92%);
+  max-width: min(80ch, 96%);
 }
-#messages .message-assistant pre {
+#messages .message-assistant .message-body {
   align-self: flex-start;
-  width: fit-content;
-  max-width: 100%;
   background: var(--vscode-editorWidget-background, rgba(128, 128, 128, 0.12));
   color: var(--vscode-foreground);
   border: 1px solid var(--vscode-panel-border);
   border-radius: 14px 14px 14px 4px;
+}
+
+/* Fenced + inline code. */
+#messages .code-wrap {
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--vscode-panel-border);
+}
+#messages .code-lang {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.7;
+  padding: 3px 10px;
+  background: var(--vscode-editorWidget-background, rgba(128, 128, 128, 0.14));
+  border-bottom: 1px solid var(--vscode-panel-border);
+}
+#messages .code-block {
+  margin: 0;
+  padding: 10px 12px;
+  overflow-x: auto;
+  white-space: pre;
+  background: var(--vscode-textCodeBlock-background, rgba(0, 0, 0, 0.25));
+  color: var(--vscode-editor-foreground, inherit);
+  font-family: var(--vscode-editor-font-family, ui-monospace, monospace);
+  font-size: 12px;
+  line-height: 1.5;
+}
+#messages .code-wrap .code-block {
+  border-radius: 0;
+}
+#messages .inline-code {
+  font-family: var(--vscode-editor-font-family, ui-monospace, monospace);
+  font-size: 0.92em;
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: var(--vscode-textCodeBlock-background, rgba(128, 128, 128, 0.22));
+}
+
+/* Block badges. */
+#messages .block-badge {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 6px;
+  vertical-align: middle;
+}
+#messages .badge-thinking {
+  background: var(--vscode-charts-purple, #9a7ecc);
+  color: #fff;
+}
+#messages .badge-tool {
+  background: var(--vscode-charts-blue, #4a90d9);
+  color: #fff;
+}
+#messages .badge-result {
+  background: var(--vscode-charts-green, #4caf7d);
+  color: #fff;
+}
+#messages .badge-error,
+#messages .badge-result.badge-error {
+  background: var(--vscode-errorForeground, #d15b5b);
+  color: #fff;
+}
+#messages .badge-image {
+  background: var(--vscode-charts-orange, #d2795b);
+  color: #fff;
+}
+
+/* Thinking: collapsible, dimmed, italic. */
+#messages .msg-thinking {
+  font-size: 12px;
+}
+#messages .msg-thinking > summary {
+  cursor: pointer;
+  list-style: none;
+}
+#messages .msg-thinking > summary::-webkit-details-marker {
+  display: none;
+}
+#messages .msg-thinking-body {
+  margin-top: 6px;
+  padding-left: 10px;
+  border-left: 2px solid var(--vscode-panel-border);
+  opacity: 0.75;
+  font-style: italic;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Tool call + result boxes. */
+#messages .msg-tool,
+#messages .msg-tool-result {
+  font-size: 12px;
+}
+#messages .tool-head,
+#messages .msg-tool-result > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  list-style: none;
+}
+#messages .msg-tool-result > summary::-webkit-details-marker {
+  display: none;
+}
+#messages .tool-name {
+  font-family: var(--vscode-editor-font-family, ui-monospace, monospace);
+  font-size: 12px;
+  opacity: 0.9;
+}
+#messages .msg-tool .tool-args,
+#messages .msg-tool-result .code-block {
+  margin-top: 6px;
+}
+#messages .msg-image {
+  font-size: 12px;
+  opacity: 0.85;
 }
 
 #messages .message-card .detail-stack {

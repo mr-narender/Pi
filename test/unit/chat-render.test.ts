@@ -9,6 +9,7 @@ import {
   contextChipRemoveButtonId,
   imageChipRemoveButtonId,
   renderChatApp,
+  renderRichText,
 } from '../../src/webview/render';
 import type { WebviewSnapshot } from '../../src/state/types';
 
@@ -162,4 +163,48 @@ test('renderChatApp shows the older-messages sentinel only when hasOlder', () =>
     snapshot({ messageWindow: { total: 2, offset: 0, hasOlder: false } })
   );
   assert.doesNotMatch(noOlder, /id="older-sentinel"/);
+});
+
+test('renderRichText formats fenced code blocks and inline code', () => {
+  const html = renderRichText('before\n```ts\nconst x = 1;\n```\nafter `inline` end');
+  assert.match(html, /class="code-wrap"/);
+  assert.match(html, /class="code-lang">ts/);
+  assert.match(html, /const x = 1;/);
+  assert.match(html, /class="inline-code">inline<\/code>/);
+  assert.match(html, /<p class="msg-para">before/);
+});
+
+test('renderRichText escapes all HTML (no injection)', () => {
+  const html = renderRichText('<script>alert(1)</script>\n```\n<b>code</b>\n```');
+  assert.doesNotMatch(html, /<script>/);
+  assert.match(html, /&lt;script&gt;/);
+  assert.match(html, /&lt;b&gt;code&lt;\/b&gt;/);
+});
+
+test('renderChatApp renders thinking, tool, and code blocks distinctly', () => {
+  const html = renderChatApp(
+    snapshot({
+      messages: [
+        {
+          id: 'm1',
+          role: 'assistant',
+          text: 'fallback',
+          blocks: [
+            { kind: 'thinking', text: 'let me reason' },
+            { kind: 'tool', name: 'bash', args: '{"cmd":"ls"}' },
+            { kind: 'toolResult', name: 'bash', text: 'file.txt', isError: false },
+            { kind: 'text', text: 'Here:\n```js\nconst y = 2;\n```' },
+          ],
+          attachments: [],
+        },
+      ],
+    })
+  );
+  assert.match(html, /class="message-body"/);
+  assert.match(html, /badge-thinking/);
+  assert.match(html, /badge-tool/);
+  assert.match(html, /tool-name">bash/);
+  assert.match(html, /badge-result/);
+  assert.match(html, /const y = 2;/);
+  assert.match(html, /class="code-block"/);
 });

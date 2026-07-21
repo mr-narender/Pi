@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.0.32
+
+- Rich chat rendering: LLM responses are now laid out by type so it is clear what is happening. Thinking is a dim, italic, collapsible block; tool calls show a "Tool" badge with the tool name and formatted arguments; tool results are collapsible (errors highlighted); images are labelled. Message text renders Markdown fenced code blocks (with a language label) and inline `code` in a monospace, scrollable code panel. All content is HTML-escaped (no injection).
+- Instant New Chat: Pi RPC now warm-starts for every workspace folder on activation, so clicking "New Chat" opens an interactive composer immediately instead of feeling stuck while it connects.
+- Refactor: chat tabs are now keyed by session identity (workspace + session) instead of the raw URI string, so tab lookup/dedup is robust to cosmetic URI/label changes.
+- Tests: rich-text formatting (fenced/inline code, HTML-escaping), thinking/tool/result block rendering, and content-block mapping in the snapshot model.
+
 ## 0.0.31
 
 - Breadcrumb no longer shows the long encoded workspace/session path. The chat editor URI now carries its identity in the query and uses a short, friendly path label ("New Chat" for drafts, "Chat <id>" for sessions), so the breadcrumb stays clean. The full chat name still shows on the tab. Legacy URIs are still parsed for backward compatibility.

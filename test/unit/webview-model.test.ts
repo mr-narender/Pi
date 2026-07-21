@@ -161,3 +161,24 @@ test('firstPromptPreview handles content blocks and returns undefined when no us
 test('parseWebviewMessage accepts loadOlder', () => {
   assert.deepEqual(parseWebviewMessage({ type: 'loadOlder' }), { type: 'loadOlder' });
 });
+
+test('createWebviewSnapshot maps Pi content blocks into structured message blocks', () => {
+  const state = createInitialControllerState('workspace', '/tmp/workspace');
+  state.messages = [
+    {
+      id: '1',
+      role: 'assistant',
+      content: [
+        { type: 'thinking', thinking: 'reasoning' },
+        { type: 'toolCall', name: 'bash', arguments: { cmd: 'ls' } },
+        { type: 'text', text: 'done' },
+      ],
+    },
+  ];
+  const snapshot = createWebviewSnapshot(state, 1, baseExtra);
+  const blocks = snapshot.messages[0]?.blocks;
+  assert.equal(blocks?.[0]?.kind, 'thinking');
+  assert.equal(blocks?.[1]?.kind, 'tool');
+  assert.equal(blocks?.[1] && 'name' in blocks[1] ? blocks[1].name : undefined, 'bash');
+  assert.equal(blocks?.[2]?.kind, 'text');
+});
