@@ -408,23 +408,25 @@ export class ChatTabManager implements vscode.Disposable {
     const previousResource = this.activeResourceByWorkspace.get(workspaceKey);
     this.activeResourceByWorkspace.set(workspaceKey, resource.toString());
 
-    if (options?.startIfStopped && context.controller.snapshot.connectionState === 'stopped') {
-      await context.controller.start(
-        context.target.kind === 'sessionFile' ? context.target.sessionFile : undefined
-      );
+    const connectionState = context.controller.snapshot.connectionState;
+    if (context.target.kind === 'sessionFile' && context.target.sessionFile) {
+      // Opening a saved session MUST load it into the controller. If Pi is not
+      // running, start it directly on that session file; otherwise (including
+      // while it is still handshaking, when the RPC client already exists) ask
+      // the running process to switch to it. Previously this only ran when the
+      // controller was already `ready`/`busy`, so with warm-start timing the
+      // switch was skipped and the tab showed a blank, dead transcript.
+      if (connectionState === 'stopped') {
+        await context.controller.start(context.target.sessionFile);
+        await context.controller.reconcile();
+      } else if (!sameTarget(currentTargetForController(context.controller), context.target)) {
+        await this.uiState.captureControllerDraft(context.controller);
+        await context.controller.switchSession(context.target.sessionFile);
+        await this.uiState.restoreControllerDraft(context.controller);
+      }
+    } else if (options?.startIfStopped && connectionState === 'stopped') {
+      await context.controller.start(undefined);
       await context.controller.reconcile();
-    }
-
-    if (
-      (context.controller.snapshot.connectionState === 'ready' ||
-        context.controller.snapshot.connectionState === 'busy') &&
-      context.target.kind === 'sessionFile' &&
-      context.target.sessionFile &&
-      !sameTarget(currentTargetForController(context.controller), context.target)
-    ) {
-      await this.uiState.captureControllerDraft(context.controller);
-      await context.controller.switchSession(context.target.sessionFile);
-      await this.uiState.restoreControllerDraft(context.controller);
     }
 
     await this.renderResource(resource, { active: true });

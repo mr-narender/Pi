@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.35
+
+- Fix: opening a saved (old) chat session showed a blank transcript and a dead composer. Loading a session now always binds it to the controller - if Pi is stopped it starts directly on that session file; otherwise (including while it is still handshaking, when the RPC client already exists) it asks the running process to switch to it. Previously the switch only ran when the connection was already ready/busy, so with warm-start timing the session was never loaded and the tab stayed blank with submit doing nothing.
+
 ## 0.0.34
 
 - Clean breadcrumb, restore-safe: chat tabs now use a short, deterministic URI path (e.g. "Chat 3f9a2c8b1d.chat" / "New Chat <id>.chat") instead of the long encoded workspace/session path. The full identity is kept in a persisted path->identity map (workspace state) that is rehydrated on activation, so restoring/reopening a tab recovers the session correctly - without relying on a URI query (which VS Code drops on restore).
