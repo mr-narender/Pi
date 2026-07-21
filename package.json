@@ -2,7 +2,7 @@
   "name": "pi",
   "displayName": "Pi – this one is (y)ours",
   "description": "An unofficial, personal VS Code chat UI for the Pi coding agent (pi.dev). Not affiliated with pi.dev — shared for anyone who wants it.",
-  "version": "0.0.29",
+  "version": "0.0.30",
   "publisher": "mr-narender",
   "license": "MIT",
   "private": true,
@@ -664,6 +664,12 @@
           "default": 256,
           "minimum": 1,
           "description": "Maximum in-flight correlated RPC requests per controller."
+        },
+        "piRpc.messageWindowSize": {
+          "type": "number",
+          "default": 50,
+          "minimum": 10,
+          "description": "How many recent messages to render when opening a chat. Older messages load on demand as you scroll up, keeping large sessions fast."
         },
         "piRpc.maxQueuedWrites": {
           "type": "number",

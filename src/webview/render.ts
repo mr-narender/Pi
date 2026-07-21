@@ -161,16 +161,22 @@ function renderMessages(snapshot: WebviewSnapshot): string {
         <p class="empty-copy">What to do first? Ask about this codebase or start writing code.</p>
       </div>`;
   }
-  return snapshot.messages
-    .map(
-      (message) => `
+  const olderSentinel = snapshot.messageWindow?.hasOlder
+    ? `<div id="older-sentinel" class="older-sentinel" role="status"><span class="spinner spinner-sm" aria-hidden="true"></span>Loading earlier messages…</div>`
+    : '';
+  return (
+    olderSentinel +
+    snapshot.messages
+      .map(
+        (message) => `
         <article class="message-card message-${escapeHtml(message.role)}">
           <div class="message-role">${escapeHtml(message.role === 'assistant' ? 'Pi' : message.role === 'user' ? 'You' : message.role)}</div>
           <pre>${escapeHtml(message.text)}</pre>
           ${message.attachments.length > 0 ? `<div class="detail-stack">${message.attachments.map((attachment) => renderAttachment(attachment)).join('')}</div>` : ''}
         </article>`
-    )
-    .join('');
+      )
+      .join('')
+  );
 }
 
 function renderContextChip(item: PendingContextItem): string {
@@ -348,7 +354,6 @@ export function renderChatApp(snapshot: WebviewSnapshot): string {
     <a class="skip-link" href="#composer-field">Skip to composer</a>
     <div class="layout" data-testid="chat-app" data-ui-mode="${escapeHtml(snapshot.uiMode)}">
       <header class="brand-bar" role="banner">
-        <div class="brand" aria-label="Pi"><span class="brand-mark" aria-hidden="true">✻</span> Pi</div>
         <div class="brand-controls">
           ${folderSelect}
           <button type="button" class="model-chip" data-command="piRpc.showModels" title="Choose model"><span class="model-dot"></span>${escapeHtml(modelLabel(snapshot))}</button>

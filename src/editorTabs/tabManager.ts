@@ -4,7 +4,7 @@ import { getSettings } from '../config/settings';
 import { ensureTrustedForMutation } from '../security/trust';
 import { SessionRegistry } from '../sessions/sessionRegistry';
 import type { SessionController } from '../sessions/sessionController';
-import { createWebviewSnapshot } from '../webview/model';
+import { createWebviewSnapshot, firstPromptPreview } from '../webview/model';
 import { parseWebviewMessage } from '../webview/messages';
 import {
   acceptedSnapshotFromPreview,
@@ -196,6 +196,10 @@ export class ChatTabManager implements vscode.Disposable {
   private readonly hosts = new Map<string, ChatEditorHost>();
   private readonly resourceSequence = new Map<string, number>();
   private readonly activeResourceByWorkspace = new Map<string, string>();
+  // Per-resource count of trailing messages currently revealed to the webview.
+  // Starts at the configured window size and grows when the webview asks for
+  // older batches on scroll-up.
+  private readonly revealedMessageCounts = new Map<string, number>();
   private readonly controllerSubscriptions: vscode.Disposable[] = [];
 
   public constructor(
@@ -554,6 +558,9 @@ export class ChatTabManager implements vscode.Disposable {
     }
 
     switch (parsed.type) {
+      case 'loadOlder':
+        await this.revealOlderMessages(host.resource);
+        return;
       case 'requestSend':
         await this.handleRequestSend(host.resource, parsed.command);
         return;
@@ -892,13 +899,42 @@ export class ChatTabManager implements vscode.Disposable {
     if (!isDefaultTitle(explicitTitle)) {
       return explicitTitle;
     }
+    // A user-set (renamed) session name always wins.
     if (snapshot.sessionName) {
       return snapshot.sessionName;
     }
+    // Otherwise, for a history/loaded session, use the first prompt's opening
+    // words as the tab name (derived from the FULL transcript, not the window)
+    // instead of the opaque .jsonl filename.
+    const preview = firstPromptPreview(context.controller.snapshot.messages);
+    if (preview) {
+      return preview;
+    }
+    // Nothing loaded yet: prefer a friendly fallback over the raw filename.
     if (context.target.kind === 'sessionFile' && context.target.sessionFile) {
-      return basename(context.target.sessionFile);
+      return `${context.controller.folder.name} Chat`;
     }
     return tabTitleFromTarget(context.target, context.controller.folder.name);
+  }
+
+  private revealedMessageCountFor(resource: vscode.Uri): number {
+    const key = resource.toString();
+    const stored = this.revealedMessageCounts.get(key);
+    return typeof stored === 'number' && stored > 0 ? stored : getSettings().messageWindowSize;
+  }
+
+  /** Grow the revealed window for a resource by one page and re-render it. */
+  private async revealOlderMessages(resource: vscode.Uri): Promise<void> {
+    const key = resource.toString();
+    const step = getSettings().messageWindowSize;
+    const context = this.contextForResource(resource);
+    const total = context?.controller.snapshot.messages.length ?? 0;
+    const current = this.revealedMessageCountFor(resource);
+    if (current >= total) {
+      return; // nothing older to reveal
+    }
+    this.revealedMessageCounts.set(key, current + step);
+    await this.renderResource(resource);
   }
 
   private async buildSnapshot(context: ChatTabContext, active: boolean): Promise<WebviewSnapshot> {
@@ -917,6 +953,7 @@ export class ChatTabManager implements vscode.Disposable {
         composer,
         isTrusted: vscode.workspace.isTrusted,
         folders,
+        messageLimit: this.revealedMessageCountFor(context.resource),
       });
       snapshot.bindingState = context.target.kind === 'workspaceDraft' ? 'draft' : 'current';
       return snapshot;

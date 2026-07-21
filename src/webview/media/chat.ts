@@ -22,8 +22,12 @@ let currentSnapshot: WebviewSnapshot | undefined;
 let pendingFocusTargetId: string | undefined;
 let pendingFocusFallbackId: string | undefined;
 let previewReturnFocusId: string | undefined;
-let restoredScrollTop = 0;
 let lastComposerResetSeq: number | undefined;
+// Message-windowing scroll state.
+let lastMessageKey: string | undefined;
+let lastWindowOffset: number | undefined;
+let loadOlderPending = false;
+let olderObserver: IntersectionObserver | undefined;
 
 function queueFocus(targetId?: string, fallbackId = COMPOSER_FIELD_ID): void {
   pendingFocusTargetId = targetId;
@@ -89,13 +93,10 @@ function persistViewState(): void {
   });
 }
 
-function restoreViewState(): void {
-  const saved = vscode.getState() as { scrollTop?: number } | undefined;
-  restoredScrollTop = typeof saved?.scrollTop === 'number' ? saved.scrollTop : 0;
-  const messages = document.getElementById('messages');
-  if (messages) {
-    messages.scrollTop = restoredScrollTop;
-  }
+interface ScrollMetrics {
+  prevScrollHeight: number;
+  prevScrollTop: number;
+  wasNearBottom: boolean;
 }
 
 function render(snapshot: WebviewSnapshot): void {
@@ -103,6 +104,19 @@ function render(snapshot: WebviewSnapshot): void {
   if (!root) {
     return;
   }
+
+  // Capture pre-render scroll metrics so we can decide, after the DOM is
+  // rebuilt, whether to jump to the bottom (open/stream) or anchor the
+  // viewport (older messages prepended on scroll-up).
+  const prevMessages = document.getElementById('messages');
+  const prevScrollHeight = prevMessages?.scrollHeight ?? 0;
+  const prevScrollTop = prevMessages?.scrollTop ?? 0;
+  const prevClientHeight = prevMessages?.clientHeight ?? 0;
+  const scrollMetrics: ScrollMetrics = {
+    prevScrollHeight,
+    prevScrollTop,
+    wasNearBottom: !prevMessages || prevScrollHeight - prevScrollTop - prevClientHeight < 96,
+  };
 
   // Preserve the user's in-progress composer text, caret, and focus across a
   // full re-render. Without this, any snapshot that arrives while the user is
@@ -277,8 +291,65 @@ function render(snapshot: WebviewSnapshot): void {
     passive: true,
   });
 
-  restoreViewState();
+  applyScrollAndPaging(snapshot, scrollMetrics);
   applyFocus();
+}
+
+function applyScrollAndPaging(snapshot: WebviewSnapshot, metrics: ScrollMetrics): void {
+  const messages = document.getElementById('messages');
+  if (!messages) {
+    return;
+  }
+  const win = snapshot.messageWindow;
+  const key = snapshot.sessionFile ?? snapshot.sessionId ?? 'draft';
+  const isNewResource = key !== lastMessageKey;
+  const olderLoaded =
+    !isNewResource &&
+    win !== undefined &&
+    lastWindowOffset !== undefined &&
+    win.offset < lastWindowOffset;
+
+  if (isNewResource) {
+    // Opening/switching a chat: jump straight to the last message.
+    messages.scrollTop = messages.scrollHeight;
+  } else if (olderLoaded) {
+    // Older batch was prepended: keep the viewport anchored on the message the
+    // user was looking at (no jump).
+    const delta = messages.scrollHeight - metrics.prevScrollHeight;
+    messages.scrollTop = metrics.prevScrollTop + delta;
+    loadOlderPending = false;
+  } else if (metrics.wasNearBottom) {
+    // Live streaming while already near the bottom: stick to the bottom.
+    messages.scrollTop = messages.scrollHeight;
+  } else {
+    messages.scrollTop = metrics.prevScrollTop;
+  }
+
+  lastMessageKey = key;
+  lastWindowOffset = win?.offset;
+  setupOlderObserver(messages, win);
+  persistViewState();
+}
+
+function setupOlderObserver(container: HTMLElement, win: WebviewSnapshot['messageWindow']): void {
+  olderObserver?.disconnect();
+  olderObserver = undefined;
+  const sentinel = document.getElementById('older-sentinel');
+  if (!sentinel || !win?.hasOlder) {
+    return;
+  }
+  olderObserver = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting && !loadOlderPending) {
+          loadOlderPending = true;
+          vscode.postMessage({ type: 'loadOlder' });
+        }
+      }
+    },
+    { root: container, rootMargin: '250px 0px 0px 0px', threshold: 0 }
+  );
+  olderObserver.observe(sentinel);
 }
 
 function applyFocus(): void {

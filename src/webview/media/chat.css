@@ -442,7 +442,7 @@ body,
 .brand-bar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   padding: 10px 14px;
   border: 0;
   border-bottom: 1px solid var(--vscode-panel-border);
@@ -632,6 +632,24 @@ button.ghost:hover,
   border: 2px solid var(--vscode-panel-border);
   border-top-color: var(--vscode-charts-orange, #d2795b);
   animation: pi-spin 0.9s linear infinite;
+}
+
+.spinner-sm {
+  width: 13px;
+  height: 13px;
+  border-width: 2px;
+  display: inline-block;
+  vertical-align: middle;
+}
+
+.older-sentinel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 0 12px;
+  font-size: 11px;
+  opacity: 0.6;
 }
 
 .composer-card.is-connecting {

@@ -183,6 +183,10 @@ export interface WebviewSnapshot {
   messageCount?: number;
   pendingMessageCount?: number;
   messages: WebviewMessageItem[];
+  // Windowing: `messages` is the trailing slice of the full transcript.
+  // total = full message count, offset = index of the first sent message,
+  // hasOlder = there are older messages not yet loaded into the webview.
+  messageWindow?: { total: number; offset: number; hasOlder: boolean };
   queue: QueueState;
   draft: string;
   // Bumped whenever the extension authoritatively replaces the composer text

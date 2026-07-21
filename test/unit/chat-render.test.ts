@@ -46,9 +46,9 @@ function snapshot(overrides: Partial<WebviewSnapshot> = {}): WebviewSnapshot {
   };
 }
 
-test('renderChatApp renders the native brand + docked composer layout', () => {
+test('renderChatApp renders the header controls + docked composer layout', () => {
   const html = renderChatApp(snapshot());
-  assert.match(html, /class="brand"/);
+  assert.match(html, /class="brand-controls"/);
   assert.match(html, /Skip to composer/);
   assert.match(html, /class="composer-dock"/);
   assert.match(html, /class="composer-card"/);
@@ -144,4 +144,22 @@ test('renderChatApp no longer renders the confusing Advanced drawer', () => {
   assert.doesNotMatch(html, /advanced-heading/);
   assert.doesNotMatch(html, /Queue &amp; steering/);
   assert.doesNotMatch(html, /data-command="piRpc\.toggleAdvancedMode"/);
+});
+
+test('renderChatApp no longer shows the left "Pi" brand label', () => {
+  const html = renderChatApp(snapshot());
+  assert.doesNotMatch(html, /class="brand"/);
+  assert.doesNotMatch(html, /aria-label="Pi"/);
+});
+
+test('renderChatApp shows the older-messages sentinel only when hasOlder', () => {
+  const withOlder = renderChatApp(
+    snapshot({ messageWindow: { total: 120, offset: 70, hasOlder: true } })
+  );
+  assert.match(withOlder, /id="older-sentinel"/);
+
+  const noOlder = renderChatApp(
+    snapshot({ messageWindow: { total: 2, offset: 0, hasOlder: false } })
+  );
+  assert.doesNotMatch(noOlder, /id="older-sentinel"/);
 });

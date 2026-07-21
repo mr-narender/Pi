@@ -20,7 +20,8 @@ export type WebviewInboundMessage =
   | { type: 'removeContextItem'; itemId: string }
   | { type: 'removeImageItem'; itemId: string }
   | { type: 'openAttachment'; uri: string }
-  | { type: 'switchFolder'; folderUri: string };
+  | { type: 'switchFolder'; folderUri: string }
+  | { type: 'loadOlder' };
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -54,6 +55,7 @@ export function parseWebviewMessage(value: unknown): WebviewInboundMessage | und
     case 'appendSelection':
     case 'appendDiagnostics':
     case 'appendPickedFile':
+    case 'loadOlder':
       return { type: record.type };
     case 'setDraft':
       return typeof record.text === 'string' ? { type: 'setDraft', text: record.text } : undefined;

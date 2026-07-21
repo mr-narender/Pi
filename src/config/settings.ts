@@ -11,6 +11,7 @@ export interface PiRpcSettings {
   maxPendingRequests: number;
   maxQueuedWrites: number;
   maxTranscriptItems: number;
+  messageWindowSize: number;
   maxToolOutputChars: number;
   maxImageBytes: number;
   maxImagesPerPrompt: number;
@@ -34,6 +35,7 @@ export function getSettings(): PiRpcSettings {
     maxPendingRequests: config.get<number>('maxPendingRequests', 256),
     maxQueuedWrites: config.get<number>('maxQueuedWrites', 256),
     maxTranscriptItems: config.get<number>('maxTranscriptItems', 400),
+    messageWindowSize: config.get<number>('messageWindowSize', 50),
     maxToolOutputChars: config.get<number>('maxToolOutputChars', 20000),
     maxImageBytes: config.get<number>('maxImageBytes', 3145728),
     maxImagesPerPrompt: config.get<number>('maxImagesPerPrompt', 4),

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.0.30
+
+- Efficient large-chat rendering: opening a chat now loads only the most recent messages (default 50, `piRpc.messageWindowSize`) instead of the whole transcript. Older messages load automatically as you scroll up (an IntersectionObserver sentinel, not a scroll spammer), and the viewport stays anchored so it never jumps.
+- Opening or switching to a chat now jumps straight to the last message; live streaming sticks to the bottom only when you are already near it.
+- History chats that were never renamed now show the first prompt's opening words as the tab title (from the full transcript) instead of the `.jsonl` filename.
+- Removed the redundant left-hand "Pi" label from the chat header.
+- Tests: message windowing (last N, grow-on-load-older, short-chat boundary, stable ids), first-prompt title (truncation, content blocks, empty), loadOlder message parsing, header no-brand, and older-sentinel visibility.
+
 ## 0.0.29
 
 - Fix: resuming a session could crash with "Pending stdout buffer exceeded limit" (and a follow-on VS Code "Argument is undefined or null" when opening the editor). On resume, Pi replays the whole transcript as one large stdout burst; the decoder was checking the transient combined buffer instead of the unparsed residual, so a burst of many small, complete records tripped the limit. The decoder now bounds only the incomplete trailing record, so full session replays stream through.

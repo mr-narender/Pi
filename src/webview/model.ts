@@ -13,7 +13,34 @@ import type {
 } from '../state/types';
 import type { ChatUiMode, ComposerSessionState, PendingImageItem } from './composer';
 
-const MAX_MESSAGES = 200;
+// Default number of trailing messages sent to the webview. The webview lazily
+// requests older batches on scroll-up, so we never eagerly ship a huge chat.
+export const DEFAULT_MESSAGE_WINDOW = 50;
+
+/**
+ * First-user-prompt preview for a transcript, used as the chat/tab title for
+ * unnamed history sessions. Returns the first line of the first user message,
+ * truncated. Works on the FULL transcript (not the webview window).
+ */
+export function firstPromptPreview(
+  messages: readonly JsonObject[],
+  maxChars = 48
+): string | undefined {
+  const first = messages.find((message) => message?.role === 'user');
+  if (!first) {
+    return undefined;
+  }
+  const firstLine = messageText(first)
+    .split('\n')
+    .map((line) => line.trim())
+    .find((line) => line.length > 0);
+  if (!firstLine) {
+    return undefined;
+  }
+  return firstLine.length > maxChars
+    ? `${firstLine.slice(0, maxChars - 1).trimEnd()}\u2026`
+    : firstLine;
+}
 const MAX_ATTACHMENT_NAME_CHARS = 160;
 const MAX_ATTACHMENT_MIME_CHARS = 120;
 const MAX_ATTACHMENT_TEXT_CHARS = 400;
@@ -239,8 +266,17 @@ export function createWebviewSnapshot(
     composer: ComposerSessionState;
     isTrusted: boolean;
     folders: WebviewSnapshot['folders'];
+    // How many trailing messages to include. Grows as the webview requests
+    // older batches. Defaults to DEFAULT_MESSAGE_WINDOW.
+    messageLimit?: number;
   }
 ): WebviewSnapshot {
+  const totalMessages = state.messages.length;
+  const limit =
+    typeof extra.messageLimit === 'number' && extra.messageLimit > 0
+      ? extra.messageLimit
+      : DEFAULT_MESSAGE_WINDOW;
+  const windowOffset = Math.max(0, totalMessages - limit);
   return {
     sequence,
     title: state.title,
@@ -259,8 +295,13 @@ export function createWebviewSnapshot(
         ? state.state.pendingMessageCount
         : undefined,
     messages: state.messages
-      .slice(-MAX_MESSAGES)
-      .map((message, index) => toItem(message, index, state.cwd)),
+      .slice(windowOffset)
+      .map((message, index) => toItem(message, windowOffset + index, state.cwd)),
+    messageWindow: {
+      total: totalMessages,
+      offset: windowOffset,
+      hasOlder: windowOffset > 0,
+    },
     queue: state.queue,
     draft: extra.composer.draft,
     composerResetSeq: extra.composer.composerResetSeq ?? 0,
