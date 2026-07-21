@@ -307,6 +307,7 @@ function renderMoreMenu(_snapshot: WebviewSnapshot): string {
         <div class="menu-group">System</div>
         <button type="button" class="menu-item cat-system" data-command="piRpcInternal.restart"><span class="dot"></span>Restart Pi</button>
         <button type="button" class="menu-item cat-system" data-command="piRpcInternal.showHealth"><span class="dot"></span>Connection health</button>
+        <button type="button" class="menu-item cat-system" data-command="piRpcInternal.showLogs"><span class="dot"></span>Show logs</button>
         <button type="button" class="menu-item cat-system" data-command="piRpcInternal.showHelp"><span class="dot"></span>Help</button>
       </div>
     </details>`;
@@ -363,7 +364,7 @@ export function renderChatApp(snapshot: WebviewSnapshot): string {
         connecting && snapshot.messages.length === 0
           ? `<div class="connecting-state" role="status" aria-live="polite"><span class="spinner" aria-hidden="true"></span><p class="empty-copy">Connecting to Pi…</p></div>`
           : faulted && snapshot.messages.length === 0
-            ? `<div class="empty-state"><p class="empty-copy">Couldn’t start Pi for this workspace.</p><button type="button" data-command="piRpcInternal.restart">Try again</button></div>`
+            ? `<div class="empty-state"><p class="empty-copy">Couldn’t start Pi for this workspace.</p><div class="button-row compact"><button type="button" data-command="piRpcInternal.restart">Try again</button><button type="button" data-command="piRpcInternal.showLogs">Show logs</button></div></div>`
             : renderMessages(snapshot)
       }</main>
 

@@ -83,30 +83,45 @@ export class SessionController implements vscode.Disposable {
       connectionState: 'starting',
     };
     this.fire();
-    const client = await this.supervisor.start(sessionFile);
-    client.onEvent((event) => this.onEvent(event));
-    client.onExtensionUi((request) => this.onExtensionUi(request));
-    client.onResponseFailure((response) => {
-      this.addDiagnostic(
-        response.command === 'parse' ? 'error' : 'warning',
-        `RPC response failed: ${response.command}`,
-        response.success ? '' : response.error
+    try {
+      const client = await this.supervisor.start(sessionFile);
+      client.onEvent((event) => this.onEvent(event));
+      client.onExtensionUi((request) => this.onExtensionUi(request));
+      client.onResponseFailure((response) => {
+        this.addDiagnostic(
+          response.command === 'parse' ? 'error' : 'warning',
+          `RPC response failed: ${response.command}`,
+          response.success ? '' : response.error
+        );
+      });
+      client.onProtocolFault((error) =>
+        this.addDiagnostic('error', 'Protocol fault', error.message)
       );
-    });
-    client.onProtocolFault((error) => this.addDiagnostic('error', 'Protocol fault', error.message));
-    client.onDisconnected((error) => this.addDiagnostic('warning', 'Disconnected', error.message));
-    client.onStderr((text) => {
-      this.state = { ...this.state, stderrTail: [...this.state.stderrTail.slice(-49), text] };
+      client.onDisconnected((error) =>
+        this.addDiagnostic('warning', 'Disconnected', error.message)
+      );
+      client.onStderr((text) => {
+        this.state = { ...this.state, stderrTail: [...this.state.stderrTail.slice(-49), text] };
+        this.fire();
+      });
+      this.state = {
+        ...this.state,
+        connectionState: 'handshaking',
+        generation: this.supervisor.currentGeneration,
+      };
       this.fire();
-    });
-    this.state = {
-      ...this.state,
-      connectionState: 'handshaking',
-      generation: this.supervisor.currentGeneration,
-    };
-    this.fire();
-    await this.reconcile();
-    this.restartAttempts = 0;
+      await this.reconcile();
+      this.restartAttempts = 0;
+    } catch (error) {
+      // Surface the exact reason clearly: log it, record it as a diagnostic, and
+      // move to the 'faulted' state so the chat shows a recoverable error.
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Pi failed to start for '${this.folder.name}'`, error);
+      this.addDiagnostic('error', 'Pi failed to start', message);
+      this.state = { ...this.state, connectionState: 'faulted' };
+      this.fire();
+      throw error instanceof Error ? error : new Error(message);
+    }
   }
 
   public async stop(): Promise<void> {

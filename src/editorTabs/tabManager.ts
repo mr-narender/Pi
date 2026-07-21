@@ -622,11 +622,14 @@ export class ChatTabManager implements vscode.Disposable {
         try {
           await vscode.commands.executeCommand(parsed.command, parsed.argument);
         } catch (error) {
-          void vscode.window.showErrorMessage(
-            `Pi: ${parsed.command} failed — ${
-              error instanceof Error ? error.message : String(error)
-            }`
-          );
+          const message = error instanceof Error ? error.message : String(error);
+          void vscode.window
+            .showErrorMessage(`Pi: ${parsed.command} failed — ${message}`, 'Show Logs')
+            .then((choice) => {
+              if (choice === 'Show Logs') {
+                void vscode.commands.executeCommand('piRpcInternal.showLogs');
+              }
+            });
         }
         return;
       case 'pickImages':

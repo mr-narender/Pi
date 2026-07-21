@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.0.27
+
+- Much clearer error logging for easy debugging:
+  - Spawn failures now say exactly what went wrong with remediation (e.g., "Pi CLI was not found. Install it with npm i -g @earendil-works/pi-coding-agent, or set the Pi: Executable Path setting"). ENOENT/EACCES are called out.
+  - The full launch command (executable, args, cwd, shell) is logged on start.
+  - Version-mismatch and version-probe failures include the exact reason and exit code.
+  - Session start failures are logged with the precise cause, recorded as a diagnostic, and move the chat to a recoverable "faulted" state.
+  - Errors carry the Node error code/errno (formatError) so causes are obvious.
+  - New "Show Logs" command + a "Show logs" item in the More menu and on the error state; command failures now offer a "Show Logs" button.
+
 ## 0.0.26
 
 - Fix (Windows): the Pi process now spawns through a shell on win32, where the npm-installed `pi` is a `.cmd` shim that Node cannot execute directly. POSIX still spawns without a shell.

@@ -63,7 +63,10 @@ export class PiProcessSupervisor extends TypedEmitter implements vscode.Disposab
     await this.assertVersion();
     this.generation += 1;
     const args = this.buildArgs(existingSessionPath);
-    this.logger.info(`Starting Pi for ${this.folder.name} generation=${this.generation}`);
+    this.logger.info(
+      `Starting Pi for ${this.folder.name} (generation=${this.generation}): ` +
+        `${this.settings.executable} ${args.join(' ')} [cwd=${this.folder.uri.fsPath}, shell=${SPAWN_WITH_SHELL}]`
+    );
     const child = spawn(this.settings.executable, args, {
       cwd: this.folder.uri.fsPath,
       shell: SPAWN_WITH_SHELL,
@@ -76,6 +79,13 @@ export class PiProcessSupervisor extends TypedEmitter implements vscode.Disposab
       stdio: 'pipe',
     });
     this.child = child;
+    child.once('error', (error) => {
+      this.logger.error(
+        `Failed to launch Pi (executable='${this.settings.executable}'). ${this.spawnHint(error)}`,
+        error
+      );
+      this.transport?.disconnect(error instanceof Error ? error : new Error(String(error)));
+    });
     const transport = new RpcTransport(child.stdin, child.stdout, child.stderr, {
       maxRecordBytes: this.settings.maxRecordBytes,
       maxBufferBytes: this.settings.maxRecordBytes,
@@ -129,6 +139,21 @@ export class PiProcessSupervisor extends TypedEmitter implements vscode.Disposab
     void this.stop();
   }
 
+  /** Human-readable remediation for a spawn failure. */
+  private spawnHint(error: unknown): string {
+    const code = (error as NodeJS.ErrnoException | undefined)?.code;
+    if (code === 'ENOENT') {
+      return (
+        `Pi CLI was not found. Install it with 'npm install -g @earendil-works/pi-coding-agent', ` +
+        `or set the 'Pi: Executable Path' setting to the full path of the pi binary.`
+      );
+    }
+    if (code === 'EACCES') {
+      return `Pi CLI is not executable (permission denied). Check the 'Pi: Executable Path' setting.`;
+    }
+    return `See the Pi output channel for details.`;
+  }
+
   private async assertVersion(): Promise<void> {
     const version = await new Promise<string>((resolve, reject) => {
       const child = spawn(this.settings.executable, ['--version'], {
@@ -145,17 +170,31 @@ export class PiProcessSupervisor extends TypedEmitter implements vscode.Disposab
       child.stderr.on('data', (chunk: Buffer) => {
         stderr += chunk.toString('utf8');
       });
-      child.once('error', reject);
+      child.once('error', (error) => {
+        reject(
+          new Error(
+            `Could not run '${this.settings.executable} --version'. ${this.spawnHint(error)}`
+          )
+        );
+      });
       child.once('exit', (code) => {
         if (code === 0) {
           resolve(stdout.trim());
         } else {
-          reject(new Error(stderr.trim() || `Failed to run ${this.settings.executable} --version`));
+          reject(
+            new Error(
+              `'${this.settings.executable} --version' exited with code ${String(code)}` +
+                (stderr.trim() ? `: ${stderr.trim()}` : '')
+            )
+          );
         }
       });
     });
     if (version !== '0.80.10') {
-      throw new Error(`Unsupported Pi version ${version}; expected 0.80.10`);
+      throw new Error(
+        `Unsupported Pi version '${version}'. This build of the extension targets Pi 0.80.10. ` +
+          `Update the Pi CLI or the extension so the versions match.`
+      );
     }
   }
 

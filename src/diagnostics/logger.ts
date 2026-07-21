@@ -1,5 +1,8 @@
 import * as vscode from 'vscode';
 import { redactText } from './redaction';
+import { formatError } from './errorFormat';
+
+export { formatError };
 
 export class DiagnosticsLogger {
   public readonly output = vscode.window.createOutputChannel('Pi');
@@ -17,8 +20,13 @@ export class DiagnosticsLogger {
     this.push('WARN', message);
   }
 
-  public error(message: string): void {
-    this.push('ERROR', message);
+  public error(message: string, error?: unknown): void {
+    this.push('ERROR', error ? `${message} — ${formatError(error)}` : message);
+  }
+
+  /** Reveal the Pi output channel so the user can read the log. */
+  public show(): void {
+    this.output.show(true);
   }
 
   public health(extra: Record<string, unknown>): Record<string, unknown> {

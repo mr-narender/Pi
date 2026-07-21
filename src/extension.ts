@@ -134,8 +134,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // immediately instead of connecting on demand.
   const warmController = registry.getActive() ?? registry.list()[0];
   if (warmController && warmController.snapshot.connectionState === 'stopped') {
-    void warmController.start().catch(() => {
-      /* best-effort warm start; connection state surfaces failures */
+    void warmController.start().catch((error) => {
+      logger.error(`Warm-start of Pi failed for '${warmController.folder.name}'`, error);
     });
   }
 
@@ -1198,6 +1198,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       { autoStart: false }
     );
   });
+  registrations.set('piRpcInternal.showLogs', async () => {
+    logger.show();
+  });
+
   registrations.set('piRpcInternal.showHealth', async () => {
     const controller = registry.getActive();
     const health = createRedactedDiagnosticsExport(logger, controller);
