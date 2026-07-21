@@ -359,3 +359,22 @@ test('a chat started in the terminal (session header + name, no messages) is sti
     await rm(root, { recursive: true, force: true });
   }
 });
+
+import { normalizeWorkspaceCwd, sameWorkspaceCwd } from '../../src/sessions/recentSessions';
+
+test('sameWorkspaceCwd tolerates trailing slashes and non-normalized paths', () => {
+  const base = tmpdir();
+  assert.equal(sameWorkspaceCwd(base + '/', base), true);
+  assert.equal(sameWorkspaceCwd(base + '/sub/..', base), true);
+  assert.equal(normalizeWorkspaceCwd(base + '///'), normalizeWorkspaceCwd(base));
+});
+
+test('sameWorkspaceCwd is lenient for sessions with no recorded cwd', () => {
+  assert.equal(sameWorkspaceCwd(undefined, '/any/where'), true);
+  assert.equal(sameWorkspaceCwd('', '/any/where'), true);
+  assert.equal(sameWorkspaceCwd('   ', '/any/where'), true);
+});
+
+test('sameWorkspaceCwd rejects genuinely different directories', () => {
+  assert.equal(sameWorkspaceCwd('/Users/x/other', '/Users/x/proj'), false);
+});

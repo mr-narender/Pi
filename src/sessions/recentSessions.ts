@@ -1,4 +1,4 @@
-import { createReadStream, existsSync } from 'node:fs';
+import { createReadStream, existsSync, realpathSync } from 'node:fs';
 import { readFile, readdir, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
@@ -336,6 +336,33 @@ async function buildRecentSessionRecord(
   }
 }
 
+/**
+ * Normalize a working-directory path for comparison: resolve it, follow
+ * symlinks when the path exists (handles macOS `/var` -> `/private/var`), and
+ * drop any trailing separators. Best-effort — never throws.
+ */
+export function normalizeWorkspaceCwd(value: string): string {
+  let normalized = resolve(value);
+  try {
+    normalized = realpathSync.native(normalized);
+  } catch {
+    // Path may not exist (deleted worktree); fall back to the resolved form.
+  }
+  return normalized.replace(/[/\\]+$/, '');
+}
+
+/**
+ * Whether a session's recorded cwd belongs to the given workspace. Tolerant of
+ * trailing-slash and symlink-normalization drift so history is not silently
+ * dropped. A session with no recorded cwd is treated as belonging (lenient).
+ */
+export function sameWorkspaceCwd(sessionCwd: string | undefined, workspacePath: string): boolean {
+  if (!sessionCwd || sessionCwd.trim().length === 0) {
+    return true;
+  }
+  return normalizeWorkspaceCwd(sessionCwd) === normalizeWorkspaceCwd(workspacePath);
+}
+
 export async function readRecentSessionsIndex(
   context: SessionWorkspaceContext
 ): Promise<RecentSessionsIndex> {
@@ -364,7 +391,7 @@ export async function readRecentSessionsIndex(
       if (!item.session) {
         return false;
       }
-      return !filterByWorkspaceCwd || item.session.cwd === resolvedWorkspacePath;
+      return !filterByWorkspaceCwd || sameWorkspaceCwd(item.session.cwd, resolvedWorkspacePath);
     })
     .sort(
       (left, right) =>

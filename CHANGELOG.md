@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.31
+
+- Breadcrumb no longer shows the long encoded workspace/session path. The chat editor URI now carries its identity in the query and uses a short, friendly path label ("New Chat" for drafts, "Chat <id>" for sessions), so the breadcrumb stays clean. The full chat name still shows on the tab. Legacy URIs are still parsed for backward compatibility.
+- History fix: recent-session listing no longer silently drops chats when a custom session directory is configured and the recorded cwd differs only by trailing slash or symlink normalization (e.g. macOS /var vs /private/var). Comparison is now normalized (resolve + realpath + trailing-slash tolerant); sessions with no recorded cwd are kept.
+- Tests: breadcrumb label determinism, query identity round-trip for every kind, distinct identity on label collision, and normalized-cwd matching (trailing slash, non-normalized, empty, different dir).
+
 ## 0.0.30
 
 - Efficient large-chat rendering: opening a chat now loads only the most recent messages (default 50, `piRpc.messageWindowSize`) instead of the whole transcript. Older messages load automatically as you scroll up (an IntersectionObserver sentinel, not a scroll spammer), and the viewport stays anchored so it never jumps.

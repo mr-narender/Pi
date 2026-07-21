@@ -97,6 +97,70 @@ export function parseChatPath(path: string): ChatTabTarget | undefined {
   return undefined;
 }
 
+/**
+ * Short, deterministic, human-readable label used as the URI path segment (and
+ * therefore the editor breadcrumb). Must depend ONLY on the target so the URI
+ * stays stable for tab identity/keying. The real, live chat name is shown on
+ * the tab title, not here.
+ */
+export function chatPathLabel(target: ChatTabTarget): string {
+  const canonical = canonicalChatTarget(target);
+  if (canonical.kind === 'sessionFile' && canonical.sessionFile) {
+    const stem = basename(canonical.sessionFile).replace(/\.jsonl$/i, '');
+    const idPart = stem.includes('_') ? stem.slice(stem.indexOf('_') + 1) : stem;
+    const short = idPart.slice(0, 8);
+    return short ? `Chat ${short}` : 'Chat';
+  }
+  if (canonical.kind === 'sessionId' && canonical.sessionId) {
+    return `Chat ${canonical.sessionId.slice(0, 8)}`;
+  }
+  return 'New Chat';
+}
+
+/** Encode the full target identity into a URI query string. */
+export function buildChatQuery(target: ChatTabTarget): string {
+  const canonical = canonicalChatTarget(target);
+  const params = new URLSearchParams();
+  params.set('w', encodeSegment(canonical.workspaceFolderUri));
+  params.set('k', canonical.kind);
+  if (canonical.kind === 'sessionFile' && canonical.sessionFile) {
+    params.set('f', encodeSegment(canonical.sessionFile));
+  } else if (canonical.kind === 'sessionId' && canonical.sessionId) {
+    params.set('s', encodeSegment(canonical.sessionId));
+  }
+  return params.toString();
+}
+
+/** Recover a target from a URI query built by {@link buildChatQuery}. */
+export function parseChatQuery(query: string): ChatTabTarget | undefined {
+  if (!query) {
+    return undefined;
+  }
+  const params = new URLSearchParams(query);
+  const workspaceKey = params.get('w');
+  const kind = params.get('k');
+  if (!workspaceKey || !kind) {
+    return undefined;
+  }
+  const workspaceFolderUri = decodeSegment(workspaceKey);
+  if (kind === 'sessionFile') {
+    const encoded = params.get('f');
+    return encoded
+      ? { workspaceFolderUri, kind: 'sessionFile', sessionFile: decodeSegment(encoded) }
+      : undefined;
+  }
+  if (kind === 'sessionId') {
+    const encoded = params.get('s');
+    return encoded
+      ? { workspaceFolderUri, kind: 'sessionId', sessionId: decodeSegment(encoded) }
+      : undefined;
+  }
+  if (kind === 'workspaceDraft') {
+    return { workspaceFolderUri, kind: 'workspaceDraft' };
+  }
+  return undefined;
+}
+
 export function tabTitleFromTarget(target: ChatTabTarget, workspaceFolderName?: string): string {
   if (target.kind === 'sessionFile' && target.sessionFile) {
     return basename(target.sessionFile);

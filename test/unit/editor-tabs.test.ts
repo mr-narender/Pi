@@ -1,7 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import packageJson from '../../package.json';
-import { buildChatPath, parseChatPath } from '../../src/editorTabs/uriContract';
+import {
+  buildChatPath,
+  parseChatPath,
+  chatPathLabel,
+  buildChatQuery,
+  parseChatQuery,
+} from '../../src/editorTabs/uriContract';
 import { renderChatApp } from '../../src/webview/render';
 import { toPersistedChatSnapshot } from '../../src/editorTabs/persistedSnapshot';
 import type { WebviewSnapshot } from '../../src/state/types';
@@ -163,4 +169,65 @@ test('editorTabs.revive.noPromptReplay', () => {
     false
   );
   assert.equal(persisted.pendingImages[0]?.requiresReselect, true);
+});
+
+test('chatPathLabel is short, friendly, and deterministic (drives the breadcrumb)', () => {
+  const sessionFile =
+    '/Users/x/.pi/agent/sessions/--Users-x-proj--/2026-07-19T03-37-09-995Z_019f7872-fe6b-7ddd.jsonl';
+  const target = {
+    workspaceFolderUri: 'file:///Users/x/proj',
+    kind: 'sessionFile' as const,
+    sessionFile,
+  };
+  assert.equal(chatPathLabel(target), 'Chat 019f7872');
+  assert.equal(chatPathLabel(target), chatPathLabel(target));
+  assert.equal(
+    chatPathLabel({ workspaceFolderUri: 'file:///w', kind: 'workspaceDraft' }),
+    'New Chat'
+  );
+  assert.equal(
+    chatPathLabel({
+      workspaceFolderUri: 'file:///w',
+      kind: 'sessionId',
+      sessionId: 'abcdefgh1234',
+    }),
+    'Chat abcdefgh'
+  );
+  // The label never contains the long encoded workspace/session path.
+  assert.ok(!chatPathLabel(target).includes('Users'));
+});
+
+test('buildChatQuery/parseChatQuery round-trips full identity for every kind', () => {
+  const cases = [
+    { workspaceFolderUri: 'file:///Users/x/proj', kind: 'workspaceDraft' as const },
+    {
+      workspaceFolderUri: 'file:///Users/x/proj',
+      kind: 'sessionFile' as const,
+      sessionFile: '/Users/x/.pi/agent/sessions/--Users-x-proj--/2026_abc.jsonl',
+    },
+    {
+      workspaceFolderUri: 'file:///Users/x/proj',
+      kind: 'sessionId' as const,
+      sessionId: '019f7872-fe6b',
+    },
+  ];
+  for (const target of cases) {
+    assert.deepEqual(parseChatQuery(buildChatQuery(target)), target);
+  }
+  assert.equal(parseChatQuery(''), undefined);
+  assert.equal(parseChatQuery('k=sessionFile'), undefined);
+});
+
+test('different sessions keep distinct identity even if the short label collides', () => {
+  const a = buildChatQuery({
+    workspaceFolderUri: 'file:///w',
+    kind: 'sessionFile',
+    sessionFile: '/s/2026_019f7872-aaaa.jsonl',
+  });
+  const b = buildChatQuery({
+    workspaceFolderUri: 'file:///w',
+    kind: 'sessionFile',
+    sessionFile: '/s/2026_019f7872-bbbb.jsonl',
+  });
+  assert.notEqual(a, b);
 });
