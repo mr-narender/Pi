@@ -329,3 +329,33 @@ test('formatRelativeTimestamp renders compact relative labels and hides invalid 
   assert.equal(formatRelativeTimestamp(Number.NaN, now), 'Unknown');
   assert.equal(formatRelativeTimestamp(now - 60_000, Number.NaN), 'Unknown');
 });
+
+test('a chat started in the terminal (session header + name, no messages) is still listed', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'pi-rpc-term-'));
+  const workspace = join(root, 'workspace');
+  const agentDir = join(root, 'agent');
+  const previous = process.env.PI_CODING_AGENT_DIR;
+  process.env.PI_CODING_AGENT_DIR = agentDir;
+  await mkdir(workspace, { recursive: true });
+  try {
+    const sessionDir = getDefaultSessionDirForWorkspace(workspace, agentDir);
+    await mkdir(sessionDir, { recursive: true });
+    // Mimic a session Pi created from the terminal: header + a session_info name.
+    await writeSession(
+      join(sessionDir, '2026-07-19T03-06-22-397Z_019f7856.jsonl'),
+      { type: 'session', id: 'term1234', timestamp: '2026-07-19T03:06:22.000Z', cwd: workspace },
+      [{ type: 'session_info', name: 'Shell chat' }]
+    );
+    const index = await readRecentSessionsIndex({
+      workspaceName: 'workspace',
+      workspacePath: workspace,
+      additionalArgs: [],
+    });
+    assert.equal(index.sessions.length, 1);
+    assert.equal(index.sessions[0]?.displayName, 'Shell chat');
+  } finally {
+    if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR;
+    else process.env.PI_CODING_AGENT_DIR = previous;
+    await rm(root, { recursive: true, force: true });
+  }
+});

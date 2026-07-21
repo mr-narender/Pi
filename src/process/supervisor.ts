@@ -1,4 +1,9 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+
+// On Windows the npm-installed `pi` is a `pi.cmd` shim, which Node's spawn cannot
+// execute directly (ENOENT / EINVAL). A shell is required there; on POSIX we keep
+// shell:false so arguments are passed verbatim without shell interpretation.
+const SPAWN_WITH_SHELL = process.platform === 'win32';
 import { once } from 'node:events';
 import { EventEmitter } from 'node:events';
 import * as vscode from 'vscode';
@@ -61,7 +66,7 @@ export class PiProcessSupervisor extends TypedEmitter implements vscode.Disposab
     this.logger.info(`Starting Pi for ${this.folder.name} generation=${this.generation}`);
     const child = spawn(this.settings.executable, args, {
       cwd: this.folder.uri.fsPath,
-      shell: false,
+      shell: SPAWN_WITH_SHELL,
       env: {
         ...process.env,
         PI_TELEMETRY: '0',
@@ -128,7 +133,7 @@ export class PiProcessSupervisor extends TypedEmitter implements vscode.Disposab
     const version = await new Promise<string>((resolve, reject) => {
       const child = spawn(this.settings.executable, ['--version'], {
         cwd: this.folder.uri.fsPath,
-        shell: false,
+        shell: SPAWN_WITH_SHELL,
         env: { ...process.env, PI_OFFLINE: '1' },
         stdio: ['ignore', 'pipe', 'pipe'],
       });

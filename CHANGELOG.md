@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.26
+
+- Fix (Windows): the Pi process now spawns through a shell on win32, where the npm-installed `pi` is a `.cmd` shim that Node cannot execute directly. POSIX still spawns without a shell.
+- Sessions started in the terminal (`pi`) for a workspace are listed in the sidebar and can be restored — they share Pi's per-workspace session directory. Added a regression test covering terminal-created sessions (including ones with only a name and no messages).
+
 ## 0.0.25
 
 - Set an accurate VS Code compatibility floor: engines.vscode ^1.75.0. The real gate is the tab-groups API (VS Code 1.67); this is one step above it. Aligned @types/vscode to 1.75 and the bundle target to node18 so the floor is verified (nothing newer is used). Pi RPC itself is a CLI subprocess and is independent of the VS Code version.
