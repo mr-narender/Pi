@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.33
+
+- Fix "Blocked vscode-webview request" when opening old chat sessions. The chat editor URI briefly stored its identity in the query string (0.0.31/0.0.32); VS Code does not reliably preserve a custom-editor URI's query when it restores/reopens a tab, so the identity was lost, the editor could not resolve, and the webview was blocked. Identity now lives entirely in the URI path (restore-safe). A query fallback is kept so any tabs opened by 0.0.31/0.0.32 still resolve.
+- Trade-off: the breadcrumb shows the encoded path again (reliable) instead of the short label. A follow-up (short-id map persisted in workspace state) can restore a clean breadcrumb without the query fragility.
+- Test: session identity survives a query-less restore (path is the source of truth).
+
 ## 0.0.32
 
 - Rich chat rendering: LLM responses are now laid out by type so it is clear what is happening. Thinking is a dim, italic, collapsible block; tool calls show a "Tool" badge with the tool name and formatted arguments; tool results are collapsible (errors highlighted); images are labelled. Message text renders Markdown fenced code blocks (with a language label) and inline `code` in a monospace, scrollable code panel. All content is HTML-escaped (no injection).

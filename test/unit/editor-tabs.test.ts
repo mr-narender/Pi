@@ -231,3 +231,17 @@ test('different sessions keep distinct identity even if the short label collides
   });
   assert.notEqual(a, b);
 });
+
+test('regression: session identity survives a query-less restore (path is source of truth)', () => {
+  // VS Code may drop a custom URI's query when it restores a tab, so the full
+  // identity must be recoverable from the PATH alone. This guards against the
+  // "Blocked vscode-webview request" failure when reopening old sessions.
+  const target = {
+    workspaceFolderUri: 'file:///Users/x/proj',
+    kind: 'sessionFile' as const,
+    sessionFile: '/Users/x/.pi/agent/sessions/--Users-x-proj--/2026_abc.jsonl',
+  };
+  const path = buildChatPath(target);
+  assert.equal(path.includes('?'), false, 'path must not depend on a query');
+  assert.deepEqual(parseChatPath(path), target);
+});
