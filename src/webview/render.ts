@@ -80,29 +80,51 @@ export function shouldClearSnapshotFocus(
   return focus === 'contextChip' || focus === 'imageChip' || focus === 'preview';
 }
 
-function renderMessageBlocks(message: WebviewSnapshot['messages'][number]): string {
-  const blocks = message.blocks && message.blocks.length > 0 ? message.blocks : undefined;
-  if (!blocks) {
-    // Fallback for older/persisted snapshots without structured blocks.
-    return `<div class="msg-text">${renderRichText(message.text)}</div>`;
+type MessageBlock = NonNullable<WebviewSnapshot['messages'][number]['blocks']>[number];
+
+/**
+ * Render a message as an ordered stream: consecutive TEXT blocks become the
+ * chat bubble (clear, solid, per-role), while thinking / tool / tool-result /
+ * image blocks render as separate, lighter, granular "meta" cards outside the
+ * bubble so the actual conversation stays easy to read.
+ */
+function renderMessageStream(message: WebviewSnapshot['messages'][number]): string {
+  const blocks: MessageBlock[] =
+    message.blocks && message.blocks.length > 0
+      ? message.blocks
+      : message.text
+        ? [{ kind: 'text', text: message.text }]
+        : [];
+  const out: string[] = [];
+  let textRun: string[] = [];
+  const flushText = (): void => {
+    if (textRun.length > 0) {
+      out.push(`<div class="message-body">${textRun.map((t) => renderRichText(t)).join('')}</div>`);
+      textRun = [];
+    }
+  };
+  for (const block of blocks) {
+    if (block.kind === 'text') {
+      textRun.push(block.text);
+    } else {
+      flushText();
+      out.push(renderMetaBlock(block));
+    }
   }
-  return blocks.map(renderMessageBlock).join('');
+  flushText();
+  return out.join('');
 }
 
-function renderMessageBlock(
-  block: NonNullable<WebviewSnapshot['messages'][number]['blocks']>[number]
-): string {
+function renderMetaBlock(block: MessageBlock): string {
   switch (block.kind) {
-    case 'text':
-      return `<div class="msg-text">${renderRichText(block.text)}</div>`;
     case 'thinking':
-      return `<details class="msg-thinking"><summary><span class="block-badge badge-thinking">Thinking</span></summary><div class="msg-thinking-body">${renderRichText(block.text)}</div></details>`;
+      return `<details class="meta-block meta-thinking"><summary><span class="block-badge badge-thinking">Thinking</span></summary><div class="meta-body">${renderRichText(block.text)}</div></details>`;
     case 'tool':
-      return `<div class="msg-tool"><div class="tool-head"><span class="block-badge badge-tool">Tool</span><code class="tool-name">${escapeHtml(block.name)}</code></div>${block.args ? `<pre class="code-block tool-args"><code>${escapeHtml(block.args)}</code></pre>` : ''}</div>`;
+      return `<div class="meta-block meta-tool"><div class="tool-head"><span class="block-badge badge-tool">Tool</span><code class="tool-name">${escapeHtml(block.name)}</code></div>${block.args ? `<pre class="code-block tool-args"><code>${escapeHtml(block.args)}</code></pre>` : ''}</div>`;
     case 'toolResult':
-      return `<details class="msg-tool-result${block.isError ? ' is-error' : ''}"><summary><span class="block-badge badge-result${block.isError ? ' badge-error' : ''}">${block.isError ? 'Tool error' : 'Tool result'}</span>${block.name ? `<code class="tool-name">${escapeHtml(block.name)}</code>` : ''}</summary><pre class="code-block"><code>${escapeHtml(block.text)}</code></pre></details>`;
+      return `<details class="meta-block meta-tool-result${block.isError ? ' is-error' : ''}"><summary><span class="block-badge badge-result${block.isError ? ' badge-error' : ''}">${block.isError ? 'Tool error' : 'Tool result'}</span>${block.name ? `<code class="tool-name">${escapeHtml(block.name)}</code>` : ''}</summary><pre class="code-block"><code>${escapeHtml(block.text)}</code></pre></details>`;
     case 'image':
-      return `<div class="msg-image"><span class="block-badge badge-image">Image</span> ${escapeHtml(block.mimeType)}</div>`;
+      return `<div class="meta-block meta-image"><span class="block-badge badge-image">Image</span> ${escapeHtml(block.mimeType)}</div>`;
     default:
       return '';
   }
@@ -242,7 +264,7 @@ function renderMessages(snapshot: WebviewSnapshot): string {
         (message) => `
         <article class="message-card message-${escapeHtml(message.role)}">
           <div class="message-role">${escapeHtml(message.role === 'assistant' ? 'Pi' : message.role === 'user' ? 'You' : message.role)}</div>
-          <div class="message-body">${renderMessageBlocks(message)}</div>
+          ${renderMessageStream(message)}
           ${message.attachments.length > 0 ? `<div class="detail-stack">${message.attachments.map((attachment) => renderAttachment(attachment)).join('')}</div>` : ''}
         </article>`
       )

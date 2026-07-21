@@ -208,3 +208,30 @@ test('renderChatApp renders thinking, tool, and code blocks distinctly', () => {
   assert.match(html, /const y = 2;/);
   assert.match(html, /class="code-block"/);
 });
+
+test('thinking/tool render as separate light meta cards; text stays in the chat bubble', () => {
+  const html = renderChatApp(
+    snapshot({
+      messages: [
+        {
+          id: 'm1',
+          role: 'assistant',
+          text: 'fallback',
+          blocks: [
+            { kind: 'thinking', text: 'reasoning' },
+            { kind: 'text', text: 'the answer' },
+            { kind: 'tool', name: 'bash' },
+          ],
+          attachments: [],
+        },
+      ],
+    })
+  );
+  // Thinking + tool are separate meta cards.
+  assert.match(html, /class="meta-block meta-thinking"/);
+  assert.match(html, /class="meta-block meta-tool"/);
+  // The actual answer text lives in the chat bubble, not a meta card.
+  assert.match(html, /<div class="message-body"><p class="msg-para">the answer<\/p><\/div>/);
+  // Meta cards are NOT nested inside the message bubble.
+  assert.doesNotMatch(html, /<div class="message-body">[^]*meta-thinking/);
+});

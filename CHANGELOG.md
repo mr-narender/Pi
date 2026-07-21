@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.36
+
+- Clearer transcript layout: user and agent text stay in solid, per-role chat bubbles, while thinking, tool calls, tool results, and images now render as SEPARATE, lighter, dashed "meta" cards outside the bubble. This keeps the actual conversation prominent while agent internals feel granular and distinct (dim text, type-colored badges, collapsible thinking/results).
+- Tests: thinking/tool render as separate meta cards and text stays in the bubble.
+
 ## 0.0.35
 
 - Fix: opening a saved (old) chat session showed a blank transcript and a dead composer. Loading a session now always binds it to the controller - if Pi is stopped it starts directly on that session file; otherwise (including while it is still handshaking, when the RPC client already exists) it asks the running process to switch to it. Previously the switch only ran when the connection was already ready/busy, so with warm-start timing the session was never loaded and the tab stayed blank with submit doing nothing.

@@ -825,55 +825,67 @@ button.ghost:hover,
   color: #fff;
 }
 
-/* Thinking: collapsible, dimmed, italic. */
-#messages .msg-thinking {
-  font-size: 12px;
+/* ---- Meta blocks: thinking / tool / tool-result / image ----
+   Rendered as SEPARATE, lighter, granular cards outside the chat bubble so the
+   actual user/agent conversation stays clear and prominent. */
+#messages .meta-block {
+  align-self: stretch;
+  max-width: 100%;
+  box-sizing: border-box;
+  margin: 1px 0;
+  padding: 5px 10px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  border-radius: 8px;
+  border: 1px dashed var(--vscode-panel-border);
+  background: transparent;
+  color: var(--vscode-descriptionForeground, var(--vscode-foreground));
+  opacity: 0.9;
 }
-#messages .msg-thinking > summary {
-  cursor: pointer;
-  list-style: none;
-}
-#messages .msg-thinking > summary::-webkit-details-marker {
-  display: none;
-}
-#messages .msg-thinking-body {
-  margin-top: 6px;
-  padding-left: 10px;
-  border-left: 2px solid var(--vscode-panel-border);
-  opacity: 0.75;
-  font-style: italic;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
-/* Tool call + result boxes. */
-#messages .msg-tool,
-#messages .msg-tool-result {
-  font-size: 12px;
-}
-#messages .tool-head,
-#messages .msg-tool-result > summary {
+#messages .meta-block > summary {
   display: flex;
   align-items: center;
   gap: 8px;
   cursor: pointer;
   list-style: none;
 }
-#messages .msg-tool-result > summary::-webkit-details-marker {
+#messages .meta-block > summary::-webkit-details-marker {
   display: none;
 }
-#messages .tool-name {
+#messages .meta-block .tool-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+#messages .meta-block .tool-name {
   font-family: var(--vscode-editor-font-family, ui-monospace, monospace);
-  font-size: 12px;
-  opacity: 0.9;
-}
-#messages .msg-tool .tool-args,
-#messages .msg-tool-result .code-block {
-  margin-top: 6px;
-}
-#messages .msg-image {
-  font-size: 12px;
+  font-size: 11px;
   opacity: 0.85;
+}
+#messages .meta-block .code-block {
+  margin-top: 6px;
+  font-size: 11px;
+  opacity: 0.95;
+}
+
+/* Thinking: dim, italic body. */
+#messages .meta-thinking .meta-body {
+  margin-top: 6px;
+  padding-left: 10px;
+  border-left: 2px solid var(--vscode-panel-border);
+  opacity: 0.8;
+  font-style: italic;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Badges keep their accent color so the block TYPE is instantly recognizable
+   even though the card itself is light. */
+#messages .meta-block .block-badge {
+  opacity: 0.95;
+}
+#messages .meta-tool-result.is-error {
+  border-color: var(--vscode-errorForeground, #d15b5b);
 }
 
 #messages .message-card .detail-stack {
