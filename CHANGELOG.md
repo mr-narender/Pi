@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.34
+
+- Clean breadcrumb, restore-safe: chat tabs now use a short, deterministic URI path (e.g. "Chat 3f9a2c8b1d.chat" / "New Chat <id>.chat") instead of the long encoded workspace/session path. The full identity is kept in a persisted path->identity map (workspace state) that is rehydrated on activation, so restoring/reopening a tab recovers the session correctly - without relying on a URI query (which VS Code drops on restore).
+- Graceful fallback: if a restored tab's mapping is ever missing, it opens as a fresh New Chat for the workspace instead of erroring with a blocked webview.
+- Tests: short-id determinism, clean path format, remember/lookup round-trip, rehydrate-from-persisted-state (restore), and distinct paths per session.
+
 ## 0.0.33
 
 - Fix "Blocked vscode-webview request" when opening old chat sessions. The chat editor URI briefly stored its identity in the query string (0.0.31/0.0.32); VS Code does not reliably preserve a custom-editor URI's query when it restores/reopens a tab, so the identity was lost, the editor could not resolve, and the webview was blocked. Identity now lives entirely in the URI path (restore-safe). A query fallback is kept so any tabs opened by 0.0.31/0.0.32 still resolve.

@@ -7,7 +7,11 @@ export class ChatEditorProvider implements vscode.CustomReadonlyEditorProvider<C
   public constructor(private readonly manager: ChatTabManager) {}
 
   public openCustomDocument(uri: vscode.Uri): ChatEditorDocument {
-    const target = parseChatUri(uri);
+    // Recover the identity from the URI. If it can't be resolved (e.g. a tab
+    // restored after the persisted short-id map was cleared), fall back to a
+    // usable New Chat for the current workspace instead of throwing — throwing
+    // here leaves the webview in a "Blocked" broken state.
+    const target = parseChatUri(uri) ?? this.manager.fallbackDraftTarget();
     if (!target) {
       throw new Error(`Unsupported Pi chat URI: ${uri.toString()}`);
     }

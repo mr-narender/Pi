@@ -845,6 +845,18 @@ export class ChatTabManager implements vscode.Disposable {
    * (workspace + session), NOT the raw URI string, so tabs are keyed by what
    * they represent even if the cosmetic URI path/label changes.
    */
+  /**
+   * A usable fallback target (New Chat for the active/first workspace folder)
+   * for when a chat URI cannot be resolved to a known session — so a stale
+   * restored tab opens as a fresh chat instead of erroring.
+   */
+  public fallbackDraftTarget(): ChatTabTarget | undefined {
+    const folder = this.registry.getActive()?.folder ?? vscode.workspace.workspaceFolders?.[0];
+    return folder
+      ? { workspaceFolderUri: folder.uri.toString(), kind: 'workspaceDraft' }
+      : undefined;
+  }
+
   private keyFor(resource: vscode.Uri): string {
     const target = parseChatUri(resource);
     return target ? chatTargetSessionKey(target) : resource.toString();

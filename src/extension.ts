@@ -17,6 +17,7 @@ import { ChatPanelProvider } from './webview/provider';
 import { ChatUiState } from './webview/composerState';
 import { ChatEditorProvider } from './editorTabs/provider';
 import { ChatFileSystemProvider } from './editorTabs/fileSystemProvider';
+import { initChatUriRegistry } from './editorTabs/uriRegistry';
 import { ChatTabManager } from './editorTabs/tabManager';
 import type { SessionController } from './sessions/sessionController';
 import type { ExtensionUiRequest, JsonObject } from './rpc/protocol';
@@ -98,6 +99,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const recentSessions = new RecentSessionService();
   const uiState = new ChatUiState(context);
   const chat = new ChatPanelProvider(context, registry, uiState);
+  // Rehydrate the chat URI short-id map before any custom-editor tab is
+  // restored, so restored tabs resolve to their session identity.
+  initChatUriRegistry(context.workspaceState);
   const chatTabs = new ChatTabManager(context, registry, uiState);
   const chatEditorProvider = new ChatEditorProvider(chatTabs);
   const broker = new ExtensionUiBroker(registry, uiState);
