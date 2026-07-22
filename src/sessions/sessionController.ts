@@ -57,6 +57,43 @@ export class SessionController implements vscode.Disposable {
     return this.changeEmitter.event;
   }
 
+  /**
+   * Resolve once the RPC client is usable (ready/busy). If Pi is still starting
+   * or handshaking, wait for it to finish rather than failing with "Pi is not
+   * started" — the warm-start sets connectionState to 'starting' well before the
+   * client exists, and a resume issued in that window would otherwise race.
+   */
+  public async whenReady(timeoutMs = 30000): Promise<void> {
+    const usable = (): boolean =>
+      this.state.connectionState === 'ready' || this.state.connectionState === 'busy';
+    if (usable()) {
+      return;
+    }
+    if (this.state.connectionState === 'stopped' || this.state.connectionState === 'faulted') {
+      throw new Error('Pi is not running for this workspace');
+    }
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        subscription.dispose();
+        reject(new Error('Timed out waiting for Pi to be ready'));
+      }, timeoutMs);
+      const subscription = this.onDidChangeState(() => {
+        if (usable()) {
+          clearTimeout(timer);
+          subscription.dispose();
+          resolve();
+        } else if (
+          this.state.connectionState === 'stopped' ||
+          this.state.connectionState === 'faulted'
+        ) {
+          clearTimeout(timer);
+          subscription.dispose();
+          reject(new Error('Pi failed to start for this workspace'));
+        }
+      });
+    });
+  }
+
   public get snapshot(): ControllerState {
     return this.state;
   }
@@ -363,6 +400,9 @@ export class SessionController implements vscode.Disposable {
     this.logger.info(`Resuming session ${canonical} for '${this.folder.name}'`);
     let result: JsonObject | undefined;
     try {
+      // Ensure the RPC client is actually usable (handles the warm-start race
+      // where connectionState is 'starting' but the client isn't created yet).
+      await this.whenReady();
       result = await this.requireClient().switchSession(canonical);
     } catch (error) {
       // Surface the real reason (path/permission/cwd errors are common on

@@ -436,16 +436,20 @@ export class ChatTabManager implements vscode.Disposable {
     try {
       if (context.target.kind === 'sessionFile' && context.target.sessionFile) {
         // Opening a saved session MUST load it into the controller. If Pi is not
-        // running, start it directly on that session file; otherwise (including
-        // while it is still handshaking, when the RPC client already exists) ask
-        // the running process to switch to it.
+        // running, start it directly on that session file. Otherwise WAIT until
+        // the RPC client is actually usable before switching — the warm-start
+        // sets state to 'starting' ~1s before the client exists, so switching
+        // too early failed with "Pi is not started for this workspace".
         if (connectionState === 'stopped') {
           await context.controller.start(context.target.sessionFile);
           await context.controller.reconcile();
-        } else if (!sameTarget(currentTargetForController(context.controller), context.target)) {
-          await this.uiState.captureControllerDraft(context.controller);
-          await context.controller.switchSession(context.target.sessionFile);
-          await this.uiState.restoreControllerDraft(context.controller);
+        } else {
+          await context.controller.whenReady();
+          if (!sameTarget(currentTargetForController(context.controller), context.target)) {
+            await this.uiState.captureControllerDraft(context.controller);
+            await context.controller.switchSession(context.target.sessionFile);
+            await this.uiState.restoreControllerDraft(context.controller);
+          }
         }
       } else if (options?.startIfStopped && connectionState === 'stopped') {
         await context.controller.start(undefined);

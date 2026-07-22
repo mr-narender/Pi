@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.40
+
+- Fix: resuming a session right after the window opened failed with "Pi is not started for this workspace". It was a readiness race, not a path problem: warm-start sets the connection to "starting" ~1s before the RPC client exists (pi --version + spawn), and the resume fired in that window. Resuming now waits for Pi to be usable (new controller.whenReady) before switching, and starts directly on the session when Pi is fully stopped. The path in the log ([HOME]/.pi/agent/sessions/--...--/...jsonl) was correct; [HOME] is just the log redactor masking the home directory.
+
 ## 0.0.39
 
 - Resume failures are no longer silent. Resuming a session now logs the exact path and any error (Pi output channel), records a diagnostic, and shows an error notification with a "Show Logs" action. Previously a failed switch (common on Windows for path/cwd reasons) was swallowed, so the chat just stayed blank with no explanation.
