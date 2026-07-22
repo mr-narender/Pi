@@ -849,8 +849,8 @@ button.ghost:hover,
   font-size: 12px;
   line-height: 1.55;
   border-radius: 10px;
-  border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
-  background: var(--vscode-editorWidget-background, rgba(127, 127, 127, 0.08));
+  border: 1px solid var(--vscode-panel-border, rgba(127, 127, 127, 0.25));
+  background: transparent;
   color: var(--vscode-descriptionForeground, var(--vscode-foreground));
 }
 #messages .meta-block > summary {

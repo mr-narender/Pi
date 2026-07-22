@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.43
+
+- Thinking and tool cards now have no fill - just a hairline border on the plain conversation background - so they match the agent text and feel fully native. Type-colored badges and the thinking accent rail keep them distinguishable; content still wraps.
+
 ## 0.0.42
 
 - Agent replies now sit directly on the conversation background instead of inside their own grey bubble, so the text is on top of the background color (no separate fill behind it) - cleaner and more native. The "You" message keeps its accent bubble so user vs agent stays clear.
