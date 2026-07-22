@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.41
+
+- Cleaner, more native chat formatting. Thinking and tool blocks are now single, uniform cards (subtle solid surface, soft border, rounded) instead of a transparent dashed card with a clashing dark code box nested inside - the code/args now blend into the card. Fenced code in messages uses one harmonized surface with a language header.
+- Everything wraps: code blocks, tool arguments, tool results, thinking text, tool names, and inline code now wrap (overflow-wrap/word-break) so long lines and JSON lay out nicely and stay readable instead of overflowing or scrolling horizontally.
+
 ## 0.0.40
 
 - Fix: resuming a session right after the window opened failed with "Pi is not started for this workspace". It was a readiness race, not a path problem: warm-start sets the connection to "starting" ~1s before the RPC client exists (pi --version + spawn), and the resume fired in that window. Resuming now waits for Pi to be usable (new controller.whenReady) before switching, and starts directly on the session when Pi is fully stopped. The path in the log ([HOME]/.pi/agent/sessions/--...--/...jsonl) was correct; [HOME] is just the log redactor masking the home directory.
