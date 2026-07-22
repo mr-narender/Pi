@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.46
+
+- Much better diagnosability for "can't type / stuck not-ready" issues. The extension now logs every connection lifecycle transition per workspace (init -> starting -> handshaking -> ready/busy/faulted, with the session file), the detected Pi version, and any reconcile failure (timeout/protocol fault) - all in More > Show Logs. So when something doesn't work you can see exactly what happened and why.
+
 ## 0.0.45
 
 - Windows: the startup version probe is no longer a hard gate. Previously, if `pi --version` exited non-zero or printed to stderr (which can happen with the .cmd shim on Windows), the probe threw and the whole session faulted - leaving a chat you could open but not type in, change model, or submit. Now only a genuinely missing binary or a parseably-too-old version blocks startup; anything else logs a warning and proceeds to start the RPC.

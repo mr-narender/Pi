@@ -212,6 +212,8 @@ export class PiProcessSupervisor extends TypedEmitter implements vscode.Disposab
     }
     if (check.note) {
       this.logger.warn(check.note);
+    } else {
+      this.logger.info(`Pi version detected: ${check.version ?? 'unknown'}`);
     }
   }
 

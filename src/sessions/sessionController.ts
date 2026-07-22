@@ -28,6 +28,7 @@ export class SessionController implements vscode.Disposable {
   private state: ControllerState;
   private restartAttempts = 0;
   private stopping = false;
+  private lastLoggedConnectionState?: ControllerState['connectionState'];
 
   public constructor(
     public readonly folder: vscode.WorkspaceFolder,
@@ -186,7 +187,12 @@ export class SessionController implements vscode.Disposable {
       client.getTree(),
       client.getCommands(),
       client.getSessionStats(),
-    ]);
+    ]).catch((error: unknown) => {
+      // A reconcile failure (timeout, protocol fault) is why a tab can be stuck
+      // in 'handshaking' — always record it so it's explainable from the logs.
+      this.logger.error(`Reconcile failed for '${this.folder.name}'`, error);
+      throw error instanceof Error ? error : new Error(String(error));
+    });
     const sessionState = mergeSessionState(this.state.state, (state ?? {}) as SessionState);
     this.state = {
       ...this.state,
@@ -513,6 +519,17 @@ export class SessionController implements vscode.Disposable {
   }
 
   private fire(): void {
+    // Durable audit trail of the connection lifecycle so "can't type / stuck
+    // not-ready" issues (e.g. the Windows version-probe fault) are always
+    // explainable from More → Show Logs.
+    if (this.state.connectionState !== this.lastLoggedConnectionState) {
+      this.logger.info(
+        `Connection for '${this.folder.name}': ` +
+          `${this.lastLoggedConnectionState ?? 'init'} → ${this.state.connectionState}` +
+          (this.state.state.sessionFile ? ` [session=${this.state.state.sessionFile}]` : '')
+      );
+      this.lastLoggedConnectionState = this.state.connectionState;
+    }
     this.changeEmitter.fire(this.state);
   }
 
