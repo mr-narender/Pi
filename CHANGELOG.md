@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.39
+
+- Resume failures are no longer silent. Resuming a session now logs the exact path and any error (Pi output channel), records a diagnostic, and shows an error notification with a "Show Logs" action. Previously a failed switch (common on Windows for path/cwd reasons) was swallowed, so the chat just stayed blank with no explanation.
+- Verified the session-directory encoding and agent dir match Pi's own implementation exactly (including the Windows drive/backslash handling), so the extension looks in the same place Pi writes.
+
 ## 0.0.38
 
 - Fix "Assertion Failed: Argument is undefined or null" when opening a chat editor. resolveCustomEditor and the session start/switch it triggers could reject (e.g. Pi missing, version mismatch, load error); a rejected resolveCustomEditor makes VS Code fail the editor input resolution and throw that internal assertion. Editor resolution and session loading are now wrapped so they never reject - the tab stays open and shows its connecting/faulted state instead.

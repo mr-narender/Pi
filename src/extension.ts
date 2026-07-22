@@ -102,7 +102,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // Rehydrate the chat URI short-id map before any custom-editor tab is
   // restored, so restored tabs resolve to their session identity.
   initChatUriRegistry(context.workspaceState);
-  const chatTabs = new ChatTabManager(context, registry, uiState);
+  const chatTabs = new ChatTabManager(context, registry, uiState, logger);
   const chatEditorProvider = new ChatEditorProvider(chatTabs);
   const broker = new ExtensionUiBroker(registry, uiState);
   const localUi = new LocalExtensionUiContext();

@@ -360,7 +360,21 @@ export class SessionController implements vscode.Disposable {
 
   public async switchSession(sessionPath: string): Promise<JsonObject | undefined> {
     const canonical = await canonicalizeSessionPath(this.folder.uri.fsPath, sessionPath);
-    const result = await this.requireClient().switchSession(canonical);
+    this.logger.info(`Resuming session ${canonical} for '${this.folder.name}'`);
+    let result: JsonObject | undefined;
+    try {
+      result = await this.requireClient().switchSession(canonical);
+    } catch (error) {
+      // Surface the real reason (path/permission/cwd errors are common on
+      // Windows) instead of failing silently.
+      this.logger.error(`Failed to resume session ${canonical}`, error);
+      this.addDiagnostic(
+        'error',
+        'Failed to resume session',
+        error instanceof Error ? error.message : String(error)
+      );
+      throw error;
+    }
     if (result?.cancelled === true) {
       this.addDiagnostic('info', 'Switch session cancelled');
       return result;

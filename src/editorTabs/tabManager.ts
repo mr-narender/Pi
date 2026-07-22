@@ -4,6 +4,7 @@ import { getSettings } from '../config/settings';
 import { ensureTrustedForMutation } from '../security/trust';
 import { SessionRegistry } from '../sessions/sessionRegistry';
 import type { SessionController } from '../sessions/sessionController';
+import type { DiagnosticsLogger } from '../diagnostics/logger';
 import { createWebviewSnapshot, firstPromptPreview } from '../webview/model';
 import { parseWebviewMessage } from '../webview/messages';
 import {
@@ -213,7 +214,8 @@ export class ChatTabManager implements vscode.Disposable {
   public constructor(
     private readonly context: vscode.ExtensionContext,
     private readonly registry: SessionRegistry,
-    private readonly uiState: ChatUiState
+    private readonly uiState: ChatUiState,
+    private readonly logger: DiagnosticsLogger
   ) {
     this.cache = new ChatTabStateCache(context);
     for (const controller of registry.list()) {
@@ -257,7 +259,8 @@ export class ChatTabManager implements vscode.Disposable {
       if (panel.active) {
         await this.activateResource(document.uri, { startIfStopped: false });
       }
-    } catch {
+    } catch (error) {
+      this.logger.error(`Failed to resolve chat editor for ${document.uri.toString()}`, error);
       /* keep the tab open; connection/faulted state is rendered by the webview */
     }
     // Auto-start Pi in the background so the tab transitions from a
@@ -448,8 +451,19 @@ export class ChatTabManager implements vscode.Disposable {
         await context.controller.start(undefined);
         await context.controller.reconcile();
       }
-    } catch {
-      /* faulted connection state is rendered by the webview */
+    } catch (error) {
+      this.logger.error(
+        `Failed to load session for ${context.target.sessionFile ?? context.target.kind}`,
+        error
+      );
+      const message = error instanceof Error ? error.message : String(error);
+      void vscode.window
+        .showErrorMessage(`Pi: couldn't load this chat — ${message}`, 'Show Logs')
+        .then((choice) => {
+          if (choice === 'Show Logs') {
+            void vscode.commands.executeCommand('piRpcInternal.showLogs');
+          }
+        });
     }
 
     await this.renderResource(resource, { active: true });
