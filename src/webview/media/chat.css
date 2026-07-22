@@ -748,18 +748,21 @@ button.ghost:hover,
   border-radius: 14px 14px 4px 14px;
 }
 
-/* Assistant: neutral surface bubble on the leading edge, same shape language. */
+/* Assistant: plain text sitting directly on the conversation background (no
+   bubble fill), so the reply reads natively and nothing has its own box. */
 #messages .message-assistant {
-  align-self: flex-start;
+  align-self: stretch;
   align-items: flex-start;
-  max-width: min(80ch, 96%);
+  max-width: min(80ch, 100%);
 }
 #messages .message-assistant .message-body {
-  align-self: flex-start;
-  background: var(--vscode-editorWidget-background, rgba(128, 128, 128, 0.12));
+  align-self: stretch;
+  width: 100%;
+  background: transparent;
   color: var(--vscode-foreground);
-  border: 1px solid var(--vscode-panel-border);
-  border-radius: 14px 14px 14px 4px;
+  border: none;
+  border-radius: 0;
+  padding: 0;
 }
 
 /* Fenced + inline code. Wraps long lines so nothing overflows the layout. */
@@ -784,6 +787,7 @@ button.ghost:hover,
   overflow-wrap: anywhere;
   word-break: break-word;
   background: transparent;
+  border: none;
   color: var(--vscode-editor-foreground, inherit);
   font-family: var(--vscode-editor-font-family, ui-monospace, monospace);
   font-size: 12px;

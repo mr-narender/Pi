@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.42
+
+- Agent replies now sit directly on the conversation background instead of inside their own grey bubble, so the text is on top of the background color (no separate fill behind it) - cleaner and more native. The "You" message keeps its accent bubble so user vs agent stays clear.
+- Removed the stray border the global pre style added to code blocks, so fenced code is one clean surface. Everything continues to wrap (code, tool args/results, thinking) for readable layout.
+
 ## 0.0.41
 
 - Cleaner, more native chat formatting. Thinking and tool blocks are now single, uniform cards (subtle solid surface, soft border, rounded) instead of a transparent dashed card with a clashing dark code box nested inside - the code/args now blend into the card. Fenced code in messages uses one harmonized surface with a language header.
