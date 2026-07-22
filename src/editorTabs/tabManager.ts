@@ -47,6 +47,14 @@ function isDefaultTitle(value: string | undefined): boolean {
   return !value || value === 'Pi' || value === 'Pi RPC';
 }
 
+function safeParseUri(value: string): vscode.Uri | undefined {
+  try {
+    return vscode.Uri.parse(value, true);
+  } catch {
+    return undefined;
+  }
+}
+
 function sameTarget(left: ChatTabTarget, right: ChatTabTarget): boolean {
   return chatTargetSessionKey(left) === chatTargetSessionKey(right);
 }
@@ -238,10 +246,19 @@ export class ChatTabManager implements vscode.Disposable {
     this.hosts.get(key)?.dispose();
     const host = new ChatEditorHost(this.context.extensionUri, document, panel, this);
     this.hosts.set(key, host);
-    await this.cache.markOpen(document.uri);
-    await this.renderResource(document.uri, { active: panel.active });
-    if (panel.active) {
-      await this.activateResource(document.uri, { startIfStopped: false });
+    // resolveCustomEditor MUST NOT reject: a rejected promise here makes VS Code
+    // fail the editor input resolution and surface an internal
+    // "Assertion Failed: Argument is undefined or null". The webview shell is
+    // already created above, so on any error we simply leave the tab in its
+    // rendered (connecting/faulted) state.
+    try {
+      await this.cache.markOpen(document.uri);
+      await this.renderResource(document.uri, { active: panel.active });
+      if (panel.active) {
+        await this.activateResource(document.uri, { startIfStopped: false });
+      }
+    } catch {
+      /* keep the tab open; connection/faulted state is rendered by the webview */
     }
     // Auto-start Pi in the background so the tab transitions from a
     // "Connecting…" state to an interactive composer without the user having
@@ -409,29 +426,38 @@ export class ChatTabManager implements vscode.Disposable {
     this.activeResourceByWorkspace.set(workspaceKey, resource.toString());
 
     const connectionState = context.controller.snapshot.connectionState;
-    if (context.target.kind === 'sessionFile' && context.target.sessionFile) {
-      // Opening a saved session MUST load it into the controller. If Pi is not
-      // running, start it directly on that session file; otherwise (including
-      // while it is still handshaking, when the RPC client already exists) ask
-      // the running process to switch to it. Previously this only ran when the
-      // controller was already `ready`/`busy`, so with warm-start timing the
-      // switch was skipped and the tab showed a blank, dead transcript.
-      if (connectionState === 'stopped') {
-        await context.controller.start(context.target.sessionFile);
+    // Loading/starting a session can fail (Pi missing, version mismatch, load
+    // error). Never let that reject out of here — the controller records a
+    // faulted state and the webview renders it; a throw would abort the caller
+    // (including resolveCustomEditor) and trigger a VS Code assertion.
+    try {
+      if (context.target.kind === 'sessionFile' && context.target.sessionFile) {
+        // Opening a saved session MUST load it into the controller. If Pi is not
+        // running, start it directly on that session file; otherwise (including
+        // while it is still handshaking, when the RPC client already exists) ask
+        // the running process to switch to it.
+        if (connectionState === 'stopped') {
+          await context.controller.start(context.target.sessionFile);
+          await context.controller.reconcile();
+        } else if (!sameTarget(currentTargetForController(context.controller), context.target)) {
+          await this.uiState.captureControllerDraft(context.controller);
+          await context.controller.switchSession(context.target.sessionFile);
+          await this.uiState.restoreControllerDraft(context.controller);
+        }
+      } else if (options?.startIfStopped && connectionState === 'stopped') {
+        await context.controller.start(undefined);
         await context.controller.reconcile();
-      } else if (!sameTarget(currentTargetForController(context.controller), context.target)) {
-        await this.uiState.captureControllerDraft(context.controller);
-        await context.controller.switchSession(context.target.sessionFile);
-        await this.uiState.restoreControllerDraft(context.controller);
       }
-    } else if (options?.startIfStopped && connectionState === 'stopped') {
-      await context.controller.start(undefined);
-      await context.controller.reconcile();
+    } catch {
+      /* faulted connection state is rendered by the webview */
     }
 
     await this.renderResource(resource, { active: true });
     if (previousResource && previousResource !== resource.toString()) {
-      await this.renderResource(vscode.Uri.parse(previousResource));
+      const parsed = safeParseUri(previousResource);
+      if (parsed) {
+        await this.renderResource(parsed);
+      }
     }
     return context;
   }
@@ -890,7 +916,10 @@ export class ChatTabManager implements vscode.Disposable {
 
     const activeResource = this.activeResourceByWorkspace.get(controller.folder.uri.toString());
     if (activeResource && activeResource !== currentResource.toString()) {
-      await this.renderResource(vscode.Uri.parse(activeResource));
+      const parsed = safeParseUri(activeResource);
+      if (parsed) {
+        await this.renderResource(parsed);
+      }
     }
   }
 

@@ -42,12 +42,13 @@ test('chatShortId is deterministic and identity-specific', () => {
   assert.match(chatShortId(sessionTarget), /^[0-9a-f]{10}$/);
 });
 
-test('chatPathFor is short and clean (no long encoded path in the breadcrumb)', () => {
+test('chatPathFor is short, clean, and space-free (no path-encoding edge cases)', () => {
   const path = chatPathFor(sessionTarget);
-  assert.match(path, /^\/Chat [0-9a-f]{10}\.chat$/);
+  assert.match(path, /^\/chat-[0-9a-f]{10}\.chat$/);
+  assert.equal(path.includes(' '), false);
   assert.equal(path.includes('Users'), false);
   assert.equal(path.includes('.pi'), false);
-  assert.match(chatPathFor(draftTarget), /^\/New Chat [0-9a-f]{10}\.chat$/);
+  assert.match(chatPathFor(draftTarget), /^\/new-chat-[0-9a-f]{10}\.chat$/);
 });
 
 test('remember then lookup round-trips the full identity', () => {

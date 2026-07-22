@@ -33,17 +33,18 @@ export function chatShortId(target: ChatTabTarget): string {
   return createHash('sha256').update(key).digest('hex').slice(0, 10);
 }
 
-function labelFor(target: ChatTabTarget): string {
-  return canonicalChatTarget(target).kind === 'workspaceDraft' ? 'New Chat' : 'Chat';
+function slugFor(target: ChatTabTarget): string {
+  return canonicalChatTarget(target).kind === 'workspaceDraft' ? 'new-chat' : 'chat';
 }
 
 /**
  * Short, human-friendly, deterministic, UNIQUE URI path for a target, e.g.
- * `/Chat 3f9a2c8b1d.chat`. Uniqueness comes from the identity hash; the label
- * is purely cosmetic (for the breadcrumb).
+ * `/chat-3f9a2c8b1d.chat`. Uniqueness comes from the identity hash; the slug is
+ * purely cosmetic (for the breadcrumb). Uses only URL-safe characters (no
+ * spaces) so the editor URI never hits VS Code path-encoding edge cases.
  */
 export function chatPathFor(target: ChatTabTarget): string {
-  return `/${labelFor(target)} ${chatShortId(target)}.chat`;
+  return `/${slugFor(target)}-${chatShortId(target)}.chat`;
 }
 
 /** Load the persisted path -> identity map (call once on activation). */

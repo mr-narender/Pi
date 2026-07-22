@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.38
+
+- Fix "Assertion Failed: Argument is undefined or null" when opening a chat editor. resolveCustomEditor and the session start/switch it triggers could reject (e.g. Pi missing, version mismatch, load error); a rejected resolveCustomEditor makes VS Code fail the editor input resolution and throw that internal assertion. Editor resolution and session loading are now wrapped so they never reject - the tab stays open and shows its connecting/faulted state instead.
+- Hardened the chat editor URI: it now uses a space-free path (chat-<id>.chat / new-chat-<id>.chat) to avoid path-encoding edge cases, and secondary URI parses are guarded.
+- Tests updated for the space-free path.
+
 ## 0.0.37
 
 - Fix (Windows): loading a saved chat session could fail with "ENOENT: no such file or directory, realpath 'C:\\--c--Users-...--'". canonicalizeSessionPath used realpath purely to normalize symlinks but let it throw; on Windows realpath can fail even for a valid resolved path, aborting the load. It now falls back to the resolved absolute path when realpath fails, so the session loads. (Our session-dir encoding already matches Pi's exactly.)
