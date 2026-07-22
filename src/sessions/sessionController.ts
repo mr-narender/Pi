@@ -147,7 +147,11 @@ export class SessionController implements vscode.Disposable {
         generation: this.supervisor.currentGeneration,
       };
       this.fire();
+      this.logger.info(`Handshaking with Pi for '${this.folder.name}'…`);
       await this.reconcile();
+      this.logger.info(
+        `Pi is ready for '${this.folder.name}' (state=${this.state.connectionState})`
+      );
       this.restartAttempts = 0;
     } catch (error) {
       // Surface the exact reason clearly: log it, record it as a diagnostic, and

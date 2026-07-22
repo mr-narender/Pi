@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.45
+
+- Windows: the startup version probe is no longer a hard gate. Previously, if `pi --version` exited non-zero or printed to stderr (which can happen with the .cmd shim on Windows), the probe threw and the whole session faulted - leaving a chat you could open but not type in, change model, or submit. Now only a genuinely missing binary or a parseably-too-old version blocks startup; anything else logs a warning and proceeds to start the RPC.
+- Added handshake logging ("Handshaking with Pi", "Pi is ready ... state=") so a stuck startup is visible in More > Show Logs, and pass windowsHide so no console window flashes.
+
 ## 0.0.44
 
 - Fix: the Pi version check required an EXACT version (0.80.10), so any newer Pi failed to start. It now enforces a MINIMUM version (>= 0.80.10) and accepts any newer release. Versions older than the minimum are rejected with a clear message; unparseable/dev version strings proceed with a logged note instead of blocking.

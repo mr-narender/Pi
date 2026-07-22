@@ -71,6 +71,7 @@ export class PiProcessSupervisor extends TypedEmitter implements vscode.Disposab
     const child = spawn(this.settings.executable, args, {
       cwd: this.folder.uri.fsPath,
       shell: SPAWN_WITH_SHELL,
+      windowsHide: true,
       env: {
         ...process.env,
         PI_TELEMETRY: '0',
@@ -158,11 +159,12 @@ export class PiProcessSupervisor extends TypedEmitter implements vscode.Disposab
     return `See the Pi output channel for details.`;
   }
 
-  private async assertVersion(): Promise<void> {
-    const version = await new Promise<string>((resolve, reject) => {
+  private probeVersion(): Promise<{ code: number | null; stdout: string; stderr: string }> {
+    return new Promise((resolve, reject) => {
       const child = spawn(this.settings.executable, ['--version'], {
         cwd: this.folder.uri.fsPath,
         shell: SPAWN_WITH_SHELL,
+        windowsHide: true,
         env: { ...process.env, PI_OFFLINE: '1' },
         stdio: ['ignore', 'pipe', 'pipe'],
       });
@@ -174,27 +176,37 @@ export class PiProcessSupervisor extends TypedEmitter implements vscode.Disposab
       child.stderr.on('data', (chunk: Buffer) => {
         stderr += chunk.toString('utf8');
       });
-      child.once('error', (error) => {
-        reject(
-          new Error(
-            `Could not run '${this.settings.executable} --version'. ${this.spawnHint(error)}`
-          )
-        );
-      });
-      child.once('exit', (code) => {
-        if (code === 0) {
-          resolve(stdout.trim());
-        } else {
-          reject(
-            new Error(
-              `'${this.settings.executable} --version' exited with code ${String(code)}` +
-                (stderr.trim() ? `: ${stderr.trim()}` : '')
-            )
-          );
-        }
-      });
+      // A spawn error (ENOENT/EACCES) means the binary isn't runnable at all
+      // — that IS fatal; surface it with remediation.
+      child.once('error', reject);
+      child.once('exit', (code) => resolve({ code, stdout, stderr }));
     });
-    const check = checkPiVersion(version);
+  }
+
+  private async assertVersion(): Promise<void> {
+    // The version probe is a COURTESY check, not a hard gate. It must not block
+    // startup just because `pi --version` behaves unusually (e.g. writes to
+    // stderr, exits non-zero, or is wrapped by a .cmd shim on Windows). Only two
+    // things should stop us: the binary genuinely not existing, or a version we
+    // can parse that is clearly older than the minimum.
+    let probe: { code: number | null; stdout: string; stderr: string };
+    try {
+      probe = await this.probeVersion();
+    } catch (error) {
+      throw new Error(
+        `Could not run '${this.settings.executable} --version'. ${this.spawnHint(error)}`
+      );
+    }
+
+    const output = `${probe.stdout}\n${probe.stderr}`.trim();
+    if (probe.code !== 0) {
+      this.logger.warn(
+        `'${this.settings.executable} --version' exited with code ${String(probe.code)}; ` +
+          `proceeding anyway. Output: ${output || '(none)'}`
+      );
+      return;
+    }
+    const check = checkPiVersion(output);
     if (!check.ok) {
       throw new Error(check.reason);
     }
