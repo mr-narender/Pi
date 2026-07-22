@@ -19,6 +19,7 @@ import {
 } from '../state/reducer';
 import { createInitialControllerState, type ControllerState } from '../state/types';
 import { canonicalizeSessionPath } from './paths';
+import { describeShape, extractMessageArray } from './reconcileShape';
 
 export class SessionController implements vscode.Disposable {
   private readonly changeEmitter = new vscode.EventEmitter<ControllerState>();
@@ -194,11 +195,15 @@ export class SessionController implements vscode.Disposable {
       throw error instanceof Error ? error : new Error(String(error));
     });
     const sessionState = mergeSessionState(this.state.state, (state ?? {}) as SessionState);
+    // Tolerant extraction: prefer the documented `messages` array, but fall back
+    // to a bare array or common alternates so a shape difference across Pi
+    // versions doesn't render an empty transcript for a resumed session.
+    const messageList = extractMessageArray(messages);
     this.state = {
       ...this.state,
       connectionState: sessionState.isStreaming || sessionState.isCompacting ? 'busy' : 'ready',
       state: sessionState,
-      messages: Array.isArray(messages?.messages) ? (messages.messages as JsonObject[]) : [],
+      messages: messageList,
       entries: Array.isArray(entries?.entries) ? (entries.entries as JsonObject[]) : [],
       tree: Array.isArray(tree?.tree) ? (tree.tree as JsonObject[]) : [],
       commands: Array.isArray(commands?.commands) ? (commands.commands as JsonObject[]) : [],
@@ -210,6 +215,15 @@ export class SessionController implements vscode.Disposable {
             ? tree.leafId
             : null,
     };
+    // Explain exactly what Pi returned so an "empty transcript on resume" is
+    // diagnosable: which call held the data, and how many.
+    this.logger.info(
+      `Reconciled '${this.folder.name}': state=${this.state.connectionState}, ` +
+        `messages=${messageList.length} (getMessages ${describeShape(messages)}), ` +
+        `entries=${this.state.entries.length} (${describeShape(entries)}), ` +
+        `tree=${this.state.tree.length} (${describeShape(tree)}), ` +
+        `session=${this.state.state.sessionFile ?? '(none)'}`
+    );
     this.fire();
   }
 

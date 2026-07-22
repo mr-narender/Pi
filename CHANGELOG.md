@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.47
+
+- Diagnose "resumed but no old messages": every reconcile now logs exactly what Pi returned - messages/entries/tree counts AND the payload shape (e.g. getMessages object{messages:array[42]}) plus the session file. So an empty transcript on resume is now explainable: either Pi returned 0 messages (the switch didn't load the transcript) or the data was under a different key (rendering/shape issue).
+- More tolerant transcript extraction: the message list is read from the documented `messages` array but falls back to a bare array or alternate keys (items/entries/transcript), so a Pi response-shape difference no longer renders an empty chat.
+
 ## 0.0.46
 
 - Much better diagnosability for "can't type / stuck not-ready" issues. The extension now logs every connection lifecycle transition per workspace (init -> starting -> handshaking -> ready/busy/faulted, with the session file), the detected Pi version, and any reconcile failure (timeout/protocol fault) - all in More > Show Logs. So when something doesn't work you can see exactly what happened and why.
