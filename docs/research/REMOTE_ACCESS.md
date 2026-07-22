@@ -27,7 +27,7 @@ on the remote machine; your local VS Code is just the UI.
 - **Dev Containers / Codespaces**: same model.
 
 Pros: nothing to build; secure (SSH / MS tunnel auth); full VS Code UX.
-Cons: it's *your* VS Code driving a *remote* Pi — not multi-device sharing of one
+Cons: it's _your_ VS Code driving a _remote_ Pi — not multi-device sharing of one
 live session, and not a browser-native chat.
 Action: verify the extension declares no `extensionKind` that forces `ui`; it
 should run as a **workspace** extension so it executes on the remote host (it
@@ -111,8 +111,9 @@ Remote access to a coding agent = remote code execution. Non-negotiable:
 
 ## Open question for you
 
-Your message was cut off at "...remote access to this session **using** ___".
+Your message was cut off at "...remote access to this session **using** \_\_\_".
 Which target did you have in mind so I scope the spike precisely?
+
 - (a) VS Code **tunnels / Remote-SSH** (Option A, ready today), or
 - (b) a **browser / phone** web client (Option B broker), or
 - (c) something specific (ngrok/Cloudflare tunnel, Tailscale, a self-hosted

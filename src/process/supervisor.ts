@@ -12,6 +12,7 @@ import { getSettings, validateAdditionalArgs } from '../config/settings';
 import type { PiRpcSettings } from '../config/settings';
 import { RpcClient } from '../rpc/client';
 import { RpcTransport } from '../rpc/transport';
+import { checkPiVersion } from './version';
 
 export interface SupervisorEvents {
   exit: [number | null, NodeJS.Signals | null];
@@ -193,11 +194,12 @@ export class PiProcessSupervisor extends TypedEmitter implements vscode.Disposab
         }
       });
     });
-    if (version !== '0.80.10') {
-      throw new Error(
-        `Unsupported Pi version '${version}'. This build of the extension targets Pi 0.80.10. ` +
-          `Update the Pi CLI or the extension so the versions match.`
-      );
+    const check = checkPiVersion(version);
+    if (!check.ok) {
+      throw new Error(check.reason);
+    }
+    if (check.note) {
+      this.logger.warn(check.note);
     }
   }
 

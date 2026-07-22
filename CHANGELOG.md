@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.44
+
+- Fix: the Pi version check required an EXACT version (0.80.10), so any newer Pi failed to start. It now enforces a MINIMUM version (>= 0.80.10) and accepts any newer release. Versions older than the minimum are rejected with a clear message; unparseable/dev version strings proceed with a logged note instead of blocking.
+- Tests: numeric (not lexical) semver comparison, exact-min and newer accepted (incl. a higher major), older rejected, unparseable allowed.
+
 ## 0.0.43
 
 - Thinking and tool cards now have no fill - just a hairline border on the plain conversation background - so they match the agent text and feel fully native. Type-colored badges and the thinking accent rail keep them distinguishable; content still wraps.
