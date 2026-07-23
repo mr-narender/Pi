@@ -229,7 +229,11 @@ export function renderRichText(raw: string): string {
       return;
     }
     const escaped = escapeHtml(paragraph.join('\n'));
-    const withInline = escaped.replace(/`([^`\n]+)`/g, '<code class="inline-code">$1</code>');
+    const withInline = escaped
+      .replace(/`([^`\n]+)`/g, '<code class="inline-code">$1</code>')
+      // Render Markdown bold (**text**) as <strong> so the literal ** markers
+      // don't clutter the text (e.g. in the model's thinking).
+      .replace(/\*\*(?!\s)([^\n*]+?)\*\*/g, '<strong>$1</strong>');
     out.push(`<p class="msg-para">${withInline}</p>`);
     paragraph = [];
   };

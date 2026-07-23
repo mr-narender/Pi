@@ -266,3 +266,10 @@ test('standalone toolResult / bashExecution messages render as a Result card (no
   // The raw "toolResult" role label must NOT be shown as a heading.
   assert.doesNotMatch(html, /class="message-role">toolResult</);
 });
+
+test('renderRichText renders **bold** as <strong> and never shows literal ** markers', () => {
+  const html = renderRichText('The **auth** module is **isolated** now.');
+  assert.match(html, /<strong>auth<\/strong>/);
+  assert.match(html, /<strong>isolated<\/strong>/);
+  assert.doesNotMatch(html, /\*\*/); // no literal asterisks left
+});

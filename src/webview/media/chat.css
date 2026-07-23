@@ -748,7 +748,8 @@ button.ghost:hover,
 #messages .message-bashExecution {
   align-self: stretch;
   align-items: flex-start;
-  max-width: min(76ch, 100%);
+  /* Use the full editor width. */
+  max-width: 100%;
 }
 #messages .timeline-standalone {
   margin-top: 0;
@@ -762,7 +763,9 @@ button.ghost:hover,
 #messages .message-user {
   align-self: flex-end;
   align-items: flex-end;
-  max-width: min(60ch, 86%);
+  /* Full width available; short messages still hug their content (fit-content),
+     long ones can span the full editor width. */
+  max-width: 100%;
 }
 #messages .message-user .message-role {
   text-align: right;

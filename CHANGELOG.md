@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.58
+
+- Chat now uses the FULL editor width for text (agent and user). Removed the ~76ch cap so wide editors are utilized properly; short user messages still hug their content, long ones span the full width.
+- Markdown **bold** renders as bold instead of showing literal \*\* markers (cleaner thinking/response text; thinking stays italic).
+
 ## 0.0.57
 
 - Fix: tool args and tool/result output text no longer appear gold. They were using --vscode-editor-foreground (the editor's text color, which is gold in some themes); they now use the chat foreground (--vscode-foreground). A real fenced code block in the answer still uses the editor's code color. (Confirms: #1 tool/result inner text de-golded; #2 thinking is italic; #3 chat text uses the editor font family.)
