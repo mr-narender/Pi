@@ -285,6 +285,25 @@ function render(snapshot: WebviewSnapshot): void {
     });
   }
 
+  for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>('.code-copy'))) {
+    button.addEventListener('click', () => {
+      const code = button.closest('.code-wrap')?.querySelector('.code-block code');
+      const text = code?.textContent ?? '';
+      void navigator.clipboard
+        ?.writeText(text)
+        .then(() => {
+          const previous = button.textContent;
+          button.textContent = 'Copied';
+          button.classList.add('is-copied');
+          setTimeout(() => {
+            button.textContent = previous ?? 'Copy';
+            button.classList.remove('is-copied');
+          }, 1200);
+        })
+        .catch(() => undefined);
+    });
+  }
+
   document.getElementById(PREVIEW_DIALOG_ID)?.addEventListener('keydown', handlePreviewKeydown);
 
   document.getElementById('messages')?.addEventListener('scroll', persistViewState, {

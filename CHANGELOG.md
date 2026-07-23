@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.0.51
+
+- Chat layout finalized per design review (timeline of rounded cards):
+  - Fenced code renders as its OWN block - language label + a Copy button, on a subtle surface - clearly separated from the response prose. Tool args/results stay plain (no fill).
+  - Every section is a rounded, hairline-bordered card identified by an icon in its header (Thinking, Tool, Result, and a "Pi" Response header) with a small colored dot on the timeline rail.
+  - Thinking and Tool result are expanded by default; cozy spacing/padding.
+  - Semantic theme colors (dim thinking, accent tools, error red, green answer); inline SVG icons; everything wraps.
+- Copy button on code blocks copies the code to the clipboard.
+
 ## 0.0.50
 
 - New chat layout: the agent turn is now a TIMELINE of rounded, hairline-bordered cards (the fused timeline + cards direction). Each step - Thinking, Tool, Result, and the final Answer - is a node with a colored dot on a connecting rail: thinking is a dim italic collapsible node, tools/results use the theme accent (errors use the error color, collapsible), and the answer is a green node with full-contrast text. No background fills. Simple text-only replies skip the timeline and render as plain text. The "You" message stays a right-aligned outlined bubble.

@@ -168,7 +168,8 @@ test('renderChatApp shows the older-messages sentinel only when hasOlder', () =>
 test('renderRichText formats fenced code blocks and inline code', () => {
   const html = renderRichText('before\n```ts\nconst x = 1;\n```\nafter `inline` end');
   assert.match(html, /class="code-wrap"/);
-  assert.match(html, /class="code-lang">ts/);
+  assert.match(html, /class="code-lang-name">ts</); // language label
+  assert.match(html, /class="code-copy"/); // copy button
   assert.match(html, /const x = 1;/);
   assert.match(html, /class="inline-code">inline<\/code>/);
   assert.match(html, /<p class="msg-para">before/);
@@ -238,6 +239,7 @@ test('thinking/tool render as separate light meta cards; text stays in the chat 
   assert.match(html, /class="tl-node tl-thinking"/);
   assert.match(html, /class="tl-node tl-tool"/);
   assert.match(html, /class="tl-node tl-response"/);
-  // The answer text lives in the response card body.
-  assert.match(html, /tl-answer"><div class="tl-body"><p class="msg-para">the answer<\/p>/);
+  // The answer sits in a response card with a "Pi" header, then the body text.
+  assert.match(html, /class="tl-head tl-answer-head">.*<span class="tl-label">Pi</);
+  assert.match(html, /<div class="tl-body"><p class="msg-para">the answer<\/p>/);
 });

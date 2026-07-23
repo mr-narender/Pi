@@ -174,22 +174,22 @@ function renderAssistantBody(message: WebviewSnapshot['messages'][number]): stri
 }
 
 function renderTimelineNode(node: TimelineNode): string {
-  const dot = (icon: string): string => `<span class="tl-dot">${icon}</span>`;
-  const label = (text: string, collapsible: boolean): string =>
-    `<span class="tl-label">${escapeHtml(text)}</span>${collapsible ? CARET_ICON : ''}`;
+  // Small colored marker on the rail; the identifying icon lives in the card
+  // header (icon + rounded border make each section obvious).
+  const marker = '<span class="tl-dot"></span>';
   switch (node.kind) {
     case 'thinking':
-      return `<div class="tl-node tl-thinking">${dot(META_ICONS.thinking)}<details class="tl-card"><summary class="tl-head">${label('Thinking', true)}</summary><div class="tl-body tl-think">${renderRichText(node.text)}</div></details></div>`;
+      return `<div class="tl-node tl-thinking">${marker}<details class="tl-card" open><summary class="tl-head">${META_ICONS.thinking}<span class="tl-label">Thinking</span>${CARET_ICON}</summary><div class="tl-body tl-think">${renderRichText(node.text)}</div></details></div>`;
     case 'tool':
-      return `<div class="tl-node tl-tool">${dot(META_ICONS.tool)}<div class="tl-card"><div class="tl-head">${label('Tool', false)}<code class="tool-name">${escapeHtml(node.name)}</code></div>${node.args ? `<pre class="code-block"><code>${escapeHtml(node.args)}</code></pre>` : ''}</div></div>`;
+      return `<div class="tl-node tl-tool">${marker}<div class="tl-card"><div class="tl-head">${META_ICONS.tool}<span class="tl-label">Tool</span><code class="tool-name">${escapeHtml(node.name)}</code></div>${node.args ? `<pre class="code-block"><code>${escapeHtml(node.args)}</code></pre>` : ''}</div></div>`;
     case 'toolResult': {
       const err = node.isError === true;
-      return `<div class="tl-node tl-result${err ? ' is-error' : ''}">${dot(err ? META_ICONS.error : META_ICONS.result)}<details class="tl-card"><summary class="tl-head">${label(err ? 'Error' : 'Result', true)}${node.name ? `<code class="tool-name">${escapeHtml(node.name)}</code>` : ''}</summary><pre class="code-block"><code>${escapeHtml(node.text)}</code></pre></details></div>`;
+      return `<div class="tl-node tl-result${err ? ' is-error' : ''}">${marker}<details class="tl-card" open><summary class="tl-head">${err ? META_ICONS.error : META_ICONS.result}<span class="tl-label">${err ? 'Error' : 'Result'}</span>${node.name ? `<code class="tool-name">${escapeHtml(node.name)}</code>` : ''}${CARET_ICON}</summary><pre class="code-block"><code>${escapeHtml(node.text)}</code></pre></details></div>`;
     }
     case 'image':
-      return `<div class="tl-node tl-tool">${dot(META_ICONS.image)}<div class="tl-card"><div class="tl-head">${label('Image', false)}<span class="tool-name">${escapeHtml(node.mimeType)}</span></div></div></div>`;
+      return `<div class="tl-node tl-tool">${marker}<div class="tl-card"><div class="tl-head">${META_ICONS.image}<span class="tl-label">Image</span><span class="tool-name">${escapeHtml(node.mimeType)}</span></div></div></div>`;
     case 'response':
-      return `<div class="tl-node tl-response">${dot(META_ICONS.response)}<div class="tl-card tl-answer"><div class="tl-body">${renderRichText(node.text)}</div></div></div>`;
+      return `<div class="tl-node tl-response">${marker}<div class="tl-card tl-answer"><div class="tl-head tl-answer-head">${META_ICONS.response}<span class="tl-label">Pi</span></div><div class="tl-body">${renderRichText(node.text)}</div></div></div>`;
     default:
       return '';
   }
@@ -246,9 +246,10 @@ export function renderRichText(raw: string): string {
         index += 1;
       }
       index += 1; // skip closing fence
-      const langLabel = language ? `<div class="code-lang">${escapeHtml(language)}</div>` : '';
+      // Fenced code renders as its OWN block — language label + Copy, a subtle
+      // surface, clearly separated from the surrounding response text.
       out.push(
-        `<div class="code-wrap">${langLabel}<pre class="code-block"><code>${escapeHtml(code.join('\n'))}</code></pre></div>`
+        `<div class="code-wrap"><div class="code-lang"><span class="code-lang-name">${escapeHtml(language || 'code')}</span><button type="button" class="code-copy" aria-label="Copy code">Copy</button></div><pre class="code-block"><code>${escapeHtml(code.join('\n'))}</code></pre></div>`
       );
     } else {
       paragraph.push(lines[index] ?? '');

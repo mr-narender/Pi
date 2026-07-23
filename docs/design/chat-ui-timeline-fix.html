@@ -16,8 +16,8 @@
         --green: #57c7a0;
         --red: #f0716a;
         --user-line: #3a4a5a;
-        --mono: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
-        --sans: -apple-system, "Segoe UI", system-ui, sans-serif;
+        --mono: 'SF Mono', ui-monospace, Menlo, Consolas, monospace;
+        --sans: -apple-system, 'Segoe UI', system-ui, sans-serif;
       }
       * {
         box-sizing: border-box;
@@ -59,7 +59,7 @@
         font-size: 12px;
         cursor: pointer;
       }
-      .tg[aria-pressed="true"] {
+      .tg[aria-pressed='true'] {
         border-color: var(--accent);
         color: #fff;
         background: rgba(87, 166, 255, 0.12);
@@ -109,7 +109,7 @@
         padding-left: 26px;
       }
       .timeline::before {
-        content: "";
+        content: '';
         position: absolute;
         left: 6px;
         top: 8px;
@@ -273,10 +273,10 @@
         border-color: var(--border);
       }
       /* toggle: outline (transparent) vs subtle surface */
-      body[data-cb="surface"] .cbbody {
+      body[data-cb='surface'] .cbbody {
         background: rgba(255, 255, 255, 0.03);
       }
-      body[data-cb="surface"] .cbhead {
+      body[data-cb='surface'] .cbhead {
         background: rgba(255, 255, 255, 0.02);
       }
 
@@ -297,10 +297,10 @@
         font-size: 0.9em;
         color: #d7b98a;
       }
-      body[data-density="cozy"] .node {
+      body[data-density='cozy'] .node {
         margin-bottom: 16px;
       }
-      body[data-density="cozy"] .card {
+      body[data-density='cozy'] .card {
         padding: 11px 14px;
       }
     </style>
@@ -309,9 +309,8 @@
     <header>
       <h1>Timeline of rounded cards — fix preview</h1>
       <div class="sub">
-        Fenced code now sits in its OWN code block, separated from the response
-        text (language label + copy). Tool args/results stay plain. No background
-        behind ordinary text.
+        Fenced code now sits in its OWN code block, separated from the response text (language label
+        + copy). Tool args/results stay plain. No background behind ordinary text.
       </div>
       <div class="toggles">
         <button class="tg" data-k="cb" data-v="outline" aria-pressed="true">
@@ -351,15 +350,15 @@
           '<svg class="icon caret" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4l4 4-4 4"/></svg>',
       };
       const ARGS = '{ "cmd": "ls src/auth" }';
-      const RES = "index.ts\nclient.ts\ntoken.ts";
+      const RES = 'index.ts\nclient.ts\ntoken.ts';
       const CODE =
         '<span class="k">export function</span> <span class="f">parseToken</span>(raw: <span class="k">string</span>): Token {\n  <span class="k">const</span> [, p] = raw.split(<span class="s">\'.\'</span>);\n  <span class="k">return</span> decode(p);\n}';
       const ANSWER =
-        "<p>I split parsing from the HTTP client and added table-driven tests \u2014 here\u2019s the extracted function:</p>" +
+        '<p>I split parsing from the HTTP client and added table-driven tests \u2014 here\u2019s the extracted function:</p>' +
         `<div class="codeblock"><div class="cbhead"><span>typescript</span><button class="cbcopy">Copy</button></div><pre class="cbbody">${CODE}</pre></div>` +
         '<p>It covers expiry, malformed input, and the <span class="inline">null</span> case.</p>';
 
-      document.getElementById("tl").innerHTML = `
+      document.getElementById('tl').innerHTML = `
         <div class="node think">
           <span class="marker"></span>
           <details class="card"><summary class="head">${IC.think}<span class="label">Thinking</span>${IC.caret}</summary>
@@ -385,12 +384,12 @@
           </div>
         </div>`;
 
-      document.querySelectorAll(".tg").forEach((b) => {
-        b.addEventListener("click", () => {
+      document.querySelectorAll('.tg').forEach((b) => {
+        b.addEventListener('click', () => {
           document.body.dataset[b.dataset.k] = b.dataset.v;
           document
             .querySelectorAll(`.tg[data-k="${b.dataset.k}"]`)
-            .forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+            .forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
         });
       });
     </script>

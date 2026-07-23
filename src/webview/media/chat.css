@@ -760,19 +760,47 @@ button.ghost:hover,
   background: transparent;
 }
 
-/* ---- Fenced + inline code: one calm surface, wraps, never overflows ---- */
+/* ---- Fenced code: its OWN block — language header + Copy, subtle surface,
+   separated from the response text. Wraps, never overflows. ---- */
 #messages .code-wrap {
+  margin: 12px 0;
   border-radius: 8px;
   overflow: hidden;
   border: 1px solid var(--vscode-panel-border);
+  background: var(--vscode-textCodeBlock-background, rgba(255, 255, 255, 0.035));
 }
 #messages .code-lang {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 6px 4px 12px;
+  border-bottom: 1px solid var(--vscode-panel-border);
+}
+#messages .code-lang-name {
   font-size: 9.5px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  opacity: 0.55;
-  padding: 4px 12px;
-  border-bottom: 1px solid var(--vscode-panel-border);
+  opacity: 0.6;
+}
+#messages .code-copy {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--vscode-descriptionForeground, var(--vscode-foreground));
+  font: inherit;
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 2px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+#messages .code-copy:hover {
+  color: var(--vscode-foreground);
+  border-color: var(--vscode-panel-border);
+}
+#messages .code-copy.is-copied {
+  color: var(--vscode-charts-green, #57c7a0);
 }
 #messages .code-block {
   margin: 0;
@@ -907,54 +935,52 @@ button.ghost:hover,
 #messages .timeline::before {
   content: '';
   position: absolute;
-  left: 7px;
-  top: 8px;
-  bottom: 8px;
+  left: 6px;
+  top: 10px;
+  bottom: 10px;
   width: 2px;
   background: var(--vscode-panel-border);
   border-radius: 1px;
 }
 #messages .tl-node {
   position: relative;
-  margin: 0 0 10px;
+  margin: 0 0 16px; /* cozy density */
   min-width: 0;
 }
 #messages .tl-node:last-child {
   margin-bottom: 0;
 }
+/* Small colored marker on the rail (the icon lives in the card header). */
 #messages .tl-dot {
   position: absolute;
-  left: -26px;
-  top: 2px;
-  width: 16px;
-  height: 16px;
+  left: -24px;
+  top: 15px;
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
-  display: grid;
-  place-items: center;
   box-sizing: border-box;
   background: var(--vscode-editor-background, #1e1e1e);
-  border: 1.5px solid var(--vscode-panel-border);
-  color: var(--vscode-descriptionForeground, var(--vscode-foreground));
-}
-#messages .tl-dot .meta-icon {
-  width: 10px;
-  height: 10px;
+  border: 2px solid var(--vscode-descriptionForeground, var(--vscode-panel-border));
 }
 #messages .tl-card {
   box-sizing: border-box;
   min-width: 0;
   border: 1px solid var(--vscode-panel-border);
-  border-radius: 10px;
-  padding: 8px 12px;
+  border-radius: 12px;
+  padding: 11px 14px; /* cozy density */
   background: transparent;
 }
 #messages .tl-head {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 7px;
   cursor: pointer;
   list-style: none;
+}
+#messages .tl-answer-head {
+  cursor: default;
+  margin-bottom: 2px;
 }
 #messages .tl-card > summary::-webkit-details-marker {
   display: none;
@@ -988,12 +1014,12 @@ button.ghost:hover,
   word-break: break-word;
 }
 
-/* Thinking = secondary (dim, italic). */
+/* Thinking = secondary (dim, italic). Icon+label+marker share the tone. */
 #messages .tl-thinking .tl-dot {
   border-color: var(--vscode-descriptionForeground, var(--vscode-panel-border));
-  color: var(--vscode-descriptionForeground, var(--vscode-foreground));
 }
-#messages .tl-thinking .tl-label {
+#messages .tl-thinking .tl-label,
+#messages .tl-thinking .meta-icon {
   color: var(--vscode-descriptionForeground, var(--vscode-foreground));
 }
 #messages .tl-think {
@@ -1005,16 +1031,19 @@ button.ghost:hover,
 #messages .tl-tool .tl-dot,
 #messages .tl-result .tl-dot {
   border-color: var(--vscode-textLink-foreground, #57a6ff);
-  color: var(--vscode-textLink-foreground, #57a6ff);
 }
 #messages .tl-tool .tl-label,
-#messages .tl-result .tl-label {
+#messages .tl-tool .meta-icon,
+#messages .tl-result .tl-label,
+#messages .tl-result .meta-icon {
   color: var(--vscode-textLink-foreground, #57a6ff);
 }
 
 /* Error = semantic danger. */
 #messages .tl-result.is-error .tl-dot {
   border-color: var(--vscode-errorForeground, #f0716a);
+}
+#messages .tl-result.is-error .meta-icon {
   color: var(--vscode-errorForeground, #f0716a);
 }
 #messages .tl-result.is-error .tl-label {
@@ -1024,11 +1053,17 @@ button.ghost:hover,
 /* Answer = the result of the turn; green node, full-contrast text. */
 #messages .tl-response .tl-dot {
   border-color: var(--vscode-charts-green, #57c7a0);
+  background: var(--vscode-charts-green, #57c7a0);
+}
+#messages .tl-response .tl-label,
+#messages .tl-response .meta-icon {
   color: var(--vscode-charts-green, #57c7a0);
 }
 #messages .tl-answer .tl-body {
-  margin-top: 0;
   color: var(--vscode-foreground);
+}
+#messages .tl-answer .tl-body > :first-child {
+  margin-top: 0;
 }
 
 #messages .tl-card .tool-name {

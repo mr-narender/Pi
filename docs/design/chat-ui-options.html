@@ -22,8 +22,8 @@
         --red: #f0716a;
         --code-bg: #161616;
         --user-line: #3a4a5a;
-        --mono: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
-        --sans: -apple-system, "Segoe UI", system-ui, sans-serif;
+        --mono: 'SF Mono', ui-monospace, Menlo, Consolas, monospace;
+        --sans: -apple-system, 'Segoe UI', system-ui, sans-serif;
       }
       * {
         box-sizing: border-box;
@@ -76,7 +76,7 @@
         border-color: var(--accent);
         color: var(--fg);
       }
-      .tab[aria-selected="true"] {
+      .tab[aria-selected='true'] {
         background: var(--accent-weak);
         border-color: var(--accent);
         color: #fff;
@@ -216,7 +216,7 @@
         padding-left: 26px;
       }
       .B .stream::before {
-        content: "";
+        content: '';
         position: absolute;
         left: 7px;
         top: 4px;
@@ -445,25 +445,15 @@
     <header>
       <h1>Pi chat — pick a layout</h1>
       <div class="sub">
-        Same conversation, five directions. Click a tab. All use your theme
-        tokens (shown here on a dark VS Code palette).
+        Same conversation, five directions. Click a tab. All use your theme tokens (shown here on a
+        dark VS Code palette).
       </div>
       <div class="tabs" role="tablist" id="tabs">
-        <button class="tab" role="tab" data-v="A" aria-selected="true">
-          A · Rail
-        </button>
-        <button class="tab" role="tab" data-v="B" aria-selected="false">
-          B · Timeline
-        </button>
-        <button class="tab" role="tab" data-v="C" aria-selected="false">
-          C · Minimal
-        </button>
-        <button class="tab" role="tab" data-v="D" aria-selected="false">
-          D · Cards
-        </button>
-        <button class="tab" role="tab" data-v="E" aria-selected="false">
-          E · Terminal
-        </button>
+        <button class="tab" role="tab" data-v="A" aria-selected="true">A · Rail</button>
+        <button class="tab" role="tab" data-v="B" aria-selected="false">B · Timeline</button>
+        <button class="tab" role="tab" data-v="C" aria-selected="false">C · Minimal</button>
+        <button class="tab" role="tab" data-v="D" aria-selected="false">D · Cards</button>
+        <button class="tab" role="tab" data-v="E" aria-selected="false">E · Terminal</button>
       </div>
     </header>
 
@@ -481,14 +471,14 @@
         caret:
           '<svg class="icon caret" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4l4 4-4 4"/></svg>',
       };
-      const USER = "Refactor the auth module and add tests.";
+      const USER = 'Refactor the auth module and add tests.';
       const THINK =
-        "The auth module mixes token parsing with the HTTP client, so unit tests can\u2019t isolate it. I\u2019ll extract a pure parseToken(), inject the client, then add table-driven tests for expiry and malformed tokens.";
-      const TOOLNAME = "bash";
+        'The auth module mixes token parsing with the HTTP client, so unit tests can\u2019t isolate it. I\u2019ll extract a pure parseToken(), inject the client, then add table-driven tests for expiry and malformed tokens.';
+      const TOOLNAME = 'bash';
       const TOOLARGS = '{ "cmd": "ls src/auth" }';
-      const TOOLRES = "index.ts\nclient.ts\ntoken.ts";
+      const TOOLRES = 'index.ts\nclient.ts\ntoken.ts';
       const AGENT_HTML =
-        "Here\u2019s the plan and the extracted function:" +
+        'Here\u2019s the plan and the extracted function:' +
         '<div class="code"><span class="k">export function</span> <span class="f">parseToken</span>(raw: <span class="k">string</span>): Token {\n  <span class="k">const</span> [h, p] = raw.split(<span class="s">\'.\'</span>);\n  <span class="k">return</span> decode(p);\n}</div>' +
         '<p style="margin:10px 0 0">I split parsing from the client and added tests for expiry, malformed input, and the <span class="inline">null</span> case.</p>';
 
@@ -546,18 +536,18 @@
           </div></div>`,
       };
 
-      const stage = document.getElementById("stage");
+      const stage = document.getElementById('stage');
       function show(v) {
         stage.innerHTML = `<section class="variant active">${V[v]()}</section>`;
-        document.querySelectorAll(".tab").forEach((t) => {
-          t.setAttribute("aria-selected", String(t.dataset.v === v));
+        document.querySelectorAll('.tab').forEach((t) => {
+          t.setAttribute('aria-selected', String(t.dataset.v === v));
         });
       }
-      document.getElementById("tabs").addEventListener("click", (e) => {
-        const t = e.target.closest(".tab");
+      document.getElementById('tabs').addEventListener('click', (e) => {
+        const t = e.target.closest('.tab');
         if (t) show(t.dataset.v);
       });
-      show("A");
+      show('A');
     </script>
   </body>
 </html>
