@@ -1,0 +1,563 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pi chat — layout options</title>
+    <style>
+      /* Dark VS Code–like tokens so this preview looks native in a plain browser.
+         In the real extension these map to --vscode-* theme variables. */
+      :root {
+        --bg: #1e1e1e;
+        --panel: #252526;
+        --fg: #e6e6e6;
+        --fg-2: #cfcfcf;
+        --dim: #9aa0a6;
+        --border: #3a3a3a;
+        --border-soft: #2f2f2f;
+        --accent: #57a6ff;
+        --accent-weak: rgba(87, 166, 255, 0.14);
+        --violet: #c99bf0;
+        --green: #57c7a0;
+        --red: #f0716a;
+        --code-bg: #161616;
+        --user-line: #3a4a5a;
+        --mono: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+        --sans: -apple-system, "Segoe UI", system-ui, sans-serif;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--fg);
+        font-family: var(--sans);
+        font-size: 13px;
+        line-height: 1.6;
+      }
+      header {
+        position: sticky;
+        top: 0;
+        z-index: 5;
+        background: linear-gradient(var(--bg), rgba(30, 30, 30, 0.9));
+        backdrop-filter: blur(6px);
+        border-bottom: 1px solid var(--border-soft);
+        padding: 14px 20px 10px;
+      }
+      h1 {
+        margin: 0 0 3px;
+        font-size: 15px;
+        letter-spacing: 0.2px;
+      }
+      .sub {
+        color: var(--dim);
+        font-size: 12px;
+      }
+      .tabs {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        margin-top: 12px;
+      }
+      .tab {
+        appearance: none;
+        border: 1px solid var(--border);
+        background: transparent;
+        color: var(--fg-2);
+        padding: 6px 12px;
+        border-radius: 999px;
+        font: inherit;
+        font-size: 12px;
+        cursor: pointer;
+        transition: all 0.15s ease;
+      }
+      .tab:hover {
+        border-color: var(--accent);
+        color: var(--fg);
+      }
+      .tab[aria-selected="true"] {
+        background: var(--accent-weak);
+        border-color: var(--accent);
+        color: #fff;
+      }
+      main {
+        max-width: 860px;
+        margin: 0 auto;
+        padding: 26px 20px 80px;
+      }
+      .variant {
+        display: none;
+      }
+      .variant.active {
+        display: block;
+      }
+      .variant > .desc {
+        color: var(--dim);
+        font-size: 12px;
+        border-left: 2px solid var(--border);
+        padding-left: 10px;
+        margin-bottom: 22px;
+      }
+      .role {
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.09em;
+        text-transform: uppercase;
+        color: var(--dim);
+      }
+      pre,
+      code {
+        font-family: var(--mono);
+      }
+      .code {
+        margin: 8px 0 0;
+        background: var(--code-bg);
+        border: 1px solid var(--border-soft);
+        border-radius: 8px;
+        padding: 10px 12px;
+        font-size: 12px;
+        line-height: 1.55;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        color: #d7d7d7;
+      }
+      .code .k {
+        color: #c99bf0;
+      }
+      .code .s {
+        color: #98c379;
+      }
+      .code .f {
+        color: #57a6ff;
+      }
+      .inline {
+        font-family: var(--mono);
+        font-size: 0.9em;
+        background: rgba(127, 127, 127, 0.18);
+        padding: 1px 5px;
+        border-radius: 5px;
+      }
+      .icon {
+        width: 13px;
+        height: 13px;
+        flex: none;
+      }
+      details > summary {
+        list-style: none;
+        cursor: pointer;
+      }
+      details > summary::-webkit-details-marker {
+        display: none;
+      }
+      .caret {
+        transition: transform 0.15s ease;
+        opacity: 0.6;
+      }
+      details[open] .caret {
+        transform: rotate(90deg);
+      }
+
+      /* ===================== A · RAIL ===================== */
+      .A .turn {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        margin-bottom: 22px;
+      }
+      .A .user {
+        align-items: flex-end;
+      }
+      .A .user .body {
+        max-width: 78%;
+        border: 1px solid var(--user-line);
+        border-radius: 14px 14px 4px 14px;
+        padding: 9px 13px;
+      }
+      .A .agent .body {
+        max-width: 74ch;
+      }
+      .A .meta {
+        border-left: 2px solid var(--border);
+        padding: 2px 0 2px 12px;
+      }
+      .A .meta.think {
+        border-color: var(--dim);
+        color: var(--dim);
+        font-style: italic;
+      }
+      .A .meta.tool {
+        border-color: var(--accent);
+      }
+      .A .mhead {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+      }
+      .A .think .mhead {
+        color: var(--dim);
+      }
+      .A .tool .mhead {
+        color: var(--accent);
+      }
+      .A .tool code.name {
+        font-family: var(--mono);
+        font-size: 11.5px;
+        color: var(--fg-2);
+      }
+
+      /* ===================== B · TIMELINE ===================== */
+      .B .stream {
+        position: relative;
+        padding-left: 26px;
+      }
+      .B .stream::before {
+        content: "";
+        position: absolute;
+        left: 7px;
+        top: 4px;
+        bottom: 4px;
+        width: 2px;
+        background: var(--border-soft);
+      }
+      .B .node {
+        position: relative;
+        margin-bottom: 20px;
+      }
+      .B .dot {
+        position: absolute;
+        left: -26px;
+        top: 1px;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        background: var(--bg);
+        border: 1.5px solid var(--border);
+        color: var(--dim);
+      }
+      .B .node.think .dot {
+        border-color: var(--dim);
+        color: var(--dim);
+      }
+      .B .node.tool .dot {
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+      .B .node.agent .dot {
+        border-color: var(--green);
+        color: var(--green);
+      }
+      .B .node.user .dot {
+        border-color: var(--user-line);
+      }
+      .B .label {
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--dim);
+        margin-bottom: 3px;
+      }
+      .B .node.tool .label {
+        color: var(--accent);
+      }
+      .B .think {
+        color: var(--dim);
+        font-style: italic;
+      }
+
+      /* ===================== C · MINIMAL ===================== */
+      .C .turn {
+        margin-bottom: 26px;
+      }
+      .C .user {
+        text-align: right;
+      }
+      .C .user .body {
+        display: inline-block;
+        text-align: left;
+        max-width: 76%;
+        background: rgba(127, 127, 127, 0.1);
+        border-radius: 16px;
+        padding: 9px 14px;
+      }
+      .C .agent .body {
+        max-width: 72ch;
+        font-size: 13.5px;
+      }
+      .C .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border: 1px solid var(--border-soft);
+        border-radius: 999px;
+        padding: 3px 10px 3px 8px;
+        color: var(--dim);
+        font-size: 11.5px;
+        margin: 6px 0;
+      }
+      .C details[open] .pill {
+        border-color: var(--border);
+      }
+      .C .pill .icon {
+        color: var(--dim);
+      }
+      .C .tool .pill .icon,
+      .C .tool .pill b {
+        color: var(--accent);
+      }
+      .C .pill b {
+        font-weight: 600;
+      }
+      .C .drawer {
+        margin: 6px 0 0 4px;
+        padding-left: 12px;
+        border-left: 2px solid var(--border-soft);
+        color: var(--dim);
+        font-style: italic;
+      }
+      .C .tool .drawer {
+        font-style: normal;
+      }
+
+      /* ===================== D · CARDS ===================== */
+      .D .turn {
+        margin-bottom: 18px;
+      }
+      .D .user {
+        display: flex;
+        justify-content: flex-end;
+      }
+      .D .user .body {
+        max-width: 76%;
+        background: linear-gradient(180deg, #2b3a4a, #22303e);
+        border: 1px solid #35506a;
+        border-radius: 14px;
+        padding: 10px 14px;
+      }
+      .D .agent .body {
+        max-width: 74ch;
+      }
+      .D .card {
+        border: 1px solid var(--border-soft);
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.02);
+        overflow: hidden;
+        margin: 8px 0;
+      }
+      .D .chead {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 11px;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        border-bottom: 1px solid var(--border-soft);
+      }
+      .D .card.think .chead {
+        color: var(--violet);
+      }
+      .D .card.tool .chead {
+        color: var(--accent);
+      }
+      .D .card.think .chead .icon,
+      .D .card.tool .chead .icon {
+        color: currentColor;
+      }
+      .D .cbody {
+        padding: 9px 11px;
+      }
+      .D .card.think .cbody {
+        color: var(--dim);
+        font-style: italic;
+      }
+      .D .chead code {
+        font-family: var(--mono);
+        font-size: 11px;
+        color: var(--fg-2);
+        text-transform: none;
+        letter-spacing: 0;
+        margin-left: auto;
+      }
+
+      /* ===================== E · TERMINAL ===================== */
+      .E .stream {
+        font-family: var(--mono);
+        font-size: 12.5px;
+        line-height: 1.7;
+      }
+      .E .line {
+        display: flex;
+        gap: 10px;
+        padding: 1px 0;
+      }
+      .E .gutter {
+        flex: none;
+        width: 74px;
+        text-align: right;
+        user-select: none;
+        font-size: 10.5px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        padding-top: 2px;
+      }
+      .E .u .gutter {
+        color: var(--dim);
+      }
+      .E .think .gutter {
+        color: var(--dim);
+      }
+      .E .tool .gutter {
+        color: var(--accent);
+      }
+      .E .ok .gutter {
+        color: var(--green);
+      }
+      .E .a .gutter {
+        color: var(--fg);
+      }
+      .E .content {
+        min-width: 0;
+        flex: 1;
+      }
+      .E .think .content {
+        color: var(--dim);
+        font-style: italic;
+      }
+      .E .a .content {
+        font-family: var(--sans);
+        line-height: 1.6;
+      }
+      .E .content .code {
+        margin-top: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Pi chat — pick a layout</h1>
+      <div class="sub">
+        Same conversation, five directions. Click a tab. All use your theme
+        tokens (shown here on a dark VS Code palette).
+      </div>
+      <div class="tabs" role="tablist" id="tabs">
+        <button class="tab" role="tab" data-v="A" aria-selected="true">
+          A · Rail
+        </button>
+        <button class="tab" role="tab" data-v="B" aria-selected="false">
+          B · Timeline
+        </button>
+        <button class="tab" role="tab" data-v="C" aria-selected="false">
+          C · Minimal
+        </button>
+        <button class="tab" role="tab" data-v="D" aria-selected="false">
+          D · Cards
+        </button>
+        <button class="tab" role="tab" data-v="E" aria-selected="false">
+          E · Terminal
+        </button>
+      </div>
+    </header>
+
+    <main id="stage"></main>
+
+    <script>
+      // --- inline line icons (currentColor) ---
+      const IC = {
+        think:
+          '<svg class="icon" viewBox="0 0 16 16"><path d="M8 2.4l1.5 3.3 3.6.4-2.7 2.4.8 3.5L8 10.7 4.8 12.4l.8-3.5L2.9 6.5l3.6-.4z" fill="currentColor"/></svg>',
+        tool: '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 4.5L6.5 8l-3 3.5"/><path d="M8.5 11.5h4"/></svg>',
+        ok: '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.4l3 3 7-7.4"/></svg>',
+        agent:
+          '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="3"/></svg>',
+        caret:
+          '<svg class="icon caret" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4l4 4-4 4"/></svg>',
+      };
+      const USER = "Refactor the auth module and add tests.";
+      const THINK =
+        "The auth module mixes token parsing with the HTTP client, so unit tests can\u2019t isolate it. I\u2019ll extract a pure parseToken(), inject the client, then add table-driven tests for expiry and malformed tokens.";
+      const TOOLNAME = "bash";
+      const TOOLARGS = '{ "cmd": "ls src/auth" }';
+      const TOOLRES = "index.ts\nclient.ts\ntoken.ts";
+      const AGENT_HTML =
+        "Here\u2019s the plan and the extracted function:" +
+        '<div class="code"><span class="k">export function</span> <span class="f">parseToken</span>(raw: <span class="k">string</span>): Token {\n  <span class="k">const</span> [h, p] = raw.split(<span class="s">\'.\'</span>);\n  <span class="k">return</span> decode(p);\n}</div>' +
+        '<p style="margin:10px 0 0">I split parsing from the client and added tests for expiry, malformed input, and the <span class="inline">null</span> case.</p>';
+
+      const V = {
+        A: () => `
+          <p class="desc">Sections marked by a colored <b>left rail</b> + icon + label. Agent text is primary; thinking is a dim italic rail; tools use the accent. Quiet and scannable.</p>
+          <div class="A">
+            <div class="turn user"><div class="role">You</div><div class="body">${USER}</div></div>
+            <div class="turn agent">
+              <details class="meta think"><summary class="mhead">${IC.think}Thinking ${IC.caret}</summary><div style="margin-top:6px">${THINK}</div></details>
+              <div class="meta tool"><div class="mhead">${IC.tool}Tool <code class="name">${TOOLNAME}</code></div><div class="code">${TOOLARGS}</div></div>
+              <details class="meta tool"><summary class="mhead">${IC.ok}Result ${IC.caret}</summary><div class="code" style="margin-top:6px">${TOOLRES}</div></details>
+              <div class="role" style="margin-top:8px">Pi</div>
+              <div class="body">${AGENT_HTML}</div>
+            </div>
+          </div>`,
+        B: () => `
+          <p class="desc">A <b>timeline</b>: each step is a node on a connecting line with a colored dot. Great for showing the agent\u2019s process as a sequence, then the answer.</p>
+          <div class="B"><div class="stream">
+            <div class="node user"><span class="dot"></span><div class="label">You</div><div>${USER}</div></div>
+            <div class="node think"><span class="dot">${IC.think}</span><div class="label">Thinking</div><div class="think">${THINK}</div></div>
+            <div class="node tool"><span class="dot">${IC.tool}</span><div class="label">Tool \u00b7 ${TOOLNAME}</div><div class="code">${TOOLARGS}</div></div>
+            <div class="node tool"><span class="dot">${IC.ok}</span><div class="label" style="color:var(--green)">Result</div><div class="code">${TOOLRES}</div></div>
+            <div class="node agent"><span class="dot">${IC.agent}</span><div class="label" style="color:var(--green)">Pi</div><div>${AGENT_HTML}</div></div>
+          </div></div>`,
+        C: () => `
+          <p class="desc">Ultra-<b>minimal</b> (Claude/ChatGPT-like). Thinking &amp; tools collapse into small pills you can expand; the answer breathes with whitespace. Maximum brevity.</p>
+          <div class="C">
+            <div class="turn user"><div class="body">${USER}</div></div>
+            <div class="turn agent">
+              <details class="think"><summary><span class="pill">${IC.think}Thought for 4s ${IC.caret}</span></summary><div class="drawer">${THINK}</div></details>
+              <details class="tool"><summary><span class="pill">${IC.tool}Ran <b>${TOOLNAME}</b> ${IC.caret}</span></summary><div class="drawer"><div class="code">${TOOLARGS}</div><div class="code">${TOOLRES}</div></div></details>
+              <div class="body" style="margin-top:8px">${AGENT_HTML}</div>
+            </div>
+          </div>`,
+        D: () => `
+          <p class="desc"><b>Cards</b>: thinking &amp; tool get subtle bordered cards with a header (icon + label + tool name), the answer stays plain. Structured and tidy.</p>
+          <div class="D">
+            <div class="turn user"><div class="body">${USER}</div></div>
+            <div class="turn agent">
+              <div class="card think"><div class="chead">${IC.think}Thinking</div><div class="cbody">${THINK}</div></div>
+              <div class="card tool"><div class="chead">${IC.tool}Tool<code>${TOOLNAME}</code></div><div class="cbody"><div class="code">${TOOLARGS}</div><div class="code">${TOOLRES}</div></div></div>
+              <div class="role" style="margin:10px 0 4px">Pi</div>
+              <div class="body">${AGENT_HTML}</div>
+            </div>
+          </div>`,
+        E: () => `
+          <p class="desc"><b>Terminal / log</b>: a dense monospaced stream with a labeled gutter per line. Feels like a build log \u2014 compact and developer-native.</p>
+          <div class="E"><div class="stream">
+            <div class="line u"><div class="gutter">you</div><div class="content">${USER}</div></div>
+            <div class="line think"><div class="gutter">think</div><div class="content">${THINK}</div></div>
+            <div class="line tool"><div class="gutter">${TOOLNAME}</div><div class="content">$ ls src/auth<div class="code">${TOOLRES}</div></div></div>
+            <div class="line ok"><div class="gutter">ok</div><div class="content">exit 0</div></div>
+            <div class="line a"><div class="gutter">pi</div><div class="content">${AGENT_HTML}</div></div>
+          </div></div>`,
+      };
+
+      const stage = document.getElementById("stage");
+      function show(v) {
+        stage.innerHTML = `<section class="variant active">${V[v]()}</section>`;
+        document.querySelectorAll(".tab").forEach((t) => {
+          t.setAttribute("aria-selected", String(t.dataset.v === v));
+        });
+      }
+      document.getElementById("tabs").addEventListener("click", (e) => {
+        const t = e.target.closest(".tab");
+        if (t) show(t.dataset.v);
+      });
+      show("A");
+    </script>
+  </body>
+</html>
