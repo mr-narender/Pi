@@ -107,11 +107,16 @@ pre {
   background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
   color: var(--vscode-foreground);
   cursor: pointer;
-  display: grid;
-  place-items: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
   line-height: 0;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
   z-index: 6;
+}
+.jump-latest svg {
+  display: block;
 }
 .jump-latest:hover {
   border-color: var(--pi-tool-accent, var(--vscode-focusBorder));

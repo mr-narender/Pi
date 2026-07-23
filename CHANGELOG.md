@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.65
+
+- Jump-to-latest button: replaced the bottom-heavy full arrow (which looked off-center in the circle) with a centered chevron, and switched the button to flex centering with the SVG as a block. Now optically centered.
+
 ## 0.0.64
 
 - Silent live-append (important): when a terminal appends to the SAME session you have open, the GUI now tail-reads only the NEW lines and appends them at the bottom - no reload, no "Loading chat..." flash, no connection blink. It stays idle-guarded, dedupes by message id, ignores the GUI's own writes, and is throttled. Feels like the chat just continues.

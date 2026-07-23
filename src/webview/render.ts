@@ -602,7 +602,7 @@ export function renderChatApp(snapshot: WebviewSnapshot): string {
             ? `<div class="empty-state"><p class="empty-copy">Couldn’t start Pi for this workspace.</p><div class="button-row compact"><button type="button" data-command="piRpcInternal.restart">Try again</button><button type="button" data-command="piRpcInternal.showLogs">Show logs</button></div></div>`
             : renderMessages(snapshot)
       }</main>
-      <button type="button" id="jump-latest" class="jump-latest" title="Jump to latest" aria-label="Jump to latest message" hidden><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3.5v8M4.5 8L8 11.5 11.5 8"/></svg></button>
+      <button type="button" id="jump-latest" class="jump-latest" title="Jump to latest" aria-label="Jump to latest message" hidden><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6.5l4 4 4-4"/></svg></button>
 
       <section class="composer-dock" aria-labelledby="composer-heading">
         <h2 id="composer-heading" class="visually-hidden">Message Pi</h2>
