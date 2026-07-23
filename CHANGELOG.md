@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.59
+
+- Terminal (TUI) and GUI stay in sync automatically. The extension now watches the Pi sessions directory (~/.pi/agent/sessions) and refreshes the chat list live when you create, switch, rename, or continue a session in a terminal - no need to reload the extension or the VS Code window. (The reverse already works: the terminal re-reads sessions on /resume.) Debounced so a streaming session refreshes once.
+
 ## 0.0.58
 
 - Chat now uses the FULL editor width for text (agent and user). Removed the ~76ch cap so wide editors are utilized properly; short user messages still hug their content, long ones span the full width.

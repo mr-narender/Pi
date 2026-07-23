@@ -12,6 +12,7 @@ import { ExtensionUiBroker } from './ui/extensionUiBroker';
 import { LocalExtensionUiContext } from './ui/localExtensionUi';
 import { openPathInNewWindow } from './ui/navigation';
 import { SessionsWebviewProvider } from './ui/sidebar/sessionsWebview';
+import { SessionDirWatcher } from './sessions/sessionDirWatcher';
 import { StatusBarController } from './ui/status/statusBar';
 import { ChatPanelProvider } from './webview/provider';
 import { ChatUiState } from './webview/composerState';
@@ -150,7 +151,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   const sessionsView = new SessionsWebviewProvider(context.extensionUri, registry, recentSessions);
 
+  // Keep the chat list in sync with the terminal (TUI): watch the on-disk
+  // sessions dir and refresh live when Pi writes to it from a terminal.
+  const sessionDirWatcher = new SessionDirWatcher(recentSessions, logger);
+  sessionDirWatcher.start();
+
   context.subscriptions.push(
+    sessionDirWatcher,
     vscode.window.registerWebviewViewProvider(SessionsWebviewProvider.viewType, sessionsView, {
       webviewOptions: { retainContextWhenHidden: true },
     }),

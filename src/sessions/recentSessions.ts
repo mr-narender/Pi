@@ -93,6 +93,11 @@ function getAgentDir(): string {
     : join(homedir(), DEFAULT_AGENT_DIR);
 }
 
+/** Root directory that holds every project's session folders. */
+export function getSessionsRootDir(): string {
+  return join(getAgentDir(), 'sessions');
+}
+
 export function getDefaultSessionDirForWorkspace(
   workspacePath: string,
   agentDir = getAgentDir()
