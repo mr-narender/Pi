@@ -153,7 +153,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   // Keep the chat list in sync with the terminal (TUI): watch the on-disk
   // sessions dir and refresh live when Pi writes to it from a terminal.
-  const sessionDirWatcher = new SessionDirWatcher(recentSessions, logger);
+  const sessionDirWatcher = new SessionDirWatcher(registry, recentSessions, logger);
   sessionDirWatcher.start();
 
   context.subscriptions.push(

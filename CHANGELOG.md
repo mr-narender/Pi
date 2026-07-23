@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.0.60
+
+- Open chat now live-updates from terminal edits (near real time), performance-guarded:
+  - When a terminal appends to the SAME session you have open in the GUI, the extension re-reads it from disk so the new messages appear - but only when the chat is idle (never mid-generation), debounced (~1.2s), rate-limited to once every ~4s per session, and never for the GUI's own writes (self-write grace window).
+  - The chat LIST refresh is throttled: quick on create/delete, but content-change (append) refreshes are debounced to ~once every 2.5s.
+  - Re-indexing bounds per-file reads (max ~800 lines) so it never scans huge session files end-to-end. This directly avoids the "frequent re-read" IDE performance risk.
+- Kept the per-workspace-folder RPC model (one shared Pi process per folder; chats switch via RPC, not new processes).
+
 ## 0.0.59
 
 - Terminal (TUI) and GUI stay in sync automatically. The extension now watches the Pi sessions directory (~/.pi/agent/sessions) and refreshes the chat list live when you create, switch, rename, or continue a session in a terminal - no need to reload the extension or the VS Code window. (The reverse already works: the terminal re-reads sessions on /resume.) Debounced so a streaming session refreshes once.

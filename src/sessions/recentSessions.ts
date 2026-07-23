@@ -9,6 +9,9 @@ const SESSION_ENV_DIR = 'PI_CODING_AGENT_SESSION_DIR';
 const AGENT_ENV_DIR = 'PI_CODING_AGENT_DIR';
 const DEFAULT_AGENT_DIR = '.pi/agent';
 const MAX_TITLE_CHARS = 72;
+// Max JSONL lines scanned per session when building the sidebar index (header,
+// name, model, and first prompt appear near the start; ordering uses mtime).
+const MAX_INDEX_LINES = 800;
 const MAX_PROMPT_CHARS = 96;
 const CONTROL_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g;
 const MIN_PLAUSIBLE_TIMESTAMP_MS = Date.UTC(2000, 0, 1);
@@ -246,7 +249,16 @@ async function buildRecentSessionRecord(
       crlfDelay: Infinity,
     });
 
+    // Bound the per-file work: the sidebar only needs the header, name, model,
+    // and first prompt (all near the start) — plus file mtime for ordering. Cap
+    // how many lines we scan so re-indexing (e.g. on frequent terminal writes)
+    // never reads huge session files end-to-end.
+    let linesRead = 0;
     for await (const line of reader) {
+      linesRead += 1;
+      if (linesRead > MAX_INDEX_LINES && header && firstPromptPreview) {
+        break;
+      }
       const trimmed = line.trim();
       if (!trimmed) {
         continue;

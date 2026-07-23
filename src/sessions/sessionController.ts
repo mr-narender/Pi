@@ -30,6 +30,10 @@ export class SessionController implements vscode.Disposable {
   private restartAttempts = 0;
   private stopping = false;
   private lastLoggedConnectionState?: ControllerState['connectionState'];
+  // When this controller last wrote to its own session file (generating,
+  // renaming, etc.). Used to ignore filesystem-watcher events caused by our own
+  // writes so live-reload only reacts to EXTERNAL (terminal) changes.
+  private selfWriteAt = Date.now();
 
   public constructor(
     public readonly folder: vscode.WorkspaceFolder,
@@ -227,11 +231,37 @@ export class SessionController implements vscode.Disposable {
     this.fire();
   }
 
+  /** ms since we last wrote to our own session file. */
+  public msSinceSelfWrite(): number {
+    return Date.now() - this.selfWriteAt;
+  }
+
+  public get activeSessionFile(): string | undefined {
+    return typeof this.state.state.sessionFile === 'string'
+      ? this.state.state.sessionFile
+      : undefined;
+  }
+
+  /**
+   * Re-open the current session so the RPC process re-reads it from disk — used
+   * to reflect messages a terminal appended to the same file. Idle-only and
+   * cheap (one switch); callers must throttle.
+   */
+  public async reloadCurrentSession(): Promise<void> {
+    const file = this.activeSessionFile;
+    if (!file || this.state.connectionState !== 'ready') {
+      return;
+    }
+    this.logger.info(`Live-reloading '${this.folder.name}' from disk (external change)`);
+    await this.switchSession(file);
+  }
+
   public async prompt(
     message: string,
     mode: 'prompt' | 'steer' | 'followUp' = 'prompt',
     images: JsonObject[] = []
   ): Promise<void> {
+    this.selfWriteAt = Date.now();
     const client = this.requireClient();
     if (mode === 'prompt') {
       await client.prompt(message, images);
@@ -247,6 +277,7 @@ export class SessionController implements vscode.Disposable {
   }
 
   public async newSession(parentSession?: string): Promise<JsonObject | undefined> {
+    this.selfWriteAt = Date.now();
     const result = await this.requireClient().newSession(parentSession);
     if (result?.cancelled === true) {
       this.addDiagnostic('info', 'New session cancelled');
@@ -332,6 +363,7 @@ export class SessionController implements vscode.Disposable {
   }
 
   public async compact(customInstructions?: string): Promise<JsonObject | undefined> {
+    this.selfWriteAt = Date.now();
     return this.requireClient().compact(customInstructions);
   }
 
@@ -398,6 +430,7 @@ export class SessionController implements vscode.Disposable {
   }
 
   public async renameSession(name: string): Promise<void> {
+    this.selfWriteAt = Date.now();
     await this.requireClient().setSessionName(name);
     await this.refreshState();
   }
@@ -546,6 +579,11 @@ export class SessionController implements vscode.Disposable {
           (this.state.state.sessionFile ? ` [session=${this.state.state.sessionFile}]` : '')
       );
       this.lastLoggedConnectionState = this.state.connectionState;
+    }
+    // Any time we're actively working (generating/compacting) we are writing to
+    // the session file; record it so our own writes don't trigger a live-reload.
+    if (this.state.connectionState === 'busy') {
+      this.selfWriteAt = Date.now();
     }
     this.changeEmitter.fire(this.state);
   }

@@ -1,21 +1,37 @@
 import * as vscode from 'vscode';
 import type { DiagnosticsLogger } from '../diagnostics/logger';
 import type { RecentSessionService } from './recentSessionService';
+import type { SessionRegistry } from './sessionRegistry';
+import type { SessionController } from './sessionController';
 import { getSessionsRootDir } from './recentSessions';
+import { normalizeSessionFilePath } from '../editorTabs/uriContract';
+
+// Performance guards. Filesystem writes from a streaming session are frequent;
+// we must NOT re-read on every event. These bound how often we do real work.
+const LIST_REFRESH_DEBOUNCE_MS = 600;
+const LIST_REFRESH_MIN_INTERVAL_MS = 2500;
+const RELOAD_DEBOUNCE_MS = 1200;
+const RELOAD_MIN_INTERVAL_MS = 4000;
+// Ignore file changes that arrive right after our OWN writes (self-generated).
+const SELF_WRITE_GRACE_MS = 3000;
 
 /**
- * Keeps the extension in sync with the terminal (TUI). Pi writes sessions to
- * `~/.pi/agent/sessions/`; when the user creates, switches, renames, or appends
- * to a session in the terminal, those `.jsonl` files change on disk. This
- * watcher notices and refreshes the recent-sessions list live, so the sidebar
- * reflects terminal activity without reloading the extension or window (and the
- * reverse works because the terminal re-reads the dir on `/resume`).
+ * Keeps the extension in sync with the terminal (TUI) via the on-disk sessions
+ * directory, WITHOUT hammering the filesystem:
+ *  - the recent-chats LIST refreshes on create/delete, and at most every ~2.5s
+ *    on content changes;
+ *  - an OPEN chat whose file changes EXTERNALLY (a terminal appended to it) is
+ *    re-read from disk, but only when idle, debounced, and rate-limited to once
+ *    every ~4s per session, and never for our own writes.
  */
 export class SessionDirWatcher implements vscode.Disposable {
   private readonly disposables: vscode.Disposable[] = [];
-  private timer: ReturnType<typeof setTimeout> | undefined;
+  private listTimer: ReturnType<typeof setTimeout> | undefined;
+  private readonly reloadTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private readonly lastReloadAt = new Map<string, number>();
 
   public constructor(
+    private readonly registry: SessionRegistry,
     private readonly recentSessions: RecentSessionService,
     private readonly logger: DiagnosticsLogger
   ) {}
@@ -23,16 +39,16 @@ export class SessionDirWatcher implements vscode.Disposable {
   public start(): void {
     const root = getSessionsRootDir();
     try {
-      // Recursive glob over the sessions root catches new per-project folders
-      // and any .jsonl create/change/delete, on all platforms.
       const watcher = vscode.workspace.createFileSystemWatcher(
         new vscode.RelativePattern(vscode.Uri.file(root), '**/*.jsonl')
       );
       this.disposables.push(
         watcher,
-        watcher.onDidCreate(() => this.scheduleRefresh()),
-        watcher.onDidChange(() => this.scheduleRefresh()),
-        watcher.onDidDelete(() => this.scheduleRefresh())
+        // A new/removed session always affects the list.
+        watcher.onDidCreate(() => this.scheduleListRefresh(true)),
+        watcher.onDidDelete(() => this.scheduleListRefresh(true)),
+        // A content change (append) may be the terminal editing an open chat.
+        watcher.onDidChange((uri) => this.onChange(uri))
       );
       this.logger.info(`Watching Pi sessions for terminal/GUI sync: ${root}`);
     } catch (error) {
@@ -43,22 +59,84 @@ export class SessionDirWatcher implements vscode.Disposable {
     }
   }
 
-  /** Debounced so a burst of writes (a streaming terminal session) refreshes once. */
-  private scheduleRefresh(): void {
-    if (this.timer) {
-      clearTimeout(this.timer);
+  private onChange(uri: vscode.Uri): void {
+    // Keep the list roughly current for renames/ordering, but throttled.
+    this.scheduleListRefresh(false);
+
+    const changed = normalizeSessionFilePath(uri.fsPath);
+    for (const controller of this.registry.list()) {
+      const active = controller.activeSessionFile;
+      if (!active || normalizeSessionFilePath(active) !== changed) {
+        continue;
+      }
+      // Skip if this is (likely) our own write, or the controller is busy.
+      if (
+        controller.snapshot.connectionState !== 'ready' ||
+        controller.msSinceSelfWrite() < SELF_WRITE_GRACE_MS
+      ) {
+        return;
+      }
+      this.scheduleReload(controller);
+      return;
     }
-    this.timer = setTimeout(() => {
-      this.timer = undefined;
-      void this.recentSessions.refresh();
-    }, 350);
+  }
+
+  private scheduleListRefresh(structural: boolean): void {
+    // Structural changes (new/removed chat) refresh quickly; content changes
+    // (appends) use a much longer debounce so a streaming session refreshes the
+    // list at most ~once every few seconds.
+    if (this.listTimer) {
+      clearTimeout(this.listTimer);
+    }
+    this.listTimer = setTimeout(
+      () => {
+        this.listTimer = undefined;
+        void this.recentSessions.refresh();
+      },
+      structural ? LIST_REFRESH_DEBOUNCE_MS : LIST_REFRESH_MIN_INTERVAL_MS
+    );
+  }
+
+  private scheduleReload(controller: SessionController): void {
+    const key = controller.folder.uri.toString();
+    const last = this.lastReloadAt.get(key) ?? 0;
+    if (Date.now() - last < RELOAD_MIN_INTERVAL_MS) {
+      return; // rate-limit per session
+    }
+    const existing = this.reloadTimers.get(key);
+    if (existing) {
+      clearTimeout(existing);
+    }
+    this.reloadTimers.set(
+      key,
+      setTimeout(() => {
+        this.reloadTimers.delete(key);
+        // Re-check idle + self-write at fire time (state may have changed).
+        if (
+          controller.snapshot.connectionState !== 'ready' ||
+          controller.msSinceSelfWrite() < SELF_WRITE_GRACE_MS
+        ) {
+          return;
+        }
+        this.lastReloadAt.set(key, Date.now());
+        void controller.reloadCurrentSession().catch((error) => {
+          this.logger.warn(
+            `Live-reload failed for '${controller.folder.name}': ` +
+              `${error instanceof Error ? error.message : String(error)}`
+          );
+        });
+      }, RELOAD_DEBOUNCE_MS)
+    );
   }
 
   public dispose(): void {
-    if (this.timer) {
-      clearTimeout(this.timer);
-      this.timer = undefined;
+    if (this.listTimer) {
+      clearTimeout(this.listTimer);
     }
+    for (const timer of this.reloadTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.reloadTimers.clear();
     for (const disposable of this.disposables.splice(0)) {
       disposable.dispose();
     }
