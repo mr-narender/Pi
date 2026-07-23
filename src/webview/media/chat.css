@@ -817,9 +817,15 @@ button.ghost:hover,
 #messages .timeline-standalone {
   margin-top: 0;
 }
+/* Agent bubble: neutral surface (distinct from the user's teal), same shape. */
 #messages .message-assistant .message-body {
-  align-self: stretch;
-  width: 100%;
+  align-self: flex-start;
+  width: fit-content;
+  max-width: 100%;
+  padding: 9px 13px;
+  background: var(--pi-agent-bubble);
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 14px 14px 14px 4px;
 }
 
 /* You: right-aligned, hairline-outlined (no fill) so it's clearly the user. */
@@ -833,13 +839,14 @@ button.ghost:hover,
 #messages .message-user .message-role {
   text-align: right;
 }
+/* User bubble: teal tint (option D). */
 #messages .message-user .message-body {
   align-self: flex-end;
   width: fit-content;
   padding: 9px 13px;
-  border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
+  border: 1px solid var(--pi-user-bubble-border);
   border-radius: 14px 14px 4px 14px;
-  background: transparent;
+  background: var(--pi-user-bubble);
 }
 
 /* ---- Fenced code: its OWN block — language header + Copy, subtle surface,
@@ -1182,6 +1189,10 @@ button.ghost:hover,
    color, which is gold in some themes). */
 #messages {
   --pi-tool-accent: #4ec9b0;
+  /* Two-tone bubbles: teal for the user, neutral surface for the agent. */
+  --pi-user-bubble: rgba(78, 201, 176, 0.13);
+  --pi-user-bubble-border: rgba(78, 201, 176, 0.34);
+  --pi-agent-bubble: var(--vscode-editorWidget-background, rgba(127, 127, 127, 0.09));
 }
 #messages .tl-tool .tl-dot,
 #messages .tl-result .tl-dot {
@@ -1213,6 +1224,10 @@ button.ghost:hover,
 #messages .tl-response .tl-label,
 #messages .tl-response .meta-icon {
   color: var(--vscode-charts-green, #57c7a0);
+}
+/* The agent's answer in the timeline is the neutral bubble too, for consistency. */
+#messages .tl-answer {
+  background: var(--pi-agent-bubble);
 }
 #messages .tl-answer .tl-body {
   color: var(--vscode-foreground);

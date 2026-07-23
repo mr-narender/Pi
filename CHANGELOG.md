@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.66
+
+- Two-tone chat bubbles for clear user/agent distinction: the user message is a teal-tinted bubble (option D); the agent now also has a bubble (neutral surface, same rounded shape, different color) for a consistent UI - the plain agent text and the timeline answer both use it. Thinking/tool cards stay as light hairline cards. Colors are single variables (--pi-user-bubble / --pi-agent-bubble) for easy tuning.
+
 ## 0.0.65
 
 - Jump-to-latest button: replaced the bottom-heavy full arrow (which looked off-center in the circle) with a centered chevron, and switched the button to flex centering with the SVG as a block. Now optically centered.
