@@ -115,16 +115,36 @@ function renderMessageStream(message: WebviewSnapshot['messages'][number]): stri
   return out.join('');
 }
 
+// Small, consistent 1.5px line icons (inline SVG, currentColor — no icon font,
+// no emoji) so each section type is instantly recognizable.
+const META_ICONS: Record<string, string> = {
+  thinking:
+    '<svg class="meta-icon" viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M8 2.4l1.5 3.3 3.6.4-2.7 2.4.8 3.5L8 10.7 4.8 12.4l.8-3.5L2.9 6.5l3.6-.4z" fill="currentColor" stroke="none"/></svg>',
+  tool: '<svg class="meta-icon" viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 4.5L6.5 8l-3 3.5"/><path d="M8.5 11.5h4"/></svg>',
+  result:
+    '<svg class="meta-icon" viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.4l3 3 7-7.4"/></svg>',
+  error:
+    '<svg class="meta-icon" viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2.8l5.4 9.4H2.6z"/><path d="M8 6.6v2.6"/><circle cx="8" cy="11" r="0.5" fill="currentColor" stroke="none"/></svg>',
+  image:
+    '<svg class="meta-icon" viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2.75" y="3.75" width="10.5" height="8.5" rx="1.4"/><circle cx="6" cy="6.8" r="1"/><path d="M3.5 11.8l3-2.4 2 1.6 2.6-2.2 1.4 1.2"/></svg>',
+};
+
+function metaLabel(iconKey: keyof typeof META_ICONS, text: string): string {
+  return `${META_ICONS[iconKey]}<span class="meta-label">${escapeHtml(text)}</span>`;
+}
+
 function renderMetaBlock(block: MessageBlock): string {
   switch (block.kind) {
     case 'thinking':
-      return `<details class="meta-block meta-thinking"><summary><span class="block-badge badge-thinking">Thinking</span></summary><div class="meta-body">${renderRichText(block.text)}</div></details>`;
+      return `<details class="meta-block meta-thinking"><summary class="meta-head">${metaLabel('thinking', 'Thinking')}</summary><div class="meta-body">${renderRichText(block.text)}</div></details>`;
     case 'tool':
-      return `<div class="meta-block meta-tool"><div class="tool-head"><span class="block-badge badge-tool">Tool</span><code class="tool-name">${escapeHtml(block.name)}</code></div>${block.args ? `<pre class="code-block tool-args"><code>${escapeHtml(block.args)}</code></pre>` : ''}</div>`;
-    case 'toolResult':
-      return `<details class="meta-block meta-tool-result${block.isError ? ' is-error' : ''}"><summary><span class="block-badge badge-result${block.isError ? ' badge-error' : ''}">${block.isError ? 'Tool error' : 'Tool result'}</span>${block.name ? `<code class="tool-name">${escapeHtml(block.name)}</code>` : ''}</summary><pre class="code-block"><code>${escapeHtml(block.text)}</code></pre></details>`;
+      return `<div class="meta-block meta-tool"><div class="meta-head">${metaLabel('tool', 'Tool')}<code class="tool-name">${escapeHtml(block.name)}</code></div>${block.args ? `<pre class="code-block tool-args"><code>${escapeHtml(block.args)}</code></pre>` : ''}</div>`;
+    case 'toolResult': {
+      const err = block.isError === true;
+      return `<details class="meta-block meta-tool-result${err ? ' is-error' : ''}"><summary class="meta-head">${metaLabel(err ? 'error' : 'result', err ? 'Tool error' : 'Tool result')}${block.name ? `<code class="tool-name">${escapeHtml(block.name)}</code>` : ''}</summary><pre class="code-block"><code>${escapeHtml(block.text)}</code></pre></details>`;
+    }
     case 'image':
-      return `<div class="meta-block meta-image"><span class="block-badge badge-image">Image</span> ${escapeHtml(block.mimeType)}</div>`;
+      return `<div class="meta-block meta-image meta-head">${metaLabel('image', 'Image')}<span class="tool-name">${escapeHtml(block.mimeType)}</span></div>`;
     default:
       return '';
   }

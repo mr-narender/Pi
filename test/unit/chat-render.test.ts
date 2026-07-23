@@ -201,10 +201,13 @@ test('renderChatApp renders thinking, tool, and code blocks distinctly', () => {
     })
   );
   assert.match(html, /class="message-body"/);
-  assert.match(html, /badge-thinking/);
-  assert.match(html, /badge-tool/);
+  assert.match(html, /class="meta-block meta-thinking"/);
+  assert.match(html, /class="meta-block meta-tool"/);
+  assert.match(html, /class="meta-label">Thinking</);
+  assert.match(html, /class="meta-label">Tool</);
+  assert.match(html, /class="meta-label">Tool result</);
   assert.match(html, /tool-name">bash/);
-  assert.match(html, /badge-result/);
+  assert.match(html, /class="meta-icon"/); // inline SVG icon, not an emoji
   assert.match(html, /const y = 2;/);
   assert.match(html, /class="code-block"/);
 });

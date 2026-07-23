@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.0.49
+
+- Modernised, premium chat layout (UI/UX pass). Sections are now instantly distinguishable by a colored LEFT RAIL + a crisp line icon + an uppercase label - not muddy filled badges:
+  - Agent response: primary text at full contrast on the plain background, comfortable 1.6 line-height, ~76ch measure.
+  - Thinking: a quiet dim rail, small "Thinking" icon+label, italic secondary text, collapsed by default for brevity.
+  - Tool / Tool result: the theme accent (textLink) rail+icon; errors use the semantic error color. Tool result collapsible.
+  - You: right-aligned, hairline-OUTLINED bubble (no fill).
+- Removed the muddy brown/yellow badge palette and low-contrast gray text; now uses semantic theme tokens (foreground, descriptionForeground, textLink, errorForeground) with dark-mode-appropriate contrast. Icons are inline SVG (no emoji, no icon font). Code/args wrap and share one calm surface. No background fill added to the chat.
+
 ## 0.0.48
 
 - Fix (Windows): resuming a session opened a tab bound to the WRONG identity - it showed an empty transcript titled with the long .jsonl filename. Cause: the session-file path the sidebar clicked (e.g. C:\...) differs from the path the running Pi reports back after resume (drive-letter casing / forward-vs-back slashes), so the "is this tab the controller's current session?" check compared unequal strings and never bound the tab as current (falling back to the empty cached snapshot). macOS matched, so it worked there.
