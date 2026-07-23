@@ -7,6 +7,8 @@ import {
   chatPathLabel,
   buildChatQuery,
   parseChatQuery,
+  chatTargetSessionKey,
+  normalizeSessionFilePath,
 } from '../../src/editorTabs/uriContract';
 import { renderChatApp } from '../../src/webview/render';
 import { toPersistedChatSnapshot } from '../../src/editorTabs/persistedSnapshot';
@@ -244,4 +246,41 @@ test('regression: session identity survives a query-less restore (path is source
   const path = buildChatPath(target);
   assert.equal(path.includes('?'), false, 'path must not depend on a query');
   assert.deepEqual(parseChatPath(path), target);
+});
+
+test('chatTargetSessionKey ignores path-slash/normalization drift (fixes Windows resume binding)', () => {
+  const a = chatTargetSessionKey({
+    workspaceFolderUri: 'file:///w',
+    kind: 'sessionFile',
+    sessionFile: '/s/dir/2026_abc.jsonl',
+  });
+  // Same file, non-normalized path (extra segment + `..`) → must be the SAME key,
+  // so the tab binds as "current" instead of showing an empty cached transcript.
+  const b = chatTargetSessionKey({
+    workspaceFolderUri: 'file:///w',
+    kind: 'sessionFile',
+    sessionFile: '/s/dir/nested/../2026_abc.jsonl',
+  });
+  assert.equal(a, b);
+});
+
+test('normalizeSessionFilePath resolves . and .. segments', () => {
+  assert.equal(
+    normalizeSessionFilePath('/a/b/../c/./f.jsonl'),
+    normalizeSessionFilePath('/a/c/f.jsonl')
+  );
+});
+
+test('different session files still produce different keys', () => {
+  const a = chatTargetSessionKey({
+    workspaceFolderUri: 'file:///w',
+    kind: 'sessionFile',
+    sessionFile: '/s/2026_aaa.jsonl',
+  });
+  const b = chatTargetSessionKey({
+    workspaceFolderUri: 'file:///w',
+    kind: 'sessionFile',
+    sessionFile: '/s/2026_bbb.jsonl',
+  });
+  assert.notEqual(a, b);
 });

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.48
+
+- Fix (Windows): resuming a session opened a tab bound to the WRONG identity - it showed an empty transcript titled with the long .jsonl filename. Cause: the session-file path the sidebar clicked (e.g. C:\...) differs from the path the running Pi reports back after resume (drive-letter casing / forward-vs-back slashes), so the "is this tab the controller's current session?" check compared unequal strings and never bound the tab as current (falling back to the empty cached snapshot). macOS matched, so it worked there.
+- Session identity now compares NORMALIZED paths (resolve, and case-insensitive on Windows) in one chokepoint (chatTargetSessionKey) plus the tab-dedup lookups, so the resumed session binds correctly, the transcript loads, and the tab shows the real chat name. Also fixes legacy sessions that failed to bind for the same reason.
+- Tests: key ignores slash/.. drift and (Windows) casing, distinct files stay distinct.
+
 ## 0.0.47
 
 - Diagnose "resumed but no old messages": every reconcile now logs exactly what Pi returned - messages/entries/tree counts AND the payload shape (e.g. getMessages object{messages:array[42]}) plus the session file. So an empty transcript on resume is now explainable: either Pi returned 0 messages (the switch didn't load the transcript) or the data was under a different key (rendering/shape issue).

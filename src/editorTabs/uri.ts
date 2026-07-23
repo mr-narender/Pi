@@ -5,6 +5,7 @@ import {
   tabTitleFromTarget,
   chatTargetSessionKey,
   canonicalChatTarget,
+  normalizeSessionFilePath,
   type ChatTabTarget,
 } from './uriContract';
 import { chatPathFor, rememberChatUri, lookupChatUri } from './uriRegistry';
@@ -12,7 +13,13 @@ import { chatPathFor, rememberChatUri, lookupChatUri } from './uriRegistry';
 export const CHAT_URI_SCHEME = 'pi-chat';
 export const CHAT_EDITOR_VIEW_TYPE = 'piRpc.chatEditor';
 
-export { tabTitleFromTarget, chatTargetSessionKey, canonicalChatTarget, type ChatTabTarget };
+export {
+  tabTitleFromTarget,
+  chatTargetSessionKey,
+  canonicalChatTarget,
+  normalizeSessionFilePath,
+  type ChatTabTarget,
+};
 
 export function buildChatUri(target: ChatTabTarget): vscode.Uri {
   // Short, clean, deterministic path (drives the breadcrumb). The full identity

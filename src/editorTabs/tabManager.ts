@@ -26,6 +26,7 @@ import {
   chatTargetSessionKey,
   parseChatUri,
   tabTitleFromTarget,
+  normalizeSessionFilePath,
   type ChatTabTarget,
 } from './uri';
 import { ChatTabStateCache, toPersistedChatSnapshot } from './sessionCache';
@@ -338,7 +339,11 @@ export class ChatTabManager implements vscode.Disposable {
           continue;
         }
         const target = parseChatUri(input.uri);
-        if (target?.kind === 'sessionFile' && target.sessionFile === sessionFile) {
+        if (
+          target?.kind === 'sessionFile' &&
+          target.sessionFile &&
+          normalizeSessionFilePath(target.sessionFile) === normalizeSessionFilePath(sessionFile)
+        ) {
           await vscode.window.tabGroups.close(tab);
         }
       }
@@ -519,7 +524,11 @@ export class ChatTabManager implements vscode.Disposable {
           continue;
         }
         const target = parseChatUri(input.uri);
-        if (target?.kind === 'sessionFile' && target.sessionFile === sessionFile) {
+        if (
+          target?.kind === 'sessionFile' &&
+          target.sessionFile &&
+          normalizeSessionFilePath(target.sessionFile) === normalizeSessionFilePath(sessionFile)
+        ) {
           return input.uri;
         }
       }

@@ -1,5 +1,21 @@
-import { basename } from 'node:path';
+import { basename, resolve } from 'node:path';
 import { canonicalSessionKey } from '../webview/composer';
+
+/**
+ * Normalize a session-file path for IDENTITY comparison only.
+ *
+ * The same session can be referenced by slightly different path strings across
+ * the sidebar (what we clicked) and what the running Pi reports back after a
+ * resume — most importantly on Windows, where drive-letter casing and
+ * forward/back slashes differ and the filesystem is case-insensitive. Without
+ * this, `sameTarget` returns false, the tab never binds as "current", and it
+ * shows an empty transcript titled with the long .jsonl filename. Comparing
+ * `resolve()`d (and, on Windows, lower-cased) paths fixes that.
+ */
+export function normalizeSessionFilePath(sessionFile: string): string {
+  const resolved = resolve(sessionFile);
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+}
 
 export interface ChatTabTarget {
   workspaceFolderUri: string;
@@ -41,7 +57,7 @@ export function chatTargetSessionKey(target: ChatTabTarget): string {
   const canonical = canonicalChatTarget(target);
   return canonicalSessionKey(
     canonical.workspaceFolderUri,
-    canonical.sessionFile,
+    canonical.sessionFile ? normalizeSessionFilePath(canonical.sessionFile) : undefined,
     canonical.sessionId
   );
 }
