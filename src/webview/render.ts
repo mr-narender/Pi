@@ -376,12 +376,17 @@ function isResultRole(role: string): boolean {
   );
 }
 
+const COPY_ICON =
+  '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="8" height="8" rx="1.5"/><path d="M3 10.5V4a1.5 1.5 0 0 1 1.5-1.5H10"/></svg>';
+
 function renderMessageArticle(message: WebviewSnapshot['messages'][number]): string {
   const role = message.role;
   const roleLabel = role === 'assistant' ? 'Pi' : role === 'user' ? 'You' : '';
+  const showCopy = role === 'assistant' || role === 'user';
   return `
         <article class="message-card message-${escapeHtml(role)}">
           ${roleLabel ? `<div class="message-role">${roleLabel}</div>` : ''}
+          ${showCopy ? `<button type="button" class="msg-copy" title="Copy message" aria-label="Copy message">${COPY_ICON}</button>` : ''}
           ${renderMessageBody(message)}
           ${message.attachments.length > 0 ? `<div class="detail-stack">${message.attachments.map((attachment) => renderAttachment(attachment)).join('')}</div>` : ''}
         </article>`;
@@ -597,7 +602,7 @@ export function renderChatApp(snapshot: WebviewSnapshot): string {
             ? `<div class="empty-state"><p class="empty-copy">Couldn’t start Pi for this workspace.</p><div class="button-row compact"><button type="button" data-command="piRpcInternal.restart">Try again</button><button type="button" data-command="piRpcInternal.showLogs">Show logs</button></div></div>`
             : renderMessages(snapshot)
       }</main>
-      <button type="button" id="jump-latest" class="jump-latest" title="Jump to latest" aria-label="Jump to latest message" hidden>↓</button>
+      <button type="button" id="jump-latest" class="jump-latest" title="Jump to latest" aria-label="Jump to latest message" hidden><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3.5v8M4.5 8L8 11.5 11.5 8"/></svg></button>
 
       <section class="composer-dock" aria-labelledby="composer-heading">
         <h2 id="composer-heading" class="visually-hidden">Message Pi</h2>

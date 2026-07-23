@@ -329,6 +329,28 @@ function render(snapshot: WebviewSnapshot): void {
 
   document.getElementById(PREVIEW_DIALOG_ID)?.addEventListener('keydown', handlePreviewKeydown);
 
+  // #3 — copy a single message's output.
+  for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>('.msg-copy'))) {
+    button.addEventListener('click', () => {
+      const article = button.closest('.message-card');
+      const text =
+        article?.querySelector('.tl-answer .tl-body')?.textContent ??
+        article?.querySelector('.message-body')?.textContent ??
+        article?.querySelector('.tl-body')?.textContent ??
+        '';
+      if (!text.trim()) {
+        return;
+      }
+      void navigator.clipboard
+        ?.writeText(text.trim())
+        .then(() => {
+          button.classList.add('is-copied');
+          setTimeout(() => button.classList.remove('is-copied'), 1000);
+        })
+        .catch(() => undefined);
+    });
+  }
+
   // #7 — clamp toggle for long tool/result output.
   for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>('.code-showmore'))) {
     button.addEventListener('click', () => {
@@ -448,6 +470,25 @@ function applyFocus(): void {
 }
 
 window.addEventListener('beforeunload', persistViewState);
+
+// #4 — double-Escape stops the current generation.
+let lastEscapeAt = 0;
+window.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape') {
+    return;
+  }
+  const now = Date.now();
+  if (now - lastEscapeAt < 600) {
+    lastEscapeAt = 0;
+    const busy =
+      currentSnapshot?.connectionState === 'busy' || currentSnapshot?.isStreaming === true;
+    if (busy) {
+      vscode.postMessage({ type: 'executeCommand', command: 'piRpc.abort' });
+    }
+  } else {
+    lastEscapeAt = now;
+  }
+});
 
 window.addEventListener(
   'message',

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.0.64
+
+- Silent live-append (important): when a terminal appends to the SAME session you have open, the GUI now tail-reads only the NEW lines and appends them at the bottom - no reload, no "Loading chat..." flash, no connection blink. It stays idle-guarded, dedupes by message id, ignores the GUI's own writes, and is throttled. Feels like the chat just continues.
+- Jump-to-latest button now uses a properly centered down-arrow SVG (was an off-center glyph).
+- Copy per message: hovering a user or agent message shows a copy button that copies that message's output.
+- Double-Escape stops the current generation (abort) while streaming.
+- "Show more / less" on long tool/result output retained and verified.
+
 ## 0.0.63
 
 - #2 (partial) - Copy conversation as Markdown: More menu -> "Copy as Markdown" (and command "Pi: Copy Conversation as Markdown") copies the whole transcript (user/agent/thinking/tool/result) as clean Markdown to the clipboard.

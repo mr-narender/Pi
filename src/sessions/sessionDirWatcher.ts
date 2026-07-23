@@ -10,8 +10,9 @@ import { normalizeSessionFilePath } from '../editorTabs/uriContract';
 // we must NOT re-read on every event. These bound how often we do real work.
 const LIST_REFRESH_DEBOUNCE_MS = 600;
 const LIST_REFRESH_MIN_INTERVAL_MS = 2500;
-const RELOAD_DEBOUNCE_MS = 1200;
-const RELOAD_MIN_INTERVAL_MS = 4000;
+// Silent append is a cheap tail-read (not a full reload), so it can be snappier.
+const RELOAD_DEBOUNCE_MS = 700;
+const RELOAD_MIN_INTERVAL_MS = 1500;
 // Ignore file changes that arrive right after our OWN writes (self-generated).
 const SELF_WRITE_GRACE_MS = 3000;
 
@@ -119,9 +120,10 @@ export class SessionDirWatcher implements vscode.Disposable {
           return;
         }
         this.lastReloadAt.set(key, Date.now());
-        void controller.reloadCurrentSession().catch((error) => {
+        // Silent append (tail new messages) — no reload/flash.
+        void controller.appendExternalMessages().catch((error) => {
           this.logger.warn(
-            `Live-reload failed for '${controller.folder.name}': ` +
+            `Live-append failed for '${controller.folder.name}': ` +
               `${error instanceof Error ? error.message : String(error)}`
           );
         });

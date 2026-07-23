@@ -18,6 +18,7 @@ import {
   resetControllerProjection,
 } from '../state/reducer';
 import { createInitialControllerState, type ControllerState } from '../state/types';
+import { open, stat } from 'node:fs/promises';
 import { canonicalizeSessionPath } from './paths';
 import { describeShape, extractMessageArray } from './reconcileShape';
 
@@ -228,6 +229,8 @@ export class SessionController implements vscode.Disposable {
         `tree=${this.state.tree.length} (${describeShape(tree)}), ` +
         `session=${this.state.state.sessionFile ?? '(none)'}`
     );
+    // We now hold the full transcript; the file tail beyond this is external.
+    await this.syncFileReadOffset();
     this.fire();
   }
 
@@ -242,18 +245,103 @@ export class SessionController implements vscode.Disposable {
       : undefined;
   }
 
+  // Byte offset in the session file that we have already accounted for. Used to
+  // TAIL new lines (silent append) instead of reloading the whole session.
+  private lastReadFileSize = 0;
+
+  private async syncFileReadOffset(): Promise<void> {
+    const file = this.activeSessionFile;
+    if (!file) {
+      this.lastReadFileSize = 0;
+      return;
+    }
+    try {
+      this.lastReadFileSize = (await stat(file)).size;
+    } catch {
+      this.lastReadFileSize = 0;
+    }
+  }
+
   /**
-   * Re-open the current session so the RPC process re-reads it from disk — used
-   * to reflect messages a terminal appended to the same file. Idle-only and
-   * cheap (one switch); callers must throttle.
+   * Silently append messages a terminal added to the SAME session file, by
+   * reading only the new tail bytes and appending unseen messages — no reload,
+   * no "Loading chat…" flash, no connection-state change. Idle-only; throttled
+   * by the caller. Dedupes by message id.
    */
-  public async reloadCurrentSession(): Promise<void> {
+  public async appendExternalMessages(): Promise<void> {
     const file = this.activeSessionFile;
     if (!file || this.state.connectionState !== 'ready') {
       return;
     }
-    this.logger.info(`Live-reloading '${this.folder.name}' from disk (external change)`);
-    await this.switchSession(file);
+    let size: number;
+    try {
+      size = (await stat(file)).size;
+    } catch {
+      return;
+    }
+    if (size <= this.lastReadFileSize) {
+      if (size < this.lastReadFileSize) {
+        this.lastReadFileSize = size; // file was rewritten/shrank
+      }
+      return;
+    }
+    const length = size - this.lastReadFileSize;
+    const buffer = Buffer.alloc(length);
+    let handle: Awaited<ReturnType<typeof open>> | undefined;
+    try {
+      handle = await open(file, 'r');
+      await handle.read(buffer, 0, length, this.lastReadFileSize);
+    } catch {
+      return;
+    } finally {
+      await handle?.close();
+    }
+    const text = buffer.toString('utf8');
+    const lastNewline = text.lastIndexOf('\n');
+    if (lastNewline < 0) {
+      return; // no complete line appended yet
+    }
+    const complete = text.slice(0, lastNewline);
+    this.lastReadFileSize += Buffer.byteLength(complete, 'utf8') + 1;
+
+    const existingIds = new Set(
+      this.state.messages
+        .map((message) => (typeof message.id === 'string' ? message.id : undefined))
+        .filter((id): id is string => Boolean(id))
+    );
+    const additions: JsonObject[] = [];
+    for (const line of complete.split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed) {
+        continue;
+      }
+      let entry: unknown;
+      try {
+        entry = JSON.parse(trimmed);
+      } catch {
+        continue;
+      }
+      const record = entry as { type?: unknown; message?: unknown } | null;
+      if (record?.type === 'message' && record.message && typeof record.message === 'object') {
+        const message = record.message as JsonObject;
+        const id = typeof message.id === 'string' ? message.id : undefined;
+        if (id && existingIds.has(id)) {
+          continue;
+        }
+        if (id) {
+          existingIds.add(id);
+        }
+        additions.push(message);
+      }
+    }
+    if (additions.length === 0) {
+      return;
+    }
+    this.logger.info(
+      `Silently appended ${additions.length} external message(s) to '${this.folder.name}'`
+    );
+    this.state = { ...this.state, messages: [...this.state.messages, ...additions] };
+    this.fire();
   }
 
   public async prompt(

@@ -312,3 +312,23 @@ test('More menu offers Copy as Markdown; layout has a jump-to-latest button', ()
   assert.match(html, /data-command="piRpcInternal.copyConversationMarkdown"/);
   assert.match(html, /id="jump-latest"/);
 });
+
+test('each user/agent message has a copy button; jump-latest uses an SVG arrow', () => {
+  const html = renderChatApp(
+    snapshot({
+      messages: [
+        { id: 'u', role: 'user', text: 'hi', attachments: [] },
+        {
+          id: 'a',
+          role: 'assistant',
+          text: 'hello',
+          blocks: [{ kind: 'text', text: 'hello' }],
+          attachments: [],
+        },
+      ],
+    })
+  );
+  const copyButtons = html.match(/class="msg-copy"/g) ?? [];
+  assert.equal(copyButtons.length, 2); // one per bubble
+  assert.match(html, /id="jump-latest"[^>]*><svg/); // SVG arrow, not a bare glyph
+});
