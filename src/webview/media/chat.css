@@ -1027,6 +1027,9 @@ button.ghost:hover,
   padding: 0;
   background: transparent;
   border: none;
+  /* Use the CHAT text color, not the editor's foreground (which is gold in some
+     themes). Tool args / result output should read as neutral text. */
+  color: var(--vscode-foreground);
   font-size: 11.5px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -1038,10 +1041,14 @@ button.ghost:hover,
 #messages .tl-card .code-wrap {
   margin: 12px 0;
 }
-#messages .tl-card .code-wrap .code-block {
+#messages .tl-card .code-wrap .code-block,
+#messages .tl-card .code-wrap .code-block code {
   margin: 0;
   padding: 12px 14px;
   font-size: 12px;
+  /* A real fenced code block keeps the editor's own foreground (theme code
+     color). */
+  color: var(--vscode-editor-foreground, inherit);
 }
 
 /* Thinking = secondary (dim, italic). Icon+label+marker share the tone. */

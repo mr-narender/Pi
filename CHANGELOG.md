@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.57
+
+- Fix: tool args and tool/result output text no longer appear gold. They were using --vscode-editor-foreground (the editor's text color, which is gold in some themes); they now use the chat foreground (--vscode-foreground). A real fenced code block in the answer still uses the editor's code color. (Confirms: #1 tool/result inner text de-golded; #2 thinking is italic; #3 chat text uses the editor font family.)
+
 ## 0.0.56
 
 - Tool and Result now use a fixed TEAL accent (#4ec9b0) for their icon, label, and timeline marker - theme-independent, so it no longer appears gold on themes whose link color is gold. Controlled by a single --pi-tool-accent variable.
