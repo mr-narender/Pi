@@ -732,10 +732,17 @@ button.ghost:hover,
 }
 
 /* Agent: primary content \u2014 full width, full contrast, no container. */
-#messages .message-assistant {
+#messages .message-assistant,
+#messages .message-toolResult,
+#messages .message-tool,
+#messages .message-tool_result,
+#messages .message-bashExecution {
   align-self: stretch;
   align-items: flex-start;
   max-width: min(76ch, 100%);
+}
+#messages .timeline-standalone {
+  margin-top: 0;
 }
 #messages .message-assistant .message-body {
   align-self: stretch;

@@ -243,3 +243,26 @@ test('thinking/tool render as separate light meta cards; text stays in the chat 
   assert.match(html, /class="tl-head tl-answer-head">.*<span class="tl-label">Pi</);
   assert.match(html, /<div class="tl-body"><p class="msg-para">the answer<\/p>/);
 });
+
+test('standalone toolResult / bashExecution messages render as a Result card (not a raw role label)', () => {
+  const html = renderChatApp(
+    snapshot({
+      messages: [
+        {
+          id: 'r1',
+          role: 'toolResult',
+          text: 'User packages:\n  npm:@gotgenes/pi-anthropic-auth',
+          blocks: [{ kind: 'text', text: 'User packages:\n  npm:@gotgenes/pi-anthropic-auth' }],
+          attachments: [],
+        },
+      ],
+    })
+  );
+  // It uses the timeline Result card, with an icon + "Result" label.
+  assert.match(html, /class="tl-node tl-result"/);
+  assert.match(html, /class="tl-label">Result</);
+  assert.match(html, /class="meta-icon"/);
+  assert.match(html, /npm:@gotgenes\/pi-anthropic-auth/);
+  // The raw "toolResult" role label must NOT be shown as a heading.
+  assert.doesNotMatch(html, /class="message-role">toolResult</);
+});

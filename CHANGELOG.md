@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.52
+
+- Fix: standalone tool results now follow the same card pattern. Pi emits tool results (and bash executions) as SEPARATE messages with role "toolResult"/"bashExecution" - not as content blocks inside the assistant message - so they were rendering as a plain block with the raw "toolResult" label. They now render as a proper Result card (icon + "Result" label, rounded border, collapsible, monospace body) matching Thinking/Tool/Answer. The raw role label is no longer shown as a heading.
+
 ## 0.0.51
 
 - Chat layout finalized per design review (timeline of rounded cards):

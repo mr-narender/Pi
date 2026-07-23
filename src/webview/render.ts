@@ -344,19 +344,43 @@ function renderMessages(snapshot: WebviewSnapshot): string {
   const olderSentinel = snapshot.messageWindow?.hasOlder
     ? `<div id="older-sentinel" class="older-sentinel" role="status"><span class="spinner spinner-sm" aria-hidden="true"></span>Loading earlier messages…</div>`
     : '';
+  return olderSentinel + snapshot.messages.map(renderMessageArticle).join('');
+}
+
+// Pi emits tool results (and bash executions) as SEPARATE messages with these
+// roles — not as content blocks inside the assistant message. They must render
+// with the same card pattern as the rest of the timeline.
+function isResultRole(role: string): boolean {
   return (
-    olderSentinel +
-    snapshot.messages
-      .map(
-        (message) => `
-        <article class="message-card message-${escapeHtml(message.role)}">
-          <div class="message-role">${escapeHtml(message.role === 'assistant' ? 'Pi' : message.role === 'user' ? 'You' : message.role)}</div>
-          ${message.role === 'assistant' ? renderAssistantBody(message) : renderMessageStream(message)}
-          ${message.attachments.length > 0 ? `<div class="detail-stack">${message.attachments.map((attachment) => renderAttachment(attachment)).join('')}</div>` : ''}
-        </article>`
-      )
-      .join('')
+    role === 'toolResult' || role === 'tool' || role === 'tool_result' || role === 'bashExecution'
   );
+}
+
+function renderMessageArticle(message: WebviewSnapshot['messages'][number]): string {
+  const role = message.role;
+  const roleLabel = role === 'assistant' ? 'Pi' : role === 'user' ? 'You' : '';
+  return `
+        <article class="message-card message-${escapeHtml(role)}">
+          ${roleLabel ? `<div class="message-role">${roleLabel}</div>` : ''}
+          ${renderMessageBody(message)}
+          ${message.attachments.length > 0 ? `<div class="detail-stack">${message.attachments.map((attachment) => renderAttachment(attachment)).join('')}</div>` : ''}
+        </article>`;
+}
+
+function renderMessageBody(message: WebviewSnapshot['messages'][number]): string {
+  if (message.role === 'assistant') {
+    return renderAssistantBody(message);
+  }
+  if (isResultRole(message.role)) {
+    return renderResultMessage(message);
+  }
+  return renderMessageStream(message);
+}
+
+/** A standalone tool-result / bash-execution message rendered as a Result card. */
+function renderResultMessage(message: WebviewSnapshot['messages'][number]): string {
+  const text = message.text ?? '';
+  return `<div class="timeline timeline-standalone"><div class="tl-node tl-result"><span class="tl-dot"></span><details class="tl-card" open><summary class="tl-head">${META_ICONS.result}<span class="tl-label">Result</span>${CARET_ICON}</summary><pre class="code-block"><code>${escapeHtml(text)}</code></pre></details></div></div>`;
 }
 
 function renderContextChip(item: PendingContextItem): string {
