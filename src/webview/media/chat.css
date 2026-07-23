@@ -1057,16 +1057,20 @@ button.ghost:hover,
   font-style: italic;
 }
 
-/* Tool / result = theme accent. */
+/* Tool / result = teal accent (fixed, theme-independent — not the theme's link
+   color, which is gold in some themes). */
+#messages {
+  --pi-tool-accent: #4ec9b0;
+}
 #messages .tl-tool .tl-dot,
 #messages .tl-result .tl-dot {
-  border-color: var(--vscode-textLink-foreground, #57a6ff);
+  border-color: var(--pi-tool-accent);
 }
 #messages .tl-tool .tl-label,
 #messages .tl-tool .meta-icon,
 #messages .tl-result .tl-label,
 #messages .tl-result .meta-icon {
-  color: var(--vscode-textLink-foreground, #57a6ff);
+  color: var(--pi-tool-accent);
 }
 
 /* Error = semantic danger. */

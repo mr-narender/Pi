@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.56
+
+- Tool and Result now use a fixed TEAL accent (#4ec9b0) for their icon, label, and timeline marker - theme-independent, so it no longer appears gold on themes whose link color is gold. Controlled by a single --pi-tool-accent variable.
+
 ## 0.0.55
 
 - Loading spinner when opening a session: resuming now shows a "Loading chat…" spinner while the transcript is fetched, instead of a blank pane, so it's clear the chat is still loading.
