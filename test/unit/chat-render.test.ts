@@ -200,13 +200,17 @@ test('renderChatApp renders thinking, tool, and code blocks distinctly', () => {
       ],
     })
   );
-  assert.match(html, /class="message-body"/);
-  assert.match(html, /class="meta-block meta-thinking"/);
-  assert.match(html, /class="meta-block meta-tool"/);
-  assert.match(html, /class="meta-label">Thinking</);
-  assert.match(html, /class="meta-label">Tool</);
-  assert.match(html, /class="meta-label">Tool result</);
+  // Assistant turn with process renders as a timeline of rounded cards.
+  assert.match(html, /class="timeline"/);
+  assert.match(html, /class="tl-node tl-thinking"/);
+  assert.match(html, /class="tl-node tl-tool"/);
+  assert.match(html, /class="tl-node tl-result"/);
+  assert.match(html, /class="tl-node tl-response"/);
+  assert.match(html, /class="tl-label">Thinking</);
+  assert.match(html, /class="tl-label">Tool</);
+  assert.match(html, /class="tl-label">Result</);
   assert.match(html, /tool-name">bash/);
+  assert.match(html, /class="tl-dot"/);
   assert.match(html, /class="meta-icon"/); // inline SVG icon, not an emoji
   assert.match(html, /const y = 2;/);
   assert.match(html, /class="code-block"/);
@@ -230,11 +234,10 @@ test('thinking/tool render as separate light meta cards; text stays in the chat 
       ],
     })
   );
-  // Thinking + tool are separate meta cards.
-  assert.match(html, /class="meta-block meta-thinking"/);
-  assert.match(html, /class="meta-block meta-tool"/);
-  // The actual answer text lives in the chat bubble, not a meta card.
-  assert.match(html, /<div class="message-body"><p class="msg-para">the answer<\/p><\/div>/);
-  // Meta cards are NOT nested inside the message bubble.
-  assert.doesNotMatch(html, /<div class="message-body">[^]*meta-thinking/);
+  // Thinking + tool are timeline nodes; the answer is its own response node.
+  assert.match(html, /class="tl-node tl-thinking"/);
+  assert.match(html, /class="tl-node tl-tool"/);
+  assert.match(html, /class="tl-node tl-response"/);
+  // The answer text lives in the response card body.
+  assert.match(html, /tl-answer"><div class="tl-body"><p class="msg-para">the answer<\/p>/);
 });

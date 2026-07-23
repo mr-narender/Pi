@@ -117,7 +117,7 @@ function renderMessageStream(message: WebviewSnapshot['messages'][number]): stri
 
 // Small, consistent 1.5px line icons (inline SVG, currentColor — no icon font,
 // no emoji) so each section type is instantly recognizable.
-const META_ICONS: Record<string, string> = {
+const META_ICONS = {
   thinking:
     '<svg class="meta-icon" viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M8 2.4l1.5 3.3 3.6.4-2.7 2.4.8 3.5L8 10.7 4.8 12.4l.8-3.5L2.9 6.5l3.6-.4z" fill="currentColor" stroke="none"/></svg>',
   tool: '<svg class="meta-icon" viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 4.5L6.5 8l-3 3.5"/><path d="M8.5 11.5h4"/></svg>',
@@ -127,7 +127,73 @@ const META_ICONS: Record<string, string> = {
     '<svg class="meta-icon" viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2.8l5.4 9.4H2.6z"/><path d="M8 6.6v2.6"/><circle cx="8" cy="11" r="0.5" fill="currentColor" stroke="none"/></svg>',
   image:
     '<svg class="meta-icon" viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2.75" y="3.75" width="10.5" height="8.5" rx="1.4"/><circle cx="6" cy="6.8" r="1"/><path d="M3.5 11.8l3-2.4 2 1.6 2.6-2.2 1.4 1.2"/></svg>',
+  response:
+    '<svg class="meta-icon" viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="8" r="2.4"/></svg>',
 };
+
+const CARET_ICON =
+  '<svg class="tl-caret" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4l4 4-4 4"/></svg>';
+
+type TimelineNode = MessageBlock | { kind: 'response'; text: string };
+
+/**
+ * Assistant turns render as a TIMELINE of rounded, hairline-bordered cards
+ * (fused "timeline + cards"): each step — thinking, tool call, tool result, and
+ * the final answer — is a node with a colored dot on a connecting line. Simple
+ * text-only replies skip the timeline and render as plain text.
+ */
+function renderAssistantBody(message: WebviewSnapshot['messages'][number]): string {
+  const blocks: MessageBlock[] =
+    message.blocks && message.blocks.length > 0
+      ? message.blocks
+      : message.text
+        ? [{ kind: 'text', text: message.text }]
+        : [];
+  const hasProcess = blocks.some((block) => block.kind !== 'text');
+  if (!hasProcess) {
+    return renderMessageStream(message);
+  }
+  const nodes: TimelineNode[] = [];
+  let textRun: string[] = [];
+  const flush = (): void => {
+    if (textRun.length > 0) {
+      nodes.push({ kind: 'response', text: textRun.join('\n\n') });
+      textRun = [];
+    }
+  };
+  for (const block of blocks) {
+    if (block.kind === 'text') {
+      textRun.push(block.text);
+    } else {
+      flush();
+      nodes.push(block);
+    }
+  }
+  flush();
+  return `<div class="timeline">${nodes.map(renderTimelineNode).join('')}</div>`;
+}
+
+function renderTimelineNode(node: TimelineNode): string {
+  const dot = (icon: string): string => `<span class="tl-dot">${icon}</span>`;
+  const label = (text: string, collapsible: boolean): string =>
+    `<span class="tl-label">${escapeHtml(text)}</span>${collapsible ? CARET_ICON : ''}`;
+  switch (node.kind) {
+    case 'thinking':
+      return `<div class="tl-node tl-thinking">${dot(META_ICONS.thinking)}<details class="tl-card"><summary class="tl-head">${label('Thinking', true)}</summary><div class="tl-body tl-think">${renderRichText(node.text)}</div></details></div>`;
+    case 'tool':
+      return `<div class="tl-node tl-tool">${dot(META_ICONS.tool)}<div class="tl-card"><div class="tl-head">${label('Tool', false)}<code class="tool-name">${escapeHtml(node.name)}</code></div>${node.args ? `<pre class="code-block"><code>${escapeHtml(node.args)}</code></pre>` : ''}</div></div>`;
+    case 'toolResult': {
+      const err = node.isError === true;
+      return `<div class="tl-node tl-result${err ? ' is-error' : ''}">${dot(err ? META_ICONS.error : META_ICONS.result)}<details class="tl-card"><summary class="tl-head">${label(err ? 'Error' : 'Result', true)}${node.name ? `<code class="tool-name">${escapeHtml(node.name)}</code>` : ''}</summary><pre class="code-block"><code>${escapeHtml(node.text)}</code></pre></details></div>`;
+    }
+    case 'image':
+      return `<div class="tl-node tl-tool">${dot(META_ICONS.image)}<div class="tl-card"><div class="tl-head">${label('Image', false)}<span class="tool-name">${escapeHtml(node.mimeType)}</span></div></div></div>`;
+    case 'response':
+      return `<div class="tl-node tl-response">${dot(META_ICONS.response)}<div class="tl-card tl-answer"><div class="tl-body">${renderRichText(node.text)}</div></div></div>`;
+    default:
+      return '';
+  }
+}
 
 function metaLabel(iconKey: keyof typeof META_ICONS, text: string): string {
   return `${META_ICONS[iconKey]}<span class="meta-label">${escapeHtml(text)}</span>`;
@@ -284,7 +350,7 @@ function renderMessages(snapshot: WebviewSnapshot): string {
         (message) => `
         <article class="message-card message-${escapeHtml(message.role)}">
           <div class="message-role">${escapeHtml(message.role === 'assistant' ? 'Pi' : message.role === 'user' ? 'You' : message.role)}</div>
-          ${renderMessageStream(message)}
+          ${message.role === 'assistant' ? renderAssistantBody(message) : renderMessageStream(message)}
           ${message.attachments.length > 0 ? `<div class="detail-stack">${message.attachments.map((attachment) => renderAttachment(attachment)).join('')}</div>` : ''}
         </article>`
       )

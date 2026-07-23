@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.50
+
+- New chat layout: the agent turn is now a TIMELINE of rounded, hairline-bordered cards (the fused timeline + cards direction). Each step - Thinking, Tool, Result, and the final Answer - is a node with a colored dot on a connecting rail: thinking is a dim italic collapsible node, tools/results use the theme accent (errors use the error color, collapsible), and the answer is a green node with full-contrast text. No background fills. Simple text-only replies skip the timeline and render as plain text. The "You" message stays a right-aligned outlined bubble.
+
 ## 0.0.49
 
 - Modernised, premium chat layout (UI/UX pass). Sections are now instantly distinguishable by a colored LEFT RAIL + a crisp line icon + an uppercase label - not muddy filled badges:
