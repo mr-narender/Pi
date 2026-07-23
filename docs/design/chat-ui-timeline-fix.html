@@ -15,7 +15,6 @@
         --accent: #57a6ff;
         --green: #57c7a0;
         --red: #f0716a;
-        --violet: #c99bf0;
         --user-line: #3a4a5a;
         --mono: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
         --sans: -apple-system, "Segoe UI", system-ui, sans-serif;
@@ -48,6 +47,7 @@
         display: flex;
         gap: 6px;
         flex-wrap: wrap;
+        align-items: center;
       }
       .tg {
         border: 1px solid var(--border);
@@ -81,6 +81,12 @@
         width: 13px;
         height: 13px;
         flex: none;
+      }
+      p {
+        margin: 0 0 10px;
+      }
+      p:last-child {
+        margin-bottom: 0;
       }
 
       /* user */
@@ -119,7 +125,6 @@
       .node:last-child {
         margin-bottom: 0;
       }
-      /* small colored marker on the rail */
       .node .marker {
         position: absolute;
         left: -24px;
@@ -142,7 +147,7 @@
         background: var(--green);
       }
 
-      /* the rounded, hairline-bordered card — NO fill */
+      /* rounded, hairline-bordered card — NO fill */
       .card {
         border: 1px solid var(--border);
         border-radius: 12px;
@@ -183,7 +188,6 @@
         margin-top: 7px;
       }
 
-      /* per-type accent (icon + label + marker) */
       .node.think .icon,
       .node.think .label {
         color: var(--dim);
@@ -211,8 +215,8 @@
         font-size: 13.5px;
       }
 
-      /* CODE / ARGS — NO background fill. Two styles via toggle. */
-      .code {
+      /* tool args / results: plain monospace, NO background fill */
+      .args {
         margin: 7px 0 0;
         font-family: var(--mono);
         font-size: 11.5px;
@@ -220,20 +224,72 @@
         white-space: pre-wrap;
         overflow-wrap: anywhere;
         color: #cfcfcf;
-        background: transparent; /* <- the fix: no bg color behind tool text */
+        background: transparent;
       }
-      /* style: subtle left rule to denote a code region (still no fill) */
-      body[data-code="rule"] .code {
-        padding-left: 10px;
-        border-left: 2px solid var(--border);
+
+      /* ===== fenced code in the response: its OWN separated code block ===== */
+      .codeblock {
+        margin: 12px 0;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        overflow: hidden;
       }
-      .code .k {
+      .cbhead {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 5px 8px 5px 12px;
+        font-size: 10px;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+        color: var(--dim);
+        border-bottom: 1px solid var(--border-soft);
+      }
+      .cbbody {
+        margin: 0;
+        padding: 11px 13px;
+        font-family: var(--mono);
+        font-size: 12px;
+        line-height: 1.55;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        color: #d7d7d7;
+        background: transparent;
+      }
+      .cbcopy {
+        border: 1px solid transparent;
+        background: transparent;
+        color: var(--dim);
+        cursor: pointer;
+        font: inherit;
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        padding: 2px 8px;
+        border-radius: 6px;
+      }
+      .cbcopy:hover {
+        color: var(--fg);
+        border-color: var(--border);
+      }
+      /* toggle: outline (transparent) vs subtle surface */
+      body[data-cb="surface"] .cbbody {
+        background: rgba(255, 255, 255, 0.03);
+      }
+      body[data-cb="surface"] .cbhead {
+        background: rgba(255, 255, 255, 0.02);
+      }
+
+      .code .k,
+      .cbbody .k {
         color: #c99bf0;
       }
-      .code .s {
+      .code .s,
+      .cbbody .s {
         color: #98c379;
       }
-      .code .f {
+      .code .f,
+      .cbbody .f {
         color: #57a6ff;
       }
       .inline {
@@ -241,7 +297,6 @@
         font-size: 0.9em;
         color: #d7b98a;
       }
-      /* density toggle */
       body[data-density="cozy"] .node {
         margin-bottom: 16px;
       }
@@ -250,20 +305,20 @@
       }
     </style>
   </head>
-  <body data-code="plain" data-density="tight">
+  <body data-cb="outline" data-density="tight">
     <header>
       <h1>Timeline of rounded cards — fix preview</h1>
       <div class="sub">
-        Every section (Thinking, Tool, Result, Pi) is a rounded hairline-bordered
-        card with an icon. No background color behind any text — including tool
-        args/results. Toggle code style &amp; density.
+        Fenced code now sits in its OWN code block, separated from the response
+        text (language label + copy). Tool args/results stay plain. No background
+        behind ordinary text.
       </div>
       <div class="toggles">
-        <button class="tg" data-k="code" data-v="plain" aria-pressed="true">
-          Code: plain
+        <button class="tg" data-k="cb" data-v="outline" aria-pressed="true">
+          Code block: outline
         </button>
-        <button class="tg" data-k="code" data-v="rule" aria-pressed="false">
-          Code: left-rule
+        <button class="tg" data-k="cb" data-v="surface" aria-pressed="false">
+          Code block: surface
         </button>
         <span style="width: 14px"></span>
         <button class="tg" data-k="density" data-v="tight" aria-pressed="true">
@@ -297,10 +352,12 @@
       };
       const ARGS = '{ "cmd": "ls src/auth" }';
       const RES = "index.ts\nclient.ts\ntoken.ts";
+      const CODE =
+        '<span class="k">export function</span> <span class="f">parseToken</span>(raw: <span class="k">string</span>): Token {\n  <span class="k">const</span> [, p] = raw.split(<span class="s">\'.\'</span>);\n  <span class="k">return</span> decode(p);\n}';
       const ANSWER =
-        "I split parsing from the HTTP client and added table-driven tests." +
-        '<div class="code"><span class="k">export function</span> <span class="f">parseToken</span>(raw: <span class="k">string</span>): Token {\n  <span class="k">const</span> [, p] = raw.split(<span class="s">\'.\'</span>);\n  <span class="k">return</span> decode(p);\n}</div>' +
-        '<div style="margin-top:9px">Covered expiry, malformed input, and the <span class="inline">null</span> case.</div>';
+        "<p>I split parsing from the HTTP client and added table-driven tests \u2014 here\u2019s the extracted function:</p>" +
+        `<div class="codeblock"><div class="cbhead"><span>typescript</span><button class="cbcopy">Copy</button></div><pre class="cbbody">${CODE}</pre></div>` +
+        '<p>It covers expiry, malformed input, and the <span class="inline">null</span> case.</p>';
 
       document.getElementById("tl").innerHTML = `
         <div class="node think">
@@ -312,13 +369,13 @@
         <div class="node tool">
           <span class="marker"></span>
           <div class="card"><div class="head">${IC.tool}<span class="label">Tool</span><code class="name">bash</code></div>
-            <div class="code">${ARGS}</div>
+            <div class="args">${ARGS}</div>
           </div>
         </div>
         <div class="node result">
           <span class="marker"></span>
           <details class="card" open><summary class="head">${IC.ok}<span class="label">Result</span><code class="name">bash</code>${IC.caret}</summary>
-            <div class="code">${RES}</div>
+            <div class="args">${RES}</div>
           </details>
         </div>
         <div class="node answer">
@@ -333,9 +390,7 @@
           document.body.dataset[b.dataset.k] = b.dataset.v;
           document
             .querySelectorAll(`.tg[data-k="${b.dataset.k}"]`)
-            .forEach((x) =>
-              x.setAttribute("aria-pressed", String(x === b))
-            );
+            .forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
         });
       });
     </script>
