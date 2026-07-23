@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pi chat — timeline-of-cards (fix preview)</title>
+    <style>
+      :root {
+        --bg: #1e1e1e;
+        --fg: #e8e8e8;
+        --fg-2: #cfcfcf;
+        --dim: #9aa0a6;
+        --border: #3a3a3a;
+        --border-soft: #2d2d2d;
+        --accent: #57a6ff;
+        --green: #57c7a0;
+        --red: #f0716a;
+        --violet: #c99bf0;
+        --user-line: #3a4a5a;
+        --mono: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+        --sans: -apple-system, "Segoe UI", system-ui, sans-serif;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--fg);
+        font-family: var(--sans);
+        font-size: 13px;
+        line-height: 1.6;
+      }
+      header {
+        border-bottom: 1px solid var(--border-soft);
+        padding: 14px 20px;
+      }
+      h1 {
+        margin: 0 0 3px;
+        font-size: 15px;
+      }
+      .sub {
+        color: var(--dim);
+        font-size: 12px;
+      }
+      .toggles {
+        margin-top: 10px;
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+      .tg {
+        border: 1px solid var(--border);
+        background: transparent;
+        color: var(--fg-2);
+        padding: 5px 11px;
+        border-radius: 999px;
+        font: inherit;
+        font-size: 12px;
+        cursor: pointer;
+      }
+      .tg[aria-pressed="true"] {
+        border-color: var(--accent);
+        color: #fff;
+        background: rgba(87, 166, 255, 0.12);
+      }
+      main {
+        max-width: 820px;
+        margin: 0 auto;
+        padding: 24px 20px 80px;
+      }
+      .role {
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.09em;
+        text-transform: uppercase;
+        color: var(--dim);
+        margin-bottom: 6px;
+      }
+      .icon {
+        width: 13px;
+        height: 13px;
+        flex: none;
+      }
+
+      /* user */
+      .user {
+        text-align: right;
+        margin-bottom: 18px;
+      }
+      .user .bubble {
+        display: inline-block;
+        text-align: left;
+        max-width: 76%;
+        border: 1px solid var(--user-line);
+        border-radius: 14px 14px 4px 14px;
+        padding: 9px 13px;
+      }
+
+      /* ===== timeline of rounded cards ===== */
+      .timeline {
+        position: relative;
+        padding-left: 26px;
+      }
+      .timeline::before {
+        content: "";
+        position: absolute;
+        left: 6px;
+        top: 8px;
+        bottom: 8px;
+        width: 2px;
+        background: var(--border);
+        border-radius: 1px;
+      }
+      .node {
+        position: relative;
+        margin-bottom: 12px;
+      }
+      .node:last-child {
+        margin-bottom: 0;
+      }
+      /* small colored marker on the rail */
+      .node .marker {
+        position: absolute;
+        left: -24px;
+        top: 12px;
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: var(--bg);
+        border: 2px solid var(--dim);
+      }
+      .node.tool .marker,
+      .node.result .marker {
+        border-color: var(--accent);
+      }
+      .node.result.err .marker {
+        border-color: var(--red);
+      }
+      .node.answer .marker {
+        border-color: var(--green);
+        background: var(--green);
+      }
+
+      /* the rounded, hairline-bordered card — NO fill */
+      .card {
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 9px 13px;
+        background: transparent;
+      }
+      .head {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        cursor: pointer;
+        list-style: none;
+      }
+      details > summary::-webkit-details-marker {
+        display: none;
+      }
+      .label {
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+      }
+      .name {
+        font-family: var(--mono);
+        font-size: 11.5px;
+        color: var(--fg-2);
+        opacity: 0.85;
+      }
+      .caret {
+        margin-left: auto;
+        opacity: 0.5;
+        transition: transform 0.15s;
+      }
+      details[open] .caret {
+        transform: rotate(90deg);
+      }
+      .body {
+        margin-top: 7px;
+      }
+
+      /* per-type accent (icon + label + marker) */
+      .node.think .icon,
+      .node.think .label {
+        color: var(--dim);
+      }
+      .node.think .body {
+        color: var(--dim);
+        font-style: italic;
+      }
+      .node.tool .icon,
+      .node.tool .label,
+      .node.result .icon,
+      .node.result .label {
+        color: var(--accent);
+      }
+      .node.result.err .icon,
+      .node.result.err .label {
+        color: var(--red);
+      }
+      .node.answer .icon,
+      .node.answer .label {
+        color: var(--green);
+      }
+      .node.answer .body {
+        color: var(--fg);
+        font-size: 13.5px;
+      }
+
+      /* CODE / ARGS — NO background fill. Two styles via toggle. */
+      .code {
+        margin: 7px 0 0;
+        font-family: var(--mono);
+        font-size: 11.5px;
+        line-height: 1.55;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        color: #cfcfcf;
+        background: transparent; /* <- the fix: no bg color behind tool text */
+      }
+      /* style: subtle left rule to denote a code region (still no fill) */
+      body[data-code="rule"] .code {
+        padding-left: 10px;
+        border-left: 2px solid var(--border);
+      }
+      .code .k {
+        color: #c99bf0;
+      }
+      .code .s {
+        color: #98c379;
+      }
+      .code .f {
+        color: #57a6ff;
+      }
+      .inline {
+        font-family: var(--mono);
+        font-size: 0.9em;
+        color: #d7b98a;
+      }
+      /* density toggle */
+      body[data-density="cozy"] .node {
+        margin-bottom: 16px;
+      }
+      body[data-density="cozy"] .card {
+        padding: 11px 14px;
+      }
+    </style>
+  </head>
+  <body data-code="plain" data-density="tight">
+    <header>
+      <h1>Timeline of rounded cards — fix preview</h1>
+      <div class="sub">
+        Every section (Thinking, Tool, Result, Pi) is a rounded hairline-bordered
+        card with an icon. No background color behind any text — including tool
+        args/results. Toggle code style &amp; density.
+      </div>
+      <div class="toggles">
+        <button class="tg" data-k="code" data-v="plain" aria-pressed="true">
+          Code: plain
+        </button>
+        <button class="tg" data-k="code" data-v="rule" aria-pressed="false">
+          Code: left-rule
+        </button>
+        <span style="width: 14px"></span>
+        <button class="tg" data-k="density" data-v="tight" aria-pressed="true">
+          Density: tight
+        </button>
+        <button class="tg" data-k="density" data-v="cozy" aria-pressed="false">
+          Density: cozy
+        </button>
+      </div>
+    </header>
+
+    <main>
+      <div class="user">
+        <div class="role">You</div>
+        <div class="bubble">Refactor the auth module and add tests.</div>
+      </div>
+
+      <div class="role">Pi</div>
+      <div class="timeline" id="tl"></div>
+    </main>
+
+    <script>
+      const IC = {
+        think:
+          '<svg class="icon" viewBox="0 0 16 16"><path d="M8 2.4l1.5 3.3 3.6.4-2.7 2.4.8 3.5L8 10.7 4.8 12.4l.8-3.5L2.9 6.5l3.6-.4z" fill="currentColor"/></svg>',
+        tool: '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 4.5L6.5 8l-3 3.5"/><path d="M8.5 11.5h4"/></svg>',
+        ok: '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.4l3 3 7-7.4"/></svg>',
+        pi: '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="8" r="2.6"/></svg>',
+        caret:
+          '<svg class="icon caret" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4l4 4-4 4"/></svg>',
+      };
+      const ARGS = '{ "cmd": "ls src/auth" }';
+      const RES = "index.ts\nclient.ts\ntoken.ts";
+      const ANSWER =
+        "I split parsing from the HTTP client and added table-driven tests." +
+        '<div class="code"><span class="k">export function</span> <span class="f">parseToken</span>(raw: <span class="k">string</span>): Token {\n  <span class="k">const</span> [, p] = raw.split(<span class="s">\'.\'</span>);\n  <span class="k">return</span> decode(p);\n}</div>' +
+        '<div style="margin-top:9px">Covered expiry, malformed input, and the <span class="inline">null</span> case.</div>';
+
+      document.getElementById("tl").innerHTML = `
+        <div class="node think">
+          <span class="marker"></span>
+          <details class="card"><summary class="head">${IC.think}<span class="label">Thinking</span>${IC.caret}</summary>
+            <div class="body">The auth module mixes token parsing with the HTTP client, so tests can\u2019t isolate it. Extract parseToken(), inject the client, add tests.</div>
+          </details>
+        </div>
+        <div class="node tool">
+          <span class="marker"></span>
+          <div class="card"><div class="head">${IC.tool}<span class="label">Tool</span><code class="name">bash</code></div>
+            <div class="code">${ARGS}</div>
+          </div>
+        </div>
+        <div class="node result">
+          <span class="marker"></span>
+          <details class="card" open><summary class="head">${IC.ok}<span class="label">Result</span><code class="name">bash</code>${IC.caret}</summary>
+            <div class="code">${RES}</div>
+          </details>
+        </div>
+        <div class="node answer">
+          <span class="marker"></span>
+          <div class="card"><div class="head">${IC.pi}<span class="label">Response</span></div>
+            <div class="body">${ANSWER}</div>
+          </div>
+        </div>`;
+
+      document.querySelectorAll(".tg").forEach((b) => {
+        b.addEventListener("click", () => {
+          document.body.dataset[b.dataset.k] = b.dataset.v;
+          document
+            .querySelectorAll(`.tg[data-k="${b.dataset.k}"]`)
+            .forEach((x) =>
+              x.setAttribute("aria-pressed", String(x === b))
+            );
+        });
+      });
+    </script>
+  </body>
+</html>
