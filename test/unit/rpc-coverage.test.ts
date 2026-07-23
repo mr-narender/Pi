@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import {
   parseEnvelope,
+  isJsonValue,
   type JsonObject,
   type RpcCommand,
   type RpcResponse,
@@ -1521,4 +1522,39 @@ test('coverage evidence points to explicit files and titles', () => {
   assert.ok(source.includes('"sourceFile"'));
   assert.ok(source.includes('"testFile"'));
   assert.ok(source.includes('"testTitle"'));
+});
+
+test('isJsonValue handles very deeply nested payloads without a stack overflow', () => {
+  // Simulates resuming a large session whose message/entry tree is deep.
+  let deep: unknown = { leaf: true };
+  for (let i = 0; i < 200000; i += 1) {
+    deep = { child: deep };
+  }
+  assert.equal(isJsonValue(deep), true);
+
+  let arr: unknown = [1];
+  for (let i = 0; i < 200000; i += 1) {
+    arr = [arr];
+  }
+  assert.equal(isJsonValue(arr), true);
+
+  // parseEnvelope must accept a response whose data is deeply nested.
+  const env = parseEnvelope({
+    type: 'response',
+    id: 'x',
+    command: 'get_tree',
+    success: true,
+    data: deep,
+  });
+  assert.equal(env.type, 'response');
+});
+
+test('isJsonValue still rejects non-JSON values', () => {
+  assert.equal(
+    isJsonValue(() => 1),
+    false
+  );
+  assert.equal(isJsonValue(undefined), false);
+  assert.equal(isJsonValue([1, undefined]), false);
+  assert.equal(isJsonValue({ a: 1, b: 'x', c: [true, null] }), true);
 });

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.61
+
+- Fix "Maximum call stack size exceeded" (protocol fault) when resuming a large session. The RPC envelope validator (isJsonValue) walked the response payload recursively; a big session returns a deeply-nested message/entry tree, which overflowed the call stack and killed the transport. isJsonValue is now iterative (explicit stack), so payloads of any depth validate without overflowing. Large sessions resume correctly.
+
 ## 0.0.60
 
 - Open chat now live-updates from terminal edits (near real time), performance-guarded:

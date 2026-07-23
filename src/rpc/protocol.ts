@@ -160,18 +160,39 @@ export function isJsonObject(value: unknown): value is JsonObject {
 }
 
 export function isJsonValue(value: unknown): value is JsonValue {
-  if (value === null) {
-    return true;
+  // Iterative (explicit stack) instead of recursive: resuming a large session
+  // returns a deeply-nested payload (the message/entry tree), and a recursive
+  // walk overflowed the call stack ("Maximum call stack size exceeded").
+  const stack: unknown[] = [value];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (current === null) {
+      continue;
+    }
+    const kind = typeof current;
+    if (kind === 'string' || kind === 'number' || kind === 'boolean') {
+      continue;
+    }
+    if (Array.isArray(current)) {
+      for (const item of current) {
+        stack.push(item);
+      }
+      continue;
+    }
+    if (isJsonObject(current)) {
+      for (const item of Object.values(current)) {
+        // Undefined object properties are dropped by JSON, so they're allowed.
+        if (item !== undefined) {
+          stack.push(item);
+        }
+      }
+      continue;
+    }
+    // Anything else (undefined at a position that isn't a dropped object prop,
+    // function, symbol, bigint) is not valid JSON.
+    return false;
   }
-  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
-    return true;
-  }
-  if (Array.isArray(value)) {
-    return value.every((item) => isJsonValue(item));
-  }
-  return isJsonObject(value)
-    ? Object.values(value).every((item) => item === undefined || isJsonValue(item))
-    : false;
+  return true;
 }
 
 export function asRecord(value: unknown, label = 'value'): JsonObject {
