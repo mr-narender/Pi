@@ -1024,6 +1024,17 @@ button.ghost:hover,
   word-break: break-word;
 }
 
+/* But a REAL fenced code block inside the answer keeps its own padded, spaced
+   block (the flat rule above must not crush it). */
+#messages .tl-card .code-wrap {
+  margin: 12px 0;
+}
+#messages .tl-card .code-wrap .code-block {
+  margin: 0;
+  padding: 12px 14px;
+  font-size: 12px;
+}
+
 /* Thinking = secondary (dim, italic). Icon+label+marker share the tone. */
 #messages .tl-thinking .tl-dot {
   border-color: var(--vscode-descriptionForeground, var(--vscode-panel-border));

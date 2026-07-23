@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.54
+
+- Fenced code block spacing fixed: my tool-args padding rule was also flattening the answer's fenced code, so it looked cramped. Real fenced code now keeps its padded, spaced block (padding + 12px margin around it).
+- No generic language label: the code block header no longer shows "text"/"code"/"plaintext" etc. - it only labels a real language; otherwise it just shows the code with the Copy button.
+
 ## 0.0.53
 
 - Tool args and tool/result output are now guaranteed transparent (no code-block background). Removed the leftover fill from the global pre rule so no bare code gets a background; only the answer's fenced code keeps the surface you chose. Tool/result text sits directly on the transparent card.

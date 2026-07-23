@@ -246,10 +246,15 @@ export function renderRichText(raw: string): string {
         index += 1;
       }
       index += 1; // skip closing fence
-      // Fenced code renders as its OWN block — language label + Copy, a subtle
-      // surface, clearly separated from the surrounding response text.
+      // Fenced code renders as its OWN block with a Copy button. Only show a
+      // language label for a REAL language — never a generic "text"/"code".
+      const generic = new Set(['', 'text', 'txt', 'plain', 'plaintext', 'code', 'output', 'log']);
+      const showLang = !generic.has(language.trim().toLowerCase());
+      const langSlot = showLang
+        ? `<span class="code-lang-name">${escapeHtml(language)}</span>`
+        : '<span class="code-lang-spacer"></span>';
       out.push(
-        `<div class="code-wrap"><div class="code-lang"><span class="code-lang-name">${escapeHtml(language || 'code')}</span><button type="button" class="code-copy" aria-label="Copy code">Copy</button></div><pre class="code-block"><code>${escapeHtml(code.join('\n'))}</code></pre></div>`
+        `<div class="code-wrap"><div class="code-lang">${langSlot}<button type="button" class="code-copy" aria-label="Copy code">Copy</button></div><pre class="code-block"><code>${escapeHtml(code.join('\n'))}</code></pre></div>`
       );
     } else {
       paragraph.push(lines[index] ?? '');
