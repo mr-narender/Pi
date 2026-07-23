@@ -13,9 +13,11 @@ import {
   boundFileContent,
   buildSendPreview,
   fingerprint,
+  createEmptyComposerState,
   type PendingContextItem,
   type PendingImageItem,
 } from '../webview/composer';
+import { conversationToMarkdown } from '../webview/conversationMarkdown';
 import { ChatUiState } from '../webview/composerState';
 import type { JsonObject } from '../rpc/protocol';
 import type { WebviewSnapshot } from '../state/types';
@@ -357,6 +359,25 @@ export class ChatTabManager implements vscode.Disposable {
     state.focus = 'composer';
     await this.uiState.setComposerStateForIdentity(context.controller, context.target, state);
     await this.renderResource(context.resource);
+  }
+
+  /** Full active conversation as Markdown (whole transcript), for copy/export. */
+  public getActiveConversationMarkdown(): { title: string; markdown: string } | undefined {
+    const context = this.getActiveContext();
+    if (!context) {
+      return undefined;
+    }
+    const snapshot = createWebviewSnapshot(context.controller.snapshot, 0, {
+      uiMode: this.uiState.getMode(),
+      composer: createEmptyComposerState(),
+      isTrusted: vscode.workspace.isTrusted,
+      folders: [],
+      messageLimit: Number.MAX_SAFE_INTEGER,
+    });
+    return {
+      title: snapshot.title,
+      markdown: conversationToMarkdown(snapshot.messages, snapshot.title),
+    };
   }
 
   public getActiveContext(): ChatTabContext | undefined {

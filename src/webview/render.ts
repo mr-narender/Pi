@@ -173,6 +173,17 @@ function renderAssistantBody(message: WebviewSnapshot['messages'][number]): stri
   return `<div class="timeline">${nodes.map(renderTimelineNode).join('')}</div>`;
 }
 
+// #7 — long tool/result output is clamped with a "Show more" toggle so big logs
+// (package lists, stack traces) don't dominate the transcript.
+function renderClampedOutput(text: string): string {
+  const pre = `<pre class="code-block"><code>${escapeHtml(text)}</code></pre>`;
+  const long = text.length > 1400 || text.split('\n').length > 16;
+  if (!long) {
+    return pre;
+  }
+  return `<div class="clampable"><div class="clamp-body">${pre}</div><button type="button" class="code-showmore">Show more</button></div>`;
+}
+
 function renderTimelineNode(node: TimelineNode): string {
   // Small colored marker on the rail; the identifying icon lives in the card
   // header (icon + rounded border make each section obvious).
@@ -181,10 +192,10 @@ function renderTimelineNode(node: TimelineNode): string {
     case 'thinking':
       return `<div class="tl-node tl-thinking">${marker}<details class="tl-card" open><summary class="tl-head">${META_ICONS.thinking}<span class="tl-label">Thinking</span>${CARET_ICON}</summary><div class="tl-body tl-think">${renderRichText(node.text)}</div></details></div>`;
     case 'tool':
-      return `<div class="tl-node tl-tool">${marker}<div class="tl-card"><div class="tl-head">${META_ICONS.tool}<span class="tl-label">Tool</span><code class="tool-name">${escapeHtml(node.name)}</code></div>${node.args ? `<pre class="code-block"><code>${escapeHtml(node.args)}</code></pre>` : ''}</div></div>`;
+      return `<div class="tl-node tl-tool">${marker}<div class="tl-card"><div class="tl-head">${META_ICONS.tool}<span class="tl-label">Tool</span><code class="tool-name">${escapeHtml(node.name)}</code></div>${node.args ? renderClampedOutput(node.args) : ''}</div></div>`;
     case 'toolResult': {
       const err = node.isError === true;
-      return `<div class="tl-node tl-result${err ? ' is-error' : ''}">${marker}<details class="tl-card" open><summary class="tl-head">${err ? META_ICONS.error : META_ICONS.result}<span class="tl-label">${err ? 'Error' : 'Result'}</span>${node.name ? `<code class="tool-name">${escapeHtml(node.name)}</code>` : ''}${CARET_ICON}</summary><pre class="code-block"><code>${escapeHtml(node.text)}</code></pre></details></div>`;
+      return `<div class="tl-node tl-result${err ? ' is-error' : ''}">${marker}<details class="tl-card" open><summary class="tl-head">${err ? META_ICONS.error : META_ICONS.result}<span class="tl-label">${err ? 'Error' : 'Result'}</span>${node.name ? `<code class="tool-name">${escapeHtml(node.name)}</code>` : ''}${CARET_ICON}</summary>${renderClampedOutput(node.text)}</details></div>`;
     }
     case 'image':
       return `<div class="tl-node tl-tool">${marker}<div class="tl-card"><div class="tl-head">${META_ICONS.image}<span class="tl-label">Image</span><span class="tool-name">${escapeHtml(node.mimeType)}</span></div></div></div>`;
@@ -389,7 +400,7 @@ function renderMessageBody(message: WebviewSnapshot['messages'][number]): string
 /** A standalone tool-result / bash-execution message rendered as a Result card. */
 function renderResultMessage(message: WebviewSnapshot['messages'][number]): string {
   const text = message.text ?? '';
-  return `<div class="timeline timeline-standalone"><div class="tl-node tl-result"><span class="tl-dot"></span><details class="tl-card" open><summary class="tl-head">${META_ICONS.result}<span class="tl-label">Result</span>${CARET_ICON}</summary><pre class="code-block"><code>${escapeHtml(text)}</code></pre></details></div></div>`;
+  return `<div class="timeline timeline-standalone"><div class="tl-node tl-result"><span class="tl-dot"></span><details class="tl-card" open><summary class="tl-head">${META_ICONS.result}<span class="tl-label">Result</span>${CARET_ICON}</summary>${renderClampedOutput(text)}</details></div></div>`;
 }
 
 function renderContextChip(item: PendingContextItem): string {
@@ -516,6 +527,7 @@ function renderMoreMenu(_snapshot: WebviewSnapshot): string {
       <div class="menu-panel" role="menu">
         <div class="menu-group">Session</div>
         <button type="button" class="menu-item cat-session" data-command="piRpc.renameSession"><span class="dot"></span>Rename chat</button>
+        <button type="button" class="menu-item cat-session" data-command="piRpcInternal.copyConversationMarkdown"><span class="dot"></span>Copy as Markdown</button>
         <button type="button" class="menu-item cat-session" data-command="piRpc.exportHtml"><span class="dot"></span>Export as HTML</button>
         <div class="menu-group">Model</div>
         <button type="button" class="menu-item cat-model" data-command="piRpc.showModels"><span class="dot"></span>Choose model</button>
@@ -585,6 +597,7 @@ export function renderChatApp(snapshot: WebviewSnapshot): string {
             ? `<div class="empty-state"><p class="empty-copy">Couldn’t start Pi for this workspace.</p><div class="button-row compact"><button type="button" data-command="piRpcInternal.restart">Try again</button><button type="button" data-command="piRpcInternal.showLogs">Show logs</button></div></div>`
             : renderMessages(snapshot)
       }</main>
+      <button type="button" id="jump-latest" class="jump-latest" title="Jump to latest" aria-label="Jump to latest message" hidden>↓</button>
 
       <section class="composer-dock" aria-labelledby="composer-heading">
         <h2 id="composer-heading" class="visually-hidden">Message Pi</h2>

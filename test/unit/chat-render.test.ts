@@ -293,3 +293,22 @@ test('code blocks include Insert / New file / Copy actions and a data-lang', () 
   assert.match(html, /class="code-btn code-newfile"/);
   assert.match(html, /class="code-btn code-copy"/);
 });
+
+test('long tool result is clamped with a Show more toggle; short is not', () => {
+  const long = Array.from({ length: 40 }, (_, i) => `line ${i}`).join('\n');
+  const html = renderChatApp(
+    snapshot({ messages: [{ id: 'r', role: 'toolResult', text: long, attachments: [] }] })
+  );
+  assert.match(html, /class="clampable"/);
+  assert.match(html, /class="code-showmore">Show more/);
+  const shortHtml = renderChatApp(
+    snapshot({ messages: [{ id: 'r2', role: 'toolResult', text: 'index.ts', attachments: [] }] })
+  );
+  assert.doesNotMatch(shortHtml, /clampable/);
+});
+
+test('More menu offers Copy as Markdown; layout has a jump-to-latest button', () => {
+  const html = renderChatApp(snapshot());
+  assert.match(html, /data-command="piRpcInternal.copyConversationMarkdown"/);
+  assert.match(html, /id="jump-latest"/);
+});

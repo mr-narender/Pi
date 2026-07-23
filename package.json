@@ -2,7 +2,7 @@
   "name": "pi",
   "displayName": "Pi – this one is (y)ours",
   "description": "An unofficial, personal VS Code chat UI for the Pi coding agent (pi.dev). Not affiliated with pi.dev — shared for anyone who wants it.",
-  "version": "0.0.62",
+  "version": "0.0.63",
   "publisher": "mr-narender",
   "license": "MIT",
   "private": true,
@@ -608,6 +608,11 @@
         "title": "Show Logs",
         "category": "Pi",
         "icon": "$(output)"
+      },
+      {
+        "command": "piRpcInternal.copyConversationMarkdown",
+        "title": "Copy Conversation as Markdown",
+        "category": "Pi"
       }
     ],
     "configuration": {

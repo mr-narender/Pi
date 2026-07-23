@@ -92,6 +92,33 @@ pre {
   display: grid;
   gap: 16px;
   padding: 16px;
+  position: relative;
+}
+
+/* #6 — jump-to-latest floating button. */
+.jump-latest {
+  position: absolute;
+  right: 18px;
+  bottom: 96px;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid var(--vscode-panel-border);
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  color: var(--vscode-foreground);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  font-size: 15px;
+  line-height: 1;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  z-index: 6;
+}
+.jump-latest:hover {
+  border-color: var(--pi-tool-accent, var(--vscode-focusBorder));
+}
+.jump-latest[hidden] {
+  display: none;
 }
 
 .chat-header,
@@ -831,6 +858,43 @@ button.ghost:hover,
 }
 #messages .code-copy.is-copied {
   color: var(--vscode-charts-green, #57c7a0);
+}
+
+/* #7 — clamp long tool/result output with a Show more toggle. */
+#messages .clampable .clamp-body {
+  position: relative;
+  max-height: 15em;
+  overflow: hidden;
+}
+#messages .clampable .clamp-body::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2.4em;
+  background: linear-gradient(to bottom, transparent, var(--vscode-editor-background, #1e1e1e));
+  pointer-events: none;
+}
+#messages .clampable.expanded .clamp-body {
+  max-height: none;
+  overflow: visible;
+}
+#messages .clampable.expanded .clamp-body::after {
+  display: none;
+}
+#messages .code-showmore {
+  margin-top: 4px;
+  border: none;
+  background: transparent;
+  color: var(--pi-tool-accent, var(--vscode-textLink-foreground));
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 2px 0;
+}
+#messages .code-showmore:hover {
+  text-decoration: underline;
 }
 #messages .code-block {
   margin: 0;

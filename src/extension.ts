@@ -1218,6 +1218,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     logger.show();
   });
 
+  registrations.set('piRpcInternal.copyConversationMarkdown', async () => {
+    const result = chatTabs.getActiveConversationMarkdown();
+    if (!result) {
+      void vscode.window.showInformationMessage('Pi: open a chat to copy it.');
+      return;
+    }
+    await vscode.env.clipboard.writeText(result.markdown);
+    void vscode.window.showInformationMessage('Pi: conversation copied as Markdown.');
+  });
+
   registrations.set('piRpcInternal.showHealth', async () => {
     const controller = registry.getActive();
     const health = createRedactedDiagnosticsExport(logger, controller);

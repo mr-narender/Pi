@@ -329,9 +329,32 @@ function render(snapshot: WebviewSnapshot): void {
 
   document.getElementById(PREVIEW_DIALOG_ID)?.addEventListener('keydown', handlePreviewKeydown);
 
-  document.getElementById('messages')?.addEventListener('scroll', persistViewState, {
-    passive: true,
-  });
+  // #7 — clamp toggle for long tool/result output.
+  for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>('.code-showmore'))) {
+    button.addEventListener('click', () => {
+      const wrap = button.closest('.clampable');
+      const expanded = wrap?.classList.toggle('expanded') ?? false;
+      button.textContent = expanded ? 'Show less' : 'Show more';
+    });
+  }
+
+  const messagesEl = document.getElementById('messages');
+  messagesEl?.addEventListener('scroll', persistViewState, { passive: true });
+
+  // #6 — jump-to-latest button appears when scrolled up.
+  const jumpBtn = document.getElementById('jump-latest') as HTMLButtonElement | null;
+  if (messagesEl && jumpBtn) {
+    const updateJump = (): void => {
+      const distance = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight;
+      jumpBtn.hidden = distance < 120;
+    };
+    messagesEl.addEventListener('scroll', updateJump, { passive: true });
+    jumpBtn.addEventListener('click', () => {
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+      jumpBtn.hidden = true;
+    });
+    updateJump();
+  }
 
   applyScrollAndPaging(snapshot, scrollMetrics);
   applyFocus();

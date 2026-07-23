@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.63
+
+- #2 (partial) - Copy conversation as Markdown: More menu -> "Copy as Markdown" (and command "Pi: Copy Conversation as Markdown") copies the whole transcript (user/agent/thinking/tool/result) as clean Markdown to the clipboard.
+- #6 - Jump to latest: a floating button appears when you scroll up in a chat; click it to snap back to the newest message.
+- #7 - Long tool/result output is clamped (~15em) with a "Show more"/"Show less" toggle, so big logs and package lists don't dominate the transcript.
+
 ## 0.0.62
 
 - Feature #1 - Apply code to the editor. Every fenced code block now has Insert / New file / Copy actions:
