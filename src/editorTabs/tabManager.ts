@@ -22,6 +22,7 @@ import type { WebviewSnapshot } from '../state/types';
 import { renderChatWebviewHtml } from '../webview/html';
 import {
   CHAT_EDITOR_VIEW_TYPE,
+  CHAT_URI_SCHEME,
   buildChatUri,
   chatTargetSessionKey,
   parseChatUri,
@@ -31,6 +32,7 @@ import {
 } from './uri';
 import { ChatTabStateCache, toPersistedChatSnapshot } from './sessionCache';
 import type { ChatEditorDocument } from './document';
+import { vscodeLanguageId } from './languageId';
 
 const IMAGE_MIME_BY_EXTENSION: Record<string, string> = {
   '.png': 'image/png',
@@ -222,6 +224,51 @@ export class ChatTabManager implements vscode.Disposable {
     for (const controller of registry.list()) {
       this.trackController(controller);
     }
+    // Remember the last real text editor so "Insert at cursor" targets the code,
+    // not the chat webview (which isn't a text editor).
+    this.lastTextEditor = this.pickTextEditor(vscode.window.activeTextEditor);
+    this.controllerSubscriptions.push(
+      vscode.window.onDidChangeActiveTextEditor((editor) => {
+        const real = this.pickTextEditor(editor);
+        if (real) {
+          this.lastTextEditor = real;
+        }
+      })
+    );
+  }
+
+  private lastTextEditor: vscode.TextEditor | undefined;
+
+  private pickTextEditor(editor: vscode.TextEditor | undefined): vscode.TextEditor | undefined {
+    return editor && editor.document.uri.scheme !== CHAT_URI_SCHEME ? editor : undefined;
+  }
+
+  /** Replace the selection (or insert at the cursor) in the last real editor. */
+  private async insertCodeIntoEditor(text: string): Promise<void> {
+    const editor = this.pickTextEditor(vscode.window.activeTextEditor) ?? this.lastTextEditor;
+    if (!editor) {
+      await this.openCodeInNewFile(text, undefined);
+      return;
+    }
+    try {
+      const shown = await vscode.window.showTextDocument(editor.document, {
+        viewColumn: editor.viewColumn,
+        preserveFocus: false,
+      });
+      await shown.edit((builder) => builder.replace(shown.selection, text));
+    } catch {
+      // The tracked editor may have been closed; fall back to a fresh file.
+      await this.openCodeInNewFile(text, undefined);
+    }
+  }
+
+  /** Open the code in a new untitled document with the right language. */
+  private async openCodeInNewFile(text: string, language?: string): Promise<void> {
+    const document = await vscode.workspace.openTextDocument({
+      content: text,
+      language: vscodeLanguageId(language),
+    });
+    await vscode.window.showTextDocument(document, { preview: false });
   }
 
   public dispose(): void {
@@ -615,6 +662,12 @@ export class ChatTabManager implements vscode.Disposable {
     switch (parsed.type) {
       case 'loadOlder':
         await this.revealOlderMessages(host.resource);
+        return;
+      case 'insertCode':
+        await this.insertCodeIntoEditor(parsed.text);
+        return;
+      case 'newFileFromCode':
+        await this.openCodeInNewFile(parsed.text, parsed.language);
         return;
       case 'requestSend':
         await this.handleRequestSend(host.resource, parsed.command);

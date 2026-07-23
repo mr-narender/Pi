@@ -182,3 +182,17 @@ test('createWebviewSnapshot maps Pi content blocks into structured message block
   assert.equal(blocks?.[1] && 'name' in blocks[1] ? blocks[1].name : undefined, 'bash');
   assert.equal(blocks?.[2]?.kind, 'text');
 });
+
+test('parseWebviewMessage accepts insertCode and newFileFromCode with language', () => {
+  assert.deepEqual(parseWebviewMessage({ type: 'insertCode', text: 'x=1', language: 'py' }), {
+    type: 'insertCode',
+    text: 'x=1',
+    language: 'py',
+  });
+  assert.deepEqual(parseWebviewMessage({ type: 'newFileFromCode', text: 'a' }), {
+    type: 'newFileFromCode',
+    text: 'a',
+    language: undefined,
+  });
+  assert.equal(parseWebviewMessage({ type: 'insertCode' }), undefined); // missing text
+});

@@ -169,7 +169,7 @@ test('renderRichText formats fenced code blocks and inline code', () => {
   const html = renderRichText('before\n```ts\nconst x = 1;\n```\nafter `inline` end');
   assert.match(html, /class="code-wrap"/);
   assert.match(html, /class="code-lang-name">ts</); // language label
-  assert.match(html, /class="code-copy"/); // copy button
+  assert.match(html, /code-copy"/); // copy button
   assert.match(html, /const x = 1;/);
   assert.match(html, /class="inline-code">inline<\/code>/);
   assert.match(html, /<p class="msg-para">before/);
@@ -272,4 +272,24 @@ test('renderRichText renders **bold** as <strong> and never shows literal ** mar
   assert.match(html, /<strong>auth<\/strong>/);
   assert.match(html, /<strong>isolated<\/strong>/);
   assert.doesNotMatch(html, /\*\*/); // no literal asterisks left
+});
+
+test('code blocks include Insert / New file / Copy actions and a data-lang', () => {
+  const html = renderChatApp(
+    snapshot({
+      messages: [
+        {
+          id: 'm1',
+          role: 'assistant',
+          text: 'x',
+          blocks: [{ kind: 'text', text: 'run:\n```ts\nconst x = 1;\n```' }],
+          attachments: [],
+        },
+      ],
+    })
+  );
+  assert.match(html, /class="code-wrap" data-lang="ts"/);
+  assert.match(html, /class="code-btn code-insert"/);
+  assert.match(html, /class="code-btn code-newfile"/);
+  assert.match(html, /class="code-btn code-copy"/);
 });

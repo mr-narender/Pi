@@ -258,7 +258,7 @@ export function renderRichText(raw: string): string {
         ? `<span class="code-lang-name">${escapeHtml(language)}</span>`
         : '<span class="code-lang-spacer"></span>';
       out.push(
-        `<div class="code-wrap"><div class="code-lang">${langSlot}<button type="button" class="code-copy" aria-label="Copy code">Copy</button></div><pre class="code-block"><code>${escapeHtml(code.join('\n'))}</code></pre></div>`
+        `<div class="code-wrap" data-lang="${escapeHtml(language)}"><div class="code-lang">${langSlot}<div class="code-actions"><button type="button" class="code-btn code-insert" title="Insert at cursor in the active editor" aria-label="Insert code at cursor">Insert</button><button type="button" class="code-btn code-newfile" title="Open in a new file" aria-label="Open code in a new file">New file</button><button type="button" class="code-btn code-copy" aria-label="Copy code">Copy</button></div></div><pre class="code-block"><code>${escapeHtml(code.join('\n'))}</code></pre></div>`
       );
     } else {
       paragraph.push(lines[index] ?? '');

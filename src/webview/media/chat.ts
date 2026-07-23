@@ -285,6 +285,29 @@ function render(snapshot: WebviewSnapshot): void {
     });
   }
 
+  const codeTextAndLang = (button: HTMLButtonElement): { text: string; language: string } => {
+    const wrap = button.closest('.code-wrap');
+    return {
+      text: wrap?.querySelector('.code-block code')?.textContent ?? '',
+      language: wrap?.getAttribute('data-lang') ?? '',
+    };
+  };
+  for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>('.code-insert'))) {
+    button.addEventListener('click', () => {
+      const { text, language } = codeTextAndLang(button);
+      if (text) {
+        vscode.postMessage({ type: 'insertCode', text, language });
+      }
+    });
+  }
+  for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>('.code-newfile'))) {
+    button.addEventListener('click', () => {
+      const { text, language } = codeTextAndLang(button);
+      if (text) {
+        vscode.postMessage({ type: 'newFileFromCode', text, language });
+      }
+    });
+  }
   for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>('.code-copy'))) {
     button.addEventListener('click', () => {
       const code = button.closest('.code-wrap')?.querySelector('.code-block code');

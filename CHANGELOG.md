@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.0.62
+
+- Feature #1 - Apply code to the editor. Every fenced code block now has Insert / New file / Copy actions:
+  - Insert: replaces the selection (or inserts at the cursor) in the last active text editor; falls back to a new file if there's no editor.
+  - New file: opens the code in a new untitled document with the correct language (fence -> VS Code languageId mapping).
+  - Copy: unchanged.
+- Tracks the last real text editor (ignoring the chat webview) so Insert targets your code, not the chat.
+
 ## 0.0.61
 
 - Fix "Maximum call stack size exceeded" (protocol fault) when resuming a large session. The RPC envelope validator (isJsonValue) walked the response payload recursively; a big session returns a deeply-nested message/entry tree, which overflowed the call stack and killed the transport. isJsonValue is now iterative (explicit stack), so payloads of any depth validate without overflowing. Large sessions resume correctly.

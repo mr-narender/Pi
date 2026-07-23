@@ -802,7 +802,13 @@ button.ghost:hover,
   letter-spacing: 0.08em;
   opacity: 0.6;
 }
-#messages .code-copy {
+#messages .code-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+#messages .code-copy,
+#messages .code-btn {
   border: 1px solid transparent;
   background: transparent;
   color: var(--vscode-descriptionForeground, var(--vscode-foreground));
@@ -814,9 +820,14 @@ button.ghost:hover,
   border-radius: 6px;
   cursor: pointer;
 }
-#messages .code-copy:hover {
+#messages .code-copy:hover,
+#messages .code-btn:hover {
   color: var(--vscode-foreground);
   border-color: var(--vscode-panel-border);
+}
+#messages .code-insert:hover {
+  color: var(--pi-tool-accent, var(--vscode-foreground));
+  border-color: var(--pi-tool-accent, var(--vscode-panel-border));
 }
 #messages .code-copy.is-copied {
   color: var(--vscode-charts-green, #57c7a0);
