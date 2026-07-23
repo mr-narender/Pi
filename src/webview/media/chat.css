@@ -70,7 +70,7 @@ pre {
   padding: 12px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  background: var(--vscode-textCodeBlock-background, transparent);
+  background: transparent;
   border: 1px solid var(--vscode-panel-border);
 }
 
@@ -1010,7 +1010,10 @@ button.ghost:hover,
   margin-top: 6px;
   line-height: 1.6;
 }
-#messages .tl-card .code-block {
+/* Tool args + tool/result output: monospace text on the transparent card —
+   never a filled code box. */
+#messages .tl-card .code-block,
+#messages .tl-card .code-block code {
   margin: 6px 0 0;
   padding: 0;
   background: transparent;

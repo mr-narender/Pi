@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.53
+
+- Tool args and tool/result output are now guaranteed transparent (no code-block background). Removed the leftover fill from the global pre rule so no bare code gets a background; only the answer's fenced code keeps the surface you chose. Tool/result text sits directly on the transparent card.
+
 ## 0.0.52
 
 - Fix: standalone tool results now follow the same card pattern. Pi emits tool results (and bash executions) as SEPARATE messages with role "toolResult"/"bashExecution" - not as content blocks inside the assistant message - so they were rendering as a plain block with the raw "toolResult" label. They now render as a proper Result card (icon + "Result" label, rounded border, collapsible, monospace body) matching Thinking/Tool/Answer. The raw role label is no longer shown as a heading.
