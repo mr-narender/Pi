@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.55
+
+- Loading spinner when opening a session: resuming now shows a "Loading chat…" spinner while the transcript is fetched, instead of a blank pane, so it's clear the chat is still loading.
+- Chat text now respects the editor's configured font family (message text, thinking, response, user message) - matching your editor font.
+- (Thinking text remains italic.) Tool/Result accent color options are provided as a browser mockup to choose from (docs/design/chat-accent-options.html).
+
 ## 0.0.54
 
 - Fenced code block spacing fixed: my tool-args padding rule was also flattening the answer's fenced code, so it looked cramped. Real fenced code now keeps its padded, spaced block (padding + 12px margin around it).

@@ -443,7 +443,10 @@ export class SessionController implements vscode.Disposable {
       this.addDiagnostic('info', 'Switch session cancelled');
       return result;
     }
-    this.state = resetControllerProjection(this.state);
+    // Show the loading state while the transcript is fetched: clear the old
+    // projection and mark the connection as handshaking so the webview renders
+    // a spinner instead of an empty transcript during the reconcile.
+    this.state = { ...resetControllerProjection(this.state), connectionState: 'handshaking' };
     this.fire();
     await this.reconcile();
     return result;

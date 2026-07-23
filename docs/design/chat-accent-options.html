@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pi chat — tool/result accent options</title>
+    <style>
+      :root {
+        --bg: #1e1e1e;
+        --fg: #e8e8e8;
+        --dim: #9aa0a6;
+        --border: #3a3a3a;
+        --border-soft: #2d2d2d;
+        --green: #57c7a0;
+        --mono: 'SF Mono', ui-monospace, Menlo, Consolas, monospace;
+        --sans: -apple-system, 'Segoe UI', system-ui, sans-serif;
+        /* the accent under test (changed per option) */
+        --accent: #57a6ff;
+      }
+      /* accent palettes */
+      body[data-a='blue'] {
+        --accent: #57a6ff;
+      }
+      body[data-a='teal'] {
+        --accent: #4ec9b0;
+      }
+      body[data-a='violet'] {
+        --accent: #c99bf0;
+      }
+      body[data-a='slate'] {
+        --accent: #93a4b8;
+      } /* neutral, no strong hue */
+      body[data-a='amber'] {
+        --accent: #e0a458;
+      }
+      body[data-a='rose'] {
+        --accent: #e5799b;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--fg);
+        font-family: var(--sans);
+        font-size: 13px;
+        line-height: 1.6;
+      }
+      header {
+        border-bottom: 1px solid var(--border-soft);
+        padding: 14px 20px;
+      }
+      h1 {
+        margin: 0 0 3px;
+        font-size: 15px;
+      }
+      .sub {
+        color: var(--dim);
+        font-size: 12px;
+      }
+      .swatches {
+        margin-top: 10px;
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .sw {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        border: 1px solid var(--border);
+        background: transparent;
+        color: var(--fg);
+        padding: 6px 12px 6px 9px;
+        border-radius: 999px;
+        font: inherit;
+        font-size: 12px;
+        cursor: pointer;
+      }
+      .sw i {
+        width: 11px;
+        height: 11px;
+        border-radius: 50%;
+        display: inline-block;
+      }
+      .sw[aria-pressed='true'] {
+        outline: 2px solid var(--accent);
+        outline-offset: 1px;
+      }
+      main {
+        max-width: 820px;
+        margin: 0 auto;
+        padding: 24px 20px 80px;
+      }
+      .role {
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.09em;
+        text-transform: uppercase;
+        color: var(--dim);
+        margin-bottom: 6px;
+      }
+      .icon {
+        width: 13px;
+        height: 13px;
+        flex: none;
+      }
+      /* timeline */
+      .timeline {
+        position: relative;
+        padding-left: 26px;
+      }
+      .timeline::before {
+        content: '';
+        position: absolute;
+        left: 6px;
+        top: 10px;
+        bottom: 10px;
+        width: 2px;
+        background: var(--border);
+      }
+      .node {
+        position: relative;
+        margin-bottom: 16px;
+      }
+      .marker {
+        position: absolute;
+        left: -24px;
+        top: 15px;
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: var(--bg);
+        border: 2px solid var(--dim);
+      }
+      .node.tool .marker,
+      .node.result .marker {
+        border-color: var(--accent);
+      }
+      .node.answer .marker {
+        border-color: var(--green);
+        background: var(--green);
+      }
+      .card {
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 11px 14px;
+      }
+      .head {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+      }
+      .label {
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+      }
+      .name {
+        font-family: var(--mono);
+        font-size: 11.5px;
+        color: var(--fg);
+        opacity: 0.8;
+      }
+      .args {
+        margin-top: 7px;
+        font-family: var(--mono);
+        font-size: 11.5px;
+        white-space: pre-wrap;
+      }
+      .node.think .icon,
+      .node.think .label {
+        color: var(--dim);
+      }
+      .node.think .body {
+        color: var(--dim);
+        font-style: italic;
+      } /* thinking = italic */
+      .node.tool .icon,
+      .node.tool .label,
+      .node.result .icon,
+      .node.result .label {
+        color: var(--accent);
+      }
+      .node.answer .icon,
+      .node.answer .label {
+        color: var(--green);
+      }
+    </style>
+  </head>
+  <body data-a="blue">
+    <header>
+      <h1>Tool / Result accent — pick a color</h1>
+      <div class="sub">
+        Only Tool &amp; Result use the accent (icon, label, marker). Thinking is dim italic; the
+        answer is green. Click a swatch. Your current build shows gold because your theme's link
+        color is gold — these are theme-independent options.
+      </div>
+      <div class="swatches" id="sw">
+        <button class="sw" data-a="blue" aria-pressed="true">
+          <i style="background: #57a6ff"></i>Blue
+        </button>
+        <button class="sw" data-a="teal" aria-pressed="false">
+          <i style="background: #4ec9b0"></i>Teal
+        </button>
+        <button class="sw" data-a="violet" aria-pressed="false">
+          <i style="background: #c99bf0"></i>Violet
+        </button>
+        <button class="sw" data-a="slate" aria-pressed="false">
+          <i style="background: #93a4b8"></i>Slate (neutral)
+        </button>
+        <button class="sw" data-a="amber" aria-pressed="false">
+          <i style="background: #e0a458"></i>Amber
+        </button>
+        <button class="sw" data-a="rose" aria-pressed="false">
+          <i style="background: #e5799b"></i>Rose
+        </button>
+      </div>
+    </header>
+
+    <main>
+      <div class="role">Pi</div>
+      <div class="timeline">
+        <div class="node think">
+          <span class="marker"></span>
+          <div class="card">
+            <div class="head" id="th"></div>
+            <div class="body" style="margin-top: 7px">
+              Extract parseToken(), inject the client, then add tests for expiry and malformed
+              input.
+            </div>
+          </div>
+        </div>
+        <div class="node tool">
+          <span class="marker"></span>
+          <div class="card">
+            <div class="head" id="to"></div>
+            <div class="args">{ "cmd": "ls src/auth" }</div>
+          </div>
+        </div>
+        <div class="node result">
+          <span class="marker"></span>
+          <div class="card">
+            <div class="head" id="re"></div>
+            <div class="args">index.ts\nclient.ts\ntoken.ts</div>
+          </div>
+        </div>
+        <div class="node answer">
+          <span class="marker"></span>
+          <div class="card">
+            <div class="head" id="an"></div>
+            <div class="body" style="margin-top: 7px">
+              Split parsing from the client and added table-driven tests.
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <script>
+      const IC = {
+        think:
+          '<svg class="icon" viewBox="0 0 16 16"><path d="M8 2.4l1.5 3.3 3.6.4-2.7 2.4.8 3.5L8 10.7 4.8 12.4l.8-3.5L2.9 6.5l3.6-.4z" fill="currentColor"/></svg>',
+        tool: '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 4.5L6.5 8l-3 3.5"/><path d="M8.5 11.5h4"/></svg>',
+        ok: '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.4l3 3 7-7.4"/></svg>',
+        pi: '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="8" r="2.6"/></svg>',
+      };
+      th.innerHTML = IC.think + '<span class="label">Thinking</span>';
+      to.innerHTML = IC.tool + '<span class="label">Tool</span><code class="name">bash</code>';
+      re.innerHTML = IC.ok + '<span class="label">Result</span><code class="name">bash</code>';
+      an.innerHTML = IC.pi + '<span class="label">Pi</span>';
+      document.getElementById('sw').addEventListener('click', (e) => {
+        const b = e.target.closest('.sw');
+        if (!b) return;
+        document.body.dataset.a = b.dataset.a;
+        document
+          .querySelectorAll('.sw')
+          .forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+      });
+    </script>
+  </body>
+</html>

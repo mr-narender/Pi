@@ -731,6 +731,15 @@ button.ghost:hover,
   word-break: break-word;
 }
 
+/* Chat text respects the editor's configured font family. */
+#messages .message-body,
+#messages .msg-para,
+#messages .tl-body,
+#messages .tl-think,
+#messages .message-user .message-body {
+  font-family: var(--vscode-editor-font-family, var(--vscode-font-family));
+}
+
 /* Agent: primary content \u2014 full width, full contrast, no container. */
 #messages .message-assistant,
 #messages .message-toolResult,
