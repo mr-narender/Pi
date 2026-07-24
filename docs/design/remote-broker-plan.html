@@ -3,11 +3,12 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Pi — Remote Broker (#11) Plan</title>
+    <title>Pi — Remote Broker (#11) · Architecture</title>
     <style>
       :root {
         --bg: #0d1117;
         --panel: #161b22;
+        --panel2: #0b0f14;
         --border: #30363d;
         --fg: #e6edf3;
         --muted: #9da7b3;
@@ -15,6 +16,7 @@
         --blue: #539bf5;
         --gold: #d7a300;
         --red: #e5534b;
+        --green: #57ab5a;
       }
       * {
         box-sizing: border-box;
@@ -30,17 +32,17 @@
           sans-serif;
       }
       .wrap {
-        max-width: 980px;
+        max-width: 1000px;
         margin: 0 auto;
-        padding: 40px 24px 80px;
+        padding: 40px 24px 90px;
       }
       h1 {
-        font-size: 28px;
+        font-size: 27px;
         margin: 0 0 4px;
       }
       .sub {
         color: var(--muted);
-        margin: 0 0 28px;
+        margin: 0 0 26px;
       }
       h2 {
         font-size: 18px;
@@ -57,28 +59,62 @@
       }
       code {
         font-family: ui-monospace, monospace;
-        background: #0b0f14;
+        background: var(--panel2);
         border: 1px solid var(--border);
         border-radius: 5px;
         padding: 1px 6px;
-        font-size: 0.9em;
+        font-size: 0.88em;
       }
-      /* diagram */
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.92em;
+      }
+      td,
+      th {
+        text-align: left;
+        padding: 9px 10px;
+        border-top: 1px solid var(--border);
+        vertical-align: top;
+      }
+      th {
+        color: var(--teal);
+      }
+      ol,
+      ul {
+        margin: 6px 0;
+        padding-left: 22px;
+      }
+      li {
+        margin: 5px 0;
+      }
+      .q {
+        color: var(--teal);
+        font-weight: 600;
+        margin: 0 0 2px;
+      }
+      .a {
+        margin: 0 0 14px;
+      }
       .diagram {
         display: flex;
         align-items: stretch;
         gap: 0;
         flex-wrap: wrap;
-        margin: 8px 0;
+        margin: 6px 0;
       }
       .node {
-        flex: 1 1 200px;
-        background: #0b0f14;
+        flex: 1 1 190px;
+        background: var(--panel2);
         border: 1px solid var(--border);
         border-radius: 10px;
         padding: 14px;
         text-align: center;
-        min-width: 180px;
+        min-width: 170px;
+      }
+      .node.hub {
+        border-color: var(--teal);
+        box-shadow: 0 0 0 1px rgba(78, 201, 176, 0.3);
       }
       .node h3 {
         margin: 0 0 6px;
@@ -93,16 +129,22 @@
         align-items: center;
         justify-content: center;
         color: var(--teal);
-        font-size: 22px;
-        padding: 0 6px;
-        min-width: 40px;
+        font-size: 13px;
+        padding: 0 8px;
+        min-width: 78px;
+        text-align: center;
+        flex-direction: column;
+      }
+      .arrow small {
+        color: var(--muted);
+        font-size: 10px;
       }
       .pill {
         display: inline-block;
         font-size: 11px;
         padding: 2px 8px;
         border-radius: 999px;
-        margin: 2px 3px 0;
+        margin: 3px 3px 0;
       }
       .p-teal {
         background: rgba(78, 201, 176, 0.16);
@@ -120,322 +162,279 @@
         background: rgba(229, 83, 75, 0.16);
         color: var(--red);
       }
-      table {
-        width: 100%;
-        border-collapse: collapse;
-        font-size: 0.92em;
-      }
-      td,
-      th {
-        text-align: left;
-        padding: 8px 10px;
-        border-top: 1px solid var(--border);
-        vertical-align: top;
-      }
-      th {
-        color: var(--teal);
-      }
-      ol {
-        margin: 6px 0;
-        padding-left: 22px;
-      }
-      li {
-        margin: 5px 0;
+      .p-green {
+        background: rgba(87, 171, 90, 0.16);
+        color: var(--green);
       }
       .warn {
         border-left: 3px solid var(--gold);
         padding-left: 12px;
         color: #e8d59a;
       }
-      .role {
-        display: flex;
-        gap: 12px;
-        flex-wrap: wrap;
+      .good {
+        border-left: 3px solid var(--green);
+        padding-left: 12px;
+        color: #a6e0ab;
       }
-      .role > div {
-        flex: 1 1 260px;
-        background: #0b0f14;
+      .mono {
+        font-family: ui-monospace, monospace;
+        font-size: 0.86em;
+        background: var(--panel2);
         border: 1px solid var(--border);
-        border-radius: 10px;
+        border-radius: 8px;
         padding: 12px 14px;
-      }
-      .step {
-        counter-reset: none;
+        white-space: pre-wrap;
+        line-height: 1.55;
+        color: var(--fg);
       }
     </style>
   </head>
   <body>
     <div class="wrap">
-      <h1>Remote Broker (#11) — how it would work</h1>
+      <h1>Remote Broker (#11) — architecture</h1>
       <p class="sub">
-        Drive or watch a Pi chat from your phone/tablet, securely, without exposing your machine.
-        This is a plan — not yet built.
+        Watch / drive your active Pi chat from a phone. Broker runs on
+        <b>slr-backend</b> (FastAPI), exposed at <b>pi.fromlab.work</b>. Plan — not yet built.
       </p>
 
-      <h2>The picture</h2>
+      <h2>Your questions, answered</h2>
+      <div class="card">
+        <p class="q">1 · Is this a WS connection from VS Code to an external URL?</p>
+        <p class="a">
+          <b>Yes.</b> The extension is a <b>client that dials OUT</b> to
+          <code>wss://pi.fromlab.work/host</code>. Nothing listens on the Mac; no inbound; works on
+          any network. The phone is also a client (<code>/view</code>). The broker on slr-backend is
+          the <b>hub</b> that relays between them. It never talks to Pi directly.
+        </p>
+        <p class="q">2 · How is security implemented?</p>
+        <p class="a">
+          Four independent layers — see “Security model” below. TLS everywhere, Cloudflare Access at
+          the edge, a host token that only the extension holds, and short-lived session-scoped
+          viewer tokens with a driver-lock.
+        </p>
+        <p class="q">3 · One-time code + URL — brute-force / cross-session hijack?</p>
+        <p class="a">
+          The URL is fixed and public; it grants nothing on its own. Each session gets a
+          <b>128-bit random id</b> (unguessable). The pairing code is
+          <b>single-use, 90-second TTL, bound to one session, rate-limited</b>, and (with Access on)
+          only your SSO identity can even reach the endpoint. Tokens are session-scoped, so a token
+          for one chat can never touch another. See “Anti-hijack” below.
+        </p>
+        <p class="q">4 · Runs on slr-backend — pattern reused?</p>
+        <p class="a">
+          <b>Yes.</b> slr-backend is FastAPI and already ships this exact shape in its
+          <code>heartbeat</code> app: WebSocket sessions authenticated via a
+          <code>session_token</code> query param, an in-memory <code>_rooms</code> dict (room =
+          session) with a lock, <code>secrets</code> tokens, and <code>verify_assertion</code> for
+          device auth. The broker is a new small app that copies this.
+        </p>
+      </div>
+
+      <h2>Architecture</h2>
       <div class="card">
         <div class="diagram">
           <div class="node">
-            <h3>📱 Phone / laptop</h3>
-            <div class="meta">Browser PWA<br />(spectator or driver)</div>
-            <div>
-              <span class="pill p-blue">token login</span
-              ><span class="pill p-teal">WebviewSnapshot</span>
-            </div>
+            <h3>🖥 VS Code (Mac)</h3>
+            <div class="meta">extension = <b>host client</b></div>
+            <span class="pill p-teal">outbound wss</span><span class="pill p-blue">host token</span>
           </div>
-          <div class="arrow">⇄</div>
-          <div class="node">
-            <h3>🔒 pi.fromlab.work</h3>
-            <div class="meta">Cloudflare Tunnel on the Mac<br />+ Cloudflare Access (slrinc)</div>
-            <div>
-              <span class="pill p-gold">wss://</span><span class="pill p-red">Access SSO</span>
-            </div>
+          <div class="arrow">
+            → publishes snapshot<br />← receives prompt<br /><small>outbound only</small>
           </div>
-          <div class="arrow">⇄</div>
-          <div class="node">
-            <h3>🧩 Extension broker</h3>
-            <div class="meta">WebSocket server<br />inside the extension host</div>
-            <div>
-              <span class="pill p-teal">reuses snapshot</span
-              ><span class="pill p-red">auth gate</span>
-            </div>
+          <div class="node hub">
+            <h3>🧩 Broker (slr-backend)</h3>
+            <div class="meta">FastAPI · rooms · relay</div>
+            <span class="pill p-teal">room = session</span
+            ><span class="pill p-red">auth + roles</span
+            ><span class="pill p-gold">Redis (multi-replica)</span>
           </div>
-          <div class="arrow">⇄</div>
+          <div class="arrow">
+            → pushes snapshot<br />← sends prompt<br /><small>driver only</small>
+          </div>
           <div class="node">
-            <h3>⚙️ Pi RPC</h3>
-            <div class="meta">pi --mode rpc<br />(already running per folder)</div>
+            <h3>📱 Phone (PWA)</h3>
+            <div class="meta">viewer / driver client</div>
+            <span class="pill p-blue">Access SSO</span
+            ><span class="pill p-green">pairing token</span>
           </div>
         </div>
         <p class="meta">
-          The broker is a thin bridge: it forwards the same <code>WebviewSnapshot</code> the desktop
-          chat already renders to remote clients, and relays their prompts back into the existing Pi
-          RPC controller. No new chat engine — it reuses everything.
+          Edge: <b>Cloudflare Tunnel → k8s nginx-ingress → broker Service</b>, gated by
+          <b>Cloudflare Access</b> — the same path already used by 15+
+          <code>fromlab.work</code> services (bitwarden, argocd, grafana…). Pi RPC stays entirely on
+          the Mac; only the already-rendered <code>WebviewSnapshot</code> leaves it (redacted).
         </p>
       </div>
 
-      <h2>Tunneling via fromlab.work — analysis &amp; recommendation ✅</h2>
+      <h2>Who dials whom (no inbound to the Mac)</h2>
       <div class="card">
-        <p>
-          <b>Finding:</b> <code>fromlab.work</code> is a Cloudflare zone you control. Services are
-          exposed by <b>Cloudflare Tunnel</b> (most → the k8s <code>fromlab.ingress-nginx</code>;
-          some run cloudflared <b>directly on the origin host</b>, e.g. the Synology NAS serves
-          immich/nas/onevault). Most hosts sit behind <b>Cloudflare Access</b> (Zero-Trust SSO).
-          <code>bitwarden.fromlab.work</code> → <code>172.64.80.1</code> (Cloudflare proxy).
-          <code>pi.fromlab.work</code> = <b>no DNS record yet</b> (free to claim).
-        </p>
-        <p>
-          <b>The broker runs on the Mac</b> (VS Code extension host), not in the cluster — so the
-          clean fit is a <b>named Cloudflare Tunnel on the Mac</b>, exactly like the NAS pattern:
-        </p>
-        <div class="diagram">
-          <div class="node">
-            <h3>Phone PWA</h3>
-            <div class="meta">Access SSO → app token</div>
-          </div>
-          <div class="arrow">→</div>
-          <div class="node">
-            <h3>Cloudflare edge</h3>
-            <div class="meta">pi.fromlab.work<br />Access policy (slrinc)</div>
-          </div>
-          <div class="arrow">→</div>
-          <div class="node">
-            <h3>cloudflared (Mac)</h3>
-            <div class="meta">ingress: pi.fromlab.work<br />→ http://localhost:PORT</div>
-          </div>
-          <div class="arrow">→</div>
-          <div class="node">
-            <h3>Broker</h3>
-            <div class="meta">WS server in extension host</div>
-          </div>
+        <table>
+          <tr>
+            <th>Link</th>
+            <th>Direction</th>
+            <th>Auth</th>
+          </tr>
+          <tr>
+            <td>Extension → Broker</td>
+            <td>Outbound <code>wss://pi.fromlab.work/host?session=&lt;id&gt;</code></td>
+            <td>Host token (Bitwarden vault) + Access service token</td>
+          </tr>
+          <tr>
+            <td>Phone → Broker</td>
+            <td>Outbound <code>wss://pi.fromlab.work/view?session=&lt;id&gt;</code></td>
+            <td>Access SSO cookie + viewer token (from pairing)</td>
+          </tr>
+          <tr>
+            <td>Broker ↔ Pi</td>
+            <td><b>Never.</b> Broker only relays; Pi is untouched on the Mac</td>
+            <td>—</td>
+          </tr>
+        </table>
+      </div>
+
+      <h2>Session + pairing flow</h2>
+      <div class="card">
+        <div class="mono">
+          1 VS Code: Pi: Start Remote Session 2 Extension → POST /session (host token) → broker
+          mints session_id = secrets.token_urlsafe(24) [192-bit] 3 Extension opens wss
+          /host?session=&lt;id&gt; and streams WebviewSnapshots up 4 Extension shows a QR + 6-digit
+          code (popover). Broker stored: code → session_id, single-use, TTL 90s 5 Phone: open
+          pi.fromlab.work → Cloudflare Access SSO (your email) → scan QR / type code 6 Phone → POST
+          /pair {code} → broker verifies (single-use, unexpired, rate-limited) → issues viewer JWT:
+          {sid, role:spectator, exp:+30m}, signed 7 Phone opens wss /view?session=&lt;id&gt; with
+          the viewer token → joins the room → live chat 8 Promote to driver: explicit tap → broker
+          grants driver-lock (only if free). Desktop can reclaim anytime. 9 Pi: Stop Remote Session
+          → room closed, all tokens invalidated, host socket dropped.
         </div>
+      </div>
+
+      <h2>Security model (four layers)</h2>
+      <div class="card">
+        <table>
+          <tr>
+            <th>Layer</th>
+            <th>What it stops</th>
+          </tr>
+          <tr>
+            <td><b>1 · TLS (wss) end-to-end</b></td>
+            <td>Eavesdropping / MITM. Cloudflare terminates TLS; tunnel to origin is encrypted.</td>
+          </tr>
+          <tr>
+            <td><b>2 · Cloudflare Access (edge SSO)</b></td>
+            <td>
+              Anyone who isn't <b>you</b> — the endpoint is invisible without a valid slrinc SSO
+              session. Blocks the internet before a request ever reaches the broker.
+            </td>
+          </tr>
+          <tr>
+            <td><b>3 · Host token</b></td>
+            <td>
+              Only the extension (holding the vault token) can publish snapshots for a session. A
+              viewer can never impersonate the host.
+            </td>
+          </tr>
+          <tr>
+            <td><b>4 · Viewer token + roles</b></td>
+            <td>
+              Session-scoped, signed, expiring. Spectator = read-only. Driver-lock = one writer.
+              Tool approvals still prompt inline. Host can revoke; stop = invalidate all.
+            </td>
+          </tr>
+        </table>
+      </div>
+
+      <h2>Anti-hijack / brute-force analysis</h2>
+      <div class="card">
+        <table>
+          <tr>
+            <th>Attack</th>
+            <th>Why it fails</th>
+          </tr>
+          <tr>
+            <td>Guess the URL</td>
+            <td>URL grants nothing. No session, no token → rejected at handshake.</td>
+          </tr>
+          <tr>
+            <td>Guess a session id</td>
+            <td>192-bit random (<code>secrets.token_urlsafe(24)</code>). Not brute-forceable.</td>
+          </tr>
+          <tr>
+            <td>Brute-force the 6-digit code</td>
+            <td>
+              Single-use + <b>90s TTL</b> + <b>rate limit</b> (e.g. 5 tries → lock the code). ≤
+              ~1e-5 chance in the window. Prefer the <b>QR</b> (long token, no typing) — code is the
+              fallback.
+            </td>
+          </tr>
+          <tr>
+            <td>Cross-session hijack</td>
+            <td>
+              Every token embeds its <code>sid</code> and is validated against the room. A token for
+              chat A is rejected by chat B. Rooms are isolated by the random id.
+            </td>
+          </tr>
+          <tr>
+            <td>Replay a captured token</td>
+            <td>
+              Short exp (30m), bound to device on first use, revocable; session end invalidates all.
+              Access cookie also required.
+            </td>
+          </tr>
+          <tr>
+            <td>Reach the broker at all</td>
+            <td>
+              Cloudflare Access (layer 2) already blocked non-you identities before any of the
+              above.
+            </td>
+          </tr>
+        </table>
+        <p class="good">
+          Net: an attacker needs a valid slrinc SSO session <b>and</b> a 192-bit session id
+          <b>and</b> an unexpired single-use pairing code — practically impossible.
+        </p>
+      </div>
+
+      <h2>slr-backend fit (reused pattern)</h2>
+      <div class="card">
+        <table>
+          <tr>
+            <th>Need</th>
+            <th>Already in slr-backend heartbeat</th>
+          </tr>
+          <tr>
+            <td>WS auth</td>
+            <td><code>session_token</code> query-param authenticated sockets</td>
+          </tr>
+          <tr>
+            <td>Rooms / broadcast</td>
+            <td>
+              <code>_rooms: dict[str, Room]</code> + <code>asyncio.Lock</code>, drop-when-empty
+            </td>
+          </tr>
+          <tr>
+            <td>Secure tokens</td>
+            <td><code>secrets.token_bytes / token_urlsafe</code></td>
+          </tr>
+          <tr>
+            <td>Device attestation</td>
+            <td><code>verify_assertion</code></td>
+          </tr>
+          <tr>
+            <td>Deploy + expose</td>
+            <td>
+              FastAPI app → k8s Service → Ingress → Cloudflare Tunnel + Access on
+              <code>*.fromlab.work</code>
+            </td>
+          </tr>
+        </table>
         <p class="meta">
-          Cloudflare Tunnel + Access both pass WebSockets (wss), so the live snapshot stream works
-          unchanged.
-        </p>
-        <table>
-          <tr>
-            <th>Why this fits</th>
-            <th>Detail</th>
-          </tr>
-          <tr>
-            <td>Reuses your infra</td>
-            <td>
-              Same Cloudflare zone + Access org (slrinc) already used by 15+ fromlab.work services.
-              cloudflared already installed (v2026.7.3).
-            </td>
-          </tr>
-          <tr>
-            <td>No exposure</td>
-            <td>Outbound tunnel only — no port-forward, works on any network / dynamic IP.</td>
-          </tr>
-          <tr>
-            <td>Edge auth for free</td>
-            <td>
-              Cloudflare Access gates the hostname → only <b>your</b> authenticated identity reaches
-              the Mac at all, before our own token/role logic even runs.
-            </td>
-          </tr>
-          <tr>
-            <td>Availability</td>
-            <td>
-              Up only when Mac + VS Code + tunnel run — which is exactly when you'd want to drive
-              your active session. Fine.
-            </td>
-          </tr>
-        </table>
-      </div>
-
-      <h2>One-time setup (on the Mac)</h2>
-      <div class="card">
-        <ol>
-          <li>
-            <code>cloudflared tunnel login</code> (browser: pick the <code>fromlab.work</code> zone)
-          </li>
-          <li>
-            <code>cloudflared tunnel create pi-mac</code> → writes
-            <code>~/.cloudflared/&lt;id&gt;.json</code>
-          </li>
-          <li>
-            Config ingress: <code>pi.fromlab.work → http://localhost:PORT</code> (the broker's port)
-          </li>
-          <li>
-            <code>cloudflared tunnel route dns pi-mac pi.fromlab.work</code> (creates the CNAME)
-          </li>
-          <li>
-            Cloudflare Access → add an application for <code>pi.fromlab.work</code>, policy = your
-            email/slrinc org
-          </li>
-          <li>
-            The extension starts/stops the tunnel + broker together via
-            <code>Pi: Start/Stop Remote Session</code>
-          </li>
-        </ol>
-        <p class="warn">
-          ⚠ Steps 1–2 &amp; 5 are one-time and need your Cloudflare login (interactive). The
-          extension automates 3, 4, 6 thereafter. Secrets (tunnel creds, Access service token) go in
-          the Bitwarden vault per your secret-locator rule.
+          New code is small: a <code>pi_broker</code> app with <code>/session</code>,
+          <code>/pair</code>, <code>/host</code> (ws), <code>/view</code> (ws); Redis for the room
+          registry + token store across replicas.
         </p>
       </div>
 
-      <h2>What you'd actually do</h2>
-      <div class="card">
-        <ol class="step">
-          <li>
-            In VS Code: <code>Pi: Start Remote Session</code> → the broker starts + opens a secure
-            tunnel.
-          </li>
-          <li>You get a URL + a one-time <b>pairing code</b> (QR shown in a popover).</li>
-          <li>
-            Open the URL on your phone, enter the code → a token is minted (scoped, expiring).
-          </li>
-          <li>You now see the live chat. Pick a role:</li>
-        </ol>
-        <div class="role">
-          <div>
-            <b>👁 Spectator</b><br />Read-only. Sees messages stream live, tool cards, diffs. Cannot
-            send. Good for watching a long task from the couch.
-          </div>
-          <div>
-            <b>🎮 Driver</b><br />Can send prompts, stop, approve tools. Exactly one driver at a
-            time (lock). Desktop can reclaim control instantly.
-          </div>
-        </div>
-      </div>
-
-      <h2>Message flow (per prompt)</h2>
-      <div class="card">
-        <table>
-          <tr>
-            <th>#</th>
-            <th>Step</th>
-            <th>Channel</th>
-          </tr>
-          <tr>
-            <td>1</td>
-            <td>Phone (driver) sends <code>{prompt:"..."}</code></td>
-            <td>wss → broker</td>
-          </tr>
-          <tr>
-            <td>2</td>
-            <td>Broker checks token + driver-lock, calls <code>controller.prompt()</code></td>
-            <td>in-process</td>
-          </tr>
-          <tr>
-            <td>3</td>
-            <td>Pi streams <code>message_update</code> events</td>
-            <td>Pi RPC → controller</td>
-          </tr>
-          <tr>
-            <td>4</td>
-            <td>Controller fires a new <code>WebviewSnapshot</code></td>
-            <td>in-process</td>
-          </tr>
-          <tr>
-            <td>5</td>
-            <td>Broker broadcasts the snapshot to desktop + all remote clients</td>
-            <td>broker → wss</td>
-          </tr>
-          <tr>
-            <td>6</td>
-            <td>Phone renders the same chat UI (typewriter and all)</td>
-            <td>client</td>
-          </tr>
-        </table>
-      </div>
-
-      <h2>Security model (the hard part)</h2>
-      <div class="card">
-        <table>
-          <tr>
-            <th>Concern</th>
-            <th>Mitigation</th>
-          </tr>
-          <tr>
-            <td>Exposure</td>
-            <td>
-              No open ports. Outbound tunnel only (VS Code Tunnel uses your GitHub identity, or
-              Cloudflare/ngrok).
-            </td>
-          </tr>
-          <tr>
-            <td>Auth</td>
-            <td>
-              One-time pairing code → short-lived signed token (JWT). Per-device revoke. Tokens
-              expire on session end.
-            </td>
-          </tr>
-          <tr>
-            <td>Least privilege</td>
-            <td>
-              Spectator can't write. Driver-lock prevents two people fighting. Tool approvals still
-              prompt (inline Allow/Deny).
-            </td>
-          </tr>
-          <tr>
-            <td>Scope</td>
-            <td>
-              Broker only exposes the chat protocol — never a shell, never the filesystem directly.
-            </td>
-          </tr>
-          <tr>
-            <td>Redaction</td>
-            <td>Reuses the existing log redactor for anything leaving the machine.</td>
-          </tr>
-          <tr>
-            <td>Kill switch</td>
-            <td>
-              Status bar item + <code>Pi: Stop Remote Session</code> tears down tunnel + tokens
-              instantly.
-            </td>
-          </tr>
-        </table>
-        <p class="warn">
-          ⚠ This is the reason it's the biggest item: a networked, authenticated, remotely-drivable
-          coding agent needs its threat model right. Ship spectator-only first, add driver later.
-        </p>
-      </div>
-
-      <h2>Phased build</h2>
+      <h2>Build phases</h2>
       <div class="card">
         <table>
           <tr>
@@ -446,31 +445,33 @@
           <tr>
             <td>0 · Spike</td>
             <td>
-              Local WS server in extension, broadcast snapshot to a browser tab on localhost (no
-              tunnel/auth)
+              Broker app locally; extension dials out; relay one snapshot to a browser tab. No
+              Access, no pairing.
             </td>
             <td>S</td>
           </tr>
           <tr>
             <td>1 · Spectator</td>
-            <td>Tunnel + pairing code + token; read-only live view; kill switch</td>
+            <td>
+              Deploy to slr-backend + <code>pi.fromlab.work</code> + Access; session id + QR/code
+              pairing; read-only live view; kill switch.
+            </td>
             <td>M</td>
           </tr>
           <tr>
             <td>2 · Driver</td>
-            <td>Driver-lock, send/stop/approve, reclaim control, per-device revoke</td>
+            <td>Driver-lock, send/stop/approve, reclaim, per-device revoke, rate limits.</td>
             <td>M</td>
           </tr>
           <tr>
             <td>3 · Polish</td>
-            <td>PWA install, QR pairing, mobile-tuned layout, reconnect</td>
+            <td>PWA install, mobile layout, reconnect/backpressure, multi-replica via Redis.</td>
             <td>M</td>
           </tr>
         </table>
-        <p class="meta">
-          Reuses: <code>WebviewSnapshot</code>, the render bundle, the inbound message parser, the
-          redactor, tool-approval UI. New: WS server, tunnel mgmt, token auth, role/lock, mobile
-          shell.
+        <p class="warn">
+          Ship <b>spectator-first</b>. A remotely-drivable coding agent needs its threat model
+          proven read-only before it can write.
         </p>
       </div>
     </div>
