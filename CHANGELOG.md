@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.95
+
+- Auto-compact + resume: new setting piRpc.autoCompactThreshold (default 70). When context usage crosses the threshold after a turn, Pi compacts the conversation automatically and the chat resumes on the compacted context - no manual compaction, no hitting the limit mid-task. Set 0 to disable (Pi still auto-compacts when nearly full). After any compaction, the transcript and state are re-synced for a clean resume.
+
 ## 0.0.94
 
 - Layout polish (UI/UX pass): added top breathing room so the first message no longer hugs the editor edge; the Continue button now sits inline in the single controls row (model, usage, continue, settings, more) instead of wasting its own line; consistent 8px spacing rhythm in the toolbar.

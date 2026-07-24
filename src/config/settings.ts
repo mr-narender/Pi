@@ -25,6 +25,7 @@ export interface PiRpcSettings {
   chatFontSize: number;
   notifyOnComplete: boolean;
   typewriterSpeed: string;
+  autoCompactThreshold: number;
 }
 
 export function getSettings(): PiRpcSettings {
@@ -49,6 +50,7 @@ export function getSettings(): PiRpcSettings {
     chatFontSize: config.get<number>('chatFontSize', 0),
     notifyOnComplete: config.get<boolean>('notifyOnComplete', true),
     typewriterSpeed: config.get<string>('typewriterSpeed', 'normal'),
+    autoCompactThreshold: config.get<number>('autoCompactThreshold', 70),
     restartOnCrash: config.get<boolean>('restartOnCrash', true),
     maxRestartAttempts: config.get<number>('maxRestartAttempts', 3),
     telemetryEnabled: config.get<boolean>('telemetryEnabled', false),

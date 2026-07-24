@@ -708,6 +708,53 @@ export class SessionController implements vscode.Disposable {
         /* best-effort resync; live state already rendered */
       });
     }
+    if (event.type === 'agent_settled') {
+      void this.maybeAutoCompact().catch(() => {
+        /* best-effort; never let auto-compaction break the turn */
+      });
+    }
+    // Resilience: after a compaction (auto or manual), resync state + transcript
+    // so the chat resumes cleanly on the rebuilt context.
+    if (event.type === 'compaction_end') {
+      void this.refreshState().catch(() => {});
+      void this.refreshMessages().catch(() => {});
+    }
+  }
+
+  private autoCompactInFlight = false;
+  /**
+   * Auto-compact once context usage crosses the configured threshold, then let
+   * the conversation continue on the compacted context. Pi has its own
+   * near-full auto-compaction; this triggers earlier at a user-chosen percent.
+   */
+  private async maybeAutoCompact(): Promise<void> {
+    const threshold = getSettings().autoCompactThreshold;
+    if (!threshold || threshold <= 0 || threshold >= 100) {
+      return;
+    }
+    if (this.autoCompactInFlight || this.state.state.isCompacting === true) {
+      return;
+    }
+    const stats = await this.requireClient()
+      .getSessionStats()
+      .catch(() => undefined);
+    const context =
+      stats && typeof stats.contextUsage === 'object' && stats.contextUsage !== null
+        ? (stats.contextUsage as JsonObject)
+        : undefined;
+    const percent = typeof context?.percent === 'number' ? context.percent : undefined;
+    if (percent === undefined || percent < threshold) {
+      return;
+    }
+    this.autoCompactInFlight = true;
+    try {
+      this.logger.info(`Auto-compacting: context ${percent}% >= ${threshold}% threshold`);
+      await this.compact();
+      await this.refreshState();
+      await this.refreshMessages();
+    } finally {
+      this.autoCompactInFlight = false;
+    }
   }
 
   private onExtensionUi(request: ExtensionUiRequest): void {
