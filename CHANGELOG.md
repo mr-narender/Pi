@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.93
+
+- Retry with model: the More menu now has "Retry with model…" - it opens the model picker and, if you choose a different model, re-sends your last message with it. (Picking the same model or cancelling does nothing; use "Retry last message" for a plain retry.)
+
 ## 0.0.92
 
 - Queue visibility: messages you queue while Pi is working (steering / follow-up) now show in a "Queued for Pi" tray above the composer, so you can see what is pending.

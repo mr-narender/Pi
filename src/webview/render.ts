@@ -786,6 +786,7 @@ function renderMoreMenu(_snapshot: WebviewSnapshot): string {
         <div class="menu-group">Session</div>
         <button type="button" class="menu-item cat-session" data-command="piRpc.renameSession"><span class="dot"></span>Rename chat</button>
         <button type="button" class="menu-item cat-session" data-command="piRpcInternal.retryLast"><span class="dot"></span>Retry last message</button>
+        <button type="button" class="menu-item cat-session" data-command="piRpcInternal.retryWithModel"><span class="dot"></span>Retry with model\u2026</button>
         <button type="button" class="menu-item cat-session" data-command="piRpcInternal.copyConversationMarkdown"><span class="dot"></span>Copy as Markdown</button>
         <button type="button" class="menu-item cat-session" data-command="piRpc.exportHtml"><span class="dot"></span>Export as HTML</button>
         <div class="menu-group">Model</div>

@@ -1360,6 +1360,28 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     await withController((controller) => controller.prompt('Continue.'), { requireTrust: true });
   });
 
+  const modelKeyOf = (controller: SessionController | undefined): string => {
+    const model = asRecord(controller?.snapshot.state.model);
+    return model ? `${asString(model.provider)}/${asString(model.id)}` : '';
+  };
+  registrations.set('piRpcInternal.retryWithModel', async () => {
+    const text = chatTabs.getLastUserPrompt();
+    if (!text) {
+      void vscode.window.showInformationMessage('Pi: no message to retry.');
+      return;
+    }
+    const before = modelKeyOf(activeController());
+    await vscode.commands.executeCommand('piRpc.showModels');
+    const after = modelKeyOf(activeController());
+    if (!after || before === after) {
+      void vscode.window.showInformationMessage(
+        'Model unchanged — not retried. Use “Retry last message” to resend.'
+      );
+      return;
+    }
+    await withController((controller) => controller.prompt(text), { requireTrust: true });
+  });
+
   registrations.set('piRpcInternal.retryLast', async () => {
     const text = chatTabs.getLastUserPrompt();
     if (!text) {
