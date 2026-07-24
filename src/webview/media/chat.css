@@ -1505,6 +1505,24 @@ button.ghost:hover,
 .model-chip:hover {
   background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.2));
 }
+/* #5 — usage chip (tokens / context% / cost). */
+.usage-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  border-radius: 999px;
+  color: var(--vscode-descriptionForeground, var(--vscode-foreground));
+  background: transparent;
+  border: 1px solid var(--vscode-panel-border);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.usage-chip:hover {
+  color: var(--vscode-foreground);
+  background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.2));
+}
 .model-chip .model-dot {
   width: 7px;
   height: 7px;

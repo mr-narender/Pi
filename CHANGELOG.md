@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.72
+
+- #5 Usage in the header: a compact chip next to the model shows context %, total tokens, and cost (e.g. "6% · 12k tok · $0.023"). Click it for the full session-stats breakdown. Hidden until stats are available.
+
 ## 0.0.71
 
 - Remove the confusing "Advanced" view. The "Pi: Toggle Advanced Mode" command, the piRpc.defaultViewMode setting, and the disconnect-screen "Show details" button are gone. Advanced mode had no visual effect in the current chat UI (it was a leftover from an earlier layout), so removing it simplifies the surface with no loss of functionality.

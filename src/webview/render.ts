@@ -1,5 +1,6 @@
 import type { WebviewSnapshot } from '../state/types';
 import { chipPrivacyLabel, summarizeChip, type PendingContextItem } from './composer';
+import { formatUsageChip } from './usageSummary';
 
 export const COMPOSER_FIELD_ID = 'composer-field';
 export const ATTACH_TRIGGER_ID = 'attach-trigger';
@@ -378,6 +379,19 @@ function sessionLabel(snapshot: WebviewSnapshot): string {
   return snapshot.sessionName ?? snapshot.sessionId ?? snapshot.sessionFile ?? 'No chat yet';
 }
 
+// #5 — compact tokens / context% / cost chip. Click opens full session stats.
+function renderUsageChip(snapshot: WebviewSnapshot): string {
+  const usage = snapshot.usage;
+  if (!usage) {
+    return '';
+  }
+  const label = formatUsageChip(usage);
+  if (!label) {
+    return '';
+  }
+  return `<button type="button" class="usage-chip" data-command="piRpc.showSessionStats" title="Session usage — click for details">${escapeHtml(label)}</button>`;
+}
+
 function modelLabel(snapshot: WebviewSnapshot): string {
   return snapshot.model?.provider && snapshot.model?.id
     ? `${snapshot.model.provider}/${snapshot.model.id}`
@@ -692,6 +706,7 @@ export function renderChatApp(snapshot: WebviewSnapshot): string {
         <div class="brand-controls">
           ${folderSelect}
           <button type="button" class="model-chip" data-command="piRpc.showModels" title="Choose model"><span class="model-dot"></span>${escapeHtml(modelLabel(snapshot))}</button>
+          ${renderUsageChip(snapshot)}
           ${renderMoreMenu(snapshot)}
         </div>
       </header>

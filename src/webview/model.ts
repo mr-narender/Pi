@@ -13,6 +13,7 @@ import type {
   WebviewSnapshot,
 } from '../state/types';
 import type { ChatUiMode, ComposerSessionState, PendingImageItem } from './composer';
+import { summarizeUsage } from './usageSummary';
 
 // Default number of trailing messages sent to the webview. The webview lazily
 // requests older batches on scroll-up, so we never eagerly ship a huge chat.
@@ -354,6 +355,7 @@ export function createWebviewSnapshot(
     model: state.state.model,
     thinkingLevel:
       typeof state.state.thinkingLevel === 'string' ? state.state.thinkingLevel : undefined,
+    usage: summarizeUsage(state.lastSessionStats),
     pendingContextItems: extra.composer.pendingContextItems,
     pendingImages: extra.composer.pendingImages.map(normalizePendingImage),
     focus: extra.composer.focus,

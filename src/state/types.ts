@@ -210,6 +210,8 @@ export interface WebviewSnapshot {
   widgets: WidgetState[];
   model?: ModelInfo | null;
   thinkingLevel?: string;
+  // Compact usage summary for the header (tokens / context% / cost).
+  usage?: { totalTokens: number; contextPercent?: number; cost?: number };
   pendingContextItems: PendingContextItem[];
   pendingImages: WebviewPendingImageItem[];
   focus: ComposerFocusTarget;

@@ -400,3 +400,13 @@ test('working animation shows while busy with the chosen style; font overrides a
   const idleHtml = renderChatApp(snapshot({ connectionState: 'ready' }));
   assert.doesNotMatch(idleHtml, /class="working"/); // no animation when idle
 });
+
+test('#5 usage chip renders in header when stats present', () => {
+  const html = renderChatApp(
+    snapshot({ usage: { totalTokens: 12345, contextPercent: 6, cost: 0.0234 } })
+  );
+  assert.match(html, /class="usage-chip"[^>]*data-command="piRpc.showSessionStats"/);
+  assert.match(html, /6% · 12k tok · \$0.023/);
+  const bare = renderChatApp(snapshot({}));
+  assert.doesNotMatch(bare, /class="usage-chip"/);
+});
