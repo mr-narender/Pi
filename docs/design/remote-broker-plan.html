@@ -185,9 +185,11 @@
           </div>
           <div class="arrow">⇄</div>
           <div class="node">
-            <h3>🔒 Tunnel</h3>
-            <div class="meta">VS Code Tunnel / Cloudflare / ngrok<br />TLS, no port-forwarding</div>
-            <div><span class="pill p-gold">wss://</span></div>
+            <h3>🔒 pi.fromlab.work</h3>
+            <div class="meta">Cloudflare Tunnel on the Mac<br />+ Cloudflare Access (slrinc)</div>
+            <div>
+              <span class="pill p-gold">wss://</span><span class="pill p-red">Access SSO</span>
+            </div>
           </div>
           <div class="arrow">⇄</div>
           <div class="node">
@@ -208,6 +210,110 @@
           The broker is a thin bridge: it forwards the same <code>WebviewSnapshot</code> the desktop
           chat already renders to remote clients, and relays their prompts back into the existing Pi
           RPC controller. No new chat engine — it reuses everything.
+        </p>
+      </div>
+
+      <h2>Tunneling via fromlab.work — analysis &amp; recommendation ✅</h2>
+      <div class="card">
+        <p>
+          <b>Finding:</b> <code>fromlab.work</code> is a Cloudflare zone you control. Services are
+          exposed by <b>Cloudflare Tunnel</b> (most → the k8s <code>fromlab.ingress-nginx</code>;
+          some run cloudflared <b>directly on the origin host</b>, e.g. the Synology NAS serves
+          immich/nas/onevault). Most hosts sit behind <b>Cloudflare Access</b> (Zero-Trust SSO).
+          <code>bitwarden.fromlab.work</code> → <code>172.64.80.1</code> (Cloudflare proxy).
+          <code>pi.fromlab.work</code> = <b>no DNS record yet</b> (free to claim).
+        </p>
+        <p>
+          <b>The broker runs on the Mac</b> (VS Code extension host), not in the cluster — so the
+          clean fit is a <b>named Cloudflare Tunnel on the Mac</b>, exactly like the NAS pattern:
+        </p>
+        <div class="diagram">
+          <div class="node">
+            <h3>Phone PWA</h3>
+            <div class="meta">Access SSO → app token</div>
+          </div>
+          <div class="arrow">→</div>
+          <div class="node">
+            <h3>Cloudflare edge</h3>
+            <div class="meta">pi.fromlab.work<br />Access policy (slrinc)</div>
+          </div>
+          <div class="arrow">→</div>
+          <div class="node">
+            <h3>cloudflared (Mac)</h3>
+            <div class="meta">ingress: pi.fromlab.work<br />→ http://localhost:PORT</div>
+          </div>
+          <div class="arrow">→</div>
+          <div class="node">
+            <h3>Broker</h3>
+            <div class="meta">WS server in extension host</div>
+          </div>
+        </div>
+        <p class="meta">
+          Cloudflare Tunnel + Access both pass WebSockets (wss), so the live snapshot stream works
+          unchanged.
+        </p>
+        <table>
+          <tr>
+            <th>Why this fits</th>
+            <th>Detail</th>
+          </tr>
+          <tr>
+            <td>Reuses your infra</td>
+            <td>
+              Same Cloudflare zone + Access org (slrinc) already used by 15+ fromlab.work services.
+              cloudflared already installed (v2026.7.3).
+            </td>
+          </tr>
+          <tr>
+            <td>No exposure</td>
+            <td>Outbound tunnel only — no port-forward, works on any network / dynamic IP.</td>
+          </tr>
+          <tr>
+            <td>Edge auth for free</td>
+            <td>
+              Cloudflare Access gates the hostname → only <b>your</b> authenticated identity reaches
+              the Mac at all, before our own token/role logic even runs.
+            </td>
+          </tr>
+          <tr>
+            <td>Availability</td>
+            <td>
+              Up only when Mac + VS Code + tunnel run — which is exactly when you'd want to drive
+              your active session. Fine.
+            </td>
+          </tr>
+        </table>
+      </div>
+
+      <h2>One-time setup (on the Mac)</h2>
+      <div class="card">
+        <ol>
+          <li>
+            <code>cloudflared tunnel login</code> (browser: pick the <code>fromlab.work</code> zone)
+          </li>
+          <li>
+            <code>cloudflared tunnel create pi-mac</code> → writes
+            <code>~/.cloudflared/&lt;id&gt;.json</code>
+          </li>
+          <li>
+            Config ingress: <code>pi.fromlab.work → http://localhost:PORT</code> (the broker's port)
+          </li>
+          <li>
+            <code>cloudflared tunnel route dns pi-mac pi.fromlab.work</code> (creates the CNAME)
+          </li>
+          <li>
+            Cloudflare Access → add an application for <code>pi.fromlab.work</code>, policy = your
+            email/slrinc org
+          </li>
+          <li>
+            The extension starts/stops the tunnel + broker together via
+            <code>Pi: Start/Stop Remote Session</code>
+          </li>
+        </ol>
+        <p class="warn">
+          ⚠ Steps 1–2 &amp; 5 are one-time and need your Cloudflare login (interactive). The
+          extension automates 3, 4, 6 thereafter. Secrets (tunnel creds, Access service token) go in
+          the Bitwarden vault per your secret-locator rule.
         </p>
       </div>
 
