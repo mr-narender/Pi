@@ -14,6 +14,7 @@ async function run() {
     'piRpc.switchSession',
     'piRpcInternal.start',
     'piRpcInternal.openChat',
+    'piRpc.commandPalette',
     'piRpcInternal.showHelp',
     'piRpc.extensionUi.setTitle',
     'piRpc.extensionUiLocal.setTheme',

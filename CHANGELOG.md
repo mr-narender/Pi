@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.73
+
+- #8 Command palette in chat: press Cmd+K (Ctrl+K on Windows/Linux) inside a Pi chat for quick actions - New Chat, Resume Chat, Retry Last, Copy Conversation, Choose Model, Thinking Level, Session Stats, font size, Show Logs. Also available as "Pi: Command Palette".
+
 ## 0.0.72
 
 - #5 Usage in the header: a compact chip next to the model shows context %, total tokens, and cost (e.g. "6% · 12k tok · $0.023"). Click it for the full session-stats breakdown. Hidden until stats are available.

@@ -1232,6 +1232,64 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     })
   );
 
+  registrations.set('piRpc.commandPalette', async () => {
+    const actions: Array<{ label: string; description: string; command: string }> = [
+      { label: '$(add) New Chat', description: 'Start a new Pi chat', command: 'piRpc.newSession' },
+      {
+        label: '$(history) Resume Chat…',
+        description: 'Open another session',
+        command: 'piRpc.switchSession',
+      },
+      {
+        label: '$(sync) Retry Last Message',
+        description: 'Re-send your last prompt',
+        command: 'piRpcInternal.retryLast',
+      },
+      {
+        label: '$(copy) Copy Conversation',
+        description: 'Copy as Markdown',
+        command: 'piRpcInternal.copyConversationMarkdown',
+      },
+      {
+        label: '$(hubot) Choose Model',
+        description: 'Switch the model',
+        command: 'piRpc.showModels',
+      },
+      {
+        label: '$(lightbulb) Thinking Level',
+        description: 'Set reasoning effort',
+        command: 'piRpc.setThinkingLevel',
+      },
+      {
+        label: '$(pulse) Session Stats',
+        description: 'Tokens and cost',
+        command: 'piRpc.showSessionStats',
+      },
+      {
+        label: '$(zoom-in) Increase Chat Font',
+        description: 'Larger chat text',
+        command: 'piRpcInternal.increaseChatFont',
+      },
+      {
+        label: '$(zoom-out) Decrease Chat Font',
+        description: 'Smaller chat text',
+        command: 'piRpcInternal.decreaseChatFont',
+      },
+      {
+        label: '$(output) Show Logs',
+        description: 'Open the Pi log',
+        command: 'piRpcInternal.showLogs',
+      },
+    ];
+    const pick = await vscode.window.showQuickPick(actions, {
+      placeHolder: 'Pi — pick an action',
+      matchOnDescription: true,
+    });
+    if (pick) {
+      await vscode.commands.executeCommand(pick.command);
+    }
+  });
+
   registrations.set('piRpcInternal.retryLast', async () => {
     const text = chatTabs.getLastUserPrompt();
     if (!text) {

@@ -553,6 +553,14 @@ function applyFocus(): void {
 
 window.addEventListener('beforeunload', persistViewState);
 
+// #8 — Cmd/Ctrl+K opens the Pi command palette (quick actions).
+window.addEventListener('keydown', (event) => {
+  if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === 'k') {
+    event.preventDefault();
+    vscode.postMessage({ type: 'executeCommand', command: 'piRpc.commandPalette' });
+  }
+});
+
 // #4 — double-Escape stops the current generation.
 let lastEscapeAt = 0;
 window.addEventListener('keydown', (event) => {

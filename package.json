@@ -2,7 +2,7 @@
   "name": "pi",
   "displayName": "Pi – this one is (y)ours",
   "description": "An unofficial, personal VS Code chat UI for the Pi coding agent (pi.dev). Not affiliated with pi.dev — shared for anyone who wants it.",
-  "version": "0.0.72",
+  "version": "0.0.73",
   "publisher": "mr-narender",
   "license": "MIT",
   "private": true,
@@ -622,6 +622,12 @@
         "command": "piRpcInternal.decreaseChatFont",
         "title": "Decrease Chat Font Size",
         "category": "Pi"
+      },
+      {
+        "command": "piRpc.commandPalette",
+        "title": "Command Palette",
+        "category": "Pi",
+        "icon": "$(list-selection)"
       }
     ],
     "configuration": {
@@ -794,7 +800,17 @@
           "when": "false"
         }
       ]
-    }
+    },
+    "keybindings": [
+      {
+        "command": "piRpc.commandPalette",
+        "key": "cmd+k",
+        "mac": "cmd+k",
+        "win": "ctrl+k",
+        "linux": "ctrl+k",
+        "when": "activeCustomEditorId == 'piRpc.chatEditor'"
+      }
+    ]
   },
   "homepage": "https://github.com/mr-narender/Pi#readme",
   "bugs": {
