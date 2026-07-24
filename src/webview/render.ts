@@ -90,7 +90,10 @@ type MessageBlock = NonNullable<WebviewSnapshot['messages'][number]['blocks']>[n
  * image blocks render as separate, lighter, granular "meta" cards outside the
  * bubble so the actual conversation stays easy to read.
  */
-function renderMessageStream(message: WebviewSnapshot['messages'][number]): string {
+function renderMessageStream(
+  message: WebviewSnapshot['messages'][number],
+  streamingAnswer = false
+): string {
   const blocks: MessageBlock[] =
     message.blocks && message.blocks.length > 0
       ? message.blocks
@@ -101,7 +104,14 @@ function renderMessageStream(message: WebviewSnapshot['messages'][number]): stri
   let textRun: string[] = [];
   const flushText = (): void => {
     if (textRun.length > 0) {
-      out.push(`<div class="message-body">${textRun.map((t) => renderRichText(t)).join('')}</div>`);
+      const raw = textRun.join('\n\n');
+      const streamClass = streamingAnswer ? ' js-stream-text' : '';
+      const streamData = streamingAnswer ? ` data-raw="${escapeHtml(raw)}"` : '';
+      out.push(
+        `<div class="message-body${streamClass}"${streamData}>${textRun
+          .map((t) => renderRichText(t))
+          .join('')}</div>`
+      );
       textRun = [];
     }
   };
@@ -144,7 +154,10 @@ type TimelineNode = MessageBlock | { kind: 'response'; text: string };
  * the final answer — is a node with a colored dot on a connecting line. Simple
  * text-only replies skip the timeline and render as plain text.
  */
-function renderAssistantBody(message: WebviewSnapshot['messages'][number]): string {
+function renderAssistantBody(
+  message: WebviewSnapshot['messages'][number],
+  streamingAnswer = false
+): string {
   const blocks: MessageBlock[] =
     message.blocks && message.blocks.length > 0
       ? message.blocks
@@ -153,7 +166,7 @@ function renderAssistantBody(message: WebviewSnapshot['messages'][number]): stri
         : [];
   const hasProcess = blocks.some((block) => block.kind !== 'text');
   if (!hasProcess) {
-    return renderMessageStream(message);
+    return renderMessageStream(message, streamingAnswer);
   }
   const nodes: TimelineNode[] = [];
   let textRun: string[] = [];
@@ -172,7 +185,9 @@ function renderAssistantBody(message: WebviewSnapshot['messages'][number]): stri
     }
   }
   flush();
-  return `<div class="timeline">${nodes.map(renderTimelineNode).join('')}</div>`;
+  return `<div class="timeline">${nodes
+    .map((node, index) => renderTimelineNode(node, streamingAnswer && index === nodes.length - 1))
+    .join('')}</div>`;
 }
 
 // #7 — long tool/result output is clamped with a "Show more" toggle so big logs
@@ -186,7 +201,7 @@ function renderClampedOutput(text: string): string {
   return `<div class="clampable"><div class="clamp-body">${pre}</div><button type="button" class="code-showmore">Show more</button></div>`;
 }
 
-function renderTimelineNode(node: TimelineNode): string {
+function renderTimelineNode(node: TimelineNode, streamingAnswer = false): string {
   // Small colored marker on the rail; the identifying icon lives in the card
   // header (icon + rounded border make each section obvious).
   const marker = '<span class="tl-dot"></span>';
@@ -206,8 +221,11 @@ function renderTimelineNode(node: TimelineNode): string {
     }
     case 'image':
       return `<div class="tl-node tl-tool">${marker}<div class="tl-card"><div class="tl-head">${META_ICONS.image}<span class="tl-label">Image</span><span class="tool-name">${escapeHtml(node.mimeType)}</span></div></div></div>`;
-    case 'response':
-      return `<div class="tl-node tl-response">${marker}<div class="tl-card tl-answer"><div class="tl-head tl-answer-head">${META_ICONS.response}<span class="tl-label">Pi</span></div><div class="tl-body">${renderRichText(node.text)}</div></div></div>`;
+    case 'response': {
+      const streamClass = streamingAnswer ? ' js-stream-text' : '';
+      const streamData = streamingAnswer ? ` data-raw="${escapeHtml(node.text)}"` : '';
+      return `<div class="tl-node tl-response">${marker}<div class="tl-card tl-answer"><div class="tl-head tl-answer-head">${META_ICONS.response}<span class="tl-label">Pi</span></div><div class="tl-body${streamClass}"${streamData}>${renderRichText(node.text)}</div></div></div>`;
+    }
     default:
       return '';
   }
@@ -476,10 +494,18 @@ function renderMessages(snapshot: WebviewSnapshot): string {
   const olderSentinel = snapshot.messageWindow?.hasOlder
     ? `<div id="older-sentinel" class="older-sentinel" role="status"><span class="spinner spinner-sm" aria-hidden="true"></span>Loading earlier messages…</div>`
     : '';
+  const busy = snapshot.connectionState === 'busy';
   return (
     olderSentinel +
     snapshot.messages
-      .map((message, index, all) => renderMessageArticle(message, index === all.length - 1))
+      .map((message, index, all) => {
+        const isLast = index === all.length - 1;
+        return renderMessageArticle(
+          message,
+          isLast,
+          busy && isLast && message.role === 'assistant'
+        );
+      })
       .join('')
   );
 }
@@ -500,7 +526,8 @@ const EDIT_ICON =
 
 function renderMessageArticle(
   message: WebviewSnapshot['messages'][number],
-  isLast = false
+  isLast = false,
+  streamingAnswer = false
 ): string {
   const role = message.role;
   const roleLabel = role === 'assistant' ? 'Pi' : role === 'user' ? 'You' : '';
@@ -513,14 +540,17 @@ function renderMessageArticle(
         <article class="message-card message-${escapeHtml(role)}${virtualClass}">
           ${roleLabel ? `<div class="message-role">${roleLabel}</div>` : ''}
           ${showCopy ? `<div class="msg-actions">${role === 'user' ? `<button type="button" class="msg-edit" title="Edit in composer" aria-label="Edit message">${EDIT_ICON}</button>` : ''}<button type="button" class="msg-copy" title="Copy message" aria-label="Copy message">${COPY_ICON}</button></div>` : ''}
-          ${renderMessageBody(message)}
+          ${renderMessageBody(message, streamingAnswer)}
           ${message.attachments.length > 0 ? `<div class="detail-stack">${message.attachments.map((attachment) => renderAttachment(attachment)).join('')}</div>` : ''}
         </article>`;
 }
 
-function renderMessageBody(message: WebviewSnapshot['messages'][number]): string {
+function renderMessageBody(
+  message: WebviewSnapshot['messages'][number],
+  streamingAnswer = false
+): string {
   if (message.role === 'assistant') {
-    return renderAssistantBody(message);
+    return renderAssistantBody(message, streamingAnswer);
   }
   if (isResultRole(message.role)) {
     return renderResultMessage(message);

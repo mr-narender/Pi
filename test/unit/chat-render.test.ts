@@ -458,3 +458,38 @@ test('onboarding empty-state shows example prompts and hints', () => {
   assert.match(html, /Explain this codebase/);
   assert.match(html, /mention a file/);
 });
+
+test('typewriter: streaming last assistant answer is marked js-stream-text with data-raw', () => {
+  const streaming = renderChatApp(
+    snapshot({
+      connectionState: 'busy',
+      messages: [
+        { id: 'u', role: 'user', text: 'hi', attachments: [] },
+        {
+          id: 'a',
+          role: 'assistant',
+          text: 'Hello there friend',
+          blocks: [{ kind: 'text', text: 'Hello there friend' }],
+          attachments: [],
+        },
+      ],
+    })
+  );
+  assert.match(streaming, /class="message-body js-stream-text" data-raw="Hello there friend"/);
+
+  const idle = renderChatApp(
+    snapshot({
+      connectionState: 'ready',
+      messages: [
+        {
+          id: 'a',
+          role: 'assistant',
+          text: 'Hello',
+          blocks: [{ kind: 'text', text: 'Hello' }],
+          attachments: [],
+        },
+      ],
+    })
+  );
+  assert.doesNotMatch(idle, /js-stream-text/); // no marker when not streaming
+});

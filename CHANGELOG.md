@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.81
+
+- Typewriter streaming: Pi streams answers as coarse snapshots (~every 400ms), not token deltas. The GUI now reveals newly-arrived characters smoothly between updates, so the reply types out fluidly like the TUI instead of appearing in jumps. It stays pinned to the bottom while typing, catches up if it falls behind, and shows the full text the instant the turn finishes.
+
 ## 0.0.80
 
 - Completion notification: when Pi finishes a long response (>4s) while you are not watching that chat (window unfocused or a different tab active), a notification appears with an "Open chat" button. Quick replies and the chat you are actively watching never notify. Toggle with piRpc.notifyOnComplete.

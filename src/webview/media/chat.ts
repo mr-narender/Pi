@@ -13,6 +13,7 @@ import {
   nextPreviewTrapTarget,
   planChipRemovalFocus,
   renderChatApp,
+  renderRichText,
   shouldClearSnapshotFocus,
 } from '../render';
 
@@ -723,9 +724,72 @@ function render(snapshot: WebviewSnapshot): void {
     updateJump();
   }
 
+  advanceTypewriter();
   startWorkingAnimation();
   applyScrollAndPaging(snapshot, scrollMetrics);
   applyFocus();
+}
+
+// Typewriter smoothing: Pi streams the answer as coarse `message_update`
+// snapshots (~every 400ms), not token deltas. We reveal the newly-arrived
+// characters gradually so it reads like the TUI's smooth typing. The streaming
+// answer element is marked `.js-stream-text` with the full text in `data-raw`.
+let streamTimer: ReturnType<typeof setInterval> | undefined;
+let streamRaw = '';
+let streamRevealLen = 0;
+function stopTypewriter(): void {
+  if (streamTimer) {
+    clearInterval(streamTimer);
+    streamTimer = undefined;
+  }
+}
+function streamTarget(): HTMLElement | undefined {
+  const nodes = document.querySelectorAll<HTMLElement>('#messages .js-stream-text');
+  return nodes.length > 0 ? nodes[nodes.length - 1] : undefined;
+}
+function keepPinnedToBottom(): void {
+  const messages = document.getElementById('messages');
+  if (messages && messages.scrollHeight - messages.scrollTop - messages.clientHeight < 120) {
+    messages.scrollTop = messages.scrollHeight;
+  }
+}
+function advanceTypewriter(): void {
+  const busy = currentSnapshot?.connectionState === 'busy';
+  const el = busy ? streamTarget() : undefined;
+  if (!el) {
+    // Stream ended (or no live answer): the normal render already shows the
+    // full text. Reset for the next turn.
+    stopTypewriter();
+    streamRaw = '';
+    streamRevealLen = 0;
+    return;
+  }
+  const raw = el.getAttribute('data-raw') ?? '';
+  // New message or a shrink -> restart the reveal from zero.
+  if (raw.length < streamRevealLen || (streamRaw && !raw.startsWith(streamRaw.slice(0, 12)))) {
+    streamRevealLen = 0;
+  }
+  streamRaw = raw;
+  // Sync the DOM to the currently-revealed prefix in the SAME frame as the
+  // render() innerHTML swap, so there is no flash of the full text.
+  el.innerHTML = renderRichText(raw.slice(0, streamRevealLen));
+  if (!streamTimer) {
+    streamTimer = setInterval(() => {
+      const node = streamTarget();
+      if (!node || currentSnapshot?.connectionState !== 'busy') {
+        stopTypewriter();
+        return;
+      }
+      const target = streamRaw.length;
+      if (streamRevealLen >= target) {
+        return; // caught up; wait for the next update to grow the target
+      }
+      const step = Math.max(2, Math.ceil((target - streamRevealLen) / 8));
+      streamRevealLen = Math.min(target, streamRevealLen + step);
+      node.innerHTML = renderRichText(streamRaw.slice(0, streamRevealLen));
+      keepPinnedToBottom();
+    }, 28);
+  }
 }
 
 const WORKING_FRAMES: Record<string, string[]> = {
