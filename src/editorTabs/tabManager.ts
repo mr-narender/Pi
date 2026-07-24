@@ -411,6 +411,35 @@ export class ChatTabManager implements vscode.Disposable {
     await this.focusComposer(context.resource);
   }
 
+  /**
+   * #3 — open the file an edit/write tool touched, or its diff. Pi applies edits
+   * itself, so "Open changes" shows the working-tree diff via the git extension
+   * (best-effort; falls back to just opening the file).
+   */
+  private async openEditToolFile(
+    context: ChatTabContext,
+    filePath: string,
+    diff: boolean
+  ): Promise<void> {
+    const isAbsolute = /^([a-zA-Z]:[\\/]|[\\/])/.test(filePath);
+    const target = isAbsolute
+      ? vscode.Uri.file(filePath)
+      : vscode.Uri.joinPath(context.controller.folder.uri, filePath);
+    if (diff) {
+      try {
+        await vscode.commands.executeCommand('git.openChange', target);
+        return;
+      } catch {
+        /* git unavailable or file untracked — fall back to opening it */
+      }
+    }
+    try {
+      await vscode.window.showTextDocument(target, { preview: !diff });
+    } catch {
+      void vscode.window.showWarningMessage(`Could not open ${filePath}.`);
+    }
+  }
+
   /** Full active conversation as Markdown (whole transcript), for copy/export. */
   public getActiveConversationMarkdown(): { title: string; markdown: string } | undefined {
     const context = this.getActiveContext();
@@ -764,6 +793,12 @@ export class ChatTabManager implements vscode.Disposable {
         }
         return;
       }
+      case 'openFile':
+        await this.openEditToolFile(context, parsed.path, false);
+        return;
+      case 'openDiff':
+        await this.openEditToolFile(context, parsed.path, true);
+        return;
       case 'requestSlashCommands': {
         // #6 — supply the slash-command list for inline composer autocomplete.
         try {

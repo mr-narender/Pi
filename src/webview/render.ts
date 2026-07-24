@@ -1,6 +1,7 @@
 import type { WebviewSnapshot } from '../state/types';
 import { chipPrivacyLabel, summarizeChip, type PendingContextItem } from './composer';
 import { formatUsageChip } from './usageSummary';
+import { editToolFilePath } from './editToolPath';
 
 export const COMPOSER_FIELD_ID = 'composer-field';
 export const ATTACH_TRIGGER_ID = 'attach-trigger';
@@ -192,8 +193,13 @@ function renderTimelineNode(node: TimelineNode): string {
   switch (node.kind) {
     case 'thinking':
       return `<div class="tl-node tl-thinking">${marker}<details class="tl-card" open><summary class="tl-head">${META_ICONS.thinking}<span class="tl-label">Thinking</span>${CARET_ICON}</summary><div class="tl-body tl-think">${renderRichText(node.text)}</div></details></div>`;
-    case 'tool':
-      return `<div class="tl-node tl-tool">${marker}<div class="tl-card"><div class="tl-head">${META_ICONS.tool}<span class="tl-label">Tool</span><code class="tool-name">${escapeHtml(node.name)}</code></div>${node.args ? renderClampedOutput(node.args) : ''}</div></div>`;
+    case 'tool': {
+      const editPath = editToolFilePath(node.name, node.args);
+      const fileActions = editPath
+        ? `<div class="tl-file-actions"><span class="tl-file-path">${escapeHtml(editPath)}</span><button type="button" class="tl-file-btn" data-file-open="${escapeHtml(editPath)}">Open file</button><button type="button" class="tl-file-btn" data-file-diff="${escapeHtml(editPath)}">Open changes</button></div>`
+        : '';
+      return `<div class="tl-node tl-tool">${marker}<div class="tl-card"><div class="tl-head">${META_ICONS.tool}<span class="tl-label">Tool</span><code class="tool-name">${escapeHtml(node.name)}</code></div>${node.args ? renderClampedOutput(node.args) : ''}${fileActions}</div></div>`;
+    }
     case 'toolResult': {
       const err = node.isError === true;
       return `<div class="tl-node tl-result${err ? ' is-error' : ''}">${marker}<details class="tl-card" open><summary class="tl-head">${err ? META_ICONS.error : META_ICONS.result}<span class="tl-label">${err ? 'Error' : 'Result'}</span>${node.name ? `<code class="tool-name">${escapeHtml(node.name)}</code>` : ''}${CARET_ICON}</summary>${renderClampedOutput(node.text)}</details></div>`;

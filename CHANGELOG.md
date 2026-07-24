@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.77
+
+- #3 File edits get actions: when Pi uses an edit/write tool, its timeline card now shows the file path plus "Open file" and "Open changes". Pi applies edits itself, so "Open changes" opens the working-tree diff (via the Git extension) and "Open file" jumps to the file - one click to review what changed.
+
 ## 0.0.76
 
 - #7 Session management: pin your favourite chats. Hover a chat in the sidebar and click the star to pin/unpin; pinned chats float to the top and keep their star visible. Pins persist per workspace. (Search, rename, and delete were already available.)

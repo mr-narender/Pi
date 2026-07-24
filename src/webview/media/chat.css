@@ -95,6 +95,37 @@ pre {
   position: relative;
 }
 
+/* #3 — edit-tool file actions (open file / open changes). */
+#messages .tl-file-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+#messages .tl-file-path {
+  font-family: var(--vscode-editor-font-family, ui-monospace, monospace);
+  font-size: 0.85em;
+  color: var(--vscode-descriptionForeground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 60%;
+}
+#messages .tl-file-btn {
+  padding: 3px 10px;
+  font-size: 0.85em;
+  border-radius: 6px;
+  border: 1px solid var(--vscode-panel-border);
+  background: transparent;
+  color: var(--vscode-foreground);
+  cursor: pointer;
+}
+#messages .tl-file-btn:hover {
+  background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.2));
+  border-color: var(--pi-tool-accent, #4ec9b0);
+}
+
 /* #6 — inline slash-command autocomplete menu. */
 .composer-dock {
   position: relative;

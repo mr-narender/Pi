@@ -415,6 +415,23 @@ function render(snapshot: WebviewSnapshot): void {
       language: wrap?.getAttribute('data-lang') ?? '',
     };
   };
+  // #3 — open file / open changes for edit-tool cards.
+  for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>('[data-file-open]'))) {
+    button.addEventListener('click', () => {
+      const path = button.getAttribute('data-file-open');
+      if (path) {
+        vscode.postMessage({ type: 'openFile', path });
+      }
+    });
+  }
+  for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>('[data-file-diff]'))) {
+    button.addEventListener('click', () => {
+      const path = button.getAttribute('data-file-diff');
+      if (path) {
+        vscode.postMessage({ type: 'openDiff', path });
+      }
+    });
+  }
   for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>('.code-insert'))) {
     button.addEventListener('click', () => {
       const { text, language } = codeTextAndLang(button);

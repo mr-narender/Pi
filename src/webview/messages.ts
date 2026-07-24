@@ -25,6 +25,8 @@ export type WebviewInboundMessage =
   | { type: 'insertCode'; text: string; language?: string }
   | { type: 'newFileFromCode'; text: string; language?: string }
   | { type: 'openExternal'; url: string }
+  | { type: 'openFile'; path: string }
+  | { type: 'openDiff'; path: string }
   | { type: 'requestSlashCommands' };
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
@@ -87,6 +89,10 @@ export function parseWebviewMessage(value: unknown): WebviewInboundMessage | und
         : undefined;
     case 'openExternal':
       return typeof record.url === 'string' ? { type: 'openExternal', url: record.url } : undefined;
+    case 'openFile':
+      return typeof record.path === 'string' ? { type: 'openFile', path: record.path } : undefined;
+    case 'openDiff':
+      return typeof record.path === 'string' ? { type: 'openDiff', path: record.path } : undefined;
     case 'requestSlashCommands':
       return { type: 'requestSlashCommands' };
     case 'insertCode':

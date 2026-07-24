@@ -202,3 +202,15 @@ test('parseWebviewMessage accepts requestSlashCommands (#6)', () => {
     type: 'requestSlashCommands',
   });
 });
+
+test('parseWebviewMessage accepts openFile/openDiff (#3)', () => {
+  assert.deepEqual(parseWebviewMessage({ type: 'openFile', path: 'a.ts' }), {
+    type: 'openFile',
+    path: 'a.ts',
+  });
+  assert.deepEqual(parseWebviewMessage({ type: 'openDiff', path: 'a.ts' }), {
+    type: 'openDiff',
+    path: 'a.ts',
+  });
+  assert.equal(parseWebviewMessage({ type: 'openFile' }), undefined);
+});

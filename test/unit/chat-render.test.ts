@@ -410,3 +410,21 @@ test('#5 usage chip renders in header when stats present', () => {
   const bare = renderChatApp(snapshot({}));
   assert.doesNotMatch(bare, /class="usage-chip"/);
 });
+
+test('#3 edit tool cards show Open file / Open changes', () => {
+  const html = renderChatApp(
+    snapshot({
+      messages: [
+        {
+          id: 'a',
+          role: 'assistant',
+          text: '',
+          blocks: [{ kind: 'tool', name: 'edit', args: '{"path":"src/x.ts"}' }],
+          attachments: [],
+        },
+      ],
+    })
+  );
+  assert.match(html, /data-file-open="src\/x.ts"/);
+  assert.match(html, /data-file-diff="src\/x.ts"/);
+});
