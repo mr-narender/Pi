@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.86
+
+- Submit button now uses a return/enter icon instead of an up arrow, so it clearly reads as "send" (matching Cmd/Ctrl+Enter). The tooltip/label are unchanged.
+
 ## 0.0.85
 
 - Working indicator moved to a clear "Working…" banner at the top of the composer (above the input), instead of a small glyph in the bottom-right. It is now obvious when Pi is generating. The animation style (piRpc.workingAnimation) and Stop button are unchanged.
