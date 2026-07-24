@@ -170,7 +170,7 @@ export class ChatPanelProvider implements vscode.Disposable {
         composer.recovery = {
           kind: 'disconnected',
           title: 'Pi disconnected. Your last confirmed chat is safe.',
-          detail: 'Show details in Advanced or restart Pi to reconcile the current workspace.',
+          detail: 'Restart Pi to reconcile the current workspace.',
         };
       }
       await this.uiState.setComposerState(controller, composer);

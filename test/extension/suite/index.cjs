@@ -14,7 +14,6 @@ async function run() {
     'piRpc.switchSession',
     'piRpcInternal.start',
     'piRpcInternal.openChat',
-    'piRpc.toggleAdvancedMode',
     'piRpcInternal.showHelp',
     'piRpc.extensionUi.setTitle',
     'piRpc.extensionUiLocal.setTheme',
@@ -42,11 +41,6 @@ async function run() {
 
   const allMenus = JSON.stringify(extension.packageJSON.contributes.menus ?? {});
   assert.ok(!allMenus.includes('piRpc.currentChat'));
-
-  const advancedMode = await vscode.commands.executeCommand('piRpc.toggleAdvancedMode');
-  assert.equal(advancedMode, 'advanced');
-  const simpleMode = await vscode.commands.executeCommand('piRpc.toggleAdvancedMode');
-  assert.equal(simpleMode, 'simple');
 
   // showHelp opens a modal popover; the test harness refuses modal dialogs, so
   // just assert the command is registered (checked above) rather than invoking it.

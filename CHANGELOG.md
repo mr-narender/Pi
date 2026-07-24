@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.71
+
+- Remove the confusing "Advanced" view. The "Pi: Toggle Advanced Mode" command, the piRpc.defaultViewMode setting, and the disconnect-screen "Show details" button are gone. Advanced mode had no visual effect in the current chat UI (it was a leftover from an earlier layout), so removing it simplifies the surface with no loss of functionality.
+
 ## 0.0.70
 
 - Fix working animation: it froze on the first frame because every streaming re-render reset the timer. Now a single persistent interval drives it (re-targets the current glyph each tick), so it spins smoothly. Also shows the working state the instant you submit (before Pi's first token), so there's immediate feedback.

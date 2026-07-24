@@ -2,7 +2,7 @@
   "name": "pi",
   "displayName": "Pi – this one is (y)ours",
   "description": "An unofficial, personal VS Code chat UI for the Pi coding agent (pi.dev). Not affiliated with pi.dev — shared for anyone who wants it.",
-  "version": "0.0.70",
+  "version": "0.0.71",
   "publisher": "mr-narender",
   "license": "MIT",
   "private": true,
@@ -581,12 +581,6 @@
         "category": "Pi"
       },
       {
-        "command": "piRpc.toggleAdvancedMode",
-        "title": "Toggle Advanced Mode",
-        "category": "Pi",
-        "icon": "$(gear)"
-      },
-      {
         "command": "piRpcInternal.showHelp",
         "title": "Help",
         "category": "Pi"
@@ -736,15 +730,6 @@
           "type": "boolean",
           "default": false,
           "description": "Reserved local extension telemetry switch. No telemetry is sent by default."
-        },
-        "piRpc.defaultViewMode": {
-          "type": "string",
-          "enum": [
-            "simple",
-            "advanced"
-          ],
-          "default": "simple",
-          "description": "Default Pi UI mode. Simple keeps chat focused. Advanced keeps the Advanced panel visible."
         },
         "piRpc.editorTabs.enabled": {
           "type": "boolean",

@@ -566,7 +566,6 @@ function renderRecovery(snapshot: WebviewSnapshot): string {
       <div class="button-row compact">
         ${snapshot.recovery.kind === 'startFailure' ? '<button type="button" data-command="piRpcInternal.start">Start again</button>' : ''}
         ${snapshot.recovery.kind === 'disconnected' ? '<button type="button" data-command="piRpcInternal.restart">Restart Pi</button><button type="button" data-command="piRpc.switchSession">Resume another chat</button>' : ''}
-        ${snapshot.recovery.kind === 'disconnected' ? '<button type="button" data-command="piRpc.toggleAdvancedMode">Show details</button>' : ''}
         ${isSendFailure ? '<button type="button" data-action="copyAcceptedSnapshot">Copy to composer</button><button type="button" data-action="sendAcceptedSnapshotAgain">Send again</button>' : ''}
       </div>
     </section>`;

@@ -456,13 +456,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     await chat.focusComposer();
   });
 
-  registrations.set('piRpc.toggleAdvancedMode', async () => {
-    const mode = await uiState.toggleMode();
-    statusBar.setMode(mode);
-    refreshViews();
-    return mode;
-  });
-
   registrations.set('piRpcInternal.showHelp', async () => {
     const detail = [
       'New Chat: sidebar (+ New Chat) or the Command Palette.',
