@@ -276,18 +276,46 @@ let loadOlderPending = false;
 let pendingBottomKey: string | undefined;
 
 // Robust scroll-to-bottom. With the virtualized list, off-screen messages use
-// `content-visibility` with an *estimated* height, so a single `scrollTop =
-// scrollHeight` can land short. We re-assert after layout settles and pull the
-// last message fully into view (which also forces it to render).
-function scrollMessagesToBottom(messages: HTMLElement): void {
+// `content-visibility` with an *estimated* height, so `scrollHeight` keeps
+// changing as messages render into view or images/code lay out. Instead of a
+// one-shot assignment, we PIN to the bottom across a short window, re-asserting
+// every animation frame so late relayout can't leave us stranded near the top.
+// The user scrolling (wheel/touch/keys) cancels the pin immediately.
+let bottomPinUntil = 0;
+let bottomPinRaf = 0;
+function scrollMessagesToBottom(messages: HTMLElement, durationMs = 650): void {
   messages.scrollTop = messages.scrollHeight;
-  requestAnimationFrame(() => {
-    messages.scrollTop = messages.scrollHeight;
-    (messages.lastElementChild as HTMLElement | null)?.scrollIntoView({ block: 'end' });
-    requestAnimationFrame(() => {
-      messages.scrollTop = messages.scrollHeight;
-    });
-  });
+  bottomPinUntil = performance.now() + durationMs;
+  if (bottomPinRaf) {
+    return;
+  }
+  const step = (): void => {
+    const el = document.getElementById('messages');
+    if (el && performance.now() < bottomPinUntil) {
+      el.scrollTop = el.scrollHeight;
+      bottomPinRaf = requestAnimationFrame(step);
+    } else {
+      bottomPinRaf = 0;
+      (el?.lastElementChild as HTMLElement | null)?.scrollIntoView({ block: 'end' });
+    }
+  };
+  bottomPinRaf = requestAnimationFrame(step);
+}
+// Any explicit user scroll intent cancels an active bottom-pin.
+for (const evt of ['wheel', 'touchmove', 'keydown'] as const) {
+  window.addEventListener(
+    evt,
+    (event) => {
+      if (evt === 'keydown') {
+        const key = (event as KeyboardEvent).key;
+        if (key !== 'PageUp' && key !== 'ArrowUp' && key !== 'Home') {
+          return;
+        }
+      }
+      bottomPinUntil = 0;
+    },
+    { passive: true }
+  );
 }
 let olderObserver: IntersectionObserver | undefined;
 

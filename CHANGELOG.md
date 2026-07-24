@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.87
+
+- Fix (harder): opening/resuming a chat now reliably lands at the bottom, even for long chats. Because the virtualized list estimates off-screen heights, scrollHeight keeps changing as messages render; we now pin to the bottom across a short window (re-asserting each frame) so late relayout can't strand the view near the top. Scrolling up cancels the pin immediately.
+- Jump-to-latest button uses a clearer "arrow down to a line" icon (go to end) instead of a plain chevron.
+
 ## 0.0.86
 
 - Submit button now uses a return/enter icon instead of an up arrow, so it clearly reads as "send" (matching Cmd/Ctrl+Enter). The tooltip/label are unchanged.
