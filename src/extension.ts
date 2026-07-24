@@ -20,6 +20,7 @@ import { ChatEditorProvider } from './editorTabs/provider';
 import { ChatFileSystemProvider } from './editorTabs/fileSystemProvider';
 import { initChatUriRegistry } from './editorTabs/uriRegistry';
 import { ChatTabManager } from './editorTabs/tabManager';
+import { AskPiCodeLensProvider, type AskSymbolArgs } from './editorTabs/askCodeLens';
 import type { SessionController } from './sessions/sessionController';
 import type { ExtensionUiRequest, JsonObject } from './rpc/protocol';
 
@@ -1268,6 +1269,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       ) {
         void chatTabs.rerenderAll();
       }
+      if (event.affectsConfiguration('piRpc.codeLensEnabled')) {
+        codeLensProvider.refresh();
+      }
     })
   );
 
@@ -1281,6 +1285,49 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     ensureWorkspaceAvailable();
     await chatTabs.askWithSelection(instruction);
   };
+  const codeLensProvider = new AskPiCodeLensProvider();
+  context.subscriptions.push(
+    vscode.languages.registerCodeLensProvider({ scheme: 'file' }, codeLensProvider)
+  );
+  registrations.set('piRpcInternal.askSymbol', async (arg?: unknown) => {
+    if (!editorTabsEnabled()) {
+      return;
+    }
+    const args = arg as AskSymbolArgs | undefined;
+    if (!args?.uri || !args.range) {
+      return;
+    }
+    const uri = vscode.Uri.parse(args.uri);
+    const editor = await vscode.window.showTextDocument(uri, { preview: false });
+    const range = new vscode.Range(
+      args.range.startLine,
+      args.range.startChar,
+      args.range.endLine,
+      args.range.endChar
+    );
+    editor.selection = new vscode.Selection(range.start, range.end);
+    editor.revealRange(range, vscode.TextEditorRevealType.InCenterIfOutsideViewport);
+    const pick = await vscode.window.showQuickPick(
+      [
+        { label: '$(book) Explain', instruction: 'Explain what this code does, step by step.' },
+        { label: '$(beaker) Add tests', instruction: 'Write unit tests for this code.' },
+        {
+          label: '$(bug) Fix bugs',
+          instruction: 'Find and fix any bugs or issues in this code, and explain the fix.',
+        },
+        {
+          label: '$(wand) Refactor',
+          instruction:
+            'Refactor this code to improve clarity and maintainability while preserving behavior.',
+        },
+      ],
+      { title: `Ask Pi about ${args.name ?? 'this code'}` }
+    );
+    if (pick) {
+      await chatTabs.askWithSelection(pick.instruction);
+    }
+  });
+
   registrations.set(
     'piRpc.explainSelection',
     askPiWithSelection('Explain what this selected code does, step by step.')

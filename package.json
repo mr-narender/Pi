@@ -2,7 +2,7 @@
   "name": "pi",
   "displayName": "Pi – this one is (y)ours",
   "description": "An unofficial, personal VS Code chat UI for the Pi coding agent (pi.dev). Not affiliated with pi.dev — shared for anyone who wants it.",
-  "version": "0.0.96",
+  "version": "0.0.97",
   "publisher": "mr-narender",
   "license": "MIT",
   "private": true,
@@ -818,6 +818,11 @@
           "minimum": 0,
           "maximum": 100,
           "description": "Automatically compact the conversation when context usage reaches this percent, then continue. 0 disables (Pi still auto-compacts when nearly full)."
+        },
+        "piRpc.codeLensEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show an inline \"Ask Pi\" action above functions/methods in code files."
         }
       }
     },

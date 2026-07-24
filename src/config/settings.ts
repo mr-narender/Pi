@@ -26,6 +26,7 @@ export interface PiRpcSettings {
   notifyOnComplete: boolean;
   typewriterSpeed: string;
   autoCompactThreshold: number;
+  codeLensEnabled: boolean;
 }
 
 export function getSettings(): PiRpcSettings {
@@ -51,6 +52,7 @@ export function getSettings(): PiRpcSettings {
     notifyOnComplete: config.get<boolean>('notifyOnComplete', true),
     typewriterSpeed: config.get<string>('typewriterSpeed', 'normal'),
     autoCompactThreshold: config.get<number>('autoCompactThreshold', 70),
+    codeLensEnabled: config.get<boolean>('codeLensEnabled', true),
     restartOnCrash: config.get<boolean>('restartOnCrash', true),
     maxRestartAttempts: config.get<number>('maxRestartAttempts', 3),
     telemetryEnabled: config.get<boolean>('telemetryEnabled', false),

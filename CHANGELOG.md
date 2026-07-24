@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.97
+
+- Inline "Ask Pi" CodeLens: an "Ask Pi" action now appears above functions/methods in code files. Click it to select that symbol and pick Explain / Add tests / Fix bugs / Refactor - routed straight into the chat with the code as context. Toggle with piRpc.codeLensEnabled.
+
 ## 0.0.96
 
 - Rich diff for edits: edit tool cards now show a real colored diff (removed lines in red, added lines in green) instead of raw JSON args, so you can review exactly what Pi changed inline. Long diffs get a Show more toggle; Open file / Open changes still available.
