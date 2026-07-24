@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Pi — Remote Broker (#11) · Public capability-URL architecture</title>
+    <title>Pi — Remote Broker (#11) · Pairing + client-held token</title>
     <style>
       :root {
         --bg: #0d1117;
@@ -37,7 +37,7 @@
         padding: 40px 24px 90px;
       }
       h1 {
-        font-size: 27px;
+        font-size: 26px;
         margin: 0 0 4px;
       }
       .sub {
@@ -63,7 +63,7 @@
         border: 1px solid var(--border);
         border-radius: 5px;
         padding: 1px 6px;
-        font-size: 0.88em;
+        font-size: 0.87em;
       }
       table {
         width: 100%;
@@ -80,21 +80,12 @@
       th {
         color: var(--teal);
       }
-      ol,
       ul {
         margin: 6px 0;
         padding-left: 22px;
       }
       li {
         margin: 5px 0;
-      }
-      .q {
-        color: var(--teal);
-        font-weight: 600;
-        margin: 0 0 2px;
-      }
-      .a {
-        margin: 0 0 14px;
       }
       .diagram {
         display: flex;
@@ -129,9 +120,9 @@
         align-items: center;
         justify-content: center;
         color: var(--teal);
-        font-size: 13px;
+        font-size: 12px;
         padding: 0 8px;
-        min-width: 82px;
+        min-width: 84px;
         text-align: center;
         flex-direction: column;
       }
@@ -176,11 +167,6 @@
         padding-left: 12px;
         color: #a6e0ab;
       }
-      .bad {
-        border-left: 3px solid var(--red);
-        padding-left: 12px;
-        color: #ffb3ad;
-      }
       .mono {
         font-family: ui-monospace, monospace;
         font-size: 0.85em;
@@ -189,31 +175,21 @@
         border-radius: 8px;
         padding: 12px 14px;
         white-space: pre-wrap;
-        line-height: 1.55;
+        line-height: 1.6;
         color: var(--fg);
         overflow-x: auto;
-      }
-      .tag {
-        display: inline-block;
-        font-size: 11px;
-        font-weight: 700;
-        padding: 2px 8px;
-        border-radius: 999px;
-        background: rgba(229, 83, 75, 0.18);
-        color: #ff9d97;
-        margin-left: 8px;
-        vertical-align: middle;
       }
     </style>
   </head>
   <body>
     <div class="wrap">
-      <h1>Remote Broker (#11) — public capability-URL architecture</h1>
+      <h1>Remote Broker (#11) — pairing + client-held token</h1>
       <p class="sub">
-        Watch / drive your active Pi chat from a phone via a public, unguessable link.
-        <b>No Cloudflare Access.</b> Security = a 256-bit capability URL, 24h TTL + rotation, and an
-        optional device PIN. Separate <b>slr-inc</b> app on <b>pi.fromlab.work</b>. Plan — not
-        built.
+        Watch / drive your active Pi chat from a phone. <b>No Cloudflare Access.</b> The QR is a
+        <b>one-time pairing bootstrap</b> only — the server mints the session token at scan time,
+        returns it once, and the phone keeps it client-side.
+        <b>No secret ever lives in a URL.</b> 24h TTL + rotation. Separate <b>slr-inc</b> app on
+        <b>pi.fromlab.work</b>. Plan — not built.
       </p>
 
       <h2>Confirmed requirements</h2>
@@ -225,31 +201,29 @@
           </tr>
           <tr>
             <td><b>Public — no CF Access gate</b></td>
-            <td>
-              Cloudflare proxy ON (DDoS + WAF), Access OFF. Anyone can reach the host; only a valid
-              capability token gets a session.
-            </td>
+            <td>Cloudflare proxy ON (DDoS + WAF), Access OFF.</td>
           </tr>
           <tr>
-            <td><b>Very safe URL (session scheme)</b></td>
+            <td><b>No credential in the URL</b></td>
             <td>
-              256-bit secret in the <b>URL fragment</b> (never logged / never in Referer).
-              <code>https://pi.fromlab.work/j#&lt;sid&gt;_&lt;secret&gt;</code>
+              QR carries a <b>single-use pairing code</b> only (~90s TTL). On scan the server
+              <b>generates the 256-bit session token once</b> and returns it; the phone stores it
+              client-side (IndexedDB). The token is never in any URL, log, or Referer.
             </td>
           </tr>
           <tr>
             <td><b>Valid 24h, then rotate</b></td>
             <td>
-              Token TTL = 24h. “Refresh link” mints a new secret, <b>instantly kills the old</b>,
-              +24h. Auto-expire + disconnect at 24h if not refreshed.
+              Token TTL = 24h. Refresh rotates the client-held token (old dies instantly).
+              Auto-expire + disconnect at 24h.
             </td>
           </tr>
           <tr>
             <td><b>Separate slr-inc app</b></td>
             <td>
-              New repo under slr-inc (Forgejo <code>slrsoftca</code>), FastAPI, reuses slr-backend
-              heartbeat's WS/rooms pattern. Routed on <code>fromlab.work</code> via tunnel → k8s
-              ingress.
+              New <code>pi-broker</code> repo (Forgejo <code>slrsoftca</code>), FastAPI, reuses
+              slr-backend heartbeat's WS/rooms pattern. Routed on <code>fromlab.work</code> via
+              tunnel → k8s ingress.
             </td>
           </tr>
         </table>
@@ -269,47 +243,52 @@
             <h3>🧩 pi-broker (slr-inc)</h3>
             <div class="meta">FastAPI · rooms · relay<br />pi.fromlab.work</div>
             <span class="pill p-teal">room = session</span
-            ><span class="pill p-red">capability token</span
+            ><span class="pill p-red">mints token</span
             ><span class="pill p-gold">Redis + rate-limit</span>
           </div>
           <div class="arrow">→ snapshot<br />← prompt<br /><small>driver only</small></div>
           <div class="node">
             <h3>📱 Phone (PWA)</h3>
             <div class="meta">viewer / driver</div>
-            <span class="pill p-green">#capability link</span
-            ><span class="pill p-blue">device PIN (1st join)</span>
+            <span class="pill p-green">scan → token</span><span class="pill p-blue">device PIN</span
+            ><span class="pill p-teal">token in IndexedDB</span>
           </div>
         </div>
         <p class="meta">
           Edge: <b>Cloudflare Tunnel → k8s nginx-ingress → pi-broker Service</b> (same path as other
-          <code>fromlab.work</code> apps) — <b>minus the Access policy</b>. Pi RPC stays on the Mac;
+          <code>fromlab.work</code> apps), <b>minus the Access policy</b>. Pi RPC stays on the Mac;
           only the redacted <code>WebviewSnapshot</code> leaves it. Broker never touches Pi.
         </p>
       </div>
 
-      <h2>The URL scheme (why the fragment matters)</h2>
+      <h2>Pairing scheme — URL is a bootstrap, not the credential</h2>
       <div class="card">
         <div class="mono">
-          https://pi.fromlab.work/j#&lt;sid&gt;_&lt;secret&gt; │ │ public 8-char routing id ┘ └
-          256-bit secret (secrets.token_urlsafe(32))
+          QR / link: https://pi.fromlab.work/p#&lt;pairing_code&gt; └ single-use, ~90s TTL,
+          PIN-gated, carries NOTHING secret On scan (phone JS reads the fragment, never sent as a
+          GET param): POST /pair { pairing_code, device_pin } └─ server: validate (single-use +
+          unexpired + PIN + rate-limit) → GENERATE session token = secrets.token_urlsafe(32)
+          [256-bit, server-side, once] → bind { token → sid, device }, exp = now + 24h → mark
+          pairing_code CONSUMED → return { token } ONCE in the JSON body phone: store token in
+          IndexedDB (client-side only) → open wss /view with the token in the WS auth frame (never
+          in a URL)
         </div>
         <ul>
           <li>
-            <b>Everything secret lives after the <code>#</code></b> → the fragment is
-            <b>never</b> sent to the server, so it can't appear in Cloudflare/nginx/app access logs
-            or a <code>Referer</code> header.
+            The <b>session token is minted at scan time, returned once, never re-issued</b> — the
+            standard device-pairing / code-exchange pattern.
           </li>
           <li>
-            The phone's JS reads <code>location.hash</code>, then sends the secret only inside the
-            <b>WS auth frame</b> (which we never log).
+            It is held <b>only on the client</b> and sent <b>only</b> in the WS auth frame — never
+            in a URL, query, path, access log, or <code>Referer</code>.
           </li>
           <li>
-            <code>Referrer-Policy: no-referrer</code>, <code>HSTS</code>, no third-party scripts on
-            the page → no cross-origin leak of the link.
+            The pairing code is <b>single-use</b>: a screenshotted QR is dead the moment it's
+            scanned; if never scanned it dies in ~90s.
           </li>
           <li>
-            <code>sid</code> is public and used only for routing + rate-limit keying; it reveals
-            nothing without the secret.
+            Page hardening: strict <code>Content-Security-Policy</code> (no third-party scripts),
+            <code>Referrer-Policy: no-referrer</code>, HSTS — protects the client-stored token.
           </li>
         </ul>
       </div>
@@ -317,19 +296,20 @@
       <h2>24h lifecycle &amp; rotation</h2>
       <div class="card">
         <div class="mono">
-          t=0 Start Remote Session → mint {sid, secret}, exp = now+24h → link shown (QR + PIN)
-          t&lt;24h Link works. Phone joins with #secret (+ PIN on first device). Refresh Rotate: new
-          secret, exp = now+24h, OLD secret invalidated immediately (old link dies). t=24h
-          Auto-expire: room closed, phone disconnected, token purged. Must Start/Refresh again. Stop
-          Manual kill: same as expire, instantly.
+          t=0 Start Remote Session → session created; QR (pairing code) + PIN shown in VS Code scan
+          Phone pairs → server mints token (exp = now+24h) → phone stores it client-side t&lt;24h
+          Phone reconnects with its stored token (no re-scan needed within the window) Refresh
+          Rotate → server issues a NEW token to paired devices; OLD token invalidated immediately
+          t=24h Auto-expire → token purged, room closed, phone disconnected → re-pair or refresh
+          Stop Manual kill → same as expire, instantly; all device tokens revoked
         </div>
         <p class="meta">
-          One active secret per session at a time. Rotation is the only way to extend; there is no
+          The token lives on the client for up to 24h; rotation is the only way to extend — no
           silent renewal.
         </p>
       </div>
 
-      <h2>Security model (Access removed — 3 layers + PIN)</h2>
+      <h2>Security model (Access removed)</h2>
       <div class="card">
         <table>
           <tr>
@@ -341,21 +321,24 @@
             <td>Encryption + DDoS shield + WAF rate-limit rules at the edge.</td>
           </tr>
           <tr>
-            <td><b>2 · Capability token (256-bit, fragment)</b></td>
-            <td>The credential. Unguessable, leak-hardened, 24h TTL, rotatable, session-scoped.</td>
-          </tr>
-          <tr>
-            <td><b>3 · Roles + driver-lock</b></td>
+            <td><b>2 · One-time pairing code + device PIN</b></td>
             <td>
-              Host token is private (not the public link). Viewer = read-only; one driver; tool
-              approvals still prompt; instant revoke/kill.
+              Bootstrap only. Single-use, ~90s, PIN-gated, rate-limited. Redeeming it is the sole
+              way to obtain a token.
             </td>
           </tr>
           <tr>
-            <td><b>+ Device PIN (recommended)</b></td>
+            <td><b>3 · Server-minted session token (256-bit)</b></td>
             <td>
-              6-digit PIN shown in VS Code, required on <b>first</b> join per device → issues a
-              device sub-token. A leaked link <b>alone</b> cannot join.
+              Generated at pairing, returned once, stored client-side, sent only in the WS auth
+              frame. 24h TTL, rotatable, session-scoped. Never in a URL.
+            </td>
+          </tr>
+          <tr>
+            <td><b>4 · Roles + driver-lock</b></td>
+            <td>
+              Host token is private (not the pairing flow). Viewer = read-only; one driver; tool
+              approvals still prompt; instant revoke/kill.
             </td>
           </tr>
         </table>
@@ -369,52 +352,60 @@
             <th>Mitigation</th>
           </tr>
           <tr>
-            <td>Brute-force the secret</td>
+            <td>No secret in the URL at all</td>
             <td>
-              256-bit random → infeasible. Plus per-<code>sid</code> join rate-limit + lockout, and
-              edge WAF rate rules.
+              The token is minted server-side and stored client-side — it never touches a
+              URL/query/path/log/Referer. Eliminates the whole capability-URL leak class.
             </td>
           </tr>
           <tr>
-            <td>Scan / hit the domain</td>
+            <td>Brute-force the token</td>
+            <td>256-bit random, server-side only → infeasible.</td>
+          </tr>
+          <tr>
+            <td>QR forwarded / screenshotted</td>
             <td>
-              No token → handshake rejected instantly. Cloudflare absorbs floods; hard cap on active
-              sessions + connections/session.
+              Pairing code is <b>single-use</b> (dead once scanned) + ~90s TTL +
+              <b>device PIN</b> to redeem. A stale screenshot is worthless.
             </td>
           </tr>
           <tr>
-            <td>Link leaks (log / Referer)</td>
-            <td>
-              Secret is in the fragment → not in any server log or Referer.
-              <code>no-referrer</code> + HSTS.
-            </td>
+            <td>Guess a pairing code</td>
+            <td>High-entropy code + single-use + ~90s + per-IP rate-limit/lockout + edge WAF.</td>
           </tr>
           <tr>
-            <td>Link forwarded / screenshotted <span class="tag">main residual risk</span></td>
+            <td>Stolen client token (XSS)</td>
             <td>
-              <b>Device PIN</b> on first join blocks it; 24h expiry + rotation limits the window;
-              host sees connected devices and can revoke.
+              Strict CSP + no third-party scripts on the PWA; token in IndexedDB; 24h expiry; host
+              can drop devices.
             </td>
           </tr>
           <tr>
             <td>Cross-session hijack</td>
             <td>
-              Token embeds <code>sid</code>, validated per room. A link for chat A is rejected by
-              chat B.
+              Token binds to its <code>sid</code>, validated per room. A token for chat A is
+              rejected by chat B.
             </td>
           </tr>
           <tr>
             <td>Impersonate the host</td>
             <td>
-              Host uses a separate private token, never the public link. Viewers can only
-              view/drive, never publish as host.
+              Host uses a separate private token, never the pairing flow. Viewers can only
+              view/drive.
+            </td>
+          </tr>
+          <tr>
+            <td>Scan / flood the domain</td>
+            <td>
+              No token → handshake rejected instantly. Cloudflare absorbs floods; hard cap on active
+              sessions + connections/session.
             </td>
           </tr>
         </table>
-        <p class="warn">
-          Without Access, a <b>shared link is the whole credential</b> — so the <b>device PIN</b> +
-          24h rotation are what keep an accidentally-forwarded link from becoming a standing
-          backdoor. Strongly recommended to keep the PIN on.
+        <p class="good">
+          Because the credential is minted at scan and kept client-side, a leaked/forwarded QR is a
+          single-use, short-lived, PIN-gated bootstrap — not a standing backdoor. This is the
+          standard, safe pattern.
         </p>
       </div>
 
@@ -436,14 +427,15 @@
             <td>Stack</td>
             <td>
               FastAPI + <code>uvicorn[standard]</code> (WS), Redis (rooms + token store +
-              rate-limit), <code>secrets</code> for tokens.
+              rate-limit), <code>secrets</code> for codes/tokens.
             </td>
           </tr>
           <tr>
             <td>Endpoints</td>
             <td>
-              <code>POST /session</code> (host) · <code>POST /refresh</code> ·
-              <code>POST /pair</code> (PIN) · <code>ws /host</code> · <code>ws /view</code>
+              <code>POST /session</code> (host) · <code>POST /pair</code> {code, pin} → mints +
+              returns token once · <code>POST /refresh</code> (rotate) · <code>ws /host</code> ·
+              <code>ws /view</code> (token in auth frame)
             </td>
           </tr>
           <tr>
@@ -474,16 +466,17 @@
           <tr>
             <td>0 · Spike</td>
             <td>
-              pi-broker locally; extension dials out; relay one snapshot to a browser tab using a
-              #capability link. No PIN/rotation yet.
+              pi-broker locally; extension dials out; a phone-tab pairs (code → server-minted token
+              stored client-side) and relays one snapshot. No rotation/PIN yet.
             </td>
             <td>S</td>
           </tr>
           <tr>
             <td>1 · Spectator</td>
             <td>
-              Deploy to slr-inc + <code>pi.fromlab.work</code>; 256-bit link + fragment + 24h TTL +
-              rotation + device PIN; read-only; WAF rate-limit; kill switch.
+              Deploy to slr-inc + <code>pi.fromlab.work</code>; single-use pairing code + device PIN
+              + server-minted 256-bit token (client-stored) + 24h TTL + rotation; read-only; WAF
+              rate-limit; kill switch.
             </td>
             <td>M</td>
           </tr>
@@ -499,7 +492,7 @@
           </tr>
         </table>
         <p class="good">
-          Ship <b>spectator-first</b>: prove the public capability-URL model read-only before
+          Ship <b>spectator-first</b>: prove the pairing + client-token model read-only before
           allowing remote writes.
         </p>
       </div>
