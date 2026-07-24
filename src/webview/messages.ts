@@ -30,6 +30,7 @@ export type WebviewInboundMessage =
   | { type: 'attachFile'; path: string }
   | { type: 'requestFileMentions'; query: string }
   | { type: 'requestSlashCommands' }
+  | { type: 'pasteImage'; data: string; mimeType: string }
   | { type: 'respondUi'; id: string; value?: string; confirmed?: boolean };
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
@@ -106,6 +107,10 @@ export function parseWebviewMessage(value: unknown): WebviewInboundMessage | und
         : undefined;
     case 'requestSlashCommands':
       return { type: 'requestSlashCommands' };
+    case 'pasteImage':
+      return typeof record.data === 'string' && typeof record.mimeType === 'string'
+        ? { type: 'pasteImage', data: record.data, mimeType: record.mimeType }
+        : undefined;
     case 'respondUi': {
       if (typeof record.id !== 'string') {
         return undefined;

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.91
+
+- Image paste: paste a screenshot or image directly into the composer (Cmd/Ctrl+V) to attach it - no need to save a file first. Respects the image size and per-message count limits.
+
 ## 0.0.90
 
 - Cleaner layout: the top bar is now empty; the model chip, usage chip, folder picker, and the More menu moved into a toolbar next to the composer (bottom), so the conversation gets the full top space.

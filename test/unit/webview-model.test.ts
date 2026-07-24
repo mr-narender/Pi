@@ -241,3 +241,15 @@ test('parseWebviewMessage accepts respondUi', () => {
   });
   assert.equal(parseWebviewMessage({ type: 'respondUi' }), undefined);
 });
+
+test('parseWebviewMessage accepts pasteImage', () => {
+  assert.deepEqual(
+    parseWebviewMessage({ type: 'pasteImage', data: 'AAAA', mimeType: 'image/png' }),
+    {
+      type: 'pasteImage',
+      data: 'AAAA',
+      mimeType: 'image/png',
+    }
+  );
+  assert.equal(parseWebviewMessage({ type: 'pasteImage', data: 'AAAA' }), undefined);
+});

@@ -483,6 +483,32 @@ function render(snapshot: WebviewSnapshot): void {
       updateMentionMenu();
     }
   });
+  // Image paste: pasting a screenshot/image into the composer attaches it.
+  textarea?.addEventListener('paste', (event) => {
+    const items = event.clipboardData?.items;
+    if (!items) {
+      return;
+    }
+    for (const entry of Array.from(items)) {
+      if (entry.kind === 'file' && entry.type.startsWith('image/')) {
+        const file = entry.getAsFile();
+        if (!file) {
+          continue;
+        }
+        event.preventDefault();
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = typeof reader.result === 'string' ? reader.result : '';
+          const comma = result.indexOf(',');
+          const data = comma >= 0 ? result.slice(comma + 1) : '';
+          if (data) {
+            vscode.postMessage({ type: 'pasteImage', data, mimeType: file.type });
+          }
+        };
+        reader.readAsDataURL(file);
+      }
+    }
+  });
   // #9 — drag a file from the Explorer onto the composer to attach it.
   textarea?.addEventListener('dragover', (event) => {
     event.preventDefault();

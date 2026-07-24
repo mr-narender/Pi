@@ -972,6 +972,9 @@ export class ChatTabManager implements vscode.Disposable {
       case 'pickImages':
         await this.pickImages(context.controller, context.target, host.resource);
         return;
+      case 'pasteImage':
+        await this.addPastedImage(context, host.resource, parsed.data, parsed.mimeType);
+        return;
       case 'clearAttachments':
         await this.uiState.clearAttachmentsForIdentity(context.controller, context.target);
         await this.renderResource(host.resource);
@@ -1492,6 +1495,47 @@ export class ChatTabManager implements vscode.Disposable {
       }
     }
     return undefined;
+  }
+
+  /** #image-paste — attach an image pasted into the composer (base64 bytes). */
+  private async addPastedImage(
+    context: ChatTabContext,
+    resource: vscode.Uri,
+    data: string,
+    mimeType: string
+  ): Promise<void> {
+    const settings = getSettings();
+    const bytes = Buffer.from(data, 'base64');
+    if (bytes.length === 0) {
+      return;
+    }
+    if (bytes.length > settings.maxImageBytes) {
+      void vscode.window.showWarningMessage(
+        'Pasted image exceeds the configured image size limit.'
+      );
+      return;
+    }
+    const state = await this.uiState.getComposerStateForIdentity(
+      context.controller,
+      context.target
+    );
+    if (state.pendingImages.length >= settings.maxImagesPerPrompt) {
+      void vscode.window.showWarningMessage(
+        `You can attach at most ${settings.maxImagesPerPrompt} images per message.`
+      );
+      return;
+    }
+    const extension = mimeType.split('/')[1] ?? 'png';
+    const item: PendingImageItem = {
+      itemId: makeId('image'),
+      name: `pasted-${Date.now()}.${extension}`,
+      mimeType,
+      sizeBytes: bytes.length,
+      inMemoryBase64: data,
+      previewDataUrl: `data:${mimeType};base64,${data}`,
+    };
+    await this.uiState.addImageItemsForIdentity(context.controller, context.target, [item]);
+    await this.renderResource(resource);
   }
 
   private async pickImages(
