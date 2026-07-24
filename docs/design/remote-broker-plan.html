@@ -1,0 +1,372 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pi — Remote Broker (#11) Plan</title>
+    <style>
+      :root {
+        --bg: #0d1117;
+        --panel: #161b22;
+        --border: #30363d;
+        --fg: #e6edf3;
+        --muted: #9da7b3;
+        --teal: #4ec9b0;
+        --blue: #539bf5;
+        --gold: #d7a300;
+        --red: #e5534b;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--fg);
+        font:
+          15px/1.6 -apple-system,
+          Segoe UI,
+          Roboto,
+          sans-serif;
+      }
+      .wrap {
+        max-width: 980px;
+        margin: 0 auto;
+        padding: 40px 24px 80px;
+      }
+      h1 {
+        font-size: 28px;
+        margin: 0 0 4px;
+      }
+      .sub {
+        color: var(--muted);
+        margin: 0 0 28px;
+      }
+      h2 {
+        font-size: 18px;
+        margin: 34px 0 12px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid var(--border);
+      }
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 18px 20px;
+        margin: 14px 0;
+      }
+      code {
+        font-family: ui-monospace, monospace;
+        background: #0b0f14;
+        border: 1px solid var(--border);
+        border-radius: 5px;
+        padding: 1px 6px;
+        font-size: 0.9em;
+      }
+      /* diagram */
+      .diagram {
+        display: flex;
+        align-items: stretch;
+        gap: 0;
+        flex-wrap: wrap;
+        margin: 8px 0;
+      }
+      .node {
+        flex: 1 1 200px;
+        background: #0b0f14;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 14px;
+        text-align: center;
+        min-width: 180px;
+      }
+      .node h3 {
+        margin: 0 0 6px;
+        font-size: 14px;
+      }
+      .node .meta {
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .arrow {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--teal);
+        font-size: 22px;
+        padding: 0 6px;
+        min-width: 40px;
+      }
+      .pill {
+        display: inline-block;
+        font-size: 11px;
+        padding: 2px 8px;
+        border-radius: 999px;
+        margin: 2px 3px 0;
+      }
+      .p-teal {
+        background: rgba(78, 201, 176, 0.16);
+        color: var(--teal);
+      }
+      .p-blue {
+        background: rgba(83, 155, 245, 0.16);
+        color: var(--blue);
+      }
+      .p-gold {
+        background: rgba(215, 163, 0, 0.16);
+        color: var(--gold);
+      }
+      .p-red {
+        background: rgba(229, 83, 75, 0.16);
+        color: var(--red);
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.92em;
+      }
+      td,
+      th {
+        text-align: left;
+        padding: 8px 10px;
+        border-top: 1px solid var(--border);
+        vertical-align: top;
+      }
+      th {
+        color: var(--teal);
+      }
+      ol {
+        margin: 6px 0;
+        padding-left: 22px;
+      }
+      li {
+        margin: 5px 0;
+      }
+      .warn {
+        border-left: 3px solid var(--gold);
+        padding-left: 12px;
+        color: #e8d59a;
+      }
+      .role {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+      .role > div {
+        flex: 1 1 260px;
+        background: #0b0f14;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 12px 14px;
+      }
+      .step {
+        counter-reset: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>Remote Broker (#11) — how it would work</h1>
+      <p class="sub">
+        Drive or watch a Pi chat from your phone/tablet, securely, without exposing your machine.
+        This is a plan — not yet built.
+      </p>
+
+      <h2>The picture</h2>
+      <div class="card">
+        <div class="diagram">
+          <div class="node">
+            <h3>📱 Phone / laptop</h3>
+            <div class="meta">Browser PWA<br />(spectator or driver)</div>
+            <div>
+              <span class="pill p-blue">token login</span
+              ><span class="pill p-teal">WebviewSnapshot</span>
+            </div>
+          </div>
+          <div class="arrow">⇄</div>
+          <div class="node">
+            <h3>🔒 Tunnel</h3>
+            <div class="meta">VS Code Tunnel / Cloudflare / ngrok<br />TLS, no port-forwarding</div>
+            <div><span class="pill p-gold">wss://</span></div>
+          </div>
+          <div class="arrow">⇄</div>
+          <div class="node">
+            <h3>🧩 Extension broker</h3>
+            <div class="meta">WebSocket server<br />inside the extension host</div>
+            <div>
+              <span class="pill p-teal">reuses snapshot</span
+              ><span class="pill p-red">auth gate</span>
+            </div>
+          </div>
+          <div class="arrow">⇄</div>
+          <div class="node">
+            <h3>⚙️ Pi RPC</h3>
+            <div class="meta">pi --mode rpc<br />(already running per folder)</div>
+          </div>
+        </div>
+        <p class="meta">
+          The broker is a thin bridge: it forwards the same <code>WebviewSnapshot</code> the desktop
+          chat already renders to remote clients, and relays their prompts back into the existing Pi
+          RPC controller. No new chat engine — it reuses everything.
+        </p>
+      </div>
+
+      <h2>What you'd actually do</h2>
+      <div class="card">
+        <ol class="step">
+          <li>
+            In VS Code: <code>Pi: Start Remote Session</code> → the broker starts + opens a secure
+            tunnel.
+          </li>
+          <li>You get a URL + a one-time <b>pairing code</b> (QR shown in a popover).</li>
+          <li>
+            Open the URL on your phone, enter the code → a token is minted (scoped, expiring).
+          </li>
+          <li>You now see the live chat. Pick a role:</li>
+        </ol>
+        <div class="role">
+          <div>
+            <b>👁 Spectator</b><br />Read-only. Sees messages stream live, tool cards, diffs. Cannot
+            send. Good for watching a long task from the couch.
+          </div>
+          <div>
+            <b>🎮 Driver</b><br />Can send prompts, stop, approve tools. Exactly one driver at a
+            time (lock). Desktop can reclaim control instantly.
+          </div>
+        </div>
+      </div>
+
+      <h2>Message flow (per prompt)</h2>
+      <div class="card">
+        <table>
+          <tr>
+            <th>#</th>
+            <th>Step</th>
+            <th>Channel</th>
+          </tr>
+          <tr>
+            <td>1</td>
+            <td>Phone (driver) sends <code>{prompt:"..."}</code></td>
+            <td>wss → broker</td>
+          </tr>
+          <tr>
+            <td>2</td>
+            <td>Broker checks token + driver-lock, calls <code>controller.prompt()</code></td>
+            <td>in-process</td>
+          </tr>
+          <tr>
+            <td>3</td>
+            <td>Pi streams <code>message_update</code> events</td>
+            <td>Pi RPC → controller</td>
+          </tr>
+          <tr>
+            <td>4</td>
+            <td>Controller fires a new <code>WebviewSnapshot</code></td>
+            <td>in-process</td>
+          </tr>
+          <tr>
+            <td>5</td>
+            <td>Broker broadcasts the snapshot to desktop + all remote clients</td>
+            <td>broker → wss</td>
+          </tr>
+          <tr>
+            <td>6</td>
+            <td>Phone renders the same chat UI (typewriter and all)</td>
+            <td>client</td>
+          </tr>
+        </table>
+      </div>
+
+      <h2>Security model (the hard part)</h2>
+      <div class="card">
+        <table>
+          <tr>
+            <th>Concern</th>
+            <th>Mitigation</th>
+          </tr>
+          <tr>
+            <td>Exposure</td>
+            <td>
+              No open ports. Outbound tunnel only (VS Code Tunnel uses your GitHub identity, or
+              Cloudflare/ngrok).
+            </td>
+          </tr>
+          <tr>
+            <td>Auth</td>
+            <td>
+              One-time pairing code → short-lived signed token (JWT). Per-device revoke. Tokens
+              expire on session end.
+            </td>
+          </tr>
+          <tr>
+            <td>Least privilege</td>
+            <td>
+              Spectator can't write. Driver-lock prevents two people fighting. Tool approvals still
+              prompt (inline Allow/Deny).
+            </td>
+          </tr>
+          <tr>
+            <td>Scope</td>
+            <td>
+              Broker only exposes the chat protocol — never a shell, never the filesystem directly.
+            </td>
+          </tr>
+          <tr>
+            <td>Redaction</td>
+            <td>Reuses the existing log redactor for anything leaving the machine.</td>
+          </tr>
+          <tr>
+            <td>Kill switch</td>
+            <td>
+              Status bar item + <code>Pi: Stop Remote Session</code> tears down tunnel + tokens
+              instantly.
+            </td>
+          </tr>
+        </table>
+        <p class="warn">
+          ⚠ This is the reason it's the biggest item: a networked, authenticated, remotely-drivable
+          coding agent needs its threat model right. Ship spectator-only first, add driver later.
+        </p>
+      </div>
+
+      <h2>Phased build</h2>
+      <div class="card">
+        <table>
+          <tr>
+            <th>Phase</th>
+            <th>Scope</th>
+            <th>Effort</th>
+          </tr>
+          <tr>
+            <td>0 · Spike</td>
+            <td>
+              Local WS server in extension, broadcast snapshot to a browser tab on localhost (no
+              tunnel/auth)
+            </td>
+            <td>S</td>
+          </tr>
+          <tr>
+            <td>1 · Spectator</td>
+            <td>Tunnel + pairing code + token; read-only live view; kill switch</td>
+            <td>M</td>
+          </tr>
+          <tr>
+            <td>2 · Driver</td>
+            <td>Driver-lock, send/stop/approve, reclaim control, per-device revoke</td>
+            <td>M</td>
+          </tr>
+          <tr>
+            <td>3 · Polish</td>
+            <td>PWA install, QR pairing, mobile-tuned layout, reconnect</td>
+            <td>M</td>
+          </tr>
+        </table>
+        <p class="meta">
+          Reuses: <code>WebviewSnapshot</code>, the render bundle, the inbound message parser, the
+          redactor, tool-approval UI. New: WS server, tunnel mgmt, token auth, role/lock, mobile
+          shell.
+        </p>
+      </div>
+    </div>
+  </body>
+</html>

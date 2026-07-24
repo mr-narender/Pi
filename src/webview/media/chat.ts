@@ -391,11 +391,40 @@ interface ScrollMetrics {
   wasNearBottom: boolean;
 }
 
+// Screen-reader announcements: concise milestones only (not per-token), routed
+// through a dedicated aria-live region so streaming doesn't flood the reader.
+let lastBusyAnnounced = false;
+function announce(text: string): void {
+  const el = document.getElementById('a11y-status');
+  if (!el || !text) {
+    return;
+  }
+  el.textContent = '';
+  requestAnimationFrame(() => {
+    el.textContent = text;
+  });
+}
+function announceTurnState(snapshot: WebviewSnapshot): void {
+  const busy = snapshot.connectionState === 'busy' || snapshot.isStreaming === true;
+  if (busy && !lastBusyAnnounced) {
+    announce('Pi is working\u2026');
+  } else if (!busy && lastBusyAnnounced) {
+    const lastAssistant = [...snapshot.messages].reverse().find((m) => m.role === 'assistant');
+    const text = (lastAssistant?.text ?? '').replace(/\s+/g, ' ').trim().slice(0, 220);
+    announce(text ? `Pi responded. ${text}` : 'Pi finished responding.');
+  }
+  lastBusyAnnounced = busy;
+}
+function prefersReducedMotion(): boolean {
+  return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
+}
+
 function render(snapshot: WebviewSnapshot): void {
   currentSnapshot = snapshot;
   if (!root) {
     return;
   }
+  announceTurnState(snapshot);
 
   // Capture pre-render scroll metrics so we can decide, after the DOM is
   // rebuilt, whether to jump to the bottom (open/stream) or anchor the
@@ -1011,7 +1040,7 @@ function advanceTypewriter(): void {
   const busy = currentSnapshot?.connectionState === 'busy';
   const speed = currentSnapshot?.typewriterSpeed ?? 'normal';
   const el = busy ? streamTarget() : undefined;
-  if (!el || speed === 'off') {
+  if (!el || speed === 'off' || prefersReducedMotion()) {
     // Off, stream ended, or no live answer: the render already shows the full
     // text. Reset for the next turn.
     stopTypewriter();

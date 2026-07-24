@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pi extension — Accessibility Pass</title>
+    <style>
+      :root {
+        --bg: #0d1117;
+        --panel: #161b22;
+        --border: #30363d;
+        --fg: #e6edf3;
+        --muted: #9da7b3;
+        --teal: #4ec9b0;
+        --green: #57ab5a;
+        --red: #e5534b;
+        --gold: #d7a300;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--fg);
+        font:
+          15px/1.6 -apple-system,
+          Segoe UI,
+          Roboto,
+          sans-serif;
+      }
+      .wrap {
+        max-width: 940px;
+        margin: 0 auto;
+        padding: 40px 24px 80px;
+      }
+      h1 {
+        font-size: 28px;
+        margin: 0 0 4px;
+      }
+      .sub {
+        color: var(--muted);
+        margin: 0 0 28px;
+      }
+      h2 {
+        font-size: 18px;
+        margin: 34px 0 12px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid var(--border);
+      }
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 18px 20px;
+        margin: 14px 0;
+      }
+      .row {
+        display: grid;
+        grid-template-columns: 200px 1fr;
+        gap: 16px;
+        padding: 10px 0;
+        border-top: 1px solid var(--border);
+      }
+      .row:first-child {
+        border-top: 0;
+      }
+      .k {
+        color: var(--teal);
+        font-weight: 600;
+      }
+      code {
+        font-family: ui-monospace, monospace;
+        background: #0b0f14;
+        border: 1px solid var(--border);
+        border-radius: 5px;
+        padding: 1px 6px;
+        font-size: 0.9em;
+      }
+      .before,
+      .after {
+        border-radius: 8px;
+        padding: 10px 12px;
+        margin: 6px 0;
+        font-size: 0.94em;
+      }
+      .before {
+        background: rgba(229, 83, 75, 0.1);
+        border: 1px solid rgba(229, 83, 75, 0.4);
+      }
+      .after {
+        background: rgba(87, 171, 90, 0.1);
+        border: 1px solid rgba(87, 171, 90, 0.4);
+      }
+      .tag {
+        display: inline-block;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        padding: 2px 7px;
+        border-radius: 999px;
+        margin-right: 8px;
+      }
+      .t-before {
+        background: rgba(229, 83, 75, 0.2);
+        color: #ff9d97;
+      }
+      .t-after {
+        background: rgba(87, 171, 90, 0.2);
+        color: #93e29a;
+      }
+      .wcag {
+        color: var(--gold);
+        font-size: 0.82em;
+      }
+      .demo {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        flex-wrap: wrap;
+        margin-top: 10px;
+      }
+      button.icon {
+        width: 34px;
+        height: 34px;
+        border-radius: 8px;
+        border: 1px solid var(--border);
+        background: #0b0f14;
+        color: var(--fg);
+        cursor: pointer;
+        font-size: 15px;
+      }
+      button.icon:focus-visible {
+        outline: 2px solid var(--teal);
+        outline-offset: 2px;
+      }
+      .live {
+        margin-top: 8px;
+        padding: 8px 12px;
+        border: 1px dashed var(--teal);
+        border-radius: 8px;
+        color: var(--teal);
+        font-size: 0.92em;
+      }
+      ul {
+        margin: 6px 0 0;
+        padding-left: 20px;
+      }
+      li {
+        margin: 4px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>Accessibility Pass — what changes</h1>
+      <p class="sub">
+        Pi chat (VS Code webview). Goal: usable with keyboard + screen reader, WCAG 2.1 AA.
+      </p>
+
+      <h2>1 · Streaming announcements (ARIA live)</h2>
+      <div class="card">
+        <p>
+          The transcript re-renders many times a second while Pi types. A screen reader currently
+          tries to read every partial update — a flood of noise.
+        </p>
+        <div class="before">
+          <span class="tag t-before">before</span><code>#messages</code> has
+          <code>aria-live="polite"</code> → SR announces every token chunk (unusable).
+        </div>
+        <div class="after">
+          <span class="tag t-after">after</span> Transcript set to <code>aria-live="off"</code>. A
+          dedicated hidden status region announces concise milestones only:
+          <ul>
+            <li>“Pi is working…” when a turn starts</li>
+            <li>“Pi responded. &lt;first ~220 chars of the answer&gt;” when the turn settles</li>
+            <li>“Error: …” on failure</li>
+          </ul>
+        </div>
+        <div class="live" role="status" aria-live="polite">
+          aria-live="polite" region → “Pi responded. Here's how photosynthesis works…”
+        </div>
+        <p class="wcag">
+          WCAG 4.1.3 Status Messages · 1.4.13 · aria-live=polite (non-interrupting)
+        </p>
+      </div>
+
+      <h2>2 · Labels on icon-only controls</h2>
+      <div class="card">
+        <p>Every icon button gets an <code>aria-label</code> (not just a hover title).</p>
+        <div class="demo">
+          <button class="icon" aria-label="Send message (Enter)">↵</button>
+          <button class="icon" aria-label="Choose model">◇</button>
+          <button class="icon" aria-label="Settings">⚙</button>
+          <button class="icon" aria-label="Ask Pi to continue">⟳</button>
+          <button class="icon" aria-label="Jump to latest message">↧</button>
+          <span class="wcag"
+            >← Tab through these; each announces its purpose. WCAG 4.1.2 / 1.1.1</span
+          >
+        </div>
+      </div>
+
+      <h2>3 · Focus management &amp; visible focus</h2>
+      <div class="card">
+        <div class="row">
+          <div class="k">Focus rings</div>
+          <div>
+            Every interactive element shows a visible <code>:focus-visible</code> outline (2px
+            teal). Never removed. <span class="wcag">WCAG 2.4.7</span>
+          </div>
+        </div>
+        <div class="row">
+          <div class="k">Skip link</div>
+          <div>“Skip to composer” already first in tab order — kept.</div>
+        </div>
+        <div class="row">
+          <div class="k">Message authorship</div>
+          <div>
+            Each message exposes its author to SR (<code>aria-label="You said"</code> /
+            <code>"Pi said"</code>) so the reader knows who is speaking.
+          </div>
+        </div>
+        <div class="row">
+          <div class="k">Menus</div>
+          <div>
+            Popovers (More, Settings) are keyboard-openable and Esc-closable; focus returns to the
+            trigger.
+          </div>
+        </div>
+      </div>
+
+      <h2>4 · Reduced motion</h2>
+      <div class="card">
+        <p>
+          <code>prefers-reduced-motion: reduce</code> now also disables the typewriter smoothing
+          (shows text immediately) in addition to the spinner/CSS animations already covered.
+          <span class="wcag">WCAG 2.3.3</span>
+        </p>
+      </div>
+
+      <h2>Summary of code touch-points</h2>
+      <div class="card">
+        <ul>
+          <li>
+            <code>render.ts</code> — hidden live region; per-message author labels; aria-labels on
+            chips/buttons
+          </li>
+          <li>
+            <code>chat.ts</code> — announce working/settled/error into the live region; typewriter
+            honours reduced-motion
+          </li>
+          <li>
+            <code>chat.css</code> — <code>:focus-visible</code> outlines;
+            <code>.visually-hidden</code> live region
+          </li>
+        </ul>
+      </div>
+    </div>
+  </body>
+</html>

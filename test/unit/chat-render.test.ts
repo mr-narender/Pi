@@ -592,3 +592,25 @@ test('edit tool card renders a colored diff', () => {
   assert.match(html, /class="diff-line diff-del">old</);
   assert.match(html, /class="diff-line diff-add">new</);
 });
+
+test('accessibility: live status region, transcript live=off, author labels', () => {
+  const html = renderChatApp(
+    snapshot({
+      messages: [
+        { id: 'u', role: 'user', text: 'hi', attachments: [] },
+        {
+          id: 'a',
+          role: 'assistant',
+          text: 'hello',
+          blocks: [{ kind: 'text', text: 'hello' }],
+          attachments: [],
+        },
+      ],
+    })
+  );
+  assert.match(html, /id="a11y-status"[^>]*role="status"[^>]*aria-live="polite"/);
+  assert.match(html, /id="messages"[^>]*aria-live="off"/);
+  assert.match(html, /class="model-chip"[^>]*aria-label="Choose model"/);
+  assert.match(html, /aria-label="You said"/);
+  assert.match(html, /aria-label="Pi said"/);
+});

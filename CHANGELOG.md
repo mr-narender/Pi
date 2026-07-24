@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.0.98
+
+- Accessibility pass:
+  - Screen-reader friendly streaming: the transcript no longer spams every token (aria-live off). A dedicated status region announces concise milestones - "Pi is working", "Pi responded. <answer summary>", and errors.
+  - Every icon-only control now has an aria-label (model, usage, continue, send, etc.); each message announces its author ("You said" / "Pi said").
+  - Visible focus ring on every interactive element (:focus-visible), never removed.
+  - Reduced motion: prefers-reduced-motion now also disables typewriter smoothing (text appears immediately), in addition to spinners/animations.
+
 ## 0.0.97
 
 - Inline "Ask Pi" CodeLens: an "Ask Pi" action now appears above functions/methods in code files. Click it to select that symbol and pick Explain / Add tests / Fix bugs / Refactor - routed straight into the chat with the code as context. Toggle with piRpc.codeLensEnabled.

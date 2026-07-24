@@ -467,7 +467,7 @@ function renderUsageChip(snapshot: WebviewSnapshot): string {
   if (!label) {
     return '';
   }
-  return `<button type="button" class="usage-chip" data-command="piRpc.showSessionStats" title="Session usage — click for details">${escapeHtml(label)}</button>`;
+  return `<button type="button" class="usage-chip" data-command="piRpc.showSessionStats" title="Session usage — click for details" aria-label="Session usage and cost — open details">${escapeHtml(label)}</button>`;
 }
 
 function modelLabel(snapshot: WebviewSnapshot): string {
@@ -591,7 +591,7 @@ function renderMessageArticle(
   // growth and scroll-to-bottom stay exact.
   const virtualClass = isLast ? '' : ' msg-virtual';
   return `
-        <article class="message-card message-${escapeHtml(role)}${virtualClass}">
+        <article class="message-card message-${escapeHtml(role)}${virtualClass}"${roleLabel ? ` aria-label="${roleLabel} said"` : ''}>
           ${roleLabel ? `<div class="message-role">${roleLabel}</div>` : ''}
           ${showCopy ? `<div class="msg-actions">${role === 'user' ? `<button type="button" class="msg-edit" title="Edit in composer" aria-label="Edit message">${EDIT_ICON}</button>` : ''}<button type="button" class="msg-copy" title="Copy message" aria-label="Copy message">${COPY_ICON}</button></div>` : ''}
           ${renderMessageBody(message, streamingAnswer)}
@@ -784,7 +784,7 @@ function renderContinue(snapshot: WebviewSnapshot): string {
   if (!last || last.role !== 'assistant' || snapshot.draft.trim().length > 0) {
     return '';
   }
-  return `<button type="button" class="continue-btn" data-command="piRpcInternal.continue" title="Ask Pi to continue">Continue</button>`;
+  return `<button type="button" class="continue-btn" data-command="piRpcInternal.continue" title="Ask Pi to continue" aria-label="Ask Pi to continue">Continue</button>`;
 }
 
 // Settings gear popover — quick presentation controls next to the composer.
@@ -865,11 +865,12 @@ export function renderChatApp(snapshot: WebviewSnapshot): string {
     <a class="skip-link" href="#composer-field">Skip to composer</a>
     <div class="layout" data-testid="chat-app" data-ui-mode="${escapeHtml(snapshot.uiMode)}"${chatFontStyle(snapshot)}>
       <div class="header-summary visually-hidden" aria-label="Current chat summary">${escapeHtml(summaryLine)}</div>
+      <div id="a11y-status" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></div>
 
       ${restrictedBanner}
       ${renderRecovery(snapshot)}
 
-      <main class="conversation" id="messages" role="log" aria-live="polite" aria-relevant="additions text">${
+      <main class="conversation" id="messages" role="log" aria-live="off" aria-relevant="additions text">${
         connecting && snapshot.messages.length === 0
           ? `<div class="connecting-state" role="status" aria-live="polite"><span class="spinner" aria-hidden="true"></span><p class="empty-copy">${snapshot.sessionFile ? 'Loading chat…' : 'Connecting to Pi…'}</p></div>`
           : faulted && snapshot.messages.length === 0
@@ -882,7 +883,7 @@ export function renderChatApp(snapshot: WebviewSnapshot): string {
       <section class="composer-dock" aria-labelledby="composer-heading">
         <div class="composer-toolbar brand-controls">
           ${folderSelect}
-          <button type="button" class="model-chip" data-command="piRpc.showModels" title="Choose model"><span class="model-dot"></span>${escapeHtml(modelLabel(snapshot))}</button>
+          <button type="button" class="model-chip" data-command="piRpc.showModels" title="Choose model" aria-label="Choose model"><span class="model-dot"></span>${escapeHtml(modelLabel(snapshot))}</button>
           ${renderUsageChip(snapshot)}
           ${busy ? '' : renderContinue(snapshot)}
           <span class="toolbar-spacer"></span>
