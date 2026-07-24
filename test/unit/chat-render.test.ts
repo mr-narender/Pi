@@ -47,9 +47,12 @@ function snapshot(overrides: Partial<WebviewSnapshot> = {}): WebviewSnapshot {
   };
 }
 
-test('renderChatApp renders the header controls + docked composer layout', () => {
+test('renderChatApp renders the controls in the composer toolbar (clean top)', () => {
   const html = renderChatApp(snapshot());
-  assert.match(html, /class="brand-controls"/);
+  // Controls now live in a toolbar with the composer; the top brand-bar is gone.
+  assert.match(html, /class="composer-toolbar brand-controls"/);
+  assert.doesNotMatch(html, /class="brand-bar"/);
+  assert.match(html, /class="settings-menu"|id="settings-menu"/);
   assert.match(html, /Skip to composer/);
   assert.match(html, /class="composer-dock"/);
   assert.match(html, /class="composer-card"/);

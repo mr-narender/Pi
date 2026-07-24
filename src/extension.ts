@@ -1227,6 +1227,37 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   registrations.set('piRpcInternal.increaseChatFont', () => adjustChatFont(1));
   registrations.set('piRpcInternal.decreaseChatFont', () => adjustChatFont(-1));
 
+  const pickSetting = async (key: string, title: string, options: string[]): Promise<void> => {
+    const config = vscode.workspace.getConfiguration('piRpc');
+    const current = config.get<string>(key);
+    const pick = await vscode.window.showQuickPick(
+      options.map((option) => ({
+        label: option,
+        description: option === current ? 'current' : '',
+      })),
+      { title }
+    );
+    if (pick) {
+      await config.update(key, pick.label, vscode.ConfigurationTarget.Global);
+    }
+  };
+  registrations.set('piRpcInternal.setWorkingAnimation', () =>
+    pickSetting('workingAnimation', 'Working animation', [
+      'braille',
+      'dots',
+      'bars',
+      'earth',
+      'moon',
+      'dolphin',
+    ])
+  );
+  registrations.set('piRpcInternal.setTypewriterSpeed', () =>
+    pickSetting('typewriterSpeed', 'Typewriter speed', ['off', 'slow', 'normal', 'fast'])
+  );
+  registrations.set('piRpcInternal.openSettings', async () => {
+    await vscode.commands.executeCommand('workbench.action.openSettings', '@ext:mr-narender.pi');
+  });
+
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((event) => {
       if (

@@ -732,6 +732,23 @@ function renderWorkingBanner(snapshot: WebviewSnapshot): string {
   return `<div class="working-banner">${renderWorking(snapshot)}<span class="working-label">Working\u2026</span></div>`;
 }
 
+// Settings gear popover — quick presentation controls next to the composer.
+function renderSettingsMenu(): string {
+  const gear =
+    '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="2.1"/><path d="M8 1.6v1.6M8 12.8v1.6M14.4 8h-1.6M3.2 8H1.6M12.5 3.5l-1.1 1.1M4.6 11.4l-1.1 1.1M12.5 12.5l-1.1-1.1M4.6 4.6L3.5 3.5" stroke-linecap="round"/></svg>';
+  return `
+    <details class="menu-details settings-menu" id="settings-menu">
+      <summary aria-label="Settings" title="Settings">${gear}</summary>
+      <div class="menu-panel" role="menu">
+        <div class="menu-group">Appearance</div>
+        <div class="menu-row"><span>Chat font size</span><span class="menu-stepper"><button type="button" data-command="piRpcInternal.decreaseChatFont" aria-label="Decrease font size">−</button><button type="button" data-command="piRpcInternal.increaseChatFont" aria-label="Increase font size">+</button></span></div>
+        <button type="button" class="menu-item" data-command="piRpcInternal.setWorkingAnimation"><span class="dot"></span>Working animation…</button>
+        <button type="button" class="menu-item" data-command="piRpcInternal.setTypewriterSpeed"><span class="dot"></span>Typewriter speed…</button>
+        <button type="button" class="menu-item" data-command="piRpcInternal.openSettings"><span class="dot"></span>All Pi settings…</button>
+      </div>
+    </details>`;
+}
+
 function renderMoreMenu(_snapshot: WebviewSnapshot): string {
   return `
     <details class="menu-details more-menu" id="more-menu">
@@ -791,14 +808,6 @@ export function renderChatApp(snapshot: WebviewSnapshot): string {
   return `
     <a class="skip-link" href="#composer-field">Skip to composer</a>
     <div class="layout" data-testid="chat-app" data-ui-mode="${escapeHtml(snapshot.uiMode)}"${chatFontStyle(snapshot)}>
-      <header class="brand-bar" role="banner">
-        <div class="brand-controls">
-          ${folderSelect}
-          <button type="button" class="model-chip" data-command="piRpc.showModels" title="Choose model"><span class="model-dot"></span>${escapeHtml(modelLabel(snapshot))}</button>
-          ${renderUsageChip(snapshot)}
-          ${renderMoreMenu(snapshot)}
-        </div>
-      </header>
       <div class="header-summary visually-hidden" aria-label="Current chat summary">${escapeHtml(summaryLine)}</div>
 
       ${restrictedBanner}
@@ -815,6 +824,14 @@ export function renderChatApp(snapshot: WebviewSnapshot): string {
 
       ${renderApprovals(snapshot)}
       <section class="composer-dock" aria-labelledby="composer-heading">
+        <div class="composer-toolbar brand-controls">
+          ${folderSelect}
+          <button type="button" class="model-chip" data-command="piRpc.showModels" title="Choose model"><span class="model-dot"></span>${escapeHtml(modelLabel(snapshot))}</button>
+          ${renderUsageChip(snapshot)}
+          <span class="toolbar-spacer"></span>
+          ${renderSettingsMenu()}
+          ${renderMoreMenu(snapshot)}
+        </div>
         <h2 id="composer-heading" class="visually-hidden">Message Pi</h2>
         <label class="visually-hidden" for="${COMPOSER_FIELD_ID}">Message Pi</label>
         ${

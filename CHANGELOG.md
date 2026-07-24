@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.90
+
+- Cleaner layout: the top bar is now empty; the model chip, usage chip, folder picker, and the More menu moved into a toolbar next to the composer (bottom), so the conversation gets the full top space.
+- New Settings gear (next to the composer) with a popover: Chat font size -/+, Working animation..., Typewriter speed..., and All Pi settings... (opens the extension's settings).
+
 ## 0.0.89
 
 - Fix @-mentions: typing "@" now immediately loads the workspace file list to choose from. The bare "@" (empty query) was being skipped by a stale equality check, so no dropdown appeared until you typed more; it now requests on the first "@". Also hardened the file search (uses the folder URI, wider result cap).
