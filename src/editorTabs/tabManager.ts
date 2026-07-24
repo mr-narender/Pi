@@ -849,6 +849,18 @@ export class ChatTabManager implements vscode.Disposable {
       case 'openDiff':
         await this.openEditToolFile(context, parsed.path, true);
         return;
+      case 'respondUi': {
+        const response: JsonObject = { id: parsed.id };
+        if (typeof parsed.value === 'string') {
+          response.value = parsed.value;
+        }
+        if (typeof parsed.confirmed === 'boolean') {
+          response.confirmed = parsed.confirmed;
+        }
+        await context.controller.respondExtensionUi(response);
+        context.controller.completeExtensionUiRequest(parsed.id);
+        return;
+      }
       case 'attachFile':
         await this.attachFileByPath(context, parsed.path);
         return;
@@ -1249,6 +1261,16 @@ export class ChatTabManager implements vscode.Disposable {
           }
         });
     }
+  }
+
+  /** True if a chat editor is currently open for this controller's folder. */
+  public hasOpenChatFor(controller: SessionController): boolean {
+    for (const host of this.hosts.values()) {
+      if (this.contextForResource(host.resource)?.controller === controller) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /** Re-render every open chat tab (e.g. after a presentation setting change). */

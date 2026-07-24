@@ -212,6 +212,14 @@ export interface WebviewSnapshot {
   thinkingLevel?: string;
   // Compact usage summary for the header (tokens / context% / cost).
   usage?: { totalTokens: number; contextPercent?: number; cost?: number };
+  // Inline approval prompts (extension UI select/confirm dialogs).
+  approvals?: Array<{
+    id: string;
+    method: 'select' | 'confirm';
+    title?: string;
+    message?: string;
+    options?: string[];
+  }>;
   pendingContextItems: PendingContextItem[];
   pendingImages: WebviewPendingImageItem[];
   focus: ComposerFocusTarget;

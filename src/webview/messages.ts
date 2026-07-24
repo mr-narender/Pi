@@ -29,7 +29,8 @@ export type WebviewInboundMessage =
   | { type: 'openDiff'; path: string }
   | { type: 'attachFile'; path: string }
   | { type: 'requestFileMentions'; query: string }
-  | { type: 'requestSlashCommands' };
+  | { type: 'requestSlashCommands' }
+  | { type: 'respondUi'; id: string; value?: string; confirmed?: boolean };
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -105,6 +106,22 @@ export function parseWebviewMessage(value: unknown): WebviewInboundMessage | und
         : undefined;
     case 'requestSlashCommands':
       return { type: 'requestSlashCommands' };
+    case 'respondUi': {
+      if (typeof record.id !== 'string') {
+        return undefined;
+      }
+      const response: { type: 'respondUi'; id: string; value?: string; confirmed?: boolean } = {
+        type: 'respondUi',
+        id: record.id,
+      };
+      if (typeof record.value === 'string') {
+        response.value = record.value;
+      }
+      if (typeof record.confirmed === 'boolean') {
+        response.confirmed = record.confirmed;
+      }
+      return response;
+    }
     case 'insertCode':
     case 'newFileFromCode':
       return typeof record.text === 'string'

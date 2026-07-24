@@ -105,7 +105,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   initChatUriRegistry(context.workspaceState);
   const chatTabs = new ChatTabManager(context, registry, uiState, logger);
   const chatEditorProvider = new ChatEditorProvider(chatTabs);
-  const broker = new ExtensionUiBroker(registry, uiState);
+  const broker = new ExtensionUiBroker(registry, uiState, (controller) =>
+    chatTabs.hasOpenChatFor(controller)
+  );
   const localUi = new LocalExtensionUiContext();
 
   context.subscriptions.push(

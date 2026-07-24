@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.83
+
+- In-chat find: press Cmd/Ctrl+F inside a chat for a scoped search bar. Matches are highlighted; Enter / Shift+Enter (or the arrows) step through them with a count, Esc closes. Uses the CSS Custom Highlight API so highlights survive live streaming re-renders.
+- Inline tool approvals: when Pi (via an extension) asks to run something with a select/confirm dialog, it now renders as an Allow/Deny card in the chat instead of a native popup - answer in one click. Falls back to the native dialog when no chat is open.
+
 ## 0.0.82
 
 - piRpc.typewriterSpeed setting: control how streamed answers type out - off (show Pi's raw chunks, no smoothing), slow, normal (default), or fast. Applies live to open chats.

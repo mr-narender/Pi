@@ -9,7 +9,11 @@ export class ExtensionUiBroker implements vscode.Disposable {
 
   public constructor(
     private readonly registry: SessionRegistry,
-    private readonly uiState?: ChatUiState
+    private readonly uiState?: ChatUiState,
+    // When a chat editor is open for the controller, select/confirm approvals
+    // are rendered inline in the chat (the webview responds) instead of a native
+    // modal. Returns true to route inline.
+    private readonly isChatOpen?: (controller: SessionController) => boolean
   ) {
     for (const controller of registry.list()) {
       this.track(controller);
@@ -52,6 +56,19 @@ export class ExtensionUiBroker implements vscode.Disposable {
     request: ExtensionUiRequest,
     options: { respond: boolean }
   ): Promise<unknown> {
+    // Route approval-style dialogs (select/confirm) into the chat when it is
+    // open; the webview renders Allow/Deny and sends the response.
+    if (
+      options.respond &&
+      (request.method === 'select' || request.method === 'confirm') &&
+      this.isChatOpen?.(controller)
+    ) {
+      controller.applyExtensionUiRequest(request);
+      if (typeof request.timeout === 'number' && request.timeout > 0) {
+        setTimeout(() => controller.completeExtensionUiRequest(request.id), request.timeout);
+      }
+      return { inline: true };
+    }
     switch (request.method) {
       case 'notify': {
         const message = request.message ?? 'Pi notification';

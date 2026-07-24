@@ -403,6 +403,34 @@ function sessionLabel(snapshot: WebviewSnapshot): string {
   return snapshot.sessionName ?? snapshot.sessionId ?? snapshot.sessionFile ?? 'No chat yet';
 }
 
+// Tool-approval prompts (extension UI select/confirm) rendered inline as
+// Allow/Deny cards instead of a native modal, so the request is visible in the
+// conversation and answered in one click.
+function renderApprovals(snapshot: WebviewSnapshot): string {
+  const approvals = snapshot.approvals ?? [];
+  if (approvals.length === 0) {
+    return '';
+  }
+  return approvals
+    .map((approval) => {
+      const heading = escapeHtml(approval.title ?? 'Pi needs your approval');
+      const body = approval.message
+        ? `<p class="approval-msg">${escapeHtml(approval.message)}</p>`
+        : '';
+      const buttons =
+        approval.method === 'confirm'
+          ? `<button type="button" class="approval-btn approval-allow" data-ui-id="${escapeHtml(approval.id)}" data-ui-confirmed="true">Allow</button><button type="button" class="approval-btn approval-deny" data-ui-id="${escapeHtml(approval.id)}" data-ui-confirmed="false">Deny</button>`
+          : (approval.options ?? [])
+              .map(
+                (option) =>
+                  `<button type="button" class="approval-btn" data-ui-id="${escapeHtml(approval.id)}" data-ui-value="${escapeHtml(option)}">${escapeHtml(option)}</button>`
+              )
+              .join('');
+      return `<div class="approval-card" role="alertdialog" aria-label="${heading}"><div class="approval-head">${heading}</div>${body}<div class="approval-actions">${buttons}</div></div>`;
+    })
+    .join('');
+}
+
 // #5 — compact tokens / context% / cost chip. Click opens full session stats.
 function renderUsageChip(snapshot: WebviewSnapshot): string {
   const usage = snapshot.usage;
@@ -779,6 +807,7 @@ export function renderChatApp(snapshot: WebviewSnapshot): string {
       }</main>
       <button type="button" id="jump-latest" class="jump-latest" title="Jump to latest" aria-label="Jump to latest message" hidden><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6.5l4 4 4-4"/></svg></button>
 
+      ${renderApprovals(snapshot)}
       <section class="composer-dock" aria-labelledby="composer-heading">
         <h2 id="composer-heading" class="visually-hidden">Message Pi</h2>
         <label class="visually-hidden" for="${COMPOSER_FIELD_ID}">Message Pi</label>

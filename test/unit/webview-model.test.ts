@@ -227,3 +227,17 @@ test('parseWebviewMessage accepts attachFile/requestFileMentions (#9)', () => {
   assert.equal(parseWebviewMessage({ type: 'attachFile' }), undefined);
   assert.equal(parseWebviewMessage({ type: 'requestFileMentions' }), undefined);
 });
+
+test('parseWebviewMessage accepts respondUi', () => {
+  assert.deepEqual(parseWebviewMessage({ type: 'respondUi', id: 'a', confirmed: true }), {
+    type: 'respondUi',
+    id: 'a',
+    confirmed: true,
+  });
+  assert.deepEqual(parseWebviewMessage({ type: 'respondUi', id: 'b', value: 'Allow' }), {
+    type: 'respondUi',
+    id: 'b',
+    value: 'Allow',
+  });
+  assert.equal(parseWebviewMessage({ type: 'respondUi' }), undefined);
+});

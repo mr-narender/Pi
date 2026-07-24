@@ -361,6 +361,15 @@ export function createWebviewSnapshot(
     thinkingLevel:
       typeof state.state.thinkingLevel === 'string' ? state.state.thinkingLevel : undefined,
     usage: summarizeUsage(state.lastSessionStats),
+    approvals: state.pendingUi
+      .filter((request) => request.method === 'select' || request.method === 'confirm')
+      .map((request) => ({
+        id: request.id,
+        method: request.method as 'select' | 'confirm',
+        title: request.title,
+        message: request.message,
+        options: request.options,
+      })),
     pendingContextItems: extra.composer.pendingContextItems,
     pendingImages: extra.composer.pendingImages.map(normalizePendingImage),
     focus: extra.composer.focus,

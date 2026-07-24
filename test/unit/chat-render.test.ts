@@ -493,3 +493,27 @@ test('typewriter: streaming last assistant answer is marked js-stream-text with 
   );
   assert.doesNotMatch(idle, /js-stream-text/); // no marker when not streaming
 });
+
+test('inline approval card renders for confirm/select requests', () => {
+  const confirmHtml = renderChatApp(
+    snapshot({
+      approvals: [
+        { id: 'u1', method: 'confirm', title: 'Allow dangerous command?', message: 'rm -rf build' },
+      ],
+    })
+  );
+  assert.match(confirmHtml, /class="approval-card"/);
+  assert.match(confirmHtml, /Allow dangerous command\?/);
+  assert.match(confirmHtml, /data-ui-confirmed="true"/);
+  assert.match(confirmHtml, /data-ui-confirmed="false"/);
+
+  const selectHtml = renderChatApp(
+    snapshot({
+      approvals: [{ id: 'u2', method: 'select', title: 'Pick', options: ['Allow', 'Block'] }],
+    })
+  );
+  assert.match(selectHtml, /data-ui-value="Allow"/);
+  assert.match(selectHtml, /data-ui-value="Block"/);
+
+  assert.doesNotMatch(renderChatApp(snapshot({})), /approval-card/);
+});

@@ -577,6 +577,28 @@ function render(snapshot: WebviewSnapshot): void {
       language: wrap?.getAttribute('data-lang') ?? '',
     };
   };
+  // Tool approval: Allow/Deny (or option) buttons respond to the pending request.
+  for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>('.approval-btn'))) {
+    button.addEventListener('click', () => {
+      const id = button.getAttribute('data-ui-id');
+      if (!id) {
+        return;
+      }
+      const confirmed = button.getAttribute('data-ui-confirmed');
+      const value = button.getAttribute('data-ui-value');
+      const message: { type: 'respondUi'; id: string; value?: string; confirmed?: boolean } = {
+        type: 'respondUi',
+        id,
+      };
+      if (confirmed !== null) {
+        message.confirmed = confirmed === 'true';
+      } else if (value !== null) {
+        message.value = value;
+      }
+      vscode.postMessage(message);
+    });
+  }
+
   // Onboarding: clicking an example prompt loads it into the composer.
   for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>('[data-example]'))) {
     button.addEventListener('click', () => {
@@ -728,7 +750,157 @@ function render(snapshot: WebviewSnapshot): void {
   startWorkingAnimation();
   applyScrollAndPaging(snapshot, scrollMetrics);
   applyFocus();
+  if (findOpen) {
+    runFind(findQuery, false);
+  }
 }
+
+// In-chat find (Cmd/Ctrl+F): highlight + step through matches, scoped to this
+// chat. Uses the CSS Custom Highlight API (no DOM mutation), so highlights
+// recompute cleanly after every streaming re-render.
+let findOpen = false;
+let findQuery = '';
+let findRanges: Range[] = [];
+let findIndex = 0;
+interface HighlightCtor {
+  new (...ranges: Range[]): unknown;
+}
+function highlightsApi(): {
+  set(name: string, h: unknown): void;
+  delete(name: string): void;
+} | null {
+  const api = (CSS as unknown as { highlights?: Map<string, unknown> }).highlights;
+  return api
+    ? (api as unknown as { set(n: string, h: unknown): void; delete(n: string): void })
+    : null;
+}
+function clearFindHighlights(): void {
+  const api = highlightsApi();
+  api?.delete('pi-find');
+  api?.delete('pi-find-current');
+}
+function buildFindBar(): HTMLElement {
+  let bar = document.getElementById('pi-find-bar');
+  if (bar) {
+    return bar;
+  }
+  bar = document.createElement('div');
+  bar.id = 'pi-find-bar';
+  bar.className = 'find-bar';
+  bar.hidden = true;
+  bar.innerHTML =
+    '<input id="pi-find-input" class="find-input" type="text" placeholder="Find in chat" aria-label="Find in chat" />' +
+    '<span id="pi-find-count" class="find-count"></span>' +
+    '<button id="pi-find-prev" class="find-btn" title="Previous (Shift+Enter)" aria-label="Previous match">\u2191</button>' +
+    '<button id="pi-find-next" class="find-btn" title="Next (Enter)" aria-label="Next match">\u2193</button>' +
+    '<button id="pi-find-close" class="find-btn" title="Close (Esc)" aria-label="Close find">\u2715</button>';
+  document.body.appendChild(bar);
+  const input = bar.querySelector<HTMLInputElement>('#pi-find-input');
+  input?.addEventListener('input', () => runFind(input.value, true));
+  input?.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      stepFind(event.shiftKey ? -1 : 1);
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      closeFind();
+    }
+  });
+  bar.querySelector('#pi-find-prev')?.addEventListener('click', () => stepFind(-1));
+  bar.querySelector('#pi-find-next')?.addEventListener('click', () => stepFind(1));
+  bar.querySelector('#pi-find-close')?.addEventListener('click', () => closeFind());
+  return bar;
+}
+function openFind(): void {
+  const bar = buildFindBar();
+  bar.hidden = false;
+  findOpen = true;
+  const input = document.getElementById('pi-find-input') as HTMLInputElement | null;
+  if (input) {
+    input.focus();
+    input.select();
+  }
+}
+function closeFind(): void {
+  findOpen = false;
+  findQuery = '';
+  findRanges = [];
+  clearFindHighlights();
+  const bar = document.getElementById('pi-find-bar');
+  if (bar) {
+    bar.hidden = true;
+  }
+  composerField()?.focus();
+}
+function collectRanges(query: string): Range[] {
+  const container = document.getElementById('messages');
+  if (!container || !query) {
+    return [];
+  }
+  const needle = query.toLowerCase();
+  const ranges: Range[] = [];
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+  let node = walker.nextNode();
+  while (node && ranges.length < 1000) {
+    const text = node.nodeValue ?? '';
+    const hay = text.toLowerCase();
+    let from = 0;
+    let at = hay.indexOf(needle, from);
+    while (at >= 0) {
+      const range = document.createRange();
+      range.setStart(node, at);
+      range.setEnd(node, at + needle.length);
+      ranges.push(range);
+      from = at + needle.length;
+      at = hay.indexOf(needle, from);
+    }
+    node = walker.nextNode();
+  }
+  return ranges;
+}
+function runFind(query: string, resetIndex: boolean): void {
+  findQuery = query;
+  clearFindHighlights();
+  findRanges = collectRanges(query);
+  if (resetIndex || findIndex >= findRanges.length) {
+    findIndex = 0;
+  }
+  const api = highlightsApi();
+  const HighlightImpl = (window as unknown as { Highlight?: HighlightCtor }).Highlight;
+  if (api && HighlightImpl && findRanges.length > 0) {
+    api.set('pi-find', new HighlightImpl(...findRanges));
+  }
+  updateFindCurrent(false);
+}
+function updateFindCurrent(scroll: boolean): void {
+  const count = document.getElementById('pi-find-count');
+  if (count) {
+    count.textContent =
+      findRanges.length > 0 ? `${findIndex + 1}/${findRanges.length}` : 'No results';
+  }
+  const api = highlightsApi();
+  const HighlightImpl = (window as unknown as { Highlight?: HighlightCtor }).Highlight;
+  const current = findRanges[findIndex];
+  if (api && HighlightImpl && current) {
+    api.set('pi-find-current', new HighlightImpl(current));
+  }
+  if (scroll && current) {
+    (current.startContainer.parentElement ?? null)?.scrollIntoView({ block: 'center' });
+  }
+}
+function stepFind(direction: number): void {
+  if (findRanges.length === 0) {
+    return;
+  }
+  findIndex = (findIndex + direction + findRanges.length) % findRanges.length;
+  updateFindCurrent(true);
+}
+window.addEventListener('keydown', (event) => {
+  if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === 'f') {
+    event.preventDefault();
+    openFind();
+  }
+});
 
 // Typewriter smoothing: Pi streams the answer as coarse `message_update`
 // snapshots (~every 400ms), not token deltas. We reveal the newly-arrived
