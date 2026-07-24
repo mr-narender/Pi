@@ -469,7 +469,12 @@ function renderMessages(snapshot: WebviewSnapshot): string {
   const olderSentinel = snapshot.messageWindow?.hasOlder
     ? `<div id="older-sentinel" class="older-sentinel" role="status"><span class="spinner spinner-sm" aria-hidden="true"></span>Loading earlier messages…</div>`
     : '';
-  return olderSentinel + snapshot.messages.map(renderMessageArticle).join('');
+  return (
+    olderSentinel +
+    snapshot.messages
+      .map((message, index, all) => renderMessageArticle(message, index === all.length - 1))
+      .join('')
+  );
 }
 
 // Pi emits tool results (and bash executions) as SEPARATE messages with these
@@ -486,12 +491,19 @@ const COPY_ICON =
 const EDIT_ICON =
   '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M10.5 3.5l2 2L6 12l-2.5.5L4 10z"/></svg>';
 
-function renderMessageArticle(message: WebviewSnapshot['messages'][number]): string {
+function renderMessageArticle(
+  message: WebviewSnapshot['messages'][number],
+  isLast = false
+): string {
   const role = message.role;
   const roleLabel = role === 'assistant' ? 'Pi' : role === 'user' ? 'You' : '';
   const showCopy = role === 'assistant' || role === 'user';
+  // Virtualization: off-screen messages get `content-visibility: auto` so the
+  // browser skips their layout/paint. The last message is exempt so streaming
+  // growth and scroll-to-bottom stay exact.
+  const virtualClass = isLast ? '' : ' msg-virtual';
   return `
-        <article class="message-card message-${escapeHtml(role)}">
+        <article class="message-card message-${escapeHtml(role)}${virtualClass}">
           ${roleLabel ? `<div class="message-role">${roleLabel}</div>` : ''}
           ${showCopy ? `<div class="msg-actions">${role === 'user' ? `<button type="button" class="msg-edit" title="Edit in composer" aria-label="Edit message">${EDIT_ICON}</button>` : ''}<button type="button" class="msg-copy" title="Copy message" aria-label="Copy message">${COPY_ICON}</button></div>` : ''}
           ${renderMessageBody(message)}

@@ -428,3 +428,26 @@ test('#3 edit tool cards show Open file / Open changes', () => {
   assert.match(html, /data-file-open="src\/x.ts"/);
   assert.match(html, /data-file-diff="src\/x.ts"/);
 });
+
+test('virtualization: off-screen messages get msg-virtual, the last is exempt', () => {
+  const html = renderChatApp(
+    snapshot({
+      messages: [
+        { id: 'a', role: 'user', text: 'one', attachments: [] },
+        {
+          id: 'b',
+          role: 'assistant',
+          text: 'two',
+          blocks: [{ kind: 'text', text: 'two' }],
+          attachments: [],
+        },
+        { id: 'c', role: 'user', text: 'three', attachments: [] },
+      ],
+    })
+  );
+  // Exactly the first two (non-last) are virtualized.
+  assert.equal((html.match(/msg-virtual/g) ?? []).length, 2);
+  // The last article ("three") must NOT be virtualized.
+  const lastIdx = html.lastIndexOf('message-card');
+  assert.doesNotMatch(html.slice(lastIdx, lastIdx + 60), /msg-virtual/);
+});

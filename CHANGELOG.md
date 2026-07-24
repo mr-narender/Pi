@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.79
+
+- #10 Virtualized message list: off-screen messages now use CSS content-visibility so the browser skips their layout and paint while keeping them in the DOM (find-in-page, live-append, and copy/edit still work). Long chats open and scroll noticeably faster; memory/CPU stay flat as the transcript grows. The most recent message is exempt so streaming and scroll-to-bottom stay pixel-exact.
+
 ## 0.0.78
 
 - #9 Mentions and drag-drop: type "@" in the composer to fuzzy-search workspace files; arrow keys to move, Enter/Tab to pick, Esc to dismiss. The picked file is attached as a context chip. You can also drag a file from the Explorer onto the composer to attach it.

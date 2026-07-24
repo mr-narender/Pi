@@ -906,6 +906,19 @@ button.ghost:hover,
   position: relative;
 }
 
+/*
+ * Virtualization: let the browser skip layout + paint for off-screen messages
+ * while keeping them in the DOM (so find-in-page, live-append, and the copy/edit
+ * handlers still work). `contain-intrinsic-size: auto <estimate>` reserves space
+ * so the scrollbar stays stable, and the `auto` keyword remembers each message's
+ * real size after it has been rendered once. The last message is exempt
+ * (no .msg-virtual) so streaming growth and scroll-to-bottom stay exact.
+ */
+#messages .message-card.msg-virtual {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 160px;
+}
+
 /* #3/#4 — per-message actions (copy, edit) on hover. */
 #messages .msg-actions {
   position: absolute;
