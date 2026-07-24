@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.84
+
+- Fix: opening/resuming a chat now lands at the bottom (latest message) instead of the top. The jump-to-bottom previously fired on the empty loading render before messages arrived; it now waits for the messages to render and re-asserts after layout so it works correctly with the virtualized list.
+
 ## 0.0.83
 
 - In-chat find: press Cmd/Ctrl+F inside a chat for a scoped search bar. Matches are highlighted; Enter / Shift+Enter (or the arrows) step through them with a count, Esc closes. Uses the CSS Custom Highlight API so highlights survive live streaming re-renders.

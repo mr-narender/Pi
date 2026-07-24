@@ -269,6 +269,26 @@ let lastComposerResetSeq: number | undefined;
 let lastMessageKey: string | undefined;
 let lastWindowOffset: number | undefined;
 let loadOlderPending = false;
+// When a chat is opened/switched, we must land at the bottom. The first render
+// for a resource is often the empty "loading" state (no messages yet), so we
+// remember the intent and perform the scroll on the render where messages
+// actually appear.
+let pendingBottomKey: string | undefined;
+
+// Robust scroll-to-bottom. With the virtualized list, off-screen messages use
+// `content-visibility` with an *estimated* height, so a single `scrollTop =
+// scrollHeight` can land short. We re-assert after layout settles and pull the
+// last message fully into view (which also forces it to render).
+function scrollMessagesToBottom(messages: HTMLElement): void {
+  messages.scrollTop = messages.scrollHeight;
+  requestAnimationFrame(() => {
+    messages.scrollTop = messages.scrollHeight;
+    (messages.lastElementChild as HTMLElement | null)?.scrollIntoView({ block: 'end' });
+    requestAnimationFrame(() => {
+      messages.scrollTop = messages.scrollHeight;
+    });
+  });
+}
 let olderObserver: IntersectionObserver | undefined;
 
 function queueFocus(targetId?: string, fallbackId = COMPOSER_FIELD_ID): void {
@@ -1036,9 +1056,27 @@ function applyScrollAndPaging(snapshot: WebviewSnapshot, metrics: ScrollMetrics)
     lastWindowOffset !== undefined &&
     win.offset < lastWindowOffset;
 
+  const hasMessages = snapshot.messages.length > 0;
+
   if (isNewResource) {
-    // Opening/switching a chat: jump straight to the last message.
-    messages.scrollTop = messages.scrollHeight;
+    // Opening/switching a chat: land at the last message. If messages have not
+    // arrived yet (loading state), defer the jump to the render that has them.
+    lastMessageKey = key;
+    lastWindowOffset = win?.offset;
+    if (hasMessages) {
+      scrollMessagesToBottom(messages);
+    } else {
+      pendingBottomKey = key;
+    }
+    setupOlderObserver(messages, win);
+    persistViewState();
+    return;
+  }
+
+  if (pendingBottomKey === key && hasMessages) {
+    // Messages finally rendered for a freshly-opened chat: now jump to bottom.
+    pendingBottomKey = undefined;
+    scrollMessagesToBottom(messages);
   } else if (olderLoaded) {
     // Older batch was prepended: keep the viewport anchored on the message the
     // user was looking at (no jump).
@@ -1047,7 +1085,7 @@ function applyScrollAndPaging(snapshot: WebviewSnapshot, metrics: ScrollMetrics)
     loadOlderPending = false;
   } else if (metrics.wasNearBottom) {
     // Live streaming while already near the bottom: stick to the bottom.
-    messages.scrollTop = messages.scrollHeight;
+    scrollMessagesToBottom(messages);
   } else {
     messages.scrollTop = metrics.prevScrollTop;
   }
