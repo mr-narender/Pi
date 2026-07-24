@@ -463,7 +463,14 @@ function renderMessages(snapshot: WebviewSnapshot): string {
           <rect x="3" y="5" width="1" height="1" fill="currentColor" />
           <rect x="6" y="5" width="1" height="1" fill="currentColor" />
         </svg>
-        <p class="empty-copy">What to do first? Ask about this codebase or start writing code.</p>
+        <p class="empty-title">Start a chat with Pi</p>
+        <p class="empty-copy">Ask about this codebase, or start writing code.</p>
+        <div class="empty-examples">
+          <button type="button" class="empty-example" data-example="Give me a high-level overview of this project's structure and how the main pieces fit together.">Explain this codebase</button>
+          <button type="button" class="empty-example" data-example="Add tests for the file I currently have open.">Add tests for a file</button>
+          <button type="button" class="empty-example" data-example="Find and fix a bug in ">Find and fix a bug</button>
+        </div>
+        <p class="empty-hints"><kbd>/</kbd> commands &middot; <kbd>@</kbd> mention a file &middot; <kbd>Cmd/Ctrl+K</kbd> actions</p>
       </div>`;
   }
   const olderSentinel = snapshot.messageWindow?.hasOlder

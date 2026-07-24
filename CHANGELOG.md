@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.80
+
+- Completion notification: when Pi finishes a long response (>4s) while you are not watching that chat (window unfocused or a different tab active), a notification appears with an "Open chat" button. Quick replies and the chat you are actively watching never notify. Toggle with piRpc.notifyOnComplete.
+- Onboarding empty state: a new chat now shows clickable example prompts (Explain this codebase, Add tests, Find and fix a bug) plus quick hints for "/" commands, "@" file mentions, and Cmd/Ctrl+K. Clicking an example loads it into the composer.
+
 ## 0.0.79
 
 - #10 Virtualized message list: off-screen messages now use CSS content-visibility so the browser skips their layout and paint while keeping them in the DOM (find-in-page, live-append, and copy/edit still work). Long chats open and scroll noticeably faster; memory/CPU stay flat as the transcript grows. The most recent message is exempt so streaming and scroll-to-bottom stay pixel-exact.

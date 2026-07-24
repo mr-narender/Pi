@@ -122,7 +122,7 @@ test('renderChatApp exposes empty, restricted, preview, and attachment states ac
     })
   );
   assert.match(html, /Restricted Mode/);
-  assert.match(html, /What to do first/);
+  assert.match(html, /Start a chat with Pi/);
   assert.match(html, /Selection: src\/app\.ts L18-L34/);
   assert.match(html, /diagram\.png/);
   assert.match(html, new RegExp(`id="${PREVIEW_DIALOG_ID}"`));
@@ -450,4 +450,11 @@ test('virtualization: off-screen messages get msg-virtual, the last is exempt', 
   // The last article ("three") must NOT be virtualized.
   const lastIdx = html.lastIndexOf('message-card');
   assert.doesNotMatch(html.slice(lastIdx, lastIdx + 60), /msg-virtual/);
+});
+
+test('onboarding empty-state shows example prompts and hints', () => {
+  const html = renderChatApp(snapshot({ messages: [] }));
+  assert.match(html, /class="empty-example" data-example=/);
+  assert.match(html, /Explain this codebase/);
+  assert.match(html, /mention a file/);
 });

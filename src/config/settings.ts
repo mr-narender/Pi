@@ -23,6 +23,7 @@ export interface PiRpcSettings {
   workingAnimation: string;
   chatFontFamily: string;
   chatFontSize: number;
+  notifyOnComplete: boolean;
 }
 
 export function getSettings(): PiRpcSettings {
@@ -45,6 +46,7 @@ export function getSettings(): PiRpcSettings {
     workingAnimation: config.get<string>('workingAnimation', 'braille'),
     chatFontFamily: config.get<string>('chatFontFamily', ''),
     chatFontSize: config.get<number>('chatFontSize', 0),
+    notifyOnComplete: config.get<boolean>('notifyOnComplete', true),
     restartOnCrash: config.get<boolean>('restartOnCrash', true),
     maxRestartAttempts: config.get<number>('maxRestartAttempts', 3),
     telemetryEnabled: config.get<boolean>('telemetryEnabled', false),

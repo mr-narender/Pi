@@ -718,10 +718,56 @@ button.ghost:hover,
   color: var(--vscode-charts-orange, #d2795b);
 }
 
+.empty-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--vscode-foreground);
+}
+
 .empty-copy {
   max-width: 360px;
+  margin: 0;
   color: var(--vscode-descriptionForeground);
   line-height: 1.5;
+}
+
+.empty-examples {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(320px, 80%);
+}
+
+.empty-example {
+  padding: 9px 14px;
+  font-size: 13px;
+  text-align: left;
+  color: var(--vscode-foreground);
+  background: var(--vscode-editorWidget-background, rgba(128, 128, 128, 0.1));
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.empty-example:hover {
+  border-color: var(--pi-tool-accent, #4ec9b0);
+  background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.18));
+}
+
+.empty-hints {
+  margin: 4px 0 0;
+  font-size: 11.5px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.empty-hints kbd {
+  padding: 1px 5px;
+  font-family: var(--vscode-editor-font-family, ui-monospace, monospace);
+  font-size: 0.9em;
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 4px;
+  background: var(--vscode-editorWidget-background, rgba(128, 128, 128, 0.12));
 }
 
 .composer-dock {

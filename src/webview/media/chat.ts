@@ -576,6 +576,20 @@ function render(snapshot: WebviewSnapshot): void {
       language: wrap?.getAttribute('data-lang') ?? '',
     };
   };
+  // Onboarding: clicking an example prompt loads it into the composer.
+  for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>('[data-example]'))) {
+    button.addEventListener('click', () => {
+      const text = button.getAttribute('data-example') ?? '';
+      const field = composerField();
+      if (field && text) {
+        field.value = text;
+        field.dispatchEvent(new Event('input', { bubbles: true }));
+        field.focus();
+        field.setSelectionRange(field.value.length, field.value.length);
+      }
+    });
+  }
+
   // #3 — open file / open changes for edit-tool cards.
   for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>('[data-file-open]'))) {
     button.addEventListener('click', () => {

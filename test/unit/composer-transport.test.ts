@@ -151,7 +151,7 @@ test('composer is disabled with a connecting spinner until Pi is ready', () => {
 
   const ready = renderChatApp(snapshot({ connectionState: 'ready', messages: [] }));
   assert.doesNotMatch(ready, /id="composer-field"[^>]*disabled/);
-  assert.match(ready, /What to do first/);
+  assert.match(ready, /Start a chat with Pi/);
 });
 
 test('composer typing is protected from caret reset and re-render loops', () => {

@@ -215,6 +215,9 @@ export class ChatTabManager implements vscode.Disposable {
   private readonly hosts = new Map<string, ChatEditorHost>();
   private readonly resourceSequence = new Map<string, number>();
   private readonly activeResourceByWorkspace = new Map<string, string>();
+  // Completion-notification bookkeeping (busy->ready transition per controller).
+  private readonly lastConnState = new Map<string, string>();
+  private readonly busySince = new Map<string, number>();
   // Per-resource count of trailing messages currently revealed to the webview.
   // Starts at the configured window size and grows when the webview asks for
   // older batches on scroll-up.
@@ -1197,6 +1200,7 @@ export class ChatTabManager implements vscode.Disposable {
   }
 
   private async onControllerChanged(controller: SessionController): Promise<void> {
+    this.detectTurnCompletion(controller);
     await this.uiState.restoreControllerDraft(controller);
     const currentResource = buildChatUri(currentTargetForController(controller));
     await this.renderResource(currentResource);
@@ -1207,6 +1211,43 @@ export class ChatTabManager implements vscode.Disposable {
       if (parsed) {
         await this.renderResource(parsed);
       }
+    }
+  }
+
+  /**
+   * Notify when Pi finishes a *long* turn while the user isn't watching this
+   * chat. Tracks the busy->ready transition; skips quick turns and skips when
+   * the chat is the focused, active tab.
+   */
+  private detectTurnCompletion(controller: SessionController): void {
+    const key = controller.folder.uri.toString();
+    const now = controller.snapshot.connectionState;
+    const prev = this.lastConnState.get(key);
+    this.lastConnState.set(key, now);
+    if (prev !== 'busy' && now === 'busy') {
+      this.busySince.set(key, Date.now());
+      return;
+    }
+    if (prev === 'busy' && now === 'ready') {
+      const startedAt = this.busySince.get(key);
+      this.busySince.delete(key);
+      const elapsed = startedAt ? Date.now() - startedAt : 0;
+      if (!getSettings().notifyOnComplete || elapsed < 4000) {
+        return;
+      }
+      const watching =
+        vscode.window.state.focused && this.getActiveContext()?.controller === controller;
+      if (watching) {
+        return;
+      }
+      const label = basename(controller.folder.uri.fsPath) || 'workspace';
+      void vscode.window
+        .showInformationMessage(`Pi finished responding in ${label}.`, 'Open chat')
+        .then((choice) => {
+          if (choice === 'Open chat') {
+            void this.openCurrentChat({ folderUri: key, focusComposer: true });
+          }
+        });
     }
   }
 
