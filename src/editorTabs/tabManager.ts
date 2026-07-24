@@ -440,6 +440,53 @@ export class ChatTabManager implements vscode.Disposable {
     }
   }
 
+  /** #9 — resolve a path/URI to a workspace file and attach it as context. */
+  private async attachFileByPath(context: ChatTabContext, filePath: string): Promise<void> {
+    let uri: vscode.Uri;
+    if (/^[a-z][a-z0-9+.-]*:\/\//i.test(filePath)) {
+      uri = vscode.Uri.parse(filePath);
+    } else if (/^([a-zA-Z]:[\\/]|[\\/])/.test(filePath)) {
+      uri = vscode.Uri.file(filePath);
+    } else {
+      uri = vscode.Uri.joinPath(context.controller.folder.uri, filePath);
+    }
+    try {
+      const document = await vscode.workspace.openTextDocument(uri);
+      const item = await this.captureFileLike(context.controller, document, 'pickedFile');
+      if (item) {
+        await this.uiState.addContextItemForIdentity(context.controller, context.target, item);
+        await this.renderResource(context.resource);
+      }
+    } catch {
+      void vscode.window.showWarningMessage(`Could not attach ${filePath}.`);
+    }
+  }
+
+  /** #9 — fuzzy file search for @-mentions, scoped to the chat's folder. */
+  private async searchWorkspaceFiles(
+    context: ChatTabContext,
+    query: string
+  ): Promise<Array<{ path: string; name: string }>> {
+    const q = query.trim();
+    const folder = context.controller.folder;
+    const glob = q ? `**/*${q.replace(/[^\w.\-/]/g, '')}*` : '**/*';
+    try {
+      const uris = await vscode.workspace.findFiles(
+        new vscode.RelativePattern(folder, glob),
+        '**/{node_modules,.git,dist,out,build,.next,coverage}/**',
+        60
+      );
+      return uris
+        .map((uri) => relativeWorkspacePath(folder, uri) ?? '')
+        .filter((path) => path.length > 0)
+        .sort((a, b) => a.length - b.length)
+        .slice(0, 8)
+        .map((path) => ({ path, name: basename(path) }));
+    } catch {
+      return [];
+    }
+  }
+
   /** Full active conversation as Markdown (whole transcript), for copy/export. */
   public getActiveConversationMarkdown(): { title: string; markdown: string } | undefined {
     const context = this.getActiveContext();
@@ -799,6 +846,14 @@ export class ChatTabManager implements vscode.Disposable {
       case 'openDiff':
         await this.openEditToolFile(context, parsed.path, true);
         return;
+      case 'attachFile':
+        await this.attachFileByPath(context, parsed.path);
+        return;
+      case 'requestFileMentions': {
+        const items = await this.searchWorkspaceFiles(context, parsed.query);
+        host.post({ type: 'fileMentions', items });
+        return;
+      }
       case 'requestSlashCommands': {
         // #6 — supply the slash-command list for inline composer autocomplete.
         try {

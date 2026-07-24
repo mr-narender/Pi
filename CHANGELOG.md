@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.78
+
+- #9 Mentions and drag-drop: type "@" in the composer to fuzzy-search workspace files; arrow keys to move, Enter/Tab to pick, Esc to dismiss. The picked file is attached as a context chip. You can also drag a file from the Explorer onto the composer to attach it.
+
 ## 0.0.77
 
 - #3 File edits get actions: when Pi uses an edit/write tool, its timeline card now shows the file path plus "Open file" and "Open changes". Pi applies edits itself, so "Open changes" opens the working-tree diff (via the Git extension) and "Open file" jumps to the file - one click to review what changed.

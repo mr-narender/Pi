@@ -137,6 +137,129 @@ function handleSlashKeydown(event: KeyboardEvent): boolean {
   }
   return false;
 }
+
+// #9 — @file mention autocomplete state.
+let mentionItems: Array<{ path: string; name: string }> = [];
+let mentionIndex = 0;
+let mentionActive = false;
+let mentionQuery = '';
+function mentionContext(field: HTMLTextAreaElement): { start: number; query: string } | null {
+  const caret = field.selectionStart ?? field.value.length;
+  const before = field.value.slice(0, caret);
+  const match = /(^|\s)@([\w./-]*)$/.exec(before);
+  if (!match) {
+    return null;
+  }
+  const query = match[2] ?? '';
+  return { start: caret - query.length - 1, query };
+}
+function closeMentionMenu(): void {
+  document.getElementById('mention-menu')?.remove();
+  mentionItems = [];
+  mentionIndex = 0;
+  mentionActive = false;
+  mentionQuery = '';
+}
+function acceptMention(path: string): void {
+  const field = composerField();
+  if (!field) {
+    return;
+  }
+  const ctx = mentionContext(field);
+  if (ctx) {
+    const caret = field.selectionStart ?? field.value.length;
+    field.value = field.value.slice(0, ctx.start) + field.value.slice(caret);
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+    field.focus();
+    field.setSelectionRange(ctx.start, ctx.start);
+  }
+  vscode.postMessage({ type: 'attachFile', path });
+  closeMentionMenu();
+}
+function paintMentionMenu(): void {
+  const field = composerField();
+  const dock = field?.closest('.composer-dock');
+  if (!field || !dock) {
+    return;
+  }
+  let menu = document.getElementById('mention-menu');
+  if (!menu) {
+    menu = document.createElement('div');
+    menu.id = 'mention-menu';
+    menu.className = 'slash-menu';
+    menu.setAttribute('role', 'listbox');
+    dock.appendChild(menu);
+  }
+  menu.replaceChildren();
+  mentionItems.forEach((entry, index) => {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = `slash-item${index === mentionIndex ? ' is-active' : ''}`;
+    item.setAttribute('role', 'option');
+    const name = document.createElement('span');
+    name.className = 'slash-name';
+    name.textContent = entry.name;
+    const desc = document.createElement('span');
+    desc.className = 'slash-desc';
+    desc.textContent = entry.path;
+    item.append(name, desc);
+    item.addEventListener('mousedown', (event) => {
+      event.preventDefault();
+      acceptMention(entry.path);
+    });
+    menu.appendChild(item);
+  });
+}
+function updateMentionMenu(): void {
+  const field = composerField();
+  if (!field) {
+    closeMentionMenu();
+    return;
+  }
+  const ctx = mentionContext(field);
+  if (!ctx) {
+    if (mentionActive) {
+      closeMentionMenu();
+    }
+    return;
+  }
+  mentionActive = true;
+  if (ctx.query !== mentionQuery) {
+    mentionQuery = ctx.query;
+    vscode.postMessage({ type: 'requestFileMentions', query: ctx.query });
+  }
+  if (mentionItems.length > 0) {
+    paintMentionMenu();
+  }
+}
+function handleMentionKeydown(event: KeyboardEvent): boolean {
+  if (!mentionActive || mentionItems.length === 0) {
+    return false;
+  }
+  if (event.key === 'ArrowDown') {
+    event.preventDefault();
+    mentionIndex = (mentionIndex + 1) % mentionItems.length;
+    paintMentionMenu();
+    return true;
+  }
+  if (event.key === 'ArrowUp') {
+    event.preventDefault();
+    mentionIndex = (mentionIndex - 1 + mentionItems.length) % mentionItems.length;
+    paintMentionMenu();
+    return true;
+  }
+  if (event.key === 'Enter' || event.key === 'Tab') {
+    event.preventDefault();
+    acceptMention(mentionItems[mentionIndex]?.path ?? '');
+    return true;
+  }
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    closeMentionMenu();
+    return true;
+  }
+  return false;
+}
 let pendingFocusTargetId: string | undefined;
 let pendingFocusFallbackId: string | undefined;
 let previewReturnFocusId: string | undefined;
@@ -299,10 +422,48 @@ function render(snapshot: WebviewSnapshot): void {
   textarea?.addEventListener('focus', () => {
     vscode.postMessage({ type: 'setFocus', focus: 'composer' });
   });
-  textarea?.addEventListener('input', () => updateSlashMenu());
+  textarea?.addEventListener('input', () => {
+    updateSlashMenu();
+    updateMentionMenu();
+  });
+  textarea?.addEventListener('keyup', (event) => {
+    // Arrow/click caret moves can enter/leave an @ context without an input event.
+    if (event.key.startsWith('Arrow') || event.key === 'Home' || event.key === 'End') {
+      updateMentionMenu();
+    }
+  });
+  // #9 — drag a file from the Explorer onto the composer to attach it.
+  textarea?.addEventListener('dragover', (event) => {
+    event.preventDefault();
+    textarea.classList.add('drop-target');
+  });
+  textarea?.addEventListener('dragleave', () => textarea.classList.remove('drop-target'));
+  textarea?.addEventListener('drop', (event) => {
+    textarea.classList.remove('drop-target');
+    const data =
+      event.dataTransfer?.getData('text/uri-list') ||
+      event.dataTransfer?.getData('resourceurls') ||
+      '';
+    if (!data) {
+      return;
+    }
+    event.preventDefault();
+    let uris: string[] = [];
+    try {
+      const parsed = JSON.parse(data) as unknown;
+      uris = Array.isArray(parsed) ? parsed.map(String) : [];
+    } catch {
+      uris = data.split(/\r?\n/);
+    }
+    for (const uri of uris
+      .map((value) => value.trim())
+      .filter((value) => value && value[0] !== '#')) {
+      vscode.postMessage({ type: 'attachFile', path: uri });
+    }
+  });
   textarea?.addEventListener('keydown', (event) => {
-    // #6 — slash menu navigation takes priority when it is open.
-    if (handleSlashKeydown(event)) {
+    // #6/#9 — slash and mention menu navigation take priority when open.
+    if (handleSlashKeydown(event) || handleMentionKeydown(event)) {
       return;
     }
     // Submit with Cmd+Enter (macOS) or Ctrl+Enter.
@@ -725,8 +886,20 @@ window.addEventListener(
   (event: MessageEvent<{ type: string; snapshot: WebviewSnapshot }>) => {
     if (event.data?.type === 'snapshot') {
       render(event.data.snapshot);
-      // Re-evaluate the slash menu after a re-render (composer text is preserved).
+      // Re-evaluate the menus after a re-render (composer text is preserved).
       updateSlashMenu();
+      updateMentionMenu();
+    } else if (event.data?.type === 'fileMentions') {
+      const payload = event.data as unknown as {
+        items?: Array<{ path: string; name: string }>;
+      };
+      mentionItems = Array.isArray(payload.items) ? payload.items : [];
+      mentionIndex = 0;
+      if (mentionActive && mentionItems.length > 0) {
+        paintMentionMenu();
+      } else if (mentionItems.length === 0) {
+        document.getElementById('mention-menu')?.remove();
+      }
     } else if (event.data?.type === 'slashCommands') {
       const payload = event.data as unknown as {
         items?: Array<{ name: string; description: string }>;

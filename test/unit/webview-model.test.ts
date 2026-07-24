@@ -214,3 +214,16 @@ test('parseWebviewMessage accepts openFile/openDiff (#3)', () => {
   });
   assert.equal(parseWebviewMessage({ type: 'openFile' }), undefined);
 });
+
+test('parseWebviewMessage accepts attachFile/requestFileMentions (#9)', () => {
+  assert.deepEqual(parseWebviewMessage({ type: 'attachFile', path: 'src/a.ts' }), {
+    type: 'attachFile',
+    path: 'src/a.ts',
+  });
+  assert.deepEqual(parseWebviewMessage({ type: 'requestFileMentions', query: 'app' }), {
+    type: 'requestFileMentions',
+    query: 'app',
+  });
+  assert.equal(parseWebviewMessage({ type: 'attachFile' }), undefined);
+  assert.equal(parseWebviewMessage({ type: 'requestFileMentions' }), undefined);
+});
