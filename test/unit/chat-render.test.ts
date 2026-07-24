@@ -394,6 +394,9 @@ test('working animation shows while busy with the chosen style; font overrides a
     })
   );
   assert.match(busyHtml, /class="working" data-anim="earth"/);
+  // The spinner lives in a labelled banner at the top of the composer.
+  assert.match(busyHtml, /class="working-banner">.*class="working"/s);
+  assert.match(busyHtml, /class="working-label">Working/);
   assert.match(busyHtml, /--pi-chat-font-size:16px/);
   assert.match(busyHtml, /--pi-chat-font-family:Fira Code/);
 

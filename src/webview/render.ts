@@ -726,6 +726,12 @@ function renderWorking(snapshot: WebviewSnapshot): string {
   return `<span class="working" data-anim="${escapeHtml(anim)}" role="status" aria-label="Pi is working"><span class="working-glyph"></span></span>`;
 }
 
+// The working indicator sits as a banner at the top of the composer so it is
+// clearly visible while Pi is generating.
+function renderWorkingBanner(snapshot: WebviewSnapshot): string {
+  return `<div class="working-banner">${renderWorking(snapshot)}<span class="working-label">Working\u2026</span></div>`;
+}
+
 function renderMoreMenu(_snapshot: WebviewSnapshot): string {
   return `
     <details class="menu-details more-menu" id="more-menu">
@@ -820,6 +826,7 @@ export function renderChatApp(snapshot: WebviewSnapshot): string {
                 )}${renderImageChip(snapshot)}</div><button type="button" data-action="clearAttachments">Clear attachments</button></div>`
             : ''
         }
+        ${busy ? renderWorkingBanner(snapshot) : ''}
         <div class="composer-card${connecting ? ' is-connecting' : ''}" aria-busy="${connecting ? 'true' : 'false'}">
           <textarea id="${COMPOSER_FIELD_ID}" rows="3" placeholder="${connecting ? 'Connecting to Pi…' : 'Ask Pi to edit…'}" ${disabledAttr}>${escapeHtml(snapshot.draft)}</textarea>
           <div class="composer-actions" aria-label="Composer actions">
@@ -828,7 +835,6 @@ export function renderChatApp(snapshot: WebviewSnapshot): string {
               <button type="button" class="icon-button" data-command="piRpc.showPiCommands" title="Commands" aria-label="Commands" ${disabledAttr}>/</button>
             </div>
             <div class="composer-actions-right">
-              ${busy ? renderWorking(snapshot) : ''}
               ${busy ? '<button type="button" class="ghost" data-action="abort">Stop</button>' : ''}
               <button type="button" id="${SEND_BUTTON_ID}" class="send-button" data-send-command="${sendCommand}" title="${sendLabel}" aria-label="${sendLabel}" ${disabledAttr}>↑</button>
             </div>

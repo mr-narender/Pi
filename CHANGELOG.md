@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.85
+
+- Working indicator moved to a clear "Working…" banner at the top of the composer (above the input), instead of a small glyph in the bottom-right. It is now obvious when Pi is generating. The animation style (piRpc.workingAnimation) and Stop button are unchanged.
+
 ## 0.0.84
 
 - Fix: opening/resuming a chat now lands at the bottom (latest message) instead of the top. The jump-to-bottom previously fired on the empty loading render before messages arrived; it now waits for the messages to render and re-asserts after layout so it works correctly with the virtualized list.

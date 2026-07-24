@@ -290,6 +290,18 @@ textarea.drop-target {
 }
 
 /* Working animation (shown while Pi generates). */
+.working-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 4px 8px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--pi-tool-accent, var(--vscode-descriptionForeground));
+}
+.working-label {
+  letter-spacing: 0.02em;
+}
 .working {
   display: inline-flex;
   align-items: center;
