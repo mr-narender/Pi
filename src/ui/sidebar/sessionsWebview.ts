@@ -9,11 +9,32 @@ export class SessionsWebviewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'piRpc.sessions';
   private view?: vscode.WebviewView;
 
+  private static readonly PINNED_KEY = 'piRpc.pinnedSessions';
+
   public constructor(
     private readonly extensionUri: vscode.Uri,
     private readonly registry: SessionRegistry,
-    private readonly recentSessions: RecentSessionService
+    private readonly recentSessions: RecentSessionService,
+    private readonly memento?: vscode.Memento
   ) {}
+
+  private pinnedPaths(): Set<string> {
+    const raw = this.memento?.get<string[]>(SessionsWebviewProvider.PINNED_KEY, []) ?? [];
+    return new Set(raw);
+  }
+
+  private async togglePin(path: string): Promise<void> {
+    if (!this.memento) {
+      return;
+    }
+    const pins = this.pinnedPaths();
+    if (pins.has(path)) {
+      pins.delete(path);
+    } else {
+      pins.add(path);
+    }
+    await this.memento.update(SessionsWebviewProvider.PINNED_KEY, [...pins]);
+  }
 
   public resolveWebviewView(view: vscode.WebviewView): void {
     this.view = view;
@@ -49,6 +70,11 @@ export class SessionsWebviewProvider implements vscode.WebviewViewProvider {
                 sessionPath: msg.sessionPath,
                 sessionLabel: msg.sessionLabel,
               });
+            }
+            break;
+          case 'pin':
+            if (msg.sessionPath) {
+              await this.togglePin(msg.sessionPath);
             }
             break;
           case 'refresh':
@@ -88,7 +114,9 @@ export class SessionsWebviewProvider implements vscode.WebviewViewProvider {
           modelLabel?: string;
         }>;
       },
-      activePath
+      activePath,
+      Date.now(),
+      this.pinnedPaths()
     );
   }
 
@@ -137,7 +165,8 @@ export class SessionsWebviewProvider implements vscode.WebviewViewProvider {
       .item .name { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .item .meta { font-size: 11px; opacity: 0.7; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .item .actions { display: none; gap: 2px; }
-      .item:hover .actions { display: flex; }
+      .item:hover .actions, .item.pinned .actions { display: flex; }
+      .icon-btn.pin-on { color: var(--vscode-charts-yellow, #d7a300); opacity: 1; }
       .icon-btn {
         border: none; background: transparent; color: inherit; cursor: pointer;
         width: 22px; height: 22px; border-radius: 4px; font-size: 13px; line-height: 1;
@@ -168,12 +197,13 @@ export class SessionsWebviewProvider implements vscode.WebviewViewProvider {
           return;
         }
         listEl.innerHTML = items.map((s) =>
-          '<div class="item' + (s.active ? ' active' : '') + '" data-path="' + esc(s.path) + '" data-name="' + esc(s.name) + '">' +
+          '<div class="item' + (s.active ? ' active' : '') + (s.pinned ? ' pinned' : '') + '" data-path="' + esc(s.path) + '" data-name="' + esc(s.name) + '">' +
             '<div class="body">' +
               '<div class="name">' + esc(s.name) + '</div>' +
               (s.meta ? '<div class="meta">' + esc(s.meta) + '</div>' : '') +
             '</div>' +
             '<div class="actions">' +
+              '<button class="icon-btn' + (s.pinned ? ' pin-on' : '') + '" data-act="pin" title="' + (s.pinned ? 'Unpin' : 'Pin') + '">' + (s.pinned ? '\u2605' : '\u2606') + '</button>' +
               '<button class="icon-btn" data-act="rename" title="Rename">\u270e</button>' +
               '<button class="icon-btn" data-act="delete" title="Delete">\u2715</button>' +
             '</div>' +

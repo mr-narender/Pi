@@ -5,6 +5,7 @@ export interface SidebarSessionItem {
   name: string;
   meta: string;
   active: boolean;
+  pinned: boolean;
 }
 
 export interface SidebarState {
@@ -25,18 +26,23 @@ export function buildSidebarState(
     items: Array<{ path: string; displayName: string; modifiedAt: number; modelLabel?: string }>;
   },
   activePath: string | undefined,
-  now = Date.now()
+  now = Date.now(),
+  pinnedPaths: ReadonlySet<string> = new Set()
 ): SidebarState {
+  const items = (recent.items ?? []).slice(0, 100).map((item) => ({
+    path: item.path,
+    name: item.displayName,
+    meta: [formatRelativeTimestamp(item.modifiedAt, now), item.modelLabel]
+      .filter(Boolean)
+      .join(' \u00b7 '),
+    active: item.path === activePath,
+    pinned: pinnedPaths.has(item.path),
+  }));
+  // Stable sort keeps recency order within each group; pinned items float up.
+  const sessions = [...items].sort((a, b) => Number(b.pinned) - Number(a.pinned));
   return {
     loading: recent.loading,
     error: recent.error,
-    sessions: (recent.items ?? []).slice(0, 100).map((item) => ({
-      path: item.path,
-      name: item.displayName,
-      meta: [formatRelativeTimestamp(item.modifiedAt, now), item.modelLabel]
-        .filter(Boolean)
-        .join(' \u00b7 '),
-      active: item.path === activePath,
-    })),
+    sessions,
   };
 }

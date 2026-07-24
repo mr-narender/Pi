@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.76
+
+- #7 Session management: pin your favourite chats. Hover a chat in the sidebar and click the star to pin/unpin; pinned chats float to the top and keep their star visible. Pins persist per workspace. (Search, rename, and delete were already available.)
+
 ## 0.0.75
 
 - #2 Ask Pi from the editor: select code, right-click -> "Ask Pi" -> Explain / Fix / Refactor. The selection is attached as context, a chat opens (or the current one is reused), and the composer is prefilled with the instruction so you can tweak and send. Also available as commands "Pi: Explain/Fix/Refactor Selection".

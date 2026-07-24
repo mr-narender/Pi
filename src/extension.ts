@@ -149,7 +149,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }
   }
 
-  const sessionsView = new SessionsWebviewProvider(context.extensionUri, registry, recentSessions);
+  const sessionsView = new SessionsWebviewProvider(
+    context.extensionUri,
+    registry,
+    recentSessions,
+    context.workspaceState
+  );
 
   // Keep the chat list in sync with the terminal (TUI): watch the on-disk
   // sessions dir and refresh live when Pi writes to it from a terminal.
