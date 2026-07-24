@@ -515,8 +515,9 @@ function render(snapshot: WebviewSnapshot): void {
     if (handleSlashKeydown(event) || handleMentionKeydown(event)) {
       return;
     }
-    // Submit with Cmd+Enter (macOS) or Ctrl+Enter.
-    if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+    // Enter submits (TUI-style); Shift+Enter inserts a newline. Cmd/Ctrl+Enter
+    // also submits. IME composition Enter is ignored so it doesn't send mid-word.
+    if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
       event.preventDefault();
       const sendButton = document.getElementById(SEND_BUTTON_ID) as HTMLButtonElement | null;
       if (!sendButton || sendButton.disabled) {

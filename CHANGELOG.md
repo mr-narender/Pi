@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.88
+
+- Enter now sends the message (TUI-style); Shift+Enter inserts a newline. Cmd/Ctrl+Enter still sends too. Enter during IME composition no longer submits mid-word. Tooltips/help updated to match.
+
 ## 0.0.87
 
 - Fix (harder): opening/resuming a chat now reliably lands at the bottom, even for long chats. Because the virtualized list estimates off-screen heights, scrollHeight keeps changing as messages render; we now pin to the bottom across a short window (re-asserting each frame) so late relayout can't strand the view near the top. Scrolling up cancels the pin immediately.

@@ -467,7 +467,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const detail = [
       'New Chat: sidebar (+ New Chat) or the Command Palette.',
       'Resume: click a chat in the sidebar; rename/delete via the hover icons.',
-      'Send: type and press Cmd+Enter / Ctrl+Enter.',
+      'Send: press Enter (Shift+Enter for a newline).',
       'Attach: use + in the composer (file, selection, diagnostics, image).',
       'Slash commands: press / in the composer actions to insert a Pi command.',
       'Model & thinking: the model chip and More menu.',

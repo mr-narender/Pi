@@ -763,7 +763,7 @@ export function renderChatApp(snapshot: WebviewSnapshot): string {
   const faulted = snapshot.connectionState === 'faulted';
   const connecting = !interactive && !faulted;
   const disabledAttr = interactive ? '' : 'disabled';
-  const sendLabel = busy ? 'Send next' : 'Send';
+  const sendLabel = busy ? 'Send next (Enter)' : 'Send (Enter · Shift+Enter for newline)';
   const sendCommand = busy ? 'follow_up' : 'prompt';
   const bindingLabel =
     snapshot.bindingState === 'cached'
