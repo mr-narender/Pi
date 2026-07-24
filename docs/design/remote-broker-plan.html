@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Pi — Remote Broker (#11) · Architecture</title>
+    <title>Pi — Remote Broker (#11) · Public capability-URL architecture</title>
     <style>
       :root {
         --bg: #0d1117;
@@ -131,7 +131,7 @@
         color: var(--teal);
         font-size: 13px;
         padding: 0 8px;
-        min-width: 78px;
+        min-width: 82px;
         text-align: center;
         flex-direction: column;
       }
@@ -176,9 +176,14 @@
         padding-left: 12px;
         color: #a6e0ab;
       }
+      .bad {
+        border-left: 3px solid var(--red);
+        padding-left: 12px;
+        color: #ffb3ad;
+      }
       .mono {
         font-family: ui-monospace, monospace;
-        font-size: 0.86em;
+        font-size: 0.85em;
         background: var(--panel2);
         border: 1px solid var(--border);
         border-radius: 8px;
@@ -186,48 +191,68 @@
         white-space: pre-wrap;
         line-height: 1.55;
         color: var(--fg);
+        overflow-x: auto;
+      }
+      .tag {
+        display: inline-block;
+        font-size: 11px;
+        font-weight: 700;
+        padding: 2px 8px;
+        border-radius: 999px;
+        background: rgba(229, 83, 75, 0.18);
+        color: #ff9d97;
+        margin-left: 8px;
+        vertical-align: middle;
       }
     </style>
   </head>
   <body>
     <div class="wrap">
-      <h1>Remote Broker (#11) — architecture</h1>
+      <h1>Remote Broker (#11) — public capability-URL architecture</h1>
       <p class="sub">
-        Watch / drive your active Pi chat from a phone. Broker runs on
-        <b>slr-backend</b> (FastAPI), exposed at <b>pi.fromlab.work</b>. Plan — not yet built.
+        Watch / drive your active Pi chat from a phone via a public, unguessable link.
+        <b>No Cloudflare Access.</b> Security = a 256-bit capability URL, 24h TTL + rotation, and an
+        optional device PIN. Separate <b>slr-inc</b> app on <b>pi.fromlab.work</b>. Plan — not
+        built.
       </p>
 
-      <h2>Your questions, answered</h2>
+      <h2>Confirmed requirements</h2>
       <div class="card">
-        <p class="q">1 · Is this a WS connection from VS Code to an external URL?</p>
-        <p class="a">
-          <b>Yes.</b> The extension is a <b>client that dials OUT</b> to
-          <code>wss://pi.fromlab.work/host</code>. Nothing listens on the Mac; no inbound; works on
-          any network. The phone is also a client (<code>/view</code>). The broker on slr-backend is
-          the <b>hub</b> that relays between them. It never talks to Pi directly.
-        </p>
-        <p class="q">2 · How is security implemented?</p>
-        <p class="a">
-          Four independent layers — see “Security model” below. TLS everywhere, Cloudflare Access at
-          the edge, a host token that only the extension holds, and short-lived session-scoped
-          viewer tokens with a driver-lock.
-        </p>
-        <p class="q">3 · One-time code + URL — brute-force / cross-session hijack?</p>
-        <p class="a">
-          The URL is fixed and public; it grants nothing on its own. Each session gets a
-          <b>128-bit random id</b> (unguessable). The pairing code is
-          <b>single-use, 90-second TTL, bound to one session, rate-limited</b>, and (with Access on)
-          only your SSO identity can even reach the endpoint. Tokens are session-scoped, so a token
-          for one chat can never touch another. See “Anti-hijack” below.
-        </p>
-        <p class="q">4 · Runs on slr-backend — pattern reused?</p>
-        <p class="a">
-          <b>Yes.</b> slr-backend is FastAPI and already ships this exact shape in its
-          <code>heartbeat</code> app: WebSocket sessions authenticated via a
-          <code>session_token</code> query param, an in-memory <code>_rooms</code> dict (room =
-          session) with a lock, <code>secrets</code> tokens, and <code>verify_assertion</code> for
-          device auth. The broker is a new small app that copies this.
-        </p>
+        <table>
+          <tr>
+            <th>Requirement</th>
+            <th>Design</th>
+          </tr>
+          <tr>
+            <td><b>Public — no CF Access gate</b></td>
+            <td>
+              Cloudflare proxy ON (DDoS + WAF), Access OFF. Anyone can reach the host; only a valid
+              capability token gets a session.
+            </td>
+          </tr>
+          <tr>
+            <td><b>Very safe URL (session scheme)</b></td>
+            <td>
+              256-bit secret in the <b>URL fragment</b> (never logged / never in Referer).
+              <code>https://pi.fromlab.work/j#&lt;sid&gt;_&lt;secret&gt;</code>
+            </td>
+          </tr>
+          <tr>
+            <td><b>Valid 24h, then rotate</b></td>
+            <td>
+              Token TTL = 24h. “Refresh link” mints a new secret, <b>instantly kills the old</b>,
+              +24h. Auto-expire + disconnect at 24h if not refreshed.
+            </td>
+          </tr>
+          <tr>
+            <td><b>Separate slr-inc app</b></td>
+            <td>
+              New repo under slr-inc (Forgejo <code>slrsoftca</code>), FastAPI, reuses slr-backend
+              heartbeat's WS/rooms pattern. Routed on <code>fromlab.work</code> via tunnel → k8s
+              ingress.
+            </td>
+          </tr>
+        </table>
       </div>
 
       <h2>Architecture</h2>
@@ -236,202 +261,206 @@
           <div class="node">
             <h3>🖥 VS Code (Mac)</h3>
             <div class="meta">extension = <b>host client</b></div>
-            <span class="pill p-teal">outbound wss</span><span class="pill p-blue">host token</span>
+            <span class="pill p-teal">outbound wss</span
+            ><span class="pill p-blue">private host token</span>
           </div>
-          <div class="arrow">
-            → publishes snapshot<br />← receives prompt<br /><small>outbound only</small>
-          </div>
+          <div class="arrow">→ snapshot<br />← prompt<br /><small>outbound only</small></div>
           <div class="node hub">
-            <h3>🧩 Broker (slr-backend)</h3>
-            <div class="meta">FastAPI · rooms · relay</div>
+            <h3>🧩 pi-broker (slr-inc)</h3>
+            <div class="meta">FastAPI · rooms · relay<br />pi.fromlab.work</div>
             <span class="pill p-teal">room = session</span
-            ><span class="pill p-red">auth + roles</span
-            ><span class="pill p-gold">Redis (multi-replica)</span>
+            ><span class="pill p-red">capability token</span
+            ><span class="pill p-gold">Redis + rate-limit</span>
           </div>
-          <div class="arrow">
-            → pushes snapshot<br />← sends prompt<br /><small>driver only</small>
-          </div>
+          <div class="arrow">→ snapshot<br />← prompt<br /><small>driver only</small></div>
           <div class="node">
             <h3>📱 Phone (PWA)</h3>
-            <div class="meta">viewer / driver client</div>
-            <span class="pill p-blue">Access SSO</span
-            ><span class="pill p-green">pairing token</span>
+            <div class="meta">viewer / driver</div>
+            <span class="pill p-green">#capability link</span
+            ><span class="pill p-blue">device PIN (1st join)</span>
           </div>
         </div>
         <p class="meta">
-          Edge: <b>Cloudflare Tunnel → k8s nginx-ingress → broker Service</b>, gated by
-          <b>Cloudflare Access</b> — the same path already used by 15+
-          <code>fromlab.work</code> services (bitwarden, argocd, grafana…). Pi RPC stays entirely on
-          the Mac; only the already-rendered <code>WebviewSnapshot</code> leaves it (redacted).
+          Edge: <b>Cloudflare Tunnel → k8s nginx-ingress → pi-broker Service</b> (same path as other
+          <code>fromlab.work</code> apps) — <b>minus the Access policy</b>. Pi RPC stays on the Mac;
+          only the redacted <code>WebviewSnapshot</code> leaves it. Broker never touches Pi.
         </p>
       </div>
 
-      <h2>Who dials whom (no inbound to the Mac)</h2>
-      <div class="card">
-        <table>
-          <tr>
-            <th>Link</th>
-            <th>Direction</th>
-            <th>Auth</th>
-          </tr>
-          <tr>
-            <td>Extension → Broker</td>
-            <td>Outbound <code>wss://pi.fromlab.work/host?session=&lt;id&gt;</code></td>
-            <td>Host token (Bitwarden vault) + Access service token</td>
-          </tr>
-          <tr>
-            <td>Phone → Broker</td>
-            <td>Outbound <code>wss://pi.fromlab.work/view?session=&lt;id&gt;</code></td>
-            <td>Access SSO cookie + viewer token (from pairing)</td>
-          </tr>
-          <tr>
-            <td>Broker ↔ Pi</td>
-            <td><b>Never.</b> Broker only relays; Pi is untouched on the Mac</td>
-            <td>—</td>
-          </tr>
-        </table>
-      </div>
-
-      <h2>Session + pairing flow</h2>
+      <h2>The URL scheme (why the fragment matters)</h2>
       <div class="card">
         <div class="mono">
-          1 VS Code: Pi: Start Remote Session 2 Extension → POST /session (host token) → broker
-          mints session_id = secrets.token_urlsafe(24) [192-bit] 3 Extension opens wss
-          /host?session=&lt;id&gt; and streams WebviewSnapshots up 4 Extension shows a QR + 6-digit
-          code (popover). Broker stored: code → session_id, single-use, TTL 90s 5 Phone: open
-          pi.fromlab.work → Cloudflare Access SSO (your email) → scan QR / type code 6 Phone → POST
-          /pair {code} → broker verifies (single-use, unexpired, rate-limited) → issues viewer JWT:
-          {sid, role:spectator, exp:+30m}, signed 7 Phone opens wss /view?session=&lt;id&gt; with
-          the viewer token → joins the room → live chat 8 Promote to driver: explicit tap → broker
-          grants driver-lock (only if free). Desktop can reclaim anytime. 9 Pi: Stop Remote Session
-          → room closed, all tokens invalidated, host socket dropped.
+          https://pi.fromlab.work/j#&lt;sid&gt;_&lt;secret&gt; │ │ public 8-char routing id ┘ └
+          256-bit secret (secrets.token_urlsafe(32))
         </div>
+        <ul>
+          <li>
+            <b>Everything secret lives after the <code>#</code></b> → the fragment is
+            <b>never</b> sent to the server, so it can't appear in Cloudflare/nginx/app access logs
+            or a <code>Referer</code> header.
+          </li>
+          <li>
+            The phone's JS reads <code>location.hash</code>, then sends the secret only inside the
+            <b>WS auth frame</b> (which we never log).
+          </li>
+          <li>
+            <code>Referrer-Policy: no-referrer</code>, <code>HSTS</code>, no third-party scripts on
+            the page → no cross-origin leak of the link.
+          </li>
+          <li>
+            <code>sid</code> is public and used only for routing + rate-limit keying; it reveals
+            nothing without the secret.
+          </li>
+        </ul>
       </div>
 
-      <h2>Security model (four layers)</h2>
+      <h2>24h lifecycle &amp; rotation</h2>
+      <div class="card">
+        <div class="mono">
+          t=0 Start Remote Session → mint {sid, secret}, exp = now+24h → link shown (QR + PIN)
+          t&lt;24h Link works. Phone joins with #secret (+ PIN on first device). Refresh Rotate: new
+          secret, exp = now+24h, OLD secret invalidated immediately (old link dies). t=24h
+          Auto-expire: room closed, phone disconnected, token purged. Must Start/Refresh again. Stop
+          Manual kill: same as expire, instantly.
+        </div>
+        <p class="meta">
+          One active secret per session at a time. Rotation is the only way to extend; there is no
+          silent renewal.
+        </p>
+      </div>
+
+      <h2>Security model (Access removed — 3 layers + PIN)</h2>
       <div class="card">
         <table>
           <tr>
             <th>Layer</th>
-            <th>What it stops</th>
+            <th>Role</th>
           </tr>
           <tr>
-            <td><b>1 · TLS (wss) end-to-end</b></td>
-            <td>Eavesdropping / MITM. Cloudflare terminates TLS; tunnel to origin is encrypted.</td>
+            <td><b>1 · TLS (wss) + Cloudflare proxy</b></td>
+            <td>Encryption + DDoS shield + WAF rate-limit rules at the edge.</td>
           </tr>
           <tr>
-            <td><b>2 · Cloudflare Access (edge SSO)</b></td>
+            <td><b>2 · Capability token (256-bit, fragment)</b></td>
+            <td>The credential. Unguessable, leak-hardened, 24h TTL, rotatable, session-scoped.</td>
+          </tr>
+          <tr>
+            <td><b>3 · Roles + driver-lock</b></td>
             <td>
-              Anyone who isn't <b>you</b> — the endpoint is invisible without a valid slrinc SSO
-              session. Blocks the internet before a request ever reaches the broker.
+              Host token is private (not the public link). Viewer = read-only; one driver; tool
+              approvals still prompt; instant revoke/kill.
             </td>
           </tr>
           <tr>
-            <td><b>3 · Host token</b></td>
+            <td><b>+ Device PIN (recommended)</b></td>
             <td>
-              Only the extension (holding the vault token) can publish snapshots for a session. A
-              viewer can never impersonate the host.
-            </td>
-          </tr>
-          <tr>
-            <td><b>4 · Viewer token + roles</b></td>
-            <td>
-              Session-scoped, signed, expiring. Spectator = read-only. Driver-lock = one writer.
-              Tool approvals still prompt inline. Host can revoke; stop = invalidate all.
+              6-digit PIN shown in VS Code, required on <b>first</b> join per device → issues a
+              device sub-token. A leaked link <b>alone</b> cannot join.
             </td>
           </tr>
         </table>
       </div>
 
-      <h2>Anti-hijack / brute-force analysis</h2>
+      <h2>Threat analysis (public endpoint)</h2>
       <div class="card">
         <table>
           <tr>
             <th>Attack</th>
-            <th>Why it fails</th>
+            <th>Mitigation</th>
           </tr>
           <tr>
-            <td>Guess the URL</td>
-            <td>URL grants nothing. No session, no token → rejected at handshake.</td>
-          </tr>
-          <tr>
-            <td>Guess a session id</td>
-            <td>192-bit random (<code>secrets.token_urlsafe(24)</code>). Not brute-forceable.</td>
-          </tr>
-          <tr>
-            <td>Brute-force the 6-digit code</td>
+            <td>Brute-force the secret</td>
             <td>
-              Single-use + <b>90s TTL</b> + <b>rate limit</b> (e.g. 5 tries → lock the code). ≤
-              ~1e-5 chance in the window. Prefer the <b>QR</b> (long token, no typing) — code is the
-              fallback.
+              256-bit random → infeasible. Plus per-<code>sid</code> join rate-limit + lockout, and
+              edge WAF rate rules.
+            </td>
+          </tr>
+          <tr>
+            <td>Scan / hit the domain</td>
+            <td>
+              No token → handshake rejected instantly. Cloudflare absorbs floods; hard cap on active
+              sessions + connections/session.
+            </td>
+          </tr>
+          <tr>
+            <td>Link leaks (log / Referer)</td>
+            <td>
+              Secret is in the fragment → not in any server log or Referer.
+              <code>no-referrer</code> + HSTS.
+            </td>
+          </tr>
+          <tr>
+            <td>Link forwarded / screenshotted <span class="tag">main residual risk</span></td>
+            <td>
+              <b>Device PIN</b> on first join blocks it; 24h expiry + rotation limits the window;
+              host sees connected devices and can revoke.
             </td>
           </tr>
           <tr>
             <td>Cross-session hijack</td>
             <td>
-              Every token embeds its <code>sid</code> and is validated against the room. A token for
-              chat A is rejected by chat B. Rooms are isolated by the random id.
+              Token embeds <code>sid</code>, validated per room. A link for chat A is rejected by
+              chat B.
             </td>
           </tr>
           <tr>
-            <td>Replay a captured token</td>
+            <td>Impersonate the host</td>
             <td>
-              Short exp (30m), bound to device on first use, revocable; session end invalidates all.
-              Access cookie also required.
-            </td>
-          </tr>
-          <tr>
-            <td>Reach the broker at all</td>
-            <td>
-              Cloudflare Access (layer 2) already blocked non-you identities before any of the
-              above.
+              Host uses a separate private token, never the public link. Viewers can only
+              view/drive, never publish as host.
             </td>
           </tr>
         </table>
-        <p class="good">
-          Net: an attacker needs a valid slrinc SSO session <b>and</b> a 192-bit session id
-          <b>and</b> an unexpired single-use pairing code — practically impossible.
+        <p class="warn">
+          Without Access, a <b>shared link is the whole credential</b> — so the <b>device PIN</b> +
+          24h rotation are what keep an accidentally-forwarded link from becoming a standing
+          backdoor. Strongly recommended to keep the PIN on.
         </p>
       </div>
 
-      <h2>slr-backend fit (reused pattern)</h2>
+      <h2>slr-inc app (separate, reuses the pattern)</h2>
       <div class="card">
         <table>
           <tr>
-            <th>Need</th>
-            <th>Already in slr-backend heartbeat</th>
+            <th>Aspect</th>
+            <th>Plan</th>
           </tr>
           <tr>
-            <td>WS auth</td>
-            <td><code>session_token</code> query-param authenticated sockets</td>
-          </tr>
-          <tr>
-            <td>Rooms / broadcast</td>
+            <td>Repo</td>
             <td>
-              <code>_rooms: dict[str, Room]</code> + <code>asyncio.Lock</code>, drop-when-empty
+              New <code>pi-broker</code> under slr-inc (Forgejo <code>slrsoftca</code>), CI/CD like
+              other fromlab.work apps.
             </td>
           </tr>
           <tr>
-            <td>Secure tokens</td>
-            <td><code>secrets.token_bytes / token_urlsafe</code></td>
-          </tr>
-          <tr>
-            <td>Device attestation</td>
-            <td><code>verify_assertion</code></td>
-          </tr>
-          <tr>
-            <td>Deploy + expose</td>
+            <td>Stack</td>
             <td>
-              FastAPI app → k8s Service → Ingress → Cloudflare Tunnel + Access on
-              <code>*.fromlab.work</code>
+              FastAPI + <code>uvicorn[standard]</code> (WS), Redis (rooms + token store +
+              rate-limit), <code>secrets</code> for tokens.
+            </td>
+          </tr>
+          <tr>
+            <td>Endpoints</td>
+            <td>
+              <code>POST /session</code> (host) · <code>POST /refresh</code> ·
+              <code>POST /pair</code> (PIN) · <code>ws /host</code> · <code>ws /view</code>
+            </td>
+          </tr>
+          <tr>
+            <td>Reused pattern</td>
+            <td>
+              slr-backend <code>heartbeat</code>: <code>session_token</code> WS auth,
+              <code>_rooms</code> dict + lock, drop-when-empty, <code>verify_assertion</code>.
+            </td>
+          </tr>
+          <tr>
+            <td>Expose</td>
+            <td>
+              k8s Service → Ingress host <code>pi.fromlab.work</code> → Cloudflare Tunnel.
+              <b>No Access app.</b> Add a CF WAF rate-limit rule.
             </td>
           </tr>
         </table>
-        <p class="meta">
-          New code is small: a <code>pi_broker</code> app with <code>/session</code>,
-          <code>/pair</code>, <code>/host</code> (ws), <code>/view</code> (ws); Redis for the room
-          registry + token store across replicas.
-        </p>
       </div>
 
       <h2>Build phases</h2>
@@ -445,22 +474,22 @@
           <tr>
             <td>0 · Spike</td>
             <td>
-              Broker app locally; extension dials out; relay one snapshot to a browser tab. No
-              Access, no pairing.
+              pi-broker locally; extension dials out; relay one snapshot to a browser tab using a
+              #capability link. No PIN/rotation yet.
             </td>
             <td>S</td>
           </tr>
           <tr>
             <td>1 · Spectator</td>
             <td>
-              Deploy to slr-backend + <code>pi.fromlab.work</code> + Access; session id + QR/code
-              pairing; read-only live view; kill switch.
+              Deploy to slr-inc + <code>pi.fromlab.work</code>; 256-bit link + fragment + 24h TTL +
+              rotation + device PIN; read-only; WAF rate-limit; kill switch.
             </td>
             <td>M</td>
           </tr>
           <tr>
             <td>2 · Driver</td>
-            <td>Driver-lock, send/stop/approve, reclaim, per-device revoke, rate limits.</td>
+            <td>Driver-lock, send/stop/approve, reclaim, per-device revoke, connection caps.</td>
             <td>M</td>
           </tr>
           <tr>
@@ -469,9 +498,9 @@
             <td>M</td>
           </tr>
         </table>
-        <p class="warn">
-          Ship <b>spectator-first</b>. A remotely-drivable coding agent needs its threat model
-          proven read-only before it can write.
+        <p class="good">
+          Ship <b>spectator-first</b>: prove the public capability-URL model read-only before
+          allowing remote writes.
         </p>
       </div>
     </div>
