@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.74
+
+- #6 Inline slash-command autocomplete: type "/" at the start of the composer to see a filterable menu of Pi commands (with descriptions). Arrow keys to move, Enter/Tab to insert, Esc to dismiss, or click a row. Complements the existing "/" button.
+
 ## 0.0.73
 
 - #8 Command palette in chat: press Cmd+K (Ctrl+K on Windows/Linux) inside a Pi chat for quick actions - New Chat, Resume Chat, Retry Last, Copy Conversation, Choose Model, Thinking Level, Session Stats, font size, Show Logs. Also available as "Pi: Command Palette".

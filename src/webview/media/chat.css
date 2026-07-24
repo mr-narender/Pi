@@ -95,6 +95,61 @@ pre {
   position: relative;
 }
 
+/* #6 — inline slash-command autocomplete menu. */
+.composer-dock {
+  position: relative;
+}
+.slash-menu {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: calc(100% + 6px);
+  z-index: 20;
+  max-height: 240px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 10px;
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
+}
+.slash-item {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--vscode-foreground);
+  text-align: left;
+  cursor: pointer;
+  width: 100%;
+}
+.slash-item.is-active,
+.slash-item:hover {
+  background: var(--vscode-list-activeSelectionBackground, rgba(120, 160, 255, 0.18));
+  color: var(--vscode-list-activeSelectionForeground, var(--vscode-foreground));
+}
+.slash-name {
+  font-family: var(--vscode-editor-font-family, ui-monospace, monospace);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.slash-desc {
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.88em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.slash-item.is-active .slash-desc {
+  color: inherit;
+  opacity: 0.85;
+}
+
 /* Working animation (shown while Pi generates). */
 .working {
   display: inline-flex;

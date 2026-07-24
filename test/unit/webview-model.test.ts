@@ -196,3 +196,9 @@ test('parseWebviewMessage accepts insertCode and newFileFromCode with language',
   });
   assert.equal(parseWebviewMessage({ type: 'insertCode' }), undefined); // missing text
 });
+
+test('parseWebviewMessage accepts requestSlashCommands (#6)', () => {
+  assert.deepEqual(parseWebviewMessage({ type: 'requestSlashCommands' }), {
+    type: 'requestSlashCommands',
+  });
+});

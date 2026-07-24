@@ -184,6 +184,11 @@ class ChatEditorHost implements vscode.Disposable {
     void this.panel.webview.postMessage({ type: 'snapshot', snapshot });
   }
 
+  /** Post an auxiliary (non-snapshot) message to the webview. */
+  public post(message: unknown): void {
+    void this.panel.webview.postMessage(message);
+  }
+
   public hasAttachment(uri: string): boolean {
     return this.attachmentFileUris.has(uri);
   }
@@ -711,6 +716,22 @@ export class ChatTabManager implements vscode.Disposable {
         const url = parsed.url;
         if (/^https?:\/\//i.test(url)) {
           await vscode.env.openExternal(vscode.Uri.parse(url));
+        }
+        return;
+      }
+      case 'requestSlashCommands': {
+        // #6 — supply the slash-command list for inline composer autocomplete.
+        try {
+          const commands = await context.controller.getPiCommands();
+          const items = commands
+            .map((command) => ({
+              name: typeof command.name === 'string' ? command.name : '',
+              description: typeof command.description === 'string' ? command.description : '',
+            }))
+            .filter((command) => command.name.length > 0);
+          host.post({ type: 'slashCommands', items });
+        } catch {
+          host.post({ type: 'slashCommands', items: [] });
         }
         return;
       }

@@ -19,6 +19,124 @@ import {
 const vscode = acquireVsCodeApi();
 const root = document.getElementById('app');
 let currentSnapshot: WebviewSnapshot | undefined;
+
+// #6 — inline slash-command autocomplete state.
+let slashCommands: Array<{ name: string; description: string }> | null = null;
+let slashRequested = false;
+let slashIndex = 0;
+let slashMatches: Array<{ name: string; description: string }> = [];
+
+function composerField(): HTMLTextAreaElement | null {
+  return document.getElementById(COMPOSER_FIELD_ID) as HTMLTextAreaElement | null;
+}
+function closeSlashMenu(): void {
+  document.getElementById('slash-menu')?.remove();
+  slashMatches = [];
+  slashIndex = 0;
+}
+function acceptSlash(name: string): void {
+  const field = composerField();
+  if (!field) {
+    return;
+  }
+  field.value = `/${name} `;
+  field.dispatchEvent(new Event('input', { bubbles: true }));
+  closeSlashMenu();
+  field.focus();
+  field.setSelectionRange(field.value.length, field.value.length);
+}
+function paintSlashMenu(): void {
+  const field = composerField();
+  const dock = field?.closest('.composer-dock');
+  if (!field || !dock) {
+    return;
+  }
+  let menu = document.getElementById('slash-menu');
+  if (!menu) {
+    menu = document.createElement('div');
+    menu.id = 'slash-menu';
+    menu.className = 'slash-menu';
+    menu.setAttribute('role', 'listbox');
+    dock.appendChild(menu);
+  }
+  menu.replaceChildren();
+  slashMatches.forEach((cmd, index) => {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = `slash-item${index === slashIndex ? ' is-active' : ''}`;
+    item.setAttribute('role', 'option');
+    const name = document.createElement('span');
+    name.className = 'slash-name';
+    name.textContent = `/${cmd.name}`;
+    const desc = document.createElement('span');
+    desc.className = 'slash-desc';
+    desc.textContent = cmd.description;
+    item.append(name, desc);
+    item.addEventListener('mousedown', (event) => {
+      event.preventDefault();
+      acceptSlash(cmd.name);
+    });
+    menu.appendChild(item);
+  });
+}
+function updateSlashMenu(): void {
+  const field = composerField();
+  if (!field) {
+    closeSlashMenu();
+    return;
+  }
+  const match = /^\/([\w-]*)$/.exec(field.value);
+  if (!match) {
+    closeSlashMenu();
+    return;
+  }
+  if (slashCommands === null) {
+    if (!slashRequested) {
+      slashRequested = true;
+      vscode.postMessage({ type: 'requestSlashCommands' });
+    }
+    return;
+  }
+  const query = (match[1] ?? '').toLowerCase();
+  const next = slashCommands.filter((cmd) => cmd.name.toLowerCase().startsWith(query)).slice(0, 8);
+  if (next.length === 0) {
+    closeSlashMenu();
+    return;
+  }
+  if (slashIndex >= next.length) {
+    slashIndex = 0;
+  }
+  slashMatches = next;
+  paintSlashMenu();
+}
+function handleSlashKeydown(event: KeyboardEvent): boolean {
+  if (slashMatches.length === 0) {
+    return false;
+  }
+  if (event.key === 'ArrowDown') {
+    event.preventDefault();
+    slashIndex = (slashIndex + 1) % slashMatches.length;
+    paintSlashMenu();
+    return true;
+  }
+  if (event.key === 'ArrowUp') {
+    event.preventDefault();
+    slashIndex = (slashIndex - 1 + slashMatches.length) % slashMatches.length;
+    paintSlashMenu();
+    return true;
+  }
+  if (event.key === 'Enter' || event.key === 'Tab') {
+    event.preventDefault();
+    acceptSlash(slashMatches[slashIndex]?.name ?? '');
+    return true;
+  }
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    closeSlashMenu();
+    return true;
+  }
+  return false;
+}
 let pendingFocusTargetId: string | undefined;
 let pendingFocusFallbackId: string | undefined;
 let previewReturnFocusId: string | undefined;
@@ -181,7 +299,12 @@ function render(snapshot: WebviewSnapshot): void {
   textarea?.addEventListener('focus', () => {
     vscode.postMessage({ type: 'setFocus', focus: 'composer' });
   });
+  textarea?.addEventListener('input', () => updateSlashMenu());
   textarea?.addEventListener('keydown', (event) => {
+    // #6 — slash menu navigation takes priority when it is open.
+    if (handleSlashKeydown(event)) {
+      return;
+    }
     // Submit with Cmd+Enter (macOS) or Ctrl+Enter.
     if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
       event.preventDefault();
@@ -585,6 +708,14 @@ window.addEventListener(
   (event: MessageEvent<{ type: string; snapshot: WebviewSnapshot }>) => {
     if (event.data?.type === 'snapshot') {
       render(event.data.snapshot);
+      // Re-evaluate the slash menu after a re-render (composer text is preserved).
+      updateSlashMenu();
+    } else if (event.data?.type === 'slashCommands') {
+      const payload = event.data as unknown as {
+        items?: Array<{ name: string; description: string }>;
+      };
+      slashCommands = Array.isArray(payload.items) ? payload.items : [];
+      updateSlashMenu();
     }
   }
 );
