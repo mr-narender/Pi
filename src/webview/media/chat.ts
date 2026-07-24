@@ -408,8 +408,42 @@ function render(snapshot: WebviewSnapshot): void {
     updateJump();
   }
 
+  startWorkingAnimation();
   applyScrollAndPaging(snapshot, scrollMetrics);
   applyFocus();
+}
+
+const WORKING_FRAMES: Record<string, string[]> = {
+  braille: ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'],
+  earth: ['🌍', '🌎', '🌏'],
+  moon: ['🌑', '🌒', '🌓', '🌔', '🌕', '🌖', '🌗', '🌘'],
+};
+let workingTimer: ReturnType<typeof setInterval> | undefined;
+function startWorkingAnimation(): void {
+  if (workingTimer) {
+    clearInterval(workingTimer);
+    workingTimer = undefined;
+  }
+  const glyph = document.querySelector('.working .working-glyph') as HTMLElement | null;
+  const container = document.querySelector('.working');
+  if (!glyph || !container) {
+    return;
+  }
+  const anim = container.getAttribute('data-anim') ?? 'braille';
+  if (anim === 'dolphin') {
+    glyph.textContent = '🐬';
+    return;
+  }
+  const frames = WORKING_FRAMES[anim];
+  if (!frames) {
+    return; // dots / bars are pure CSS
+  }
+  let index = 0;
+  glyph.textContent = frames[0] ?? '';
+  workingTimer = setInterval(() => {
+    index = (index + 1) % frames.length;
+    glyph.textContent = frames[index] ?? '';
+  }, 110);
 }
 
 function applyScrollAndPaging(snapshot: WebviewSnapshot, metrics: ScrollMetrics): void {

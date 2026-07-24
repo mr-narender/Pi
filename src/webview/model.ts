@@ -312,6 +312,7 @@ export function createWebviewSnapshot(
     // How many trailing messages to include. Grows as the webview requests
     // older batches. Defaults to DEFAULT_MESSAGE_WINDOW.
     messageLimit?: number;
+    presentation?: { workingAnimation: string; chatFontFamily: string; chatFontSize: number };
   }
 ): WebviewSnapshot {
   const totalMessages = state.messages.length;
@@ -361,5 +362,11 @@ export function createWebviewSnapshot(
     recovery: extra.composer.recovery,
     isTrusted: extra.isTrusted,
     folders: extra.folders,
+    workingAnimation: extra.presentation?.workingAnimation,
+    chatFontFamily: extra.presentation?.chatFontFamily || undefined,
+    chatFontSize:
+      extra.presentation?.chatFontSize && extra.presentation.chatFontSize > 0
+        ? extra.presentation.chatFontSize
+        : undefined,
   };
 }

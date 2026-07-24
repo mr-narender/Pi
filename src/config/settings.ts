@@ -20,6 +20,9 @@ export interface PiRpcSettings {
   telemetryEnabled: boolean;
   autoStart: boolean;
   editorTabsEnabled: boolean;
+  workingAnimation: string;
+  chatFontFamily: string;
+  chatFontSize: number;
 }
 
 export function getSettings(): PiRpcSettings {
@@ -39,6 +42,9 @@ export function getSettings(): PiRpcSettings {
     maxToolOutputChars: config.get<number>('maxToolOutputChars', 20000),
     maxImageBytes: config.get<number>('maxImageBytes', 3145728),
     maxImagesPerPrompt: config.get<number>('maxImagesPerPrompt', 4),
+    workingAnimation: config.get<string>('workingAnimation', 'braille'),
+    chatFontFamily: config.get<string>('chatFontFamily', ''),
+    chatFontSize: config.get<number>('chatFontSize', 0),
     restartOnCrash: config.get<boolean>('restartOnCrash', true),
     maxRestartAttempts: config.get<number>('maxRestartAttempts', 3),
     telemetryEnabled: config.get<boolean>('telemetryEnabled', false),

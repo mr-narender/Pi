@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.69
+
+- Working animation while Pi generates (like the TUI). Choose a style with piRpc.workingAnimation: braille (default), dots, bars, earth (spinning globe), moon (phases), or dolphin (leaping). Shown next to Stop while streaming; respects reduced-motion.
+- Chat font controls: piRpc.chatFontSize (px) and piRpc.chatFontFamily override the chat text (bubbles, cards, and content). Quick commands: "Pi: Increase/Decrease Chat Font Size". Changes apply live to open chats.
+
 ## 0.0.68
 
 - #4 Message actions - Retry & Edit:

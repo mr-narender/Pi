@@ -383,3 +383,20 @@ test('user messages get an edit button; retry is in the menu; assistant has no e
   assert.equal((html.match(/class="msg-edit"/g) ?? []).length, 1); // only the user message
   assert.match(html, /data-command="piRpcInternal.retryLast"/);
 });
+
+test('working animation shows while busy with the chosen style; font overrides apply', () => {
+  const busyHtml = renderChatApp(
+    snapshot({
+      connectionState: 'busy',
+      workingAnimation: 'earth',
+      chatFontSize: 16,
+      chatFontFamily: 'Fira Code',
+    })
+  );
+  assert.match(busyHtml, /class="working" data-anim="earth"/);
+  assert.match(busyHtml, /--pi-chat-font-size:16px/);
+  assert.match(busyHtml, /--pi-chat-font-family:Fira Code/);
+
+  const idleHtml = renderChatApp(snapshot({ connectionState: 'ready' }));
+  assert.doesNotMatch(idleHtml, /class="working"/); // no animation when idle
+});

@@ -1054,6 +1054,13 @@ export class ChatTabManager implements vscode.Disposable {
     }
   }
 
+  /** Re-render every open chat tab (e.g. after a presentation setting change). */
+  public async rerenderAll(): Promise<void> {
+    for (const host of this.hosts.values()) {
+      await this.renderResource(host.resource);
+    }
+  }
+
   private async renderResource(
     resource: vscode.Uri,
     options?: { active?: boolean }
@@ -1132,12 +1139,18 @@ export class ChatTabManager implements vscode.Disposable {
     const isCurrent = sameTarget(currentTarget, context.target);
 
     if (isCurrent) {
+      const settings = getSettings();
       const snapshot = createWebviewSnapshot(context.controller.snapshot, sequence, {
         uiMode: this.uiState.getMode(),
         composer,
         isTrusted: vscode.workspace.isTrusted,
         folders,
         messageLimit: this.revealedMessageCountFor(context.resource),
+        presentation: {
+          workingAnimation: settings.workingAnimation,
+          chatFontFamily: settings.chatFontFamily,
+          chatFontSize: settings.chatFontSize,
+        },
       });
       snapshot.bindingState = context.target.kind === 'workspaceDraft' ? 'draft' : 'current';
       return snapshot;

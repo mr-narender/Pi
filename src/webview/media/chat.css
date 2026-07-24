@@ -95,6 +95,89 @@ pre {
   position: relative;
 }
 
+/* Working animation (shown while Pi generates). */
+.working {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--pi-tool-accent, var(--vscode-descriptionForeground));
+}
+.working-glyph {
+  display: inline-flex;
+  min-width: 1.1em;
+  justify-content: center;
+  font-family: var(--vscode-editor-font-family, monospace);
+}
+.working[data-anim='dots'] .working-glyph::after {
+  content: '•••';
+  letter-spacing: 1px;
+  animation: pi-dots 1.2s steps(4, end) infinite;
+  overflow: hidden;
+  display: inline-block;
+  vertical-align: bottom;
+  width: 1.4em;
+  white-space: nowrap;
+}
+@keyframes pi-dots {
+  0% {
+    width: 0;
+  }
+  100% {
+    width: 1.4em;
+  }
+}
+.working[data-anim='bars'] .working-glyph {
+  width: 14px;
+  height: 12px;
+  background: linear-gradient(
+    var(--pi-tool-accent, #4ec9b0) 0 0,
+    var(--pi-tool-accent, #4ec9b0) 0 0,
+    var(--pi-tool-accent, #4ec9b0) 0 0
+  );
+  background-size: 3px 100%;
+  background-repeat: no-repeat;
+  background-position:
+    0 100%,
+    5px 100%,
+    10px 100%;
+  animation: pi-bars 1s ease-in-out infinite;
+}
+@keyframes pi-bars {
+  0%,
+  100% {
+    background-size:
+      3px 40%,
+      3px 70%,
+      3px 40%;
+  }
+  50% {
+    background-size:
+      3px 90%,
+      3px 40%,
+      3px 90%;
+  }
+}
+.working[data-anim='dolphin'] .working-glyph {
+  animation: pi-leap 0.9s ease-in-out infinite;
+}
+@keyframes pi-leap {
+  0%,
+  100% {
+    transform: translateY(1px) rotate(-8deg);
+  }
+  50% {
+    transform: translateY(-4px) rotate(8deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .working[data-anim='dots'] .working-glyph::after,
+  .working[data-anim='bars'] .working-glyph,
+  .working[data-anim='dolphin'] .working-glyph {
+    animation: none;
+  }
+}
+
 /* #6 — jump-to-latest floating button. */
 .jump-latest {
   position: absolute;
@@ -715,6 +798,8 @@ button.ghost:hover,
   align-items: stretch;
   gap: 18px;
   padding: 14px 10px 20px;
+  /* Chat font size (config override). */
+  font-size: var(--pi-chat-font-size, var(--vscode-font-size, 13px));
 }
 
 #messages .message-card {
@@ -855,7 +940,11 @@ button.ghost:hover,
 #messages .tl-body,
 #messages .tl-think,
 #messages .message-user .message-body {
-  font-family: var(--vscode-editor-font-family, var(--vscode-font-family));
+  font-family: var(
+    --pi-chat-font-family,
+    var(--vscode-editor-font-family, var(--vscode-font-family))
+  );
+  font-size: var(--pi-chat-font-size, var(--vscode-font-size, 13px));
 }
 
 /* Agent: primary content \u2014 full width, full contrast, no container. */

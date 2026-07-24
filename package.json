@@ -2,7 +2,7 @@
   "name": "pi",
   "displayName": "Pi – this one is (y)ours",
   "description": "An unofficial, personal VS Code chat UI for the Pi coding agent (pi.dev). Not affiliated with pi.dev — shared for anyone who wants it.",
-  "version": "0.0.68",
+  "version": "0.0.69",
   "publisher": "mr-narender",
   "license": "MIT",
   "private": true,
@@ -618,6 +618,16 @@
         "command": "piRpcInternal.retryLast",
         "title": "Retry Last Message",
         "category": "Pi"
+      },
+      {
+        "command": "piRpcInternal.increaseChatFont",
+        "title": "Increase Chat Font Size",
+        "category": "Pi"
+      },
+      {
+        "command": "piRpcInternal.decreaseChatFont",
+        "title": "Decrease Chat Font Size",
+        "category": "Pi"
       }
     ],
     "configuration": {
@@ -740,6 +750,39 @@
           "type": "boolean",
           "default": true,
           "description": "Open Pi chats as native editor tabs backed by pi-chat: resources. Turn off only to roll back to the legacy shared panel during migration."
+        },
+        "piRpc.workingAnimation": {
+          "type": "string",
+          "enum": [
+            "braille",
+            "dots",
+            "bars",
+            "earth",
+            "moon",
+            "dolphin"
+          ],
+          "enumDescriptions": [
+            "Braille spinner",
+            "Bouncing dots",
+            "Pulsing bars",
+            "Spinning earth (emoji)",
+            "Moon phases (emoji)",
+            "Leaping dolphin (emoji)"
+          ],
+          "default": "braille",
+          "description": "Animation shown while Pi is working."
+        },
+        "piRpc.chatFontFamily": {
+          "type": "string",
+          "default": "",
+          "description": "Font family for chat text. Empty = editor font."
+        },
+        "piRpc.chatFontSize": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0,
+          "maximum": 32,
+          "description": "Chat text font size in px. 0 = default."
         }
       }
     },

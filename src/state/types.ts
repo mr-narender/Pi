@@ -218,4 +218,8 @@ export interface WebviewSnapshot {
   recovery?: RecoveryState;
   isTrusted: boolean;
   folders: Array<{ name: string; uri: string; active: boolean }>;
+  // Presentation settings (from config).
+  workingAnimation?: string;
+  chatFontFamily?: string;
+  chatFontSize?: number;
 }

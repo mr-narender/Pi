@@ -1218,6 +1218,27 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     logger.show();
   });
 
+  const adjustChatFont = async (delta: number): Promise<void> => {
+    const config = vscode.workspace.getConfiguration('piRpc');
+    const current = config.get<number>('chatFontSize', 0) || 13;
+    const next = Math.max(9, Math.min(28, current + delta));
+    await config.update('chatFontSize', next, vscode.ConfigurationTarget.Global);
+  };
+  registrations.set('piRpcInternal.increaseChatFont', () => adjustChatFont(1));
+  registrations.set('piRpcInternal.decreaseChatFont', () => adjustChatFont(-1));
+
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration((event) => {
+      if (
+        event.affectsConfiguration('piRpc.chatFontSize') ||
+        event.affectsConfiguration('piRpc.chatFontFamily') ||
+        event.affectsConfiguration('piRpc.workingAnimation')
+      ) {
+        void chatTabs.rerenderAll();
+      }
+    })
+  );
+
   registrations.set('piRpcInternal.retryLast', async () => {
     const text = chatTabs.getLastUserPrompt();
     if (!text) {

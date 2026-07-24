@@ -612,6 +612,24 @@ function renderPreview(snapshot: WebviewSnapshot): string {
     </section>`;
 }
 
+// Font size/family overrides applied as CSS variables on the root.
+function chatFontStyle(snapshot: WebviewSnapshot): string {
+  const parts: string[] = [];
+  if (snapshot.chatFontSize && snapshot.chatFontSize > 0) {
+    parts.push(`--pi-chat-font-size:${Math.round(snapshot.chatFontSize)}px`);
+  }
+  if (snapshot.chatFontFamily && snapshot.chatFontFamily.trim()) {
+    parts.push(`--pi-chat-font-family:${escapeHtml(snapshot.chatFontFamily.replace(/[";]/g, ''))}`);
+  }
+  return parts.length > 0 ? ` style="${parts.join(';')}"` : '';
+}
+
+// A "working" animation shown while Pi generates (like the TUI spinner).
+function renderWorking(snapshot: WebviewSnapshot): string {
+  const anim = snapshot.workingAnimation || 'braille';
+  return `<span class="working" data-anim="${escapeHtml(anim)}" role="status" aria-label="Pi is working"><span class="working-glyph"></span></span>`;
+}
+
 function renderMoreMenu(_snapshot: WebviewSnapshot): string {
   return `
     <details class="menu-details more-menu" id="more-menu">
@@ -670,7 +688,7 @@ export function renderChatApp(snapshot: WebviewSnapshot): string {
 
   return `
     <a class="skip-link" href="#composer-field">Skip to composer</a>
-    <div class="layout" data-testid="chat-app" data-ui-mode="${escapeHtml(snapshot.uiMode)}">
+    <div class="layout" data-testid="chat-app" data-ui-mode="${escapeHtml(snapshot.uiMode)}"${chatFontStyle(snapshot)}>
       <header class="brand-bar" role="banner">
         <div class="brand-controls">
           ${folderSelect}
@@ -712,6 +730,7 @@ export function renderChatApp(snapshot: WebviewSnapshot): string {
               <button type="button" class="icon-button" data-command="piRpc.showPiCommands" title="Commands" aria-label="Commands" ${disabledAttr}>/</button>
             </div>
             <div class="composer-actions-right">
+              ${busy ? renderWorking(snapshot) : ''}
               ${busy ? '<button type="button" class="ghost" data-action="abort">Stop</button>' : ''}
               <button type="button" id="${SEND_BUTTON_ID}" class="send-button" data-send-command="${sendCommand}" title="${sendLabel}" aria-label="${sendLabel}" ${disabledAttr}>↑</button>
             </div>
