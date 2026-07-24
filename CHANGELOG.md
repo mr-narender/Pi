@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.68
+
+- #4 Message actions - Retry & Edit:
+  - Retry last message: More menu -> "Retry last message" (command "Pi: Retry Last Message") re-sends your most recent prompt.
+  - Edit: hover a user message and click the pencil to load its text back into the composer for editing/resending. Per-message copy is grouped with it.
+
 ## 0.0.67
 
 - #1 Markdown polish: agent responses now render full Markdown - headings, bullet/numbered lists, blockquotes, horizontal rules, italic, bold, inline code, and links (which open externally). All HTML-escaped (no injection); fenced code blocks keep their Copy/Insert/New file toolbar.

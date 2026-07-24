@@ -729,11 +729,22 @@ button.ghost:hover,
   position: relative;
 }
 
-/* #3 — per-message copy button (hover reveal). */
-#messages .msg-copy {
+/* #3/#4 — per-message actions (copy, edit) on hover. */
+#messages .msg-actions {
   position: absolute;
   top: 0;
   right: 0;
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+#messages .message-card:hover .msg-actions,
+#messages .msg-actions:focus-within {
+  opacity: 0.8;
+}
+#messages .msg-copy,
+#messages .msg-edit {
   display: grid;
   place-items: center;
   width: 22px;
@@ -743,20 +754,13 @@ button.ghost:hover,
   background: transparent;
   color: var(--vscode-descriptionForeground, var(--vscode-foreground));
   cursor: pointer;
-  opacity: 0;
-  transition: opacity 0.12s ease;
 }
-#messages .message-card:hover .msg-copy,
-#messages .msg-copy:focus-visible {
-  opacity: 0.75;
-}
-#messages .msg-copy:hover {
-  opacity: 1;
+#messages .msg-copy:hover,
+#messages .msg-edit:hover {
   border-color: var(--vscode-panel-border);
   color: var(--vscode-foreground);
 }
 #messages .msg-copy.is-copied {
-  opacity: 1;
   color: var(--vscode-charts-green, #57c7a0);
 }
 

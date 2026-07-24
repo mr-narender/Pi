@@ -340,6 +340,25 @@ function render(snapshot: WebviewSnapshot): void {
     });
   }
 
+  // #4 — edit a message back into the composer (client-side, updates the draft).
+  for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>('.msg-edit'))) {
+    button.addEventListener('click', () => {
+      const article = button.closest('.message-card');
+      const text = article?.querySelector('.message-body')?.textContent?.trim() ?? '';
+      const textarea = document.getElementById(COMPOSER_FIELD_ID) as HTMLTextAreaElement | null;
+      if (textarea && text) {
+        textarea.value = text;
+        textarea.dispatchEvent(new Event('input', { bubbles: true }));
+        textarea.focus();
+        try {
+          textarea.setSelectionRange(text.length, text.length);
+        } catch {
+          /* ignore */
+        }
+      }
+    });
+  }
+
   // #3 — copy a single message's output.
   for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>('.msg-copy'))) {
     button.addEventListener('click', () => {

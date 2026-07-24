@@ -463,6 +463,8 @@ function isResultRole(role: string): boolean {
 
 const COPY_ICON =
   '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="8" height="8" rx="1.5"/><path d="M3 10.5V4a1.5 1.5 0 0 1 1.5-1.5H10"/></svg>';
+const EDIT_ICON =
+  '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M10.5 3.5l2 2L6 12l-2.5.5L4 10z"/></svg>';
 
 function renderMessageArticle(message: WebviewSnapshot['messages'][number]): string {
   const role = message.role;
@@ -471,7 +473,7 @@ function renderMessageArticle(message: WebviewSnapshot['messages'][number]): str
   return `
         <article class="message-card message-${escapeHtml(role)}">
           ${roleLabel ? `<div class="message-role">${roleLabel}</div>` : ''}
-          ${showCopy ? `<button type="button" class="msg-copy" title="Copy message" aria-label="Copy message">${COPY_ICON}</button>` : ''}
+          ${showCopy ? `<div class="msg-actions">${role === 'user' ? `<button type="button" class="msg-edit" title="Edit in composer" aria-label="Edit message">${EDIT_ICON}</button>` : ''}<button type="button" class="msg-copy" title="Copy message" aria-label="Copy message">${COPY_ICON}</button></div>` : ''}
           ${renderMessageBody(message)}
           ${message.attachments.length > 0 ? `<div class="detail-stack">${message.attachments.map((attachment) => renderAttachment(attachment)).join('')}</div>` : ''}
         </article>`;
@@ -617,6 +619,7 @@ function renderMoreMenu(_snapshot: WebviewSnapshot): string {
       <div class="menu-panel" role="menu">
         <div class="menu-group">Session</div>
         <button type="button" class="menu-item cat-session" data-command="piRpc.renameSession"><span class="dot"></span>Rename chat</button>
+        <button type="button" class="menu-item cat-session" data-command="piRpcInternal.retryLast"><span class="dot"></span>Retry last message</button>
         <button type="button" class="menu-item cat-session" data-command="piRpcInternal.copyConversationMarkdown"><span class="dot"></span>Copy as Markdown</button>
         <button type="button" class="menu-item cat-session" data-command="piRpc.exportHtml"><span class="dot"></span>Export as HTML</button>
         <div class="menu-group">Model</div>

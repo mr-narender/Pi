@@ -380,6 +380,29 @@ export class ChatTabManager implements vscode.Disposable {
     };
   }
 
+  /** Text of the most recent user prompt in the active chat (for Retry). */
+  public getLastUserPrompt(): string | undefined {
+    const context = this.getActiveContext();
+    if (!context) {
+      return undefined;
+    }
+    const snapshot = createWebviewSnapshot(context.controller.snapshot, 0, {
+      uiMode: this.uiState.getMode(),
+      composer: createEmptyComposerState(),
+      isTrusted: vscode.workspace.isTrusted,
+      folders: [],
+      messageLimit: Number.MAX_SAFE_INTEGER,
+    });
+    for (let i = snapshot.messages.length - 1; i >= 0; i -= 1) {
+      const message = snapshot.messages[i];
+      if (message?.role === 'user') {
+        const text = message.text.trim();
+        return text.length > 0 ? text : undefined;
+      }
+    }
+    return undefined;
+  }
+
   public getActiveContext(): ChatTabContext | undefined {
     const activeTab = vscode.window.tabGroups.activeTabGroup.activeTab;
     const input = (activeTab?.input ?? undefined) as

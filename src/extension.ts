@@ -1218,6 +1218,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     logger.show();
   });
 
+  registrations.set('piRpcInternal.retryLast', async () => {
+    const text = chatTabs.getLastUserPrompt();
+    if (!text) {
+      void vscode.window.showInformationMessage('Pi: no message to retry.');
+      return;
+    }
+    await withController((controller) => controller.prompt(text), { requireTrust: true });
+  });
+
   registrations.set('piRpcInternal.copyConversationMarkdown', async () => {
     const result = chatTabs.getActiveConversationMarkdown();
     if (!result) {

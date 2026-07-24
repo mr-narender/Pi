@@ -364,3 +364,22 @@ test('renderRichText markdown still escapes html and handles fenced code', () =>
   assert.match(html, /class="code-wrap"/);
   assert.match(html, /<ul class="md-ul"><li>item<\/li>/);
 });
+
+test('user messages get an edit button; retry is in the menu; assistant has no edit', () => {
+  const html = renderChatApp(
+    snapshot({
+      messages: [
+        { id: 'u', role: 'user', text: 'hi', attachments: [] },
+        {
+          id: 'a',
+          role: 'assistant',
+          text: 'hello',
+          blocks: [{ kind: 'text', text: 'hello' }],
+          attachments: [],
+        },
+      ],
+    })
+  );
+  assert.equal((html.match(/class="msg-edit"/g) ?? []).length, 1); // only the user message
+  assert.match(html, /data-command="piRpcInternal.retryLast"/);
+});
