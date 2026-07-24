@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.67
+
+- #1 Markdown polish: agent responses now render full Markdown - headings, bullet/numbered lists, blockquotes, horizontal rules, italic, bold, inline code, and links (which open externally). All HTML-escaped (no injection); fenced code blocks keep their Copy/Insert/New file toolbar.
+
 ## 0.0.66
 
 - Two-tone chat bubbles for clear user/agent distinction: the user message is a teal-tinted bubble (option D); the agent now also has a bubble (neutral surface, same rounded shape, different color) for a consistent UI - the plain agent text and the timeline answer both use it. Thinking/tool cards stay as light hairline cards. Colors are single variables (--pi-user-bubble / --pi-agent-bubble) for easy tuning.

@@ -231,22 +231,107 @@ function renderMetaBlock(block: MessageBlock): string {
  * Render message text with fenced code blocks (```lang) and inline `code`.
  * Everything is HTML-escaped first; no raw markup is ever emitted.
  */
+// Inline Markdown: escape first, then code / links / bold / italic. Order
+// matters so ** inside `code` isn't bolded.
+function renderInlineMarkdown(text: string): string {
+  let html = escapeHtml(text);
+  html = html.replace(/`([^`\n]+)`/g, '<code class="inline-code">$1</code>');
+  html = html.replace(
+    /\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g,
+    (_m, label: string, url: string) => `<a class="md-link" data-href="${url}">${label}</a>`
+  );
+  html = html.replace(/\*\*(?!\s)([^\n*]+?)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/(?<![\w*])\*(?!\s)([^\n*]+?)\*(?![\w*])/g, '<em>$1</em>');
+  html = html.replace(/(?<![\w_])_(?!\s)([^\n_]+?)_(?![\w_])/g, '<em>$1</em>');
+  return html;
+}
+
+function isBlockStart(line: string): boolean {
+  return (
+    /^#{1,6}\s+/.test(line) ||
+    /^\s*[-*+]\s+/.test(line) ||
+    /^\s*\d+[.)]\s+/.test(line) ||
+    /^\s*>\s?/.test(line) ||
+    /^\s*([-*_])\1{2,}\s*$/.test(line)
+  );
+}
+
+// Block-level Markdown: headings, lists, blockquotes, hr, paragraphs.
+function renderMarkdownBlock(text: string): string {
+  const lines = text.split('\n');
+  const out: string[] = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i] ?? '';
+    const heading = /^(#{1,6})\s+(.*)$/.exec(line);
+    if (heading) {
+      const level = heading[1]!.length;
+      out.push(`<div class="md-h md-h${level}">${renderInlineMarkdown(heading[2] ?? '')}</div>`);
+      i += 1;
+      continue;
+    }
+    if (/^\s*([-*_])\1{2,}\s*$/.test(line)) {
+      out.push('<hr class="md-hr" />');
+      i += 1;
+      continue;
+    }
+    if (/^\s*>\s?/.test(line)) {
+      const quoted: string[] = [];
+      while (i < lines.length && /^\s*>\s?/.test(lines[i] ?? '')) {
+        quoted.push((lines[i] ?? '').replace(/^\s*>\s?/, ''));
+        i += 1;
+      }
+      out.push(
+        `<blockquote class="md-quote">${renderMarkdownBlock(quoted.join('\n'))}</blockquote>`
+      );
+      continue;
+    }
+    if (/^\s*[-*+]\s+/.test(line)) {
+      const items: string[] = [];
+      while (i < lines.length && /^\s*[-*+]\s+/.test(lines[i] ?? '')) {
+        items.push((lines[i] ?? '').replace(/^\s*[-*+]\s+/, ''));
+        i += 1;
+      }
+      out.push(
+        `<ul class="md-ul">${items.map((it) => `<li>${renderInlineMarkdown(it)}</li>`).join('')}</ul>`
+      );
+      continue;
+    }
+    if (/^\s*\d+[.)]\s+/.test(line)) {
+      const items: string[] = [];
+      while (i < lines.length && /^\s*\d+[.)]\s+/.test(lines[i] ?? '')) {
+        items.push((lines[i] ?? '').replace(/^\s*\d+[.)]\s+/, ''));
+        i += 1;
+      }
+      out.push(
+        `<ol class="md-ol">${items.map((it) => `<li>${renderInlineMarkdown(it)}</li>`).join('')}</ol>`
+      );
+      continue;
+    }
+    if (!line.trim()) {
+      i += 1;
+      continue;
+    }
+    const para: string[] = [];
+    while (i < lines.length && (lines[i] ?? '').trim() && !isBlockStart(lines[i] ?? '')) {
+      para.push(lines[i] ?? '');
+      i += 1;
+    }
+    out.push(`<p class="msg-para">${renderInlineMarkdown(para.join('\n'))}</p>`);
+  }
+  return out.join('');
+}
+
 export function renderRichText(raw: string): string {
   const lines = raw.split('\n');
   const out: string[] = [];
-  let paragraph: string[] = [];
+  let buffer: string[] = [];
   const flushParagraph = (): void => {
-    if (paragraph.length === 0) {
+    if (buffer.length === 0) {
       return;
     }
-    const escaped = escapeHtml(paragraph.join('\n'));
-    const withInline = escaped
-      .replace(/`([^`\n]+)`/g, '<code class="inline-code">$1</code>')
-      // Render Markdown bold (**text**) as <strong> so the literal ** markers
-      // don't clutter the text (e.g. in the model's thinking).
-      .replace(/\*\*(?!\s)([^\n*]+?)\*\*/g, '<strong>$1</strong>');
-    out.push(`<p class="msg-para">${withInline}</p>`);
-    paragraph = [];
+    out.push(renderMarkdownBlock(buffer.join('\n')));
+    buffer = [];
   };
   let index = 0;
   while (index < lines.length) {
@@ -272,7 +357,7 @@ export function renderRichText(raw: string): string {
         `<div class="code-wrap" data-lang="${escapeHtml(language)}"><div class="code-lang">${langSlot}<div class="code-actions"><button type="button" class="code-btn code-insert" title="Insert at cursor in the active editor" aria-label="Insert code at cursor">Insert</button><button type="button" class="code-btn code-newfile" title="Open in a new file" aria-label="Open code in a new file">New file</button><button type="button" class="code-btn code-copy" aria-label="Copy code">Copy</button></div></div><pre class="code-block"><code>${escapeHtml(code.join('\n'))}</code></pre></div>`
       );
     } else {
-      paragraph.push(lines[index] ?? '');
+      buffer.push(lines[index] ?? '');
       index += 1;
     }
   }

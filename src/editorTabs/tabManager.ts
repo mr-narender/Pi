@@ -684,6 +684,13 @@ export class ChatTabManager implements vscode.Disposable {
       case 'loadOlder':
         await this.revealOlderMessages(host.resource);
         return;
+      case 'openExternal': {
+        const url = parsed.url;
+        if (/^https?:\/\//i.test(url)) {
+          await vscode.env.openExternal(vscode.Uri.parse(url));
+        }
+        return;
+      }
       case 'insertCode':
         await this.insertCodeIntoEditor(parsed.text);
         return;

@@ -23,7 +23,8 @@ export type WebviewInboundMessage =
   | { type: 'switchFolder'; folderUri: string }
   | { type: 'loadOlder' }
   | { type: 'insertCode'; text: string; language?: string }
-  | { type: 'newFileFromCode'; text: string; language?: string };
+  | { type: 'newFileFromCode'; text: string; language?: string }
+  | { type: 'openExternal'; url: string };
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -83,6 +84,8 @@ export function parseWebviewMessage(value: unknown): WebviewInboundMessage | und
       return typeof record.uri === 'string'
         ? { type: 'openAttachment', uri: record.uri }
         : undefined;
+    case 'openExternal':
+      return typeof record.url === 'string' ? { type: 'openExternal', url: record.url } : undefined;
     case 'insertCode':
     case 'newFileFromCode':
       return typeof record.text === 'string'

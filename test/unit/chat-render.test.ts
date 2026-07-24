@@ -332,3 +332,35 @@ test('each user/agent message has a copy button; jump-latest uses an SVG arrow',
   assert.equal(copyButtons.length, 2); // one per bubble
   assert.match(html, /id="jump-latest"[^>]*><svg/); // SVG arrow, not a bare glyph
 });
+
+test('renderRichText renders markdown: headings, lists, blockquote, italic, links', () => {
+  const md = [
+    '# Title',
+    '',
+    'Some **bold** and _italic_ and a [link](https://example.com).',
+    '',
+    '- one',
+    '- two',
+    '',
+    '1. first',
+    '2. second',
+    '',
+    '> a quote',
+  ].join('\n');
+  const html = renderRichText(md);
+  assert.match(html, /class="md-h md-h1">Title/);
+  assert.match(html, /<strong>bold<\/strong>/);
+  assert.match(html, /<em>italic<\/em>/);
+  assert.match(html, /class="md-link" data-href="https:\/\/example.com">link<\/a>/);
+  assert.match(html, /<ul class="md-ul"><li>one<\/li><li>two<\/li><\/ul>/);
+  assert.match(html, /<ol class="md-ol"><li>first<\/li><li>second<\/li><\/ol>/);
+  assert.match(html, /<blockquote class="md-quote">/);
+  assert.doesNotMatch(html, /<script/);
+});
+
+test('renderRichText markdown still escapes html and handles fenced code', () => {
+  const html = renderRichText('text <b>x</b>\n```js\nconst y=1;\n```\n- item');
+  assert.match(html, /&lt;b&gt;x&lt;\/b&gt;/);
+  assert.match(html, /class="code-wrap"/);
+  assert.match(html, /<ul class="md-ul"><li>item<\/li>/);
+});

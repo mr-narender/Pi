@@ -329,6 +329,17 @@ function render(snapshot: WebviewSnapshot): void {
 
   document.getElementById(PREVIEW_DIALOG_ID)?.addEventListener('keydown', handlePreviewKeydown);
 
+  // #1 — Markdown links open externally (no in-webview navigation).
+  for (const link of Array.from(root.querySelectorAll<HTMLElement>('.md-link'))) {
+    link.addEventListener('click', (event) => {
+      event.preventDefault();
+      const url = link.getAttribute('data-href');
+      if (url) {
+        vscode.postMessage({ type: 'openExternal', url });
+      }
+    });
+  }
+
   // #3 — copy a single message's output.
   for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>('.msg-copy'))) {
     button.addEventListener('click', () => {
