@@ -758,7 +758,7 @@ function renderContinue(snapshot: WebviewSnapshot): string {
   if (!last || last.role !== 'assistant' || snapshot.draft.trim().length > 0) {
     return '';
   }
-  return `<div class="continue-row"><button type="button" class="continue-btn" data-command="piRpcInternal.continue" title="Ask Pi to continue">Continue</button></div>`;
+  return `<button type="button" class="continue-btn" data-command="piRpcInternal.continue" title="Ask Pi to continue">Continue</button>`;
 }
 
 // Settings gear popover — quick presentation controls next to the composer.
@@ -858,6 +858,7 @@ export function renderChatApp(snapshot: WebviewSnapshot): string {
           ${folderSelect}
           <button type="button" class="model-chip" data-command="piRpc.showModels" title="Choose model"><span class="model-dot"></span>${escapeHtml(modelLabel(snapshot))}</button>
           ${renderUsageChip(snapshot)}
+          ${busy ? '' : renderContinue(snapshot)}
           <span class="toolbar-spacer"></span>
           ${renderSettingsMenu()}
           ${renderMoreMenu(snapshot)}
@@ -874,7 +875,7 @@ export function renderChatApp(snapshot: WebviewSnapshot): string {
             : ''
         }
         ${renderQueueTray(snapshot)}
-        ${busy ? renderWorkingBanner(snapshot) : renderContinue(snapshot)}
+        ${busy ? renderWorkingBanner(snapshot) : ''}
         <div class="composer-card${connecting ? ' is-connecting' : ''}" aria-busy="${connecting ? 'true' : 'false'}">
           <textarea id="${COMPOSER_FIELD_ID}" rows="3" placeholder="${connecting ? 'Connecting to Pi…' : 'Ask Pi to edit…'}" ${disabledAttr}>${escapeHtml(snapshot.draft)}</textarea>
           <div class="composer-actions" aria-label="Composer actions">

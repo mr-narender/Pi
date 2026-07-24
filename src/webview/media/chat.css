@@ -154,23 +154,28 @@ pre {
   white-space: nowrap;
   color: var(--vscode-foreground);
 }
-.continue-row {
-  display: flex;
-  padding: 0 2px 8px;
-}
 .continue-btn {
-  padding: 4px 12px;
-  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 11px;
+  font-size: 11.5px;
+  white-space: nowrap;
   border-radius: 999px;
-  border: 1px solid var(--vscode-panel-border);
+  border: 1px solid var(--pi-tool-accent, #4ec9b0);
   background: transparent;
-  color: var(--vscode-descriptionForeground, var(--vscode-foreground));
+  color: var(--vscode-foreground);
   cursor: pointer;
 }
+.continue-btn::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--pi-tool-accent, #4ec9b0);
+}
 .continue-btn:hover {
-  color: var(--vscode-foreground);
-  border-color: var(--pi-tool-accent, #4ec9b0);
-  background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.15));
+  background: var(--vscode-toolbar-hoverBackground, rgba(78, 201, 176, 0.14));
 }
 
 /* Inline tool-approval cards. */
@@ -836,9 +841,14 @@ body,
   flex-wrap: wrap;
 }
 
-/* Controls toolbar sits with the composer at the bottom; top stays clean. */
+/* Controls toolbar sits with the composer at the bottom; top stays clean.
+ * Single row: model · usage · continue · (spacer) · settings · more. */
 .composer-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   padding: 4px 2px 8px;
+  min-height: 30px;
 }
 .toolbar-spacer {
   flex: 1 1 auto;
@@ -1141,7 +1151,8 @@ button.ghost:hover,
   flex-direction: column;
   align-items: stretch;
   gap: 18px;
-  padding: 14px 10px 20px;
+  /* Top breathing room so the first message doesn't hug the editor edge. */
+  padding: 24px 12px 20px;
   /* Chat font size (config override). */
   font-size: var(--pi-chat-font-size, var(--vscode-font-size, 13px));
 }

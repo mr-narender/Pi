@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.94
+
+- Layout polish (UI/UX pass): added top breathing room so the first message no longer hugs the editor edge; the Continue button now sits inline in the single controls row (model, usage, continue, settings, more) instead of wasting its own line; consistent 8px spacing rhythm in the toolbar.
+
 ## 0.0.93
 
 - Retry with model: the More menu now has "Retry with model…" - it opens the model picker and, if you choose a different model, re-sends your last message with it. (Picking the same model or cancelling does nothing; use "Retry last message" for a plain retry.)
