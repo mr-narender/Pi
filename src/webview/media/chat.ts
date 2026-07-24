@@ -143,7 +143,9 @@ function handleSlashKeydown(event: KeyboardEvent): boolean {
 let mentionItems: Array<{ path: string; name: string }> = [];
 let mentionIndex = 0;
 let mentionActive = false;
-let mentionQuery = '';
+// null (not '') so that the very first bare "@" (empty query) still triggers a
+// request — otherwise '' === '' skips it and no file list ever loads.
+let mentionQuery: string | null = null;
 function mentionContext(field: HTMLTextAreaElement): { start: number; query: string } | null {
   const caret = field.selectionStart ?? field.value.length;
   const before = field.value.slice(0, caret);
@@ -159,7 +161,7 @@ function closeMentionMenu(): void {
   mentionItems = [];
   mentionIndex = 0;
   mentionActive = false;
-  mentionQuery = '';
+  mentionQuery = null;
 }
 function acceptMention(path: string): void {
   const field = composerField();

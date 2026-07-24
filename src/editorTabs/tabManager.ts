@@ -470,14 +470,14 @@ export class ChatTabManager implements vscode.Disposable {
     context: ChatTabContext,
     query: string
   ): Promise<Array<{ path: string; name: string }>> {
-    const q = query.trim();
     const folder = context.controller.folder;
-    const glob = q ? `**/*${q.replace(/[^\w.\-/]/g, '')}*` : '**/*';
+    const safe = query.trim().replace(/[^\w.\-/]/g, '');
+    const glob = safe ? `**/*${safe}*` : '**/*';
     try {
       const uris = await vscode.workspace.findFiles(
-        new vscode.RelativePattern(folder, glob),
+        new vscode.RelativePattern(folder.uri, glob),
         '**/{node_modules,.git,dist,out,build,.next,coverage}/**',
-        60
+        200
       );
       return uris
         .map((uri) => relativeWorkspacePath(folder, uri) ?? '')

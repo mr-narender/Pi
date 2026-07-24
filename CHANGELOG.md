@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.89
+
+- Fix @-mentions: typing "@" now immediately loads the workspace file list to choose from. The bare "@" (empty query) was being skipped by a stale equality check, so no dropdown appeared until you typed more; it now requests on the first "@". Also hardened the file search (uses the folder URI, wider result cap).
+
 ## 0.0.88
 
 - Enter now sends the message (TUI-style); Shift+Enter inserts a newline. Cmd/Ctrl+Enter still sends too. Enter during IME composition no longer submits mid-word. Tooltips/help updated to match.
