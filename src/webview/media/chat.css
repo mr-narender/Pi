@@ -95,6 +95,45 @@ pre {
   position: relative;
 }
 
+/* Rich diff for edit-tool cards. */
+#messages .edit-diff {
+  margin-top: 8px;
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 6px;
+  overflow: hidden;
+  font-family: var(--vscode-editor-font-family, ui-monospace, monospace);
+  font-size: 0.85em;
+  line-height: 1.5;
+}
+#messages .diff-line {
+  padding: 0 8px 0 4px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+#messages .diff-line::before {
+  display: inline-block;
+  width: 1.1ch;
+  margin-right: 6px;
+  text-align: center;
+  opacity: 0.7;
+}
+#messages .diff-del {
+  background: var(--vscode-diffEditor-removedTextBackground, rgba(229, 83, 75, 0.16));
+  color: var(--vscode-foreground);
+}
+#messages .diff-del::before {
+  content: '−';
+  color: #e5534b;
+}
+#messages .diff-add {
+  background: var(--vscode-diffEditor-insertedTextBackground, rgba(87, 171, 90, 0.18));
+  color: var(--vscode-foreground);
+}
+#messages .diff-add::before {
+  content: '+';
+  color: #57ab5a;
+}
+
 /* #3 — edit-tool file actions (open file / open changes). */
 #messages .tl-file-actions {
   display: flex;

@@ -2,6 +2,52 @@
 // the target file path if this is a file-editing tool (Pi's `edit` / `write`).
 // Used to offer "Open file" / "Open changes" actions on edit tool cards.
 
+export interface EditReplacement {
+  oldText: string;
+  newText: string;
+}
+
+// Extract the {oldText,newText} replacements from an `edit` tool's args so the
+// UI can render a real +/- diff instead of raw JSON.
+export function editReplacements(
+  toolName: string | undefined,
+  args: string | undefined
+): EditReplacement[] {
+  if (!toolName || !args) {
+    return [];
+  }
+  const name = toolName.toLowerCase();
+  if (name !== 'edit' && !name.includes('edit') && !name.includes('str_replace')) {
+    return [];
+  }
+  try {
+    const parsed: unknown = JSON.parse(args);
+    if (!parsed || typeof parsed !== 'object') {
+      return [];
+    }
+    const record = parsed as Record<string, unknown>;
+    const rawList = Array.isArray(record.replacements)
+      ? record.replacements
+      : typeof record.oldText === 'string' || typeof record.newText === 'string'
+        ? [record]
+        : [];
+    const out: EditReplacement[] = [];
+    for (const item of rawList) {
+      if (item && typeof item === 'object') {
+        const entry = item as Record<string, unknown>;
+        const oldText = typeof entry.oldText === 'string' ? entry.oldText : '';
+        const newText = typeof entry.newText === 'string' ? entry.newText : '';
+        if (oldText || newText) {
+          out.push({ oldText, newText });
+        }
+      }
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
 export function editToolFilePath(
   toolName: string | undefined,
   args: string | undefined

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.96
+
+- Rich diff for edits: edit tool cards now show a real colored diff (removed lines in red, added lines in green) instead of raw JSON args, so you can review exactly what Pi changed inline. Long diffs get a Show more toggle; Open file / Open changes still available.
+
 ## 0.0.95
 
 - Auto-compact + resume: new setting piRpc.autoCompactThreshold (default 70). When context usage crosses the threshold after a turn, Pi compacts the conversation automatically and the chat resumes on the compacted context - no manual compaction, no hitting the limit mid-task. Set 0 to disable (Pi still auto-compacts when nearly full). After any compaction, the transcript and state are re-synced for a clean resume.

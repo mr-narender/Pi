@@ -1,7 +1,7 @@
 import type { WebviewSnapshot } from '../state/types';
 import { chipPrivacyLabel, summarizeChip, type PendingContextItem } from './composer';
 import { formatUsageChip } from './usageSummary';
-import { editToolFilePath } from './editToolPath';
+import { editReplacements, editToolFilePath, type EditReplacement } from './editToolPath';
 
 export const COMPOSER_FIELD_ID = 'composer-field';
 export const ATTACH_TRIGGER_ID = 'attach-trigger';
@@ -190,6 +190,25 @@ function renderAssistantBody(
     .join('')}</div>`;
 }
 
+// Rich diff for `edit` tool cards: removed lines (−) then added lines (+),
+// coloured with the theme's diff palette. Long diffs get a Show more toggle.
+function renderEditDiff(replacements: EditReplacement[]): string {
+  const lines: string[] = [];
+  for (const replacement of replacements) {
+    for (const line of replacement.oldText ? replacement.oldText.split('\n') : []) {
+      lines.push(`<div class="diff-line diff-del">${escapeHtml(line)}</div>`);
+    }
+    for (const line of replacement.newText ? replacement.newText.split('\n') : []) {
+      lines.push(`<div class="diff-line diff-add">${escapeHtml(line)}</div>`);
+    }
+  }
+  const diff = `<div class="edit-diff" role="group" aria-label="File edit diff">${lines.join('')}</div>`;
+  if (lines.length > 24) {
+    return `<div class="clampable"><div class="clamp-body">${diff}</div><button type="button" class="code-showmore">Show more</button></div>`;
+  }
+  return diff;
+}
+
 // #7 — long tool/result output is clamped with a "Show more" toggle so big logs
 // (package lists, stack traces) don't dominate the transcript.
 function renderClampedOutput(text: string): string {
@@ -210,10 +229,17 @@ function renderTimelineNode(node: TimelineNode, streamingAnswer = false): string
       return `<div class="tl-node tl-thinking">${marker}<details class="tl-card" open><summary class="tl-head">${META_ICONS.thinking}<span class="tl-label">Thinking</span>${CARET_ICON}</summary><div class="tl-body tl-think">${renderRichText(node.text)}</div></details></div>`;
     case 'tool': {
       const editPath = editToolFilePath(node.name, node.args);
+      const replacements = editReplacements(node.name, node.args);
+      const body =
+        replacements.length > 0
+          ? renderEditDiff(replacements)
+          : node.args
+            ? renderClampedOutput(node.args)
+            : '';
       const fileActions = editPath
         ? `<div class="tl-file-actions"><span class="tl-file-path">${escapeHtml(editPath)}</span><button type="button" class="tl-file-btn" data-file-open="${escapeHtml(editPath)}">Open file</button><button type="button" class="tl-file-btn" data-file-diff="${escapeHtml(editPath)}">Open changes</button></div>`
         : '';
-      return `<div class="tl-node tl-tool">${marker}<div class="tl-card"><div class="tl-head">${META_ICONS.tool}<span class="tl-label">Tool</span><code class="tool-name">${escapeHtml(node.name)}</code></div>${node.args ? renderClampedOutput(node.args) : ''}${fileActions}</div></div>`;
+      return `<div class="tl-node tl-tool">${marker}<div class="tl-card"><div class="tl-head">${META_ICONS.tool}<span class="tl-label">Tool</span><code class="tool-name">${escapeHtml(node.name)}</code></div>${body}${fileActions}</div></div>`;
     }
     case 'toolResult': {
       const err = node.isError === true;

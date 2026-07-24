@@ -564,3 +564,31 @@ test('queue tray + Continue affordance render appropriately', () => {
   );
   assert.doesNotMatch(typing, /continue-btn/);
 });
+
+test('edit tool card renders a colored diff', () => {
+  const html = renderChatApp(
+    snapshot({
+      messages: [
+        {
+          id: 'a',
+          role: 'assistant',
+          text: '',
+          blocks: [
+            {
+              kind: 'tool',
+              name: 'edit',
+              args: JSON.stringify({
+                path: 'a.ts',
+                replacements: [{ oldText: 'old', newText: 'new' }],
+              }),
+            },
+          ],
+          attachments: [],
+        },
+      ],
+    })
+  );
+  assert.match(html, /class="edit-diff"/);
+  assert.match(html, /class="diff-line diff-del">old</);
+  assert.match(html, /class="diff-line diff-add">new</);
+});
