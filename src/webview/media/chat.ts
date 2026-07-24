@@ -753,12 +753,18 @@ function keepPinnedToBottom(): void {
     messages.scrollTop = messages.scrollHeight;
   }
 }
+const TYPEWRITER_SPEEDS: Record<string, { divisor: number; interval: number }> = {
+  slow: { divisor: 12, interval: 34 },
+  normal: { divisor: 8, interval: 28 },
+  fast: { divisor: 5, interval: 18 },
+};
 function advanceTypewriter(): void {
   const busy = currentSnapshot?.connectionState === 'busy';
+  const speed = currentSnapshot?.typewriterSpeed ?? 'normal';
   const el = busy ? streamTarget() : undefined;
-  if (!el) {
-    // Stream ended (or no live answer): the normal render already shows the
-    // full text. Reset for the next turn.
+  if (!el || speed === 'off') {
+    // Off, stream ended, or no live answer: the render already shows the full
+    // text. Reset for the next turn.
     stopTypewriter();
     streamRaw = '';
     streamRevealLen = 0;
@@ -773,6 +779,7 @@ function advanceTypewriter(): void {
   // Sync the DOM to the currently-revealed prefix in the SAME frame as the
   // render() innerHTML swap, so there is no flash of the full text.
   el.innerHTML = renderRichText(raw.slice(0, streamRevealLen));
+  const tuning = TYPEWRITER_SPEEDS[speed] ?? { divisor: 8, interval: 28 };
   if (!streamTimer) {
     streamTimer = setInterval(() => {
       const node = streamTarget();
@@ -784,11 +791,11 @@ function advanceTypewriter(): void {
       if (streamRevealLen >= target) {
         return; // caught up; wait for the next update to grow the target
       }
-      const step = Math.max(2, Math.ceil((target - streamRevealLen) / 8));
+      const step = Math.max(2, Math.ceil((target - streamRevealLen) / tuning.divisor));
       streamRevealLen = Math.min(target, streamRevealLen + step);
       node.innerHTML = renderRichText(streamRaw.slice(0, streamRevealLen));
       keepPinnedToBottom();
-    }, 28);
+    }, tuning.interval);
   }
 }
 

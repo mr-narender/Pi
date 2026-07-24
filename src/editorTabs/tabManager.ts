@@ -1347,6 +1347,7 @@ export class ChatTabManager implements vscode.Disposable {
           workingAnimation: settings.workingAnimation,
           chatFontFamily: settings.chatFontFamily,
           chatFontSize: settings.chatFontSize,
+          typewriterSpeed: settings.typewriterSpeed,
         },
       });
       snapshot.bindingState = context.target.kind === 'workspaceDraft' ? 'draft' : 'current';

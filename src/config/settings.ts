@@ -24,6 +24,7 @@ export interface PiRpcSettings {
   chatFontFamily: string;
   chatFontSize: number;
   notifyOnComplete: boolean;
+  typewriterSpeed: string;
 }
 
 export function getSettings(): PiRpcSettings {
@@ -47,6 +48,7 @@ export function getSettings(): PiRpcSettings {
     chatFontFamily: config.get<string>('chatFontFamily', ''),
     chatFontSize: config.get<number>('chatFontSize', 0),
     notifyOnComplete: config.get<boolean>('notifyOnComplete', true),
+    typewriterSpeed: config.get<string>('typewriterSpeed', 'normal'),
     restartOnCrash: config.get<boolean>('restartOnCrash', true),
     maxRestartAttempts: config.get<number>('maxRestartAttempts', 3),
     telemetryEnabled: config.get<boolean>('telemetryEnabled', false),

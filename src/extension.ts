@@ -1230,7 +1230,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (
         event.affectsConfiguration('piRpc.chatFontSize') ||
         event.affectsConfiguration('piRpc.chatFontFamily') ||
-        event.affectsConfiguration('piRpc.workingAnimation')
+        event.affectsConfiguration('piRpc.workingAnimation') ||
+        event.affectsConfiguration('piRpc.typewriterSpeed')
       ) {
         void chatTabs.rerenderAll();
       }

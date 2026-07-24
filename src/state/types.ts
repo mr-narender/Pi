@@ -224,4 +224,5 @@ export interface WebviewSnapshot {
   workingAnimation?: string;
   chatFontFamily?: string;
   chatFontSize?: number;
+  typewriterSpeed?: string;
 }

@@ -2,7 +2,7 @@
   "name": "pi",
   "displayName": "Pi – this one is (y)ours",
   "description": "An unofficial, personal VS Code chat UI for the Pi coding agent (pi.dev). Not affiliated with pi.dev — shared for anyone who wants it.",
-  "version": "0.0.81",
+  "version": "0.0.82",
   "publisher": "mr-narender",
   "license": "MIT",
   "private": true,
@@ -794,6 +794,23 @@
           "type": "boolean",
           "default": true,
           "description": "Show a notification when Pi finishes a long response while the chat is not focused."
+        },
+        "piRpc.typewriterSpeed": {
+          "type": "string",
+          "enum": [
+            "off",
+            "slow",
+            "normal",
+            "fast"
+          ],
+          "enumDescriptions": [
+            "No smoothing - show streamed text as it arrives",
+            "Gentle typing",
+            "Balanced typing (default)",
+            "Quick typing"
+          ],
+          "default": "normal",
+          "description": "How smoothly streamed answers type out. \"off\" shows Pi's coarse chunks directly."
         }
       }
     },
