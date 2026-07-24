@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.70
+
+- Fix working animation: it froze on the first frame because every streaming re-render reset the timer. Now a single persistent interval drives it (re-targets the current glyph each tick), so it spins smoothly. Also shows the working state the instant you submit (before Pi's first token), so there's immediate feedback.
+- Fix submit latency feel: pressing send now flips to the busy/working state immediately.
+- Fix chat font size: the chat text, bubbles, tool cards, tool names, and code now use sizes relative to piRpc.chatFontSize, so increasing/decreasing the font actually scales the content (not just paragraphs).
+
 ## 0.0.69
 
 - Working animation while Pi generates (like the TUI). Choose a style with piRpc.workingAnimation: braille (default), dots, bars, earth (spinning globe), moon (phases), or dolphin (leaping). Shown next to Stop while streaming; respects reduced-motion.

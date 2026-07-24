@@ -418,32 +418,50 @@ const WORKING_FRAMES: Record<string, string[]> = {
   earth: ['🌍', '🌎', '🌏'],
   moon: ['🌑', '🌒', '🌓', '🌔', '🌕', '🌖', '🌗', '🌘'],
 };
+// A single persistent interval drives the working animation. It re-targets the
+// current .working-glyph each tick, so frequent re-renders during streaming
+// don't reset/freeze it. The frame index persists across re-renders.
 let workingTimer: ReturnType<typeof setInterval> | undefined;
-function startWorkingAnimation(): void {
+let workingFrame = 0;
+function stopWorkingAnimation(): void {
   if (workingTimer) {
     clearInterval(workingTimer);
     workingTimer = undefined;
   }
-  const glyph = document.querySelector('.working .working-glyph') as HTMLElement | null;
+}
+function startWorkingAnimation(): void {
   const container = document.querySelector('.working');
-  if (!glyph || !container) {
+  if (!container) {
+    stopWorkingAnimation();
     return;
   }
   const anim = container.getAttribute('data-anim') ?? 'braille';
   if (anim === 'dolphin') {
-    glyph.textContent = '🐬';
+    const glyph = container.querySelector('.working-glyph');
+    if (glyph) {
+      glyph.textContent = '🐬';
+    }
+    stopWorkingAnimation();
     return;
   }
   const frames = WORKING_FRAMES[anim];
   if (!frames) {
-    return; // dots / bars are pure CSS
+    stopWorkingAnimation(); // dots / bars are pure CSS
+    return;
   }
-  let index = 0;
-  glyph.textContent = frames[0] ?? '';
-  workingTimer = setInterval(() => {
-    index = (index + 1) % frames.length;
-    glyph.textContent = frames[index] ?? '';
-  }, 110);
+  const paint = (): void => {
+    const glyph = document.querySelector('.working .working-glyph');
+    if (glyph) {
+      glyph.textContent = frames[workingFrame % frames.length] ?? '';
+    }
+  };
+  paint();
+  if (!workingTimer) {
+    workingTimer = setInterval(() => {
+      workingFrame = (workingFrame + 1) % 1_000_000;
+      paint();
+    }, 110);
+  }
 }
 
 function applyScrollAndPaging(snapshot: WebviewSnapshot, metrics: ScrollMetrics): void {

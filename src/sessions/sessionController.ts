@@ -351,6 +351,14 @@ export class SessionController implements vscode.Disposable {
   ): Promise<void> {
     this.selfWriteAt = Date.now();
     const client = this.requireClient();
+    // Immediate feedback: show the working state the instant the user submits,
+    // before Pi's first event arrives.
+    this.state = {
+      ...this.state,
+      connectionState: 'busy',
+      state: { ...this.state.state, isStreaming: true },
+    };
+    this.fire();
     if (mode === 'prompt') {
       await client.prompt(message, images);
     } else if (mode === 'steer') {
