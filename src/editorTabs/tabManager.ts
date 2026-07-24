@@ -1276,6 +1276,12 @@ export class ChatTabManager implements vscode.Disposable {
     return false;
   }
 
+  private remoteSink: ((snapshot: WebviewSnapshot) => void) | undefined;
+  /** Register a sink that receives the active chat's snapshots (remote mirror). */
+  public setRemoteSink(sink: (snapshot: WebviewSnapshot) => void): void {
+    this.remoteSink = sink;
+  }
+
   /** Re-render every open chat tab (e.g. after a presentation setting change). */
   public async rerenderAll(): Promise<void> {
     for (const host of this.hosts.values()) {
@@ -1296,6 +1302,10 @@ export class ChatTabManager implements vscode.Disposable {
     const host = this.hosts.get(this.keyFor(resource));
     if (host) {
       await host.postSnapshot(snapshot, title);
+      // Mirror the active chat to a remote session, if one is running.
+      if (options?.active ?? false) {
+        this.remoteSink?.(snapshot);
+      }
     }
     await this.cache.set({
       target: context.target,

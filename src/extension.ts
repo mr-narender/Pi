@@ -21,6 +21,8 @@ import { ChatFileSystemProvider } from './editorTabs/fileSystemProvider';
 import { initChatUriRegistry } from './editorTabs/uriRegistry';
 import { ChatTabManager } from './editorTabs/tabManager';
 import { AskPiCodeLensProvider, type AskSymbolArgs } from './editorTabs/askCodeLens';
+import { RemoteHostClient } from './remote/hostClient';
+import { pairingLink } from './remote/remoteConfig';
 import type { SessionController } from './sessions/sessionController';
 import type { ExtensionUiRequest, JsonObject } from './rpc/protocol';
 
@@ -105,6 +107,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // restored, so restored tabs resolve to their session identity.
   initChatUriRegistry(context.workspaceState);
   const chatTabs = new ChatTabManager(context, registry, uiState, logger);
+  const remoteHost = new RemoteHostClient();
+  chatTabs.setRemoteSink((snapshot) => remoteHost.pushSnapshot(snapshot));
+  context.subscriptions.push({ dispose: () => void remoteHost.stop() });
   const chatEditorProvider = new ChatEditorProvider(chatTabs);
   const broker = new ExtensionUiBroker(registry, uiState, (controller) =>
     chatTabs.hasOpenChatFor(controller)
@@ -1405,6 +1410,43 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   registrations.set('piRpcInternal.continue', async () => {
     await withController((controller) => controller.prompt('Continue.'), { requireTrust: true });
+  });
+
+  // Remote broker: apply prompts from a remote driver to the active chat.
+  remoteHost.onPrompt((message) => {
+    void withController((controller) => controller.prompt(message), { requireTrust: true });
+  });
+  registrations.set('piRpc.remote.start', async () => {
+    const cfg = vscode.workspace.getConfiguration('piRpc');
+    const brokerUrl = (cfg.get<string>('remote.brokerUrl', '') || '').trim();
+    const hostSecret = (cfg.get<string>('remote.hostSecret', '') || '').trim();
+    if (!brokerUrl || !hostSecret) {
+      void vscode.window.showWarningMessage(
+        'Set piRpc.remote.brokerUrl and piRpc.remote.hostSecret first.'
+      );
+      return;
+    }
+    try {
+      const session = await remoteHost.start(brokerUrl, hostSecret);
+      const link = pairingLink(brokerUrl, session.pairingCode);
+      const choice = await vscode.window.showInformationMessage(
+        `Pi remote session started — pair on your phone. PIN: ${session.pin}`,
+        'Copy pairing link',
+        'Stop'
+      );
+      if (choice === 'Copy pairing link') {
+        await vscode.env.clipboard.writeText(link);
+      } else if (choice === 'Stop') {
+        await remoteHost.stop();
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      void vscode.window.showErrorMessage(`Pi remote: ${message}`);
+    }
+  });
+  registrations.set('piRpc.remote.stop', async () => {
+    await remoteHost.stop();
+    void vscode.window.showInformationMessage('Pi remote session stopped.');
   });
 
   const modelKeyOf = (controller: SessionController | undefined): string => {

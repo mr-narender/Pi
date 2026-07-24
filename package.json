@@ -2,7 +2,7 @@
   "name": "pi",
   "displayName": "Pi – this one is (y)ours",
   "description": "An unofficial, personal VS Code chat UI for the Pi coding agent (pi.dev). Not affiliated with pi.dev — shared for anyone who wants it.",
-  "version": "0.0.98",
+  "version": "0.0.99",
   "publisher": "mr-narender",
   "license": "MIT",
   "private": true,
@@ -59,11 +59,13 @@
     "audit:prod": "npm audit --omit=dev"
   },
   "dependencies": {
-    "markdown-it": "14.3.0"
+    "markdown-it": "14.3.0",
+    "ws": "^8.21.1"
   },
   "devDependencies": {
     "@types/node": "24.10.0",
     "@types/vscode": "1.75.0",
+    "@types/ws": "^8.18.1",
     "@typescript-eslint/eslint-plugin": "8.46.2",
     "@typescript-eslint/parser": "8.46.2",
     "@vscode/test-electron": "2.5.2",
@@ -643,6 +645,16 @@
         "command": "piRpc.refactorSelection",
         "title": "Refactor Selection",
         "category": "Pi"
+      },
+      {
+        "command": "piRpc.remote.start",
+        "title": "Start Remote Session",
+        "category": "Pi"
+      },
+      {
+        "command": "piRpc.remote.stop",
+        "title": "Stop Remote Session",
+        "category": "Pi"
       }
     ],
     "configuration": {
@@ -823,6 +835,16 @@
           "type": "boolean",
           "default": true,
           "description": "Show an inline \"Ask Pi\" action above functions/methods in code files."
+        },
+        "piRpc.remote.brokerUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Base URL of the Pi remote broker (e.g. https://pi.fromlab.work or http://localhost:8000). Empty disables remote sessions."
+        },
+        "piRpc.remote.hostSecret": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Host secret used to open a remote session (matches the broker PI_YOURS_HOST_SECRET). Store it securely; source from the vault."
         }
       }
     },
