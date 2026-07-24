@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.92
+
+- Queue visibility: messages you queue while Pi is working (steering / follow-up) now show in a "Queued for Pi" tray above the composer, so you can see what is pending.
+- Continue: after a turn finishes, a subtle "Continue" button appears (when the composer is empty) to nudge Pi to keep going / finish a truncated answer. It hides as soon as you start typing.
+
 ## 0.0.91
 
 - Image paste: paste a screenshot or image directly into the composer (Cmd/Ctrl+V) to attach it - no need to save a file first. Respects the image size and per-message count limits.

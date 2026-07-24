@@ -126,6 +126,53 @@ pre {
   border-color: var(--pi-tool-accent, #4ec9b0);
 }
 
+/* Queued steering/follow-up messages + Continue affordance. */
+.queue-tray {
+  margin: 0 2px 8px;
+  padding: 8px 10px;
+  border: 1px dashed var(--vscode-panel-border);
+  border-radius: 8px;
+  background: var(--vscode-editorWidget-background, rgba(128, 128, 128, 0.06));
+}
+.queue-item {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  padding: 2px 0;
+  font-size: 12.5px;
+}
+.queue-kind {
+  flex: 0 0 auto;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--pi-tool-accent, var(--vscode-descriptionForeground));
+}
+.queue-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--vscode-foreground);
+}
+.continue-row {
+  display: flex;
+  padding: 0 2px 8px;
+}
+.continue-btn {
+  padding: 4px 12px;
+  font-size: 12px;
+  border-radius: 999px;
+  border: 1px solid var(--vscode-panel-border);
+  background: transparent;
+  color: var(--vscode-descriptionForeground, var(--vscode-foreground));
+  cursor: pointer;
+}
+.continue-btn:hover {
+  color: var(--vscode-foreground);
+  border-color: var(--pi-tool-accent, #4ec9b0);
+  background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.15));
+}
+
 /* Inline tool-approval cards. */
 .approval-card {
   margin: 0 10px 8px;

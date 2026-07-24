@@ -732,6 +732,35 @@ function renderWorkingBanner(snapshot: WebviewSnapshot): string {
   return `<div class="working-banner">${renderWorking(snapshot)}<span class="working-label">Working\u2026</span></div>`;
 }
 
+// Queued steering / follow-up messages the user lined up while Pi was busy.
+function renderQueueTray(snapshot: WebviewSnapshot): string {
+  const queue = snapshot.queue;
+  const items = [
+    ...(queue?.steering ?? []).map((text) => ({ kind: 'Steering', text })),
+    ...(queue?.followUp ?? []).map((text) => ({ kind: 'Follow-up', text })),
+  ];
+  if (items.length === 0) {
+    return '';
+  }
+  const rows = items
+    .map(
+      (item) =>
+        `<div class="queue-item"><span class="queue-kind">${item.kind}</span><span class="queue-text">${escapeHtml(item.text)}</span></div>`
+    )
+    .join('');
+  return `<div class="queue-tray"><div class="section-label">Queued for Pi</div>${rows}</div>`;
+}
+
+// A subtle "Continue" affordance after a completed turn (when idle and the
+// composer is empty), to nudge Pi to keep going / finish a truncated answer.
+function renderContinue(snapshot: WebviewSnapshot): string {
+  const last = snapshot.messages[snapshot.messages.length - 1];
+  if (!last || last.role !== 'assistant' || snapshot.draft.trim().length > 0) {
+    return '';
+  }
+  return `<div class="continue-row"><button type="button" class="continue-btn" data-command="piRpcInternal.continue" title="Ask Pi to continue">Continue</button></div>`;
+}
+
 // Settings gear popover — quick presentation controls next to the composer.
 function renderSettingsMenu(): string {
   const gear =
@@ -843,7 +872,8 @@ export function renderChatApp(snapshot: WebviewSnapshot): string {
                 )}${renderImageChip(snapshot)}</div><button type="button" data-action="clearAttachments">Clear attachments</button></div>`
             : ''
         }
-        ${busy ? renderWorkingBanner(snapshot) : ''}
+        ${renderQueueTray(snapshot)}
+        ${busy ? renderWorkingBanner(snapshot) : renderContinue(snapshot)}
         <div class="composer-card${connecting ? ' is-connecting' : ''}" aria-busy="${connecting ? 'true' : 'false'}">
           <textarea id="${COMPOSER_FIELD_ID}" rows="3" placeholder="${connecting ? 'Connecting to Pi…' : 'Ask Pi to edit…'}" ${disabledAttr}>${escapeHtml(snapshot.draft)}</textarea>
           <div class="composer-actions" aria-label="Composer actions">

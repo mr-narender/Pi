@@ -1356,6 +1356,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }
   });
 
+  registrations.set('piRpcInternal.continue', async () => {
+    await withController((controller) => controller.prompt('Continue.'), { requireTrust: true });
+  });
+
   registrations.set('piRpcInternal.retryLast', async () => {
     const text = chatTabs.getLastUserPrompt();
     if (!text) {

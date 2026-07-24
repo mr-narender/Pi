@@ -523,3 +523,44 @@ test('inline approval card renders for confirm/select requests', () => {
 
   assert.doesNotMatch(renderChatApp(snapshot({})), /approval-card/);
 });
+
+test('queue tray + Continue affordance render appropriately', () => {
+  const queued = renderChatApp(snapshot({ queue: { steering: ['do X'], followUp: ['then Y'] } }));
+  assert.match(queued, /class="queue-tray"/);
+  assert.match(queued, /do X/);
+  assert.match(queued, /then Y/);
+
+  const idleAfterAssistant = renderChatApp(
+    snapshot({
+      connectionState: 'ready',
+      draft: '',
+      messages: [
+        {
+          id: 'a',
+          role: 'assistant',
+          text: 'hi',
+          blocks: [{ kind: 'text', text: 'hi' }],
+          attachments: [],
+        },
+      ],
+    })
+  );
+  assert.match(idleAfterAssistant, /data-command="piRpcInternal.continue"/);
+  // Not shown while the user is typing.
+  const typing = renderChatApp(
+    snapshot({
+      connectionState: 'ready',
+      draft: 'new question',
+      messages: [
+        {
+          id: 'a',
+          role: 'assistant',
+          text: 'hi',
+          blocks: [{ kind: 'text', text: 'hi' }],
+          attachments: [],
+        },
+      ],
+    })
+  );
+  assert.doesNotMatch(typing, /continue-btn/);
+});
