@@ -2,7 +2,7 @@
   "name": "pi",
   "displayName": "Pi – this one is (y)ours",
   "description": "An unofficial, personal VS Code chat UI for the Pi coding agent (pi.dev). Not affiliated with pi.dev — shared for anyone who wants it.",
-  "version": "0.0.74",
+  "version": "0.0.75",
   "publisher": "mr-narender",
   "license": "MIT",
   "private": true,
@@ -628,6 +628,21 @@
         "title": "Command Palette",
         "category": "Pi",
         "icon": "$(list-selection)"
+      },
+      {
+        "command": "piRpc.explainSelection",
+        "title": "Explain Selection",
+        "category": "Pi"
+      },
+      {
+        "command": "piRpc.fixSelection",
+        "title": "Fix Selection",
+        "category": "Pi"
+      },
+      {
+        "command": "piRpc.refactorSelection",
+        "title": "Refactor Selection",
+        "category": "Pi"
       }
     ],
     "configuration": {
@@ -799,6 +814,27 @@
           "command": "piRpcInternal.renameSession",
           "when": "false"
         }
+      ],
+      "editor/context": [
+        {
+          "submenu": "piRpc.ask",
+          "group": "navigation@99",
+          "when": "editorHasSelection && editorLangId != 'log'"
+        }
+      ],
+      "piRpc.ask": [
+        {
+          "command": "piRpc.explainSelection",
+          "group": "1_ask@1"
+        },
+        {
+          "command": "piRpc.fixSelection",
+          "group": "1_ask@2"
+        },
+        {
+          "command": "piRpc.refactorSelection",
+          "group": "1_ask@3"
+        }
       ]
     },
     "keybindings": [
@@ -809,6 +845,13 @@
         "win": "ctrl+k",
         "linux": "ctrl+k",
         "when": "activeCustomEditorId == 'piRpc.chatEditor'"
+      }
+    ],
+    "submenus": [
+      {
+        "id": "piRpc.ask",
+        "label": "Ask Pi",
+        "icon": "$(sparkle)"
       }
     ]
   },

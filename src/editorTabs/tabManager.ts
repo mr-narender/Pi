@@ -366,6 +366,51 @@ export class ChatTabManager implements vscode.Disposable {
     await this.renderResource(context.resource);
   }
 
+  /**
+   * #2 — "Ask Pi": capture the active editor selection as context, open/reveal
+   * a chat for that file's folder, and prefill the composer with an instruction.
+   * The user reviews and sends. Capture happens BEFORE revealing the chat, since
+   * revealing changes the active editor.
+   */
+  public async askWithSelection(instruction: string): Promise<void> {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor || editor.selection.isEmpty) {
+      void vscode.window.showInformationMessage('Select some code first, then choose Ask Pi.');
+      return;
+    }
+    const editorFolder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
+    if (!editorFolder) {
+      void vscode.window.showWarningMessage('Ask Pi works on files inside the workspace.');
+      return;
+    }
+    const controller = this.registry.getOrCreate(editorFolder);
+    const item = await this.captureSelection(controller);
+    const resource = await this.openCurrentChat({
+      folderUri: controller.folder.uri.toString(),
+      focusComposer: true,
+    });
+    if (!resource) {
+      return;
+    }
+    const context = this.contextForResource(resource);
+    if (!context) {
+      return;
+    }
+    if (item) {
+      await this.uiState.addContextItemForIdentity(context.controller, context.target, item);
+    }
+    const state = await this.uiState.getComposerStateForIdentity(
+      context.controller,
+      context.target
+    );
+    state.draft = instruction;
+    state.composerResetSeq = (state.composerResetSeq ?? 0) + 1;
+    state.focus = 'composer';
+    await this.uiState.setComposerStateForIdentity(context.controller, context.target, state);
+    await this.renderResource(context.resource);
+    await this.focusComposer(context.resource);
+  }
+
   /** Full active conversation as Markdown (whole transcript), for copy/export. */
   public getActiveConversationMarkdown(): { title: string; markdown: string } | undefined {
     const context = this.getActiveContext();

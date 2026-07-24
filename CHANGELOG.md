@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.75
+
+- #2 Ask Pi from the editor: select code, right-click -> "Ask Pi" -> Explain / Fix / Refactor. The selection is attached as context, a chat opens (or the current one is reused), and the composer is prefilled with the instruction so you can tweak and send. Also available as commands "Pi: Explain/Fix/Refactor Selection".
+
 ## 0.0.74
 
 - #6 Inline slash-command autocomplete: type "/" at the start of the composer to see a filterable menu of Pi commands (with descriptions). Arrow keys to move, Enter/Tab to insert, Esc to dismiss, or click a row. Complements the existing "/" button.

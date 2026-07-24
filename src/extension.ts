@@ -1232,6 +1232,33 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     })
   );
 
+  const askPiWithSelection = (instruction: string) => async () => {
+    if (!editorTabsEnabled()) {
+      void vscode.window.showInformationMessage(
+        'Ask Pi needs the chat editor. Enable piRpc.editorTabs.enabled.'
+      );
+      return;
+    }
+    ensureWorkspaceAvailable();
+    await chatTabs.askWithSelection(instruction);
+  };
+  registrations.set(
+    'piRpc.explainSelection',
+    askPiWithSelection('Explain what this selected code does, step by step.')
+  );
+  registrations.set(
+    'piRpc.fixSelection',
+    askPiWithSelection(
+      'Find and fix any bugs or issues in this selected code, and explain the fix.'
+    )
+  );
+  registrations.set(
+    'piRpc.refactorSelection',
+    askPiWithSelection(
+      'Refactor this selected code to improve clarity and maintainability while preserving its behavior.'
+    )
+  );
+
   registrations.set('piRpc.commandPalette', async () => {
     const actions: Array<{ label: string; description: string; command: string }> = [
       { label: '$(add) New Chat', description: 'Start a new Pi chat', command: 'piRpc.newSession' },
