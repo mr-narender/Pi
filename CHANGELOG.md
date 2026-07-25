@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.103
+
+- README: documented the Remote (Connect a phone) flow, updated keyboard shortcuts (Enter sends), removed stale Advanced-mode references.
+
 ## 0.0.102
 
 - Remote: VS Code now acknowledges when a phone connects (notification + the pairing panel shows Connected + device count) and re-pushes the current chat. Pairing panel is centered.

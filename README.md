@@ -21,6 +21,8 @@ Pi RPC embeds the [Pi coding agent](https://pi.dev) inside VS Code. It runs the 
 
 - A **sidebar launcher** with a big **New Chat** button and your saved chats (search, rename, delete).
 - **Chats open as editor tabs** in the center — one tab per session, reopenable and reload-safe.
+- **Watch & drive from your phone** — a **Connect a phone** button mirrors the live chat to a
+  phone browser so you can follow (and optionally steer) Pi while away from your desk.
 - Everything the Pi TUI can do, surfaced through the UI: models, thinking levels, slash
   commands, attachments/context, compaction, retry, usage, and diagnostics.
 
@@ -67,7 +69,7 @@ pi --mode rpc              one background Pi process per workspace folder
 1. Install the Pi CLI and log in (see **Prerequisites**).
 2. Install this extension (VSIX or Marketplace) and open a project folder.
 3. Click the **Pi** icon in the Activity Bar → **New Chat**.
-4. Type your message and press **Cmd+Enter** (macOS) or **Ctrl+Enter** to send.
+4. Type your message and press **Enter** to send (**Shift+Enter** for a newline).
 
 ## Features (TUI parity, in a GUI)
 
@@ -79,13 +81,41 @@ pi --mode rpc              one background Pi process per workspace folder
 | **Slash commands** | `/` lists Pi commands (skills, prompts, extension commands) and inserts them         |
 | **Context**        | Attach the active file, a picked file, the current selection, diagnostics, or images |
 | **Reliability**    | Auto-compaction, auto-retry, abort/stop, connection health                           |
-| **Advanced**       | An opt-in Advanced mode exposes the full RPC surface via the Command Palette         |
+| **Remote (phone)** | **Connect a phone** to watch the live chat in a browser and take control to drive it |
+
+## Watch & drive from your phone
+
+You can mirror a live chat to your phone — handy for kicking off a long task and keeping an
+eye on it (or nudging it) from the couch.
+
+**One-time setup** (Settings → Pi RPC → Remote):
+
+- **Broker URL** — the address of your Pi relay (e.g. `https://pi.fromlab.work`).
+- **Host Secret** — the shared secret your relay expects.
+
+**Each session:**
+
+1. Open a chat, then click **📱 Connect a phone** in the Pi sidebar (or run
+   **Pi: Start Remote Session** from the Command Palette).
+2. A **pairing panel** opens with a **QR code** and a **6-digit PIN**. It stays open until you stop.
+3. On your phone, **scan the QR** (or open the link) and **enter the PIN**.
+4. The phone shows the conversation **live**. Tap **Take control** to send prompts; VS Code
+   pops a confirmation when a device connects.
+5. Click **Stop session** in the panel (or **Pi: Stop Remote Session**) when you’re done.
+
+> **Security.** The relay never sees your code or Pi — it only forwards messages. Pairing is
+> QR + PIN, a per-session token is minted server-side and held only on the phone (never in a
+> URL), sessions expire, and only one device can drive at a time.
 
 ## Keyboard
 
-| Shortcut                   | Action                   |
-| -------------------------- | ------------------------ |
-| `Cmd+Enter` / `Ctrl+Enter` | Send the current message |
+| Shortcut                   | Action                             |
+| -------------------------- | ---------------------------------- |
+| `Enter`                    | Send the current message           |
+| `Shift+Enter`              | Insert a newline                   |
+| `Cmd+Enter` / `Ctrl+Enter` | Also sends (works while composing) |
+| `Cmd+K` / `Ctrl+K`         | Command palette of in-chat actions |
+| `Cmd+F` / `Ctrl+F`         | Find in the current chat           |
 
 ## The More menu
 
@@ -94,7 +124,7 @@ The **More ▾** menu in a chat groups actions with color tags for quick scannin
 - 🔵 **Session** — Rename chat, Export as HTML
 - 🟠 **Model** — Choose model, Thinking level
 - 🟣 **Context** — Compact conversation, Usage & cost
-- 🟢 / 🔴 **System** — Advanced mode, Restart Pi, Connection health, Help
+- 🟢 / 🔴 **System** — Restart Pi, Connection health, Help
 
 ## Troubleshooting
 
@@ -102,6 +132,10 @@ The **More ▾** menu in a chat groups actions with color tags for quick scannin
   `pi --version` works in a terminal and that you’ve logged in.
 - **“Pi is still connecting…”** when using `/` → wait a moment; slash commands need a live session.
 - **Wrong/old Pi** → set the **Pi Executable Path** setting to the exact binary.
+- **Phone won’t pair** → make sure **Remote → Broker URL** and **Host Secret** are set, and pair
+  before the code expires. If it says the code expired, just run **Start Remote Session** again.
+- **Phone connected but blank** → open (or click into) a chat in VS Code so there’s an active
+  conversation to mirror.
 
 ## Privacy & security
 
