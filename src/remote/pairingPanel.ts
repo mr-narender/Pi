@@ -50,6 +50,11 @@ export async function showPairingPanel(info: PairingInfo, handlers: Handlers): P
   panel.reveal(vscode.ViewColumn.Beside, false);
 }
 
+/** Update the live status line (e.g. when a phone connects). */
+export function setPairingStatus(text: string, connected: boolean): void {
+  void panel?.webview.postMessage({ type: 'status', text, connected });
+}
+
 export function closePairingPanel(): void {
   const p = panel;
   panel = undefined;
@@ -66,8 +71,12 @@ function html(qrSvg: string, info: PairingInfo): string {
 <style>
   :root{--fg:var(--vscode-foreground);--muted:var(--vscode-descriptionForeground);--teal:#4ec9b0;--border:var(--vscode-panel-border);--bg:var(--vscode-editor-background);}
   *{box-sizing:border-box}
-  body{margin:0;font-family:var(--vscode-font-family);color:var(--fg);background:var(--bg);}
-  .wrap{max-width:420px;margin:0 auto;padding:26px 22px;text-align:center;}
+  body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:var(--vscode-font-family);color:var(--fg);background:var(--bg);}
+  .wrap{width:100%;max-width:420px;margin:0 auto;padding:26px 22px;text-align:center;}
+  .state{display:inline-flex;align-items:center;gap:8px;margin:0 0 18px;padding:7px 14px;border:1px solid var(--border);border-radius:999px;font-size:13px;color:var(--muted);}
+  .state::before{content:'';width:8px;height:8px;border-radius:50%;background:var(--muted);}
+  .state.connected{color:var(--teal);border-color:rgba(78,201,176,.4);}
+  .state.connected::before{background:var(--teal);}
   h1{font-size:18px;margin:0 0 4px;}
   .sub{color:var(--muted);margin:0 0 20px;font-size:13px;line-height:1.5;}
   .qr{width:220px;height:220px;margin:0 auto 20px;padding:14px;border:1px solid var(--border);border-radius:16px;background:rgba(127,127,127,.06);}
@@ -86,6 +95,7 @@ function html(qrSvg: string, info: PairingInfo): string {
   <div class="wrap">
     <h1>Connect your phone</h1>
     <p class="sub">Scan the QR (or open the link) on your phone, then enter the PIN below.</p>
+    <div><span id="state" class="state">Waiting for a device…</span></div>
     <div class="qr">${qrSvg}</div>
     <p class="label">PIN</p>
     <div class="pin">${pinDigits}</div>
@@ -103,6 +113,14 @@ function html(qrSvg: string, info: PairingInfo): string {
   <script>
     const vscode = acquireVsCodeApi();
     function post(type){ vscode.postMessage({type}); }
+    window.addEventListener('message', function(e){
+      var d = e.data || {};
+      if (d.type === 'status') {
+        var el = document.getElementById('state');
+        el.textContent = d.text;
+        el.className = 'state' + (d.connected ? ' connected' : '');
+      }
+    });
   </script>
 </body></html>`;
 }

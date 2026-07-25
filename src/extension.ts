@@ -23,7 +23,7 @@ import { ChatTabManager } from './editorTabs/tabManager';
 import { AskPiCodeLensProvider, type AskSymbolArgs } from './editorTabs/askCodeLens';
 import { RemoteHostClient } from './remote/hostClient';
 import { pairingLink } from './remote/remoteConfig';
-import { showPairingPanel, closePairingPanel } from './remote/pairingPanel';
+import { showPairingPanel, closePairingPanel, setPairingStatus } from './remote/pairingPanel';
 import type { SessionController } from './sessions/sessionController';
 import type { ExtensionUiRequest, JsonObject } from './rpc/protocol';
 
@@ -1416,6 +1416,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // Remote broker: apply prompts from a remote driver to the active chat.
   remoteHost.onPrompt((message) => {
     void withController((controller) => controller.prompt(message), { requireTrust: true });
+  });
+  remoteHost.onViewer((event, count) => {
+    if (event === 'joined') {
+      setPairingStatus(`Connected — ${count} device${count === 1 ? '' : 's'}`, true);
+      void vscode.window.showInformationMessage('Pi: a device connected to your remote session.');
+      void chatTabs.pushActiveSnapshotToRemote();
+    } else {
+      setPairingStatus(
+        count > 0 ? `${count} device${count === 1 ? '' : 's'} connected` : 'Waiting for a device…',
+        count > 0
+      );
+    }
   });
   registrations.set('piRpc.remote.start', async () => {
     const cfg = vscode.workspace.getConfiguration('piRpc');

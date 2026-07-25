@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.102
+
+- Remote: VS Code now acknowledges when a phone connects (notification + the pairing panel shows Connected + device count) and re-pushes the current chat. Pairing panel is centered.
+
 ## 0.0.101
 
 - Remote session UX: persistent pairing panel (QR + PIN + link) instead of a vanishing notification; the PIN stays visible. Sidebar "Connect a phone" button. Pushes the current chat on start so a paired phone isn't blank.

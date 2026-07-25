@@ -30,9 +30,15 @@ export class RemoteHostClient {
   private brokerUrl = '';
   private promptHandler: ((message: string) => void) | undefined;
   private stateHandler: ((connected: boolean) => void) | undefined;
+  private viewerHandler: ((event: 'joined' | 'left', count: number) => void) | undefined;
 
   public onPrompt(handler: (message: string) => void): void {
     this.promptHandler = handler;
+  }
+
+  /** Notified when a phone/viewer connects to or leaves the session. */
+  public onViewer(handler: (event: 'joined' | 'left', count: number) => void): void {
+    this.viewerHandler = handler;
   }
 
   public onStateChange(handler: (connected: boolean) => void): void {
@@ -119,6 +125,10 @@ export class RemoteHostClient {
           const message = JSON.parse(data.toString()) as Json;
           if (message.type === 'prompt' && typeof message.message === 'string') {
             this.promptHandler?.(message.message);
+          } else if (message.type === 'viewer') {
+            const event = message.event === 'left' ? 'left' : 'joined';
+            const count = typeof message.count === 'number' ? message.count : 0;
+            this.viewerHandler?.(event, count);
           }
         } catch {
           /* ignore malformed frames */
