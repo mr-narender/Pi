@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.0
+
+- Fix remote session connection: set a User-Agent on the broker HTTP + WebSocket calls. Cloudflare rejects UA-less requests (403 error 1010), which blocked Start Remote Session.
+
 ## 0.0.99
 
 - Remote sessions (host client, experimental): "Pi: Start/Stop Remote Session" dials out to the Pi (y)ours broker (wss), streams the active chat's snapshots to paired viewers, and applies a remote driver's prompts to the chat. Configure with piRpc.remote.brokerUrl + piRpc.remote.hostSecret. The broker (slr-backend app pi_yours + k8s manifests) is in review; local end-to-end (pair -> live snapshot -> drive) verified.

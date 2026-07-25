@@ -9,6 +9,11 @@ import WebSocket from 'ws';
 
 import { hostWsUrl, httpBase } from './remoteConfig';
 
+// Cloudflare (bot-fight / browser-integrity) rejects requests with no
+// User-Agent (HTTP 403, error 1010). Node's http/ws send none by default, so we
+// set an explicit one on every request and on the WebSocket handshake.
+const USER_AGENT = 'PiYours-VSCode/1.0';
+
 export interface RemoteSession {
   sessionId: string;
   hostToken: string;
@@ -101,7 +106,9 @@ export class RemoteHostClient {
 
   private openSocket(session: RemoteSession): Promise<void> {
     return new Promise<void>((resolve, reject) => {
-      const ws = new WebSocket(hostWsUrl(this.brokerUrl, session.sessionId, session.hostToken));
+      const ws = new WebSocket(hostWsUrl(this.brokerUrl, session.sessionId, session.hostToken), {
+        headers: { 'User-Agent': USER_AGENT },
+      });
       this.socket = ws;
       ws.on('open', () => {
         this.stateHandler?.(true);
@@ -145,6 +152,7 @@ function postJson(url: string, body: Json, headers: Record<string, string> = {})
         headers: {
           'Content-Type': 'application/json',
           'Content-Length': Buffer.byteLength(payload),
+          'User-Agent': USER_AGENT,
           ...headers,
         },
       },
