@@ -882,11 +882,11 @@ export function renderChatApp(snapshot: WebviewSnapshot): string {
       ${renderApprovals(snapshot)}
       <section class="composer-dock" aria-labelledby="composer-heading">
         <div class="composer-toolbar brand-controls">
+          <span class="toolbar-spacer"></span>
           ${folderSelect}
           <button type="button" class="model-chip" data-command="piRpc.showModels" title="Choose model" aria-label="Choose model"><span class="model-dot"></span>${escapeHtml(modelLabel(snapshot))}</button>
           ${renderUsageChip(snapshot)}
           ${busy ? '' : renderContinue(snapshot)}
-          <span class="toolbar-spacer"></span>
           ${renderSettingsMenu()}
           ${renderMoreMenu(snapshot)}
         </div>

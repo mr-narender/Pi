@@ -1282,6 +1282,14 @@ export class ChatTabManager implements vscode.Disposable {
     this.remoteSink = sink;
   }
 
+  /** Force-push the active chat's current snapshot to the remote sink (on session start). */
+  public async pushActiveSnapshotToRemote(): Promise<void> {
+    const context = this.getActiveContext();
+    if (context) {
+      await this.renderResource(context.resource, { active: true });
+    }
+  }
+
   /** Re-render every open chat tab (e.g. after a presentation setting change). */
   public async rerenderAll(): Promise<void> {
     for (const host of this.hosts.values()) {

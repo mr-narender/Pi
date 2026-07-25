@@ -50,6 +50,9 @@ export class SessionsWebviewProvider implements vscode.WebviewViewProvider {
           case 'newChat':
             await vscode.commands.executeCommand('piRpc.newSession');
             break;
+          case 'remoteStart':
+            await vscode.commands.executeCommand('piRpc.remote.start');
+            break;
           case 'open':
             if (msg.sessionPath) {
               await vscode.commands.executeCommand('piRpc.switchSession', {
@@ -149,6 +152,16 @@ export class SessionsWebviewProvider implements vscode.WebviewViewProvider {
         border-radius: 8px; cursor: pointer;
       }
       .new-btn:hover { background: var(--vscode-button-hoverBackground); }
+      .remote-btn {
+        width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px;
+        padding: 8px 12px; margin-top: 2px; font-size: 12.5px;
+        color: var(--vscode-foreground);
+        background: transparent;
+        border: 1px solid var(--vscode-panel-border);
+        border-radius: 8px; cursor: pointer;
+      }
+      .remote-btn:hover { border-color: var(--pi-tool-accent, #4ec9b0); background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,.15)); }
+      .remote-btn svg { flex: 0 0 auto; }
       .search {
         width: 100%; padding: 6px 8px; border-radius: 6px;
         color: var(--vscode-input-foreground); background: var(--vscode-input-background);
@@ -179,6 +192,7 @@ export class SessionsWebviewProvider implements vscode.WebviewViewProvider {
   <body>
     <div class="wrap">
       <button class="new-btn" id="new-btn" type="button" title="Start a new chat">+ New Chat</button>
+      <button class="remote-btn" id="remote-btn" type="button" title="Watch or drive this chat from your phone"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2" width="10" height="20" rx="2.5"/><path d="M11 18h2"/></svg>Connect a phone</button>
       <input class="search" id="search" type="text" placeholder="Search chats\u2026" aria-label="Search chats" />
       <div class="list" id="list"></div>
     </div>
@@ -211,6 +225,7 @@ export class SessionsWebviewProvider implements vscode.WebviewViewProvider {
         ).join('');
       }
       document.getElementById('new-btn').addEventListener('click', () => vscode.postMessage({ type: 'newChat' }));
+      document.getElementById('remote-btn').addEventListener('click', () => vscode.postMessage({ type: 'remoteStart' }));
       searchEl.addEventListener('input', () => { filter = searchEl.value; render(); });
       listEl.addEventListener('click', (e) => {
         const btn = e.target.closest('.icon-btn');

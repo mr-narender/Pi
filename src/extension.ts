@@ -23,6 +23,7 @@ import { ChatTabManager } from './editorTabs/tabManager';
 import { AskPiCodeLensProvider, type AskSymbolArgs } from './editorTabs/askCodeLens';
 import { RemoteHostClient } from './remote/hostClient';
 import { pairingLink } from './remote/remoteConfig';
+import { showPairingPanel, closePairingPanel } from './remote/pairingPanel';
 import type { SessionController } from './sessions/sessionController';
 import type { ExtensionUiRequest, JsonObject } from './rpc/protocol';
 
@@ -1429,22 +1430,28 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     try {
       const session = await remoteHost.start(brokerUrl, hostSecret);
       const link = pairingLink(brokerUrl, session.pairingCode);
-      const choice = await vscode.window.showInformationMessage(
-        `Pi remote session started — pair on your phone. PIN: ${session.pin}`,
-        'Copy pairing link',
-        'Stop'
+      // Persistent panel with QR + PIN + link (does not vanish like a notification).
+      await showPairingPanel(
+        {
+          link,
+          pin: session.pin,
+          sessionId: session.sessionId,
+          expiresAt: session.expiresAt,
+        },
+        {
+          onStop: () => void remoteHost.stop(),
+          onCopy: (text) => void vscode.env.clipboard.writeText(text),
+        }
       );
-      if (choice === 'Copy pairing link') {
-        await vscode.env.clipboard.writeText(link);
-      } else if (choice === 'Stop') {
-        await remoteHost.stop();
-      }
+      // Mirror the current chat immediately so a freshly-paired phone isn't blank.
+      await chatTabs.pushActiveSnapshotToRemote();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       void vscode.window.showErrorMessage(`Pi remote: ${message}`);
     }
   });
   registrations.set('piRpc.remote.stop', async () => {
+    closePairingPanel();
     await remoteHost.stop();
     void vscode.window.showInformationMessage('Pi remote session stopped.');
   });

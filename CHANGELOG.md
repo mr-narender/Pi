@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.101
+
+- Remote session UX: persistent pairing panel (QR + PIN + link) instead of a vanishing notification; the PIN stays visible. Sidebar "Connect a phone" button. Pushes the current chat on start so a paired phone isn't blank.
+- Bottom controls (model/usage/continue/settings/more) now right-aligned.
+
 ## 0.1.0
 
 - Fix remote session connection: set a User-Agent on the broker HTTP + WebSocket calls. Cloudflare rejects UA-less requests (403 error 1010), which blocked Start Remote Session.
