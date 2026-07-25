@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.104
+
+- README: full feature-table refresh (Compose/Ask Pi/Navigate/Flow/Feel/Remote), corrected More menu, added Settings-worth-knowing section.
+
 ## 0.0.103
 
 - README: documented the Remote (Connect a phone) flow, updated keyboard shortcuts (Enter sends), removed stale Advanced-mode references.

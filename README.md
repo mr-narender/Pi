@@ -73,15 +73,17 @@ pi --mode rpc              one background Pi process per workspace folder
 
 ## Features (TUI parity, in a GUI)
 
-| Area               | What you get                                                                         |
-| ------------------ | ------------------------------------------------------------------------------------ |
-| **Chats**          | Editor-tab conversations, streaming replies, one tab per session, reopen/resume      |
-| **Sessions**       | Sidebar launcher, search, rename, delete, warm-start                                 |
-| **Models**         | Choose model, cycle, set thinking level                                              |
-| **Slash commands** | `/` lists Pi commands (skills, prompts, extension commands) and inserts them         |
-| **Context**        | Attach the active file, a picked file, the current selection, diagnostics, or images |
-| **Reliability**    | Auto-compaction, auto-retry, abort/stop, connection health                           |
-| **Remote (phone)** | **Connect a phone** to watch the live chat in a browser and take control to drive it |
+| Area               | What you get                                                                                               |
+| ------------------ | ---------------------------------------------------------------------------------------------------------- |
+| **Chats**          | Editor-tab conversations, live streaming, one tab per session, reopen/resume, branch & duplicate           |
+| **Sessions**       | Sidebar launcher, search, **pin**, rename, delete, warm-start                                              |
+| **Models**         | Choose/cycle model, thinking level, retry last message (optionally with a different model)                 |
+| **Compose**        | `/` slash commands, `@file` mentions, drag-drop & **pasted** images, attach file/selection/diagnostics     |
+| **Ask Pi**         | Right-click a selection or use the inline **CodeLens** above functions to Explain / Fix / Refactor         |
+| **Navigate**       | Command palette (`Cmd/Ctrl+K`), find-in-chat (`Cmd/Ctrl+F`), jump-to-latest, conversation map              |
+| **Flow**           | Queue/steer follow-ups, Continue, abort/stop, auto-retry, auto-compaction, usage & cost chip               |
+| **Feel**           | Enter-to-send, typewriter streaming, working animation, chat-font controls, completion notifications, a11y |
+| **Remote (phone)** | **Connect a phone** to watch the live chat in a browser and take control to drive it                       |
 
 ## Watch & drive from your phone
 
@@ -121,10 +123,24 @@ eye on it (or nudging it) from the couch.
 
 The **More ▾** menu in a chat groups actions with color tags for quick scanning:
 
-- 🔵 **Session** — Rename chat, Export as HTML
+- 🔵 **Session** — Rename chat, Retry last message, Copy as Markdown, Export as HTML
 - 🟠 **Model** — Choose model, Thinking level
-- 🟣 **Context** — Compact conversation, Usage & cost
-- 🟢 / 🔴 **System** — Restart Pi, Connection health, Help
+- 🟣 **Context** — Compact conversation
+- 🟢 / 🔴 **System** — Restart Pi, Connection health, Show logs, Help
+
+Model, usage/cost, Continue and the ⚙️ settings gear live in the **composer toolbar** at the
+bottom-right of the chat.
+
+## Settings worth knowing (Settings → Pi RPC)
+
+- **Working Animation** — spinner style shown while Pi is working.
+- **Typewriter Speed** — how smoothly streamed answers type out (off / slow / normal / fast).
+- **Chat Font Family / Size** — the transcript font.
+- **Notify On Complete** — ping when a long response finishes and the chat isn’t focused.
+- **Auto Compact Threshold** — auto-compact the conversation when context usage hits this %.
+- **CodeLens Enabled** — the inline “Ask Pi” action above functions/methods.
+- **Remote → Broker URL / Host Secret** — required for **Connect a phone**.
+- **Pi Executable Path** — set this if `pi` isn’t on your `PATH`.
 
 ## Troubleshooting
 
