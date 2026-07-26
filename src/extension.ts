@@ -1419,15 +1419,45 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   remoteHost.onPrompt((message) => {
     void withController((controller) => controller.prompt(message), { requireTrust: true });
   });
-  const pushRemoteChatList = (): void => {
-    remoteHost.pushChatList(chatTabs.getRemoteChats());
+  const pushRemoteChatList = async (): Promise<void> => {
+    const chats = [...chatTabs.getRemoteChats()];
+    // Include saved/current chats from the same workspace, not only tabs that
+    // happen to be open. Selecting one below opens it in VS Code and mirrors it.
+    for (const controller of registry.list()) {
+      await recentSessions.refresh(controller.folder);
+      const active = chatTabs.getActiveContext();
+      const activeFile =
+        active?.target.kind === 'sessionFile' ? active.target.sessionFile : undefined;
+      for (const item of recentSessions.getState(controller.folder).items) {
+        if (chats.some((chat) => chat.id === item.path)) continue;
+        chats.push({
+          id: item.path,
+          title: item.displayName,
+          active: item.path === activeFile,
+        });
+      }
+    }
+    remoteHost.pushChatList(chats);
   };
-  remoteHost.onChatListRequest(pushRemoteChatList);
+  remoteHost.onChatListRequest(() => void pushRemoteChatList());
   remoteHost.onChatSelect((chatId) => {
     void (async () => {
-      if (await chatTabs.selectRemoteChat(chatId)) {
+      let selected = await chatTabs.selectRemoteChat(chatId);
+      if (!selected) {
+        for (const controller of registry.list()) {
+          const item = recentSessions
+            .getState(controller.folder)
+            .items.find((candidate) => candidate.path === chatId);
+          if (item) {
+            await chatTabs.openForSessionFile(controller, item.path);
+            selected = true;
+            break;
+          }
+        }
+      }
+      if (selected) {
         await chatTabs.pushActiveSnapshotToRemote();
-        pushRemoteChatList();
+        await pushRemoteChatList();
       }
     })();
   });
