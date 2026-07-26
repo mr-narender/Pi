@@ -56,7 +56,8 @@ export async function showPairingPanel(info: PairingInfo, handlers: Handlers): P
     });
   }
   panel.webview.html = html(qr, info);
-  panel.reveal(vscode.ViewColumn.Beside, false);
+  // Keep pairing in the current editor group; Beside here recreated the split.
+  panel.reveal(vscode.ViewColumn.Active, false);
 }
 
 /** Update the live status line (e.g. when a phone connects). */
