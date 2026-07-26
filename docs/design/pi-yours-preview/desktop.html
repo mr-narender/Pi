@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pi (y)ours — desktop/web view (with #507 fixes)</title>
+    <link rel="stylesheet" href="app.css" />
+    <style>
+      body {
+        margin: 0;
+        background: #05070c;
+        font-family:
+          -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        color: #cdd6e4;
+      }
+      .page {
+        max-width: 1280px;
+        margin: 0 auto;
+        padding: 26px 20px 60px;
+      }
+      h1 {
+        font-size: 20px;
+        margin: 0 0 4px;
+      }
+      .lede {
+        color: #8b97a9;
+        margin: 0 0 24px;
+        font-size: 13.5px;
+      }
+      .cap {
+        font-size: 13px;
+        color: #9aa6b8;
+        margin: 26px 0 10px;
+      }
+      .cap b {
+        color: #e6edf3;
+      }
+      /* a desktop browser window frame */
+      .win {
+        border-radius: 12px;
+        overflow: hidden;
+        border: 1px solid #212a38;
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+        background: #0b0e14;
+      }
+      .chrome {
+        height: 34px;
+        background: #12161f;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 12px;
+        border-bottom: 1px solid #212a38;
+      }
+      .chrome i {
+        width: 11px;
+        height: 11px;
+        border-radius: 50%;
+        display: inline-block;
+      }
+      .chrome .r {
+        background: #ff5f57;
+      }
+      .chrome .y {
+        background: #febc2e;
+      }
+      .chrome .g {
+        background: #28c840;
+      }
+      .chrome .url {
+        margin-left: 12px;
+        font-size: 12px;
+        color: #6f7c90;
+        background: #0b0e14;
+        padding: 4px 12px;
+        border-radius: 6px;
+        flex: 1;
+      }
+      .viewport {
+        height: 560px;
+      }
+      .viewport .app {
+        height: 100%;
+        min-height: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <h1>Pi (y)ours — desktop / normal browser view</h1>
+      <p class="lede">
+        Same responsive app on a wide window. Status now reads <b>enter PIN</b> (not a
+        false “connecting…”), and before you connect you only see the pairing card.
+      </p>
+
+      <p class="cap"><b>Before you connect</b> — desktop</p>
+      <div class="win">
+        <div class="chrome">
+          <i class="r"></i><i class="y"></i><i class="g"></i>
+          <span class="url">pi.fromlab.work/p#VQKSQGK33K</span>
+        </div>
+        <div class="viewport">
+          <div class="app">
+            <header class="bar">
+              <span class="brand"
+                ><span class="mark">π</span>Pi <span class="y">(y)ours</span></span
+              >
+              <span class="status"
+                ><span class="dot"></span
+                ><span class="status-text">enter PIN</span></span
+              >
+            </header>
+            <section class="view center">
+              <div class="card">
+                <div class="logo"><span>π</span></div>
+                <h1>Pair your device</h1>
+                <p class="muted">
+                  Enter the 6‑digit PIN shown in VS Code to connect to your session.
+                </p>
+                <input class="pin" inputmode="numeric" maxlength="6" value="048512" />
+                <button class="btn primary block">Connect</button>
+              </div>
+            </section>
+            <section class="view" hidden></section>
+            <section class="view center" hidden></section>
+          </div>
+        </div>
+      </div>
+
+      <p class="cap"><b>Live · driver</b> — desktop</p>
+      <div class="win">
+        <div class="chrome">
+          <i class="r"></i><i class="y"></i><i class="g"></i>
+          <span class="url">pi.fromlab.work</span>
+        </div>
+        <div class="viewport">
+          <div class="app">
+            <header class="bar">
+              <span class="brand"
+                ><span class="mark">π</span>Pi <span class="y">(y)ours</span></span
+              >
+              <span class="status live"
+                ><span class="dot"></span
+                ><span class="status-text">live</span></span
+              >
+            </header>
+            <section class="view">
+              <main class="messages">
+                <div class="msg user">
+                  <div class="who">You</div>
+                  <div class="body">Add a health endpoint to the API.</div>
+                </div>
+                <div class="msg assistant">
+                  <div class="who">Pi</div>
+                  <div class="body">
+                    Added `GET /healthz` returning `{status:"ok"}` and wired it into
+                    the router. Running the tests now…
+                  </div>
+                </div>
+                <div class="msg assistant">
+                  <div class="who">Pi</div>
+                  <div class="body">All 24 tests pass. Want me to open a PR?</div>
+                </div>
+                <div class="msg user">
+                  <div class="who">You</div>
+                  <div class="body">Yes, open it against main.</div>
+                </div>
+              </main>
+              <div class="composer">
+                <div class="composer-head">
+                  <span class="role driver"
+                    ><span class="role-dot"></span>driver</span
+                  >
+                </div>
+                <div class="drive-row">
+                  <textarea rows="1" placeholder="Message Pi…"></textarea>
+                  <button class="btn primary send" aria-label="Send">
+                    <svg
+                      viewBox="0 0 24 24"
+                      width="20"
+                      height="20"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    >
+                      <path d="M22 2 11 13" />
+                      <path d="M22 2 15 22l-4-9-9-4 20-7z" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

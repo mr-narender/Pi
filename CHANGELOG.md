@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.105
+
+- Remote: starting a remote session (or a device connecting) now ensures a live chat is open in VS Code, so the phone has a real session to mirror and drive.
+
 ## 0.0.104
 
 - README: full feature-table refresh (Compose/Ask Pi/Navigate/Flow/Feel/Remote), corrected More menu, added Settings-worth-knowing section.

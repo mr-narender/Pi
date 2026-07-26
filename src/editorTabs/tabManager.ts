@@ -1282,12 +1282,29 @@ export class ChatTabManager implements vscode.Disposable {
     this.remoteSink = sink;
   }
 
-  /** Force-push the active chat's current snapshot to the remote sink (on session start). */
+  /** Force-push the active (or first open) chat's snapshot to the remote sink. */
   public async pushActiveSnapshotToRemote(): Promise<void> {
-    const context = this.getActiveContext();
-    if (context) {
-      await this.renderResource(context.resource, { active: true });
+    const resource =
+      this.getActiveContext()?.resource ?? this.hosts.values().next().value?.resource;
+    if (resource) {
+      await this.renderResource(resource, { active: true });
     }
+  }
+
+  /**
+   * Ensure a chat is open so a remote phone has a live session to mirror + drive.
+   * Reveals an already-open chat if there is one; otherwise opens a fresh chat.
+   */
+  public async ensureActiveChat(): Promise<void> {
+    if (this.getActiveContext()) {
+      return;
+    }
+    const existing = this.hosts.values().next().value;
+    if (existing) {
+      existing.panel.reveal(existing.panel.viewColumn, false);
+      return;
+    }
+    await vscode.commands.executeCommand('piRpc.newSession');
   }
 
   /** Re-render every open chat tab (e.g. after a presentation setting change). */

@@ -1421,7 +1421,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     if (event === 'joined') {
       setPairingStatus(`Connected — ${count} device${count === 1 ? '' : 's'}`, true);
       void vscode.window.showInformationMessage('Pi: a device connected to your remote session.');
-      void chatTabs.pushActiveSnapshotToRemote();
+      void (async () => {
+        await chatTabs.ensureActiveChat();
+        await chatTabs.pushActiveSnapshotToRemote();
+      })();
     } else {
       setPairingStatus(
         count > 0 ? `${count} device${count === 1 ? '' : 's'} connected` : 'Waiting for a device…',
@@ -1440,6 +1443,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       return;
     }
     try {
+      // Ensure a live chat exists so the phone has a real session to mirror + drive.
+      await chatTabs.ensureActiveChat();
       const session = await remoteHost.start(brokerUrl, hostSecret);
       const link = pairingLink(brokerUrl, session.pairingCode);
       // Persistent panel with QR + PIN + link (does not vanish like a notification).

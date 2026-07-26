@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pi (y)ours — editor-parity transcript (live render)</title>
+    <link rel="stylesheet" href="app.css" />
+    <style>
+      body {
+        margin: 0;
+        background: #05070c;
+        font-family:
+          -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        color: #cdd6e4;
+      }
+      .page {
+        max-width: 1120px;
+        margin: 0 auto;
+        padding: 26px 20px 60px;
+      }
+      h1 {
+        font-size: 20px;
+        margin: 0 0 4px;
+      }
+      .lede {
+        color: #8b97a9;
+        margin: 0 0 22px;
+        font-size: 13.5px;
+      }
+      .win {
+        border-radius: 12px;
+        overflow: hidden;
+        border: 1px solid #212a38;
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+      }
+      .chrome {
+        height: 34px;
+        background: #12161f;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 12px;
+        border-bottom: 1px solid #212a38;
+      }
+      .chrome i {
+        width: 11px;
+        height: 11px;
+        border-radius: 50%;
+        display: inline-block;
+      }
+      .chrome .r {
+        background: #ff5f57;
+      }
+      .chrome .y {
+        background: #febc2e;
+      }
+      .chrome .g {
+        background: #28c840;
+      }
+      .chrome .url {
+        margin-left: 12px;
+        font-size: 12px;
+        color: #6f7c90;
+      }
+      .viewport {
+        height: 720px;
+      }
+      .viewport .app {
+        height: 100%;
+        min-height: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <h1>Pi (y)ours — connected view now mirrors the VS Code chat</h1>
+      <p class="lede">
+        Live render using the deployed <code>app.js</code> markdown + block renderer:
+        headings, lists, <b>fenced code with Copy</b>, tool + result cards, two-tone
+        timeline.
+      </p>
+      <div class="win">
+        <div class="chrome">
+          <i class="r"></i><i class="y"></i><i class="g"></i>
+          <span class="url">pi.fromlab.work</span>
+        </div>
+        <div class="viewport">
+          <div class="app">
+            <header class="bar">
+              <span class="brand"
+                ><span class="mark">π</span>Pi <span class="y">(y)ours</span></span
+              >
+              <span class="status live"
+                ><span class="dot"></span
+                ><span class="status-text">live</span></span
+              >
+            </header>
+            <section class="view">
+              <main id="messages" class="messages"></main>
+              <div class="composer">
+                <div class="composer-head">
+                  <span class="role driver"
+                    ><span class="role-dot"></span>driver</span
+                  >
+                </div>
+                <div class="drive-row">
+                  <textarea rows="1" placeholder="Message Pi…"></textarea>
+                  <button class="btn primary send" aria-label="Send">
+                    <svg
+                      viewBox="0 0 24 24"
+                      width="20"
+                      height="20"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    >
+                      <path d="M22 2 11 13" />
+                      <path d="M22 2 15 22l-4-9-9-4 20-7z" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // The exact render functions shipped in app.js (#507).
+      const esc = (s) =>
+        String(s == null ? '' : s)
+          .replaceAll('&', '&amp;')
+          .replaceAll('<', '&lt;')
+          .replaceAll('>', '&gt;')
+          .replaceAll('"', '&quot;')
+          .replaceAll("'", '&#39;');
+      function inlineMd(t) {
+        let h = esc(t);
+        h = h.replace(/`([^`\n]+)`/g, '<code class="inline-code">$1</code>');
+        h = h.replace(
+          /\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g,
+          '<a class="md-link" href="$2" target="_blank" rel="noopener">$1</a>'
+        );
+        h = h.replace(/\*\*([^*\n]+?)\*\*/g, '<strong>$1</strong>');
+        h = h.replace(/\*([^*\n]+?)\*/g, '<em>$1</em>');
+        h = h.replace(/(^|[^\w])_([^_\n]+?)_(?=[^\w]|$)/g, '$1<em>$2</em>');
+        return h;
+      }
+      const isBS = (l) =>
+        /^#{1,6}\s+/.test(l) ||
+        /^\s*[-*+]\s+/.test(l) ||
+        /^\s*\d+[.)]\s+/.test(l) ||
+        /^\s*>\s?/.test(l) ||
+        /^\s*([-*_])\1{2,}\s*$/.test(l);
+      function mdBlock(text) {
+        const L = text.split('\n');
+        const o = [];
+        let i = 0;
+        while (i < L.length) {
+          const line = L[i] || '';
+          const h = /^(#{1,6})\s+(.*)$/.exec(line);
+          if (h) {
+            o.push('<div class="md-h md-h' + h[1].length + '">' + inlineMd(h[2] || '') + '</div>');
+            i++;
+            continue;
+          }
+          if (/^\s*([-*_])\1{2,}\s*$/.test(line)) {
+            o.push('<hr class="md-hr" />');
+            i++;
+            continue;
+          }
+          if (/^\s*>\s?/.test(line)) {
+            const q = [];
+            while (i < L.length && /^\s*>\s?/.test(L[i] || '')) {
+              q.push((L[i] || '').replace(/^\s*>\s?/, ''));
+              i++;
+            }
+            o.push('<blockquote class="md-quote">' + mdBlock(q.join('\n')) + '</blockquote>');
+            continue;
+          }
+          if (/^\s*[-*+]\s+/.test(line)) {
+            const it = [];
+            while (i < L.length && /^\s*[-*+]\s+/.test(L[i] || '')) {
+              it.push((L[i] || '').replace(/^\s*[-*+]\s+/, ''));
+              i++;
+            }
+            o.push('<ul class="md-ul">' + it.map((x) => '<li>' + inlineMd(x) + '</li>').join('') + '</ul>');
+            continue;
+          }
+          if (/^\s*\d+[.)]\s+/.test(line)) {
+            const it = [];
+            while (i < L.length && /^\s*\d+[.)]\s+/.test(L[i] || '')) {
+              it.push((L[i] || '').replace(/^\s*\d+[.)]\s+/, ''));
+              i++;
+            }
+            o.push('<ol class="md-ol">' + it.map((x) => '<li>' + inlineMd(x) + '</li>').join('') + '</ol>');
+            continue;
+          }
+          if (!line.trim()) {
+            i++;
+            continue;
+          }
+          const p = [];
+          while (i < L.length && (L[i] || '').trim() && !isBS(L[i] || '')) {
+            p.push(L[i] || '');
+            i++;
+          }
+          o.push('<p class="md-p">' + inlineMd(p.join('\n')) + '</p>');
+        }
+        return o.join('');
+      }
+      function codeBlock(code, lang) {
+        const gen = ['', 'text', 'txt', 'plain', 'plaintext', 'code', 'output', 'log'];
+        const show = gen.indexOf((lang || '').trim().toLowerCase()) === -1;
+        const label = show ? '<span class="code-lang-name">' + esc(lang) + '</span>' : '<span></span>';
+        return (
+          '<div class="code-wrap"><div class="code-lang">' +
+          label +
+          '<button type="button" class="code-copy">Copy</button></div><pre class="code-block"><code>' +
+          esc(code) +
+          '</code></pre></div>'
+        );
+      }
+      function richMd(raw) {
+        const L = (raw || '').split('\n');
+        const o = [];
+        let buf = [];
+        const flush = () => {
+          if (buf.length) {
+            o.push(mdBlock(buf.join('\n')));
+            buf = [];
+          }
+        };
+        let i = 0;
+        while (i < L.length) {
+          const f = /^```(\w*)\s*$/.exec(L[i] || '');
+          if (f) {
+            flush();
+            const lang = f[1] || '';
+            const code = [];
+            i++;
+            while (i < L.length && !/^```\s*$/.test(L[i] || '')) {
+              code.push(L[i] || '');
+              i++;
+            }
+            i++;
+            o.push(codeBlock(code.join('\n'), lang));
+          } else {
+            buf.push(L[i] || '');
+            i++;
+          }
+        }
+        flush();
+        return o.join('');
+      }
+      function resultCard(text, err) {
+        return (
+          '<div class="card result' +
+          (err ? ' err' : '') +
+          '"><div class="card-head">' +
+          (err ? 'Tool error' : 'Result') +
+          '</div><pre class="code-block"><code>' +
+          esc(text || '') +
+          '</code></pre></div>'
+        );
+      }
+      function renderBlock(b) {
+        switch (b.kind) {
+          case 'text':
+          case 'response':
+            return richMd(b.text || '');
+          case 'thinking':
+            return '<details class="card think"><summary>Thinking</summary><div class="card-body">' + richMd(b.text || '') + '</div></details>';
+          case 'tool':
+            return '<div class="card tool"><div class="card-head tool-head"><span class="tool-ic">\u2699</span>' + esc(b.name || 'tool') + '</div>' + (b.args ? codeBlock(b.args, '') : '') + '</div>';
+          case 'toolResult':
+            return resultCard(b.text || '', b.isError);
+          default:
+            return '';
+        }
+      }
+      function renderMessage(m) {
+        if (m.role === 'user') {
+          return '<div class="turn user"><div class="who">You</div><div class="bubble user">' + richMd(m.text || '') + '</div></div>';
+        }
+        if (m.role === 'toolResult' || m.role === 'bashExecution') {
+          return '<div class="turn pi">' + resultCard(m.text || '', false) + '</div>';
+        }
+        const blocks = m.blocks && m.blocks.length ? m.blocks : m.text ? [{ kind: 'text', text: m.text }] : [];
+        const body = blocks.map(renderBlock).filter(Boolean).join('');
+        return '<div class="turn pi"><div class="who"><span class="pi-dot"></span>Pi</div><div class="bubble pi">' + body + '</div></div>';
+      }
+
+      const SNAP = {
+        messages: [
+          { role: 'user', text: 'Add a `/healthz` endpoint and show me the handler, then run the tests.' },
+          {
+            role: 'assistant',
+            blocks: [
+              {
+                kind: 'text',
+                text:
+                  "Done — here's what I changed:\n\n## Health endpoint\n\n- New route **`GET /healthz`**\n- Returns `{ \"status\": \"ok\" }`\n- Wired into the main router\n\n```python\n@app.get(\"/healthz\")\nasync def healthz():\n    return {\"status\": \"ok\"}\n```\n\nRunning the suite now…",
+              },
+              { kind: 'tool', name: 'bash', args: 'uv run pytest -q tests/apps/pi_yours' },
+              { kind: 'toolResult', text: '....\n4 passed in 2.07s', isError: false },
+              { kind: 'text', text: 'All green. Want me to open a PR against `main`?' },
+            ],
+          },
+          { role: 'user', text: 'Yes, open it.' },
+        ],
+      };
+      const box = document.getElementById('messages');
+      box.innerHTML = SNAP.messages.map(renderMessage).join('');
+      box.scrollTop = box.scrollHeight;
+    </script>
+  </body>
+</html>
