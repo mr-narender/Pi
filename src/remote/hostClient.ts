@@ -31,6 +31,9 @@ export class RemoteHostClient {
   private promptHandler: ((message: string) => void) | undefined;
   private stateHandler: ((connected: boolean) => void) | undefined;
   private viewerHandler: ((event: 'joined' | 'left', count: number) => void) | undefined;
+  private presenceHandler:
+    | ((devices: Array<{ id: string; name: string; role: string }>, count: number) => void)
+    | undefined;
 
   public onPrompt(handler: (message: string) => void): void {
     this.promptHandler = handler;
@@ -39,6 +42,13 @@ export class RemoteHostClient {
   /** Notified when a phone/viewer connects to or leaves the session. */
   public onViewer(handler: (event: 'joined' | 'left', count: number) => void): void {
     this.viewerHandler = handler;
+  }
+
+  /** Notified with the authoritative device list (presence). */
+  public onPresence(
+    handler: (devices: Array<{ id: string; name: string; role: string }>, count: number) => void
+  ): void {
+    this.presenceHandler = handler;
   }
 
   public onStateChange(handler: (connected: boolean) => void): void {
@@ -129,6 +139,12 @@ export class RemoteHostClient {
             const event = message.event === 'left' ? 'left' : 'joined';
             const count = typeof message.count === 'number' ? message.count : 0;
             this.viewerHandler?.(event, count);
+          } else if (message.type === 'presence') {
+            const devices = Array.isArray(message.devices)
+              ? (message.devices as Array<{ id: string; name: string; role: string }>)
+              : [];
+            const count = typeof message.count === 'number' ? message.count : devices.length;
+            this.presenceHandler?.(devices, count);
           }
         } catch {
           /* ignore malformed frames */

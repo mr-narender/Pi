@@ -1417,6 +1417,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   remoteHost.onPrompt((message) => {
     void withController((controller) => controller.prompt(message), { requireTrust: true });
   });
+  remoteHost.onPresence((devices, count) => {
+    if (count === 0) {
+      setPairingStatus('Waiting for a device…', false);
+      void chatTabs.updateSharingLabel('a device (waiting to pair)');
+      return;
+    }
+    const first = devices[0]?.name ?? 'a device';
+    const label = count > 1 ? `${first} +${count - 1} more` : first;
+    setPairingStatus(`Connected — ${label}`, true);
+    void chatTabs.updateSharingLabel(label);
+  });
   remoteHost.onViewer((event, count) => {
     if (event === 'joined') {
       setPairingStatus(`Connected — ${count} device${count === 1 ? '' : 's'}`, true);
@@ -1425,6 +1436,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         await chatTabs.ensureActiveChat();
         await chatTabs.pushActiveSnapshotToRemote();
       })();
+    } else if (count === 0) {
+      void chatTabs.updateSharingLabel('a device (waiting to pair)');
     } else {
       setPairingStatus(
         count > 0 ? `${count} device${count === 1 ? '' : 's'} connected` : 'Waiting for a device…',
@@ -1442,11 +1455,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       );
       return;
     }
+    if (remoteHost.active) {
+      void vscode.window.showInformationMessage(
+        'Pi: this chat is already shared. Use “Stop sharing” on the chat to end it.'
+      );
+      return;
+    }
     try {
       // Ensure a live chat exists so the phone has a real session to mirror + drive.
       await chatTabs.ensureActiveChat();
+      const sharedResource = chatTabs.getActiveContext()?.resource;
       const session = await remoteHost.start(brokerUrl, hostSecret);
       const link = pairingLink(brokerUrl, session.pairingCode);
+      if (sharedResource) {
+        await chatTabs.setSharing(sharedResource, 'a device (waiting to pair)');
+      }
       // Persistent panel with QR + PIN + link (does not vanish like a notification).
       await showPairingPanel(
         {
@@ -1469,6 +1492,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   });
   registrations.set('piRpc.remote.stop', async () => {
     closePairingPanel();
+    await chatTabs.clearSharing();
     await remoteHost.stop();
     void vscode.window.showInformationMessage('Pi remote session stopped.');
   });

@@ -192,6 +192,8 @@ export interface WebviewSnapshot {
   sessionFile?: string;
   isStreaming: boolean;
   isCompacting: boolean;
+  // Set when this chat is being shared to a remote device (drives the info bar).
+  sharing?: { active: boolean; label: string };
   messageCount?: number;
   pendingMessageCount?: number;
   messages: WebviewMessageItem[];

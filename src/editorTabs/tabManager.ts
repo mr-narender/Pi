@@ -1295,6 +1295,38 @@ export class ChatTabManager implements vscode.Disposable {
    * Ensure a chat is open so a remote phone has a live session to mirror + drive.
    * Reveals an already-open chat if there is one; otherwise opens a fresh chat.
    */
+  private sharing: { key: string; label: string } | undefined;
+
+  /** Mark a chat as shared to a device; drives the in-chat info bar. */
+  public async setSharing(resource: vscode.Uri, label: string): Promise<void> {
+    this.sharing = { key: this.keyFor(resource), label };
+    await this.renderResource(resource, { active: true });
+  }
+
+  /** Update the shared-with label (e.g. when a device connects). */
+  public async updateSharingLabel(label: string): Promise<void> {
+    if (!this.sharing) {
+      return;
+    }
+    this.sharing.label = label;
+    await this.rerenderSharedChat();
+  }
+
+  /** Remove the shared state and its info bar. */
+  public async clearSharing(): Promise<void> {
+    if (!this.sharing) {
+      return;
+    }
+    this.sharing = undefined;
+    await this.rerenderSharedChat();
+  }
+
+  private async rerenderSharedChat(): Promise<void> {
+    for (const host of this.hosts.values()) {
+      await this.renderResource(host.resource, { active: host.panel.active });
+    }
+  }
+
   public async ensureActiveChat(): Promise<void> {
     if (this.getActiveContext()) {
       return;
@@ -1323,6 +1355,9 @@ export class ChatTabManager implements vscode.Disposable {
       return;
     }
     const snapshot = await this.buildSnapshot(context, options?.active ?? false);
+    if (this.sharing && this.sharing.key === this.keyFor(resource)) {
+      snapshot.sharing = { active: true, label: this.sharing.label };
+    }
     const title = this.titleForContext(context, snapshot);
     const host = this.hosts.get(this.keyFor(resource));
     if (host) {

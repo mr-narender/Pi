@@ -754,6 +754,14 @@ function renderWorking(snapshot: WebviewSnapshot): string {
 
 // The working indicator sits as a banner at the top of the composer so it is
 // clearly visible while Pi is generating.
+// Persistent info bar shown on a chat that is being shared to a remote device.
+function renderShareBar(snapshot: WebviewSnapshot): string {
+  if (!snapshot.sharing?.active) {
+    return '';
+  }
+  return `<section class="share-bar" role="status" aria-live="polite"><span class="share-dot" aria-hidden="true"></span><span class="share-text">Shared with ${escapeHtml(snapshot.sharing.label)}</span><button type="button" class="share-stop" data-command="piRpc.remote.stop" title="Stop sharing this chat">Stop sharing</button></section>`;
+}
+
 function renderWorkingBanner(snapshot: WebviewSnapshot): string {
   return `<div class="working-banner">${renderWorking(snapshot)}<span class="working-label">Working\u2026</span></div>`;
 }
@@ -868,6 +876,7 @@ export function renderChatApp(snapshot: WebviewSnapshot): string {
       <div id="a11y-status" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></div>
 
       ${restrictedBanner}
+      ${renderShareBar(snapshot)}
       ${renderRecovery(snapshot)}
 
       <main class="conversation" id="messages" role="log" aria-live="off" aria-relevant="additions text">${

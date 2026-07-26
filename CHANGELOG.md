@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.106
+
+- Remote shared session: in-chat info bar ("Shared with <device>" + Stop sharing) on the bound chat, same-window binding, device names via presence, and a guard so you can't start a duplicate share.
+
 ## 0.0.105
 
 - Remote: starting a remote session (or a device connecting) now ensures a live chat is open in VS Code, so the phone has a real session to mirror and drive.

@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pi (y)ours — Shared Session Architecture (revised)</title>
+    <style>
+      :root {
+        --bg: #0b0e14;
+        --panel: #12161f;
+        --border: #222c3a;
+        --fg: #e6edf3;
+        --muted: #8b97a9;
+        --teal: #4ec9b0;
+        --amber: #e0b060;
+        --red: #e06c6c;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--fg);
+        font:
+          14.5px/1.65 -apple-system,
+          BlinkMacSystemFont,
+          'Segoe UI',
+          Roboto,
+          sans-serif;
+      }
+      .wrap {
+        max-width: 1040px;
+        margin: 0 auto;
+        padding: 34px 22px 80px;
+      }
+      h1 {
+        font-size: 24px;
+        margin: 0 0 4px;
+      }
+      h2 {
+        font-size: 17px;
+        margin: 34px 0 10px;
+        padding-bottom: 6px;
+        border-bottom: 1px solid var(--border);
+      }
+      h3 {
+        font-size: 14px;
+        color: var(--teal);
+        margin: 18px 0 6px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+      .lede {
+        color: var(--muted);
+        margin: 0 0 8px;
+      }
+      code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.86em;
+        background: rgba(127, 127, 127, 0.16);
+        padding: 1px 6px;
+        border-radius: 5px;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+      }
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 16px 18px;
+      }
+      .card.teal {
+        border-left: 3px solid var(--teal);
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 8px 0;
+        font-size: 13.5px;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 9px 11px;
+        border-bottom: 1px solid var(--border);
+        vertical-align: top;
+      }
+      th {
+        color: var(--muted);
+        font-weight: 600;
+        text-transform: uppercase;
+        font-size: 11px;
+        letter-spacing: 0.04em;
+      }
+      .pill {
+        display: inline-block;
+        padding: 1px 9px;
+        border-radius: 999px;
+        font-size: 12px;
+        border: 1px solid var(--border);
+      }
+      .pill.live {
+        color: var(--teal);
+        border-color: rgba(78, 201, 176, 0.4);
+      }
+      .pill.warn {
+        color: var(--amber);
+        border-color: rgba(224, 176, 96, 0.4);
+      }
+      .pill.off {
+        color: var(--muted);
+      }
+      .flow {
+        font-family: ui-monospace, monospace;
+        font-size: 12.5px;
+        white-space: pre;
+        overflow-x: auto;
+        background: #0d1017;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 14px 16px;
+        color: #cbd3df;
+      }
+      .states {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin: 8px 0;
+      }
+      .st {
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 7px 12px;
+        font-size: 12.5px;
+        background: var(--panel);
+      }
+      .st b {
+        color: var(--teal);
+      }
+      .infobar {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        border: 1px solid var(--border);
+        border-left: 3px solid var(--teal);
+        background: rgba(78, 201, 176, 0.06);
+        border-radius: 8px;
+        padding: 8px 12px;
+        font-size: 13px;
+        margin: 6px 0;
+      }
+      .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--teal);
+      }
+      .muted {
+        color: var(--muted);
+      }
+      .tag {
+        font-size: 11px;
+        color: var(--muted);
+        border: 1px solid var(--border);
+        border-radius: 5px;
+        padding: 0 6px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>Pi (y)ours — Shared Session Architecture <span class="tag">revised</span></h1>
+      <p class="lede">
+        One session, mirrored across surfaces, synchronized in real time. Share a
+        <b>new or existing</b> chat; once a device is paired the “Connect” entry
+        disappears and becomes a live sharing state.
+      </p>
+
+      <h2>1 · Core model</h2>
+      <div class="grid">
+        <div class="card teal">
+          <h3>Single source of truth</h3>
+          The <b>bound VS Code chat</b> owns the transcript. The broker is a pure
+          relay + registry. Every surface (VS Code, phone A, phone B…) renders from
+          the <b>same snapshot</b> → they look and behave identically.
+        </div>
+        <div class="card teal">
+          <h3>SharedSession (new object)</h3>
+          Binds
+          <code>chatResource ↔ brokerSessionId ↔ hostToken ↔ devices[] ↔ driverId ↔ connectionState</code>.
+          At most one per chat. Created when you Share; destroyed on Stop sharing.
+        </div>
+        <div class="card">
+          <h3>Device (new)</h3>
+          A paired viewer: <code>id</code> (server‑minted), <code>name</code> (e.g.
+          “iPhone · Safari”), <code>role</code> (spectator | driver),
+          <code>connectedAt</code>. Sent to the host so VS Code can say
+          <i>shared with X</i>.
+        </div>
+        <div class="card">
+          <h3>Real‑time contract</h3>
+          Host change ⇒ <code>snapshot</code> fan‑out to all viewers. Presence change
+          (join/leave/driver) ⇒ <code>presence</code> event to <b>host + all
+          viewers</b>. Both sides re‑render from it — no surface can drift.
+        </div>
+      </div>
+
+      <h2>2 · Sharing state machine (per chat)</h2>
+      <div class="states">
+        <div class="st"><b>not‑shared</b><br /><span class="muted">Share entry visible</span></div>
+        <div class="st">→ <b>starting</b><br /><span class="muted">dialing broker</span></div>
+        <div class="st">→ <b>awaiting‑pairing</b><br /><span class="muted">QR + PIN shown</span></div>
+        <div class="st">→ <b>shared·live</b><br /><span class="muted">≥1 device</span></div>
+        <div class="st">↔ <b>shared·idle</b><br /><span class="muted">0 devices, session alive</span></div>
+        <div class="st">→ <b>stopped</b><br /><span class="muted">reverts both</span></div>
+      </div>
+      <p class="muted" style="font-size: 13px">
+        Key rule: <b>the “Connect / Share” entry is only shown in not‑shared</b>. In
+        every shared state it is replaced by a status pill + menu (Show pairing while
+        a slot is open · Stop sharing). No duplicate connect option = no confusion.
+      </p>
+
+      <h2>3 · Share a NEW or EXISTING session</h2>
+      <table>
+        <tr><th>Entry point</th><th>Acts on</th><th>Behaviour</th></tr>
+        <tr><td>Chat title‑bar “Share” icon</td><td>that chat</td><td>Binds the <b>existing</b> chat; no new session created.</td></tr>
+        <tr><td>Command: <code>Pi: Share Chat to Phone</code></td><td>active chat</td><td>Shares the focused chat; if none, opens/pick a chat first.</td></tr>
+        <tr><td>Sidebar “Share to phone”</td><td>selected chat</td><td>Shares the highlighted session from the list.</td></tr>
+      </table>
+      <p class="muted" style="font-size: 13px">
+        The shared chat always opens/reveals in the <b>window &amp; editor group where
+        sharing was initiated</b> (same‑window binding). The SharedSession stores that
+        exact <code>chatResource</code>.
+      </p>
+
+      <h2>4 · What each surface shows (synchronized)</h2>
+      <table>
+        <tr><th>State</th><th>VS Code (host)</th><th>Phone (viewer)</th></tr>
+        <tr>
+          <td><span class="pill off">not‑shared</span></td>
+          <td>“Share to phone” action visible.</td>
+          <td>—</td>
+        </tr>
+        <tr>
+          <td><span class="pill warn">awaiting‑pairing</span></td>
+          <td>Pairing panel (QR + PIN). Share entry → “Sharing… (awaiting device)”.</td>
+          <td>Pair card (PIN entry) — <i>only</i> when no token yet.</td>
+        </tr>
+        <tr>
+          <td><span class="pill live">shared·live</span></td>
+          <td>
+            Info bar on the chat:
+            <div class="infobar"><span class="dot"></span> Shared with <b>iPhone · Safari</b> · live <span class="muted">· Stop sharing</span></div>
+            Connect entry hidden.
+          </td>
+          <td>
+            Mirrored transcript + bar:
+            <div class="infobar"><span class="dot"></span> <b>Antaria</b> · live · spectator <span class="muted">· Take control</span></div>
+            No pair/connect prompt.
+          </td>
+        </tr>
+        <tr>
+          <td><span class="pill off">disconnected</span></td>
+          <td>Info bar → “device offline”; session kept (idle).</td>
+          <td>Auto‑<b>reconnect</b> using stored token (“reconnecting…”), <b>never</b> back to pair.</td>
+        </tr>
+      </table>
+
+      <h2>5 · Real‑time sync — event contract</h2>
+      <div class="flow">host  ──snapshot(transcript, working, model, connState)──▶ broker ──▶ every viewer
+viewer ──identify(deviceName)──▶ broker ──presence(devices[], driverId)──▶ host + viewers
+viewer ──claimDriver / releaseDriver──▶ broker ──driverChanged──▶ host + viewers
+viewer ──prompt(text)──▶ broker ──▶ host (applied to the bound chat only)
+host  ──sessionEnded──▶ broker ──▶ viewers (show “ended”, nothing to reconnect to)</div>
+      <ul class="muted" style="font-size: 13px">
+        <li><b>Presence is authoritative &amp; immediate</b>; snapshots are coalesced (~perf) but always full.</li>
+        <li>Both surfaces derive their <b>info bar + status pill from the same presence + connState</b> → guaranteed identical status.</li>
+        <li>Driver‑lock: one driver at a time; role changes broadcast so both sides agree instantly.</li>
+      </ul>
+
+      <h2>6 · Lifecycle &amp; teardown</h2>
+      <ul style="font-size: 13.5px">
+        <li><b>Start</b> (new/existing) → reveal chat in initiating window → broker session → pairing panel.</li>
+        <li><b>Device joins</b> → identify → presence → both show “shared with X / live”; Connect entry hidden.</li>
+        <li><b>Device leaves</b> → presence(0) → state <b>shared·idle</b> (session alive, PIN re‑showable).</li>
+        <li><b>Stop sharing</b> (info bar · status pill · panel) → broker session closed → viewers get <code>sessionEnded</code> → both revert (VS Code removes bar + restores Share; phone shows “ended”).</li>
+      </ul>
+
+      <h2>7 · Build breakdown</h2>
+      <table>
+        <tr><th>Piece</th><th>Change</th></tr>
+        <tr><td><b>Broker</b> (slr‑backend)</td><td>Device identity (<code>identify</code>), <code>presence</code> + <code>driverChanged</code> fan‑out to host + viewers, <code>sessionEnded</code>. Depends on #512 landing first.</td></tr>
+        <tr><td><b>Browser PWA</b></td><td>Mirror (needs #512), device‑name on pair, reconnect‑not‑repair, live info bar, driver/spectator sync.</td></tr>
+        <tr><td><b>Extension</b> (new version)</td><td>SharedSession object, share existing/new + same‑window binding, chat title‑bar Share action, stateful control (hide Connect when shared), info bar on bound chat, presence handling.</td></tr>
+      </table>
+      <p class="muted" style="font-size: 12.5px">
+        Hard dependency: the browser cannot reflect any of this until <b>#512 is merged
+        + deployed</b> (it’s still on the old build). Order: land #512 → broker presence
+        PR → extension version.
+      </p>
+    </div>
+  </body>
+</html>
