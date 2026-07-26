@@ -1327,6 +1327,27 @@ export class ChatTabManager implements vscode.Disposable {
     }
   }
 
+  /** Chats currently open in VS Code and eligible for remote switching. */
+  public getRemoteChats(): Array<{ id: string; title: string; active: boolean }> {
+    const active = this.getActiveContext()?.resource.toString();
+    return [...this.hosts.values()].map((host) => ({
+      id: this.keyFor(host.resource),
+      title: host.panel.title || 'Chat',
+      active: host.resource.toString() === active,
+    }));
+  }
+
+  /** Switch the shared remote view to an already-open chat. */
+  public async selectRemoteChat(chatId: string): Promise<boolean> {
+    const host = [...this.hosts.values()].find((item) => this.keyFor(item.resource) === chatId);
+    if (!host) {
+      return false;
+    }
+    await this.activateResource(host.resource, { startIfStopped: false });
+    host.panel.reveal(host.panel.viewColumn, false);
+    return true;
+  }
+
   /** Bring the shared chat to the front (after the pairing panel is dismissed). */
   public async revealSharedChat(): Promise<void> {
     if (!this.sharing) {

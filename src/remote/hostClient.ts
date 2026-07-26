@@ -36,6 +36,8 @@ export class RemoteHostClient {
   private presenceHandler:
     | ((devices: Array<{ id: string; name: string; role: string }>, count: number) => void)
     | undefined;
+  private chatSelectHandler: ((chatId: string) => void) | undefined;
+  private chatListRequestHandler: (() => void) | undefined;
 
   public constructor(private readonly secrets?: SecretStorage) {}
 
@@ -57,6 +59,20 @@ export class RemoteHostClient {
 
   public onStateChange(handler: (connected: boolean) => void): void {
     this.stateHandler = handler;
+  }
+
+  public onChatSelect(handler: (chatId: string) => void): void {
+    this.chatSelectHandler = handler;
+  }
+
+  public onChatListRequest(handler: () => void): void {
+    this.chatListRequestHandler = handler;
+  }
+
+  public pushChatList(chats: unknown[]): void {
+    if (this.socket?.readyState === WebSocket.OPEN) {
+      this.socket.send(JSON.stringify({ type: 'chatList', chats }));
+    }
   }
 
   public get active(): boolean {
@@ -188,6 +204,10 @@ export class RemoteHostClient {
           const message = JSON.parse(data.toString()) as Json;
           if (message.type === 'prompt' && typeof message.message === 'string') {
             this.promptHandler?.(message.message);
+          } else if (message.type === 'selectChat' && typeof message.chatId === 'string') {
+            this.chatSelectHandler?.(message.chatId);
+          } else if (message.type === 'requestChatList') {
+            this.chatListRequestHandler?.();
           } else if (message.type === 'viewer') {
             const event = message.event === 'left' ? 'left' : 'joined';
             const count = typeof message.count === 'number' ? message.count : 0;

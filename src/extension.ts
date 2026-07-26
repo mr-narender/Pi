@@ -1419,6 +1419,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   remoteHost.onPrompt((message) => {
     void withController((controller) => controller.prompt(message), { requireTrust: true });
   });
+  const pushRemoteChatList = (): void => {
+    remoteHost.pushChatList(chatTabs.getRemoteChats());
+  };
+  remoteHost.onChatListRequest(pushRemoteChatList);
+  remoteHost.onChatSelect((chatId) => {
+    void (async () => {
+      if (await chatTabs.selectRemoteChat(chatId)) {
+        await chatTabs.pushActiveSnapshotToRemote();
+        pushRemoteChatList();
+      }
+    })();
+  });
   remoteHost.onPresence((devices, count) => {
     if (count === 0) {
       setPairingStatus('Waiting for a device…', false);
@@ -1438,6 +1450,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       void (async () => {
         await chatTabs.revealSharedChat();
         await chatTabs.pushActiveSnapshotToRemote();
+        pushRemoteChatList();
       })();
     } else if (count === 0) {
       void chatTabs.updateSharingLabel('a device (waiting to pair)');
@@ -1488,6 +1501,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       );
       // Mirror the current chat immediately so a freshly-paired phone isn't blank.
       await chatTabs.pushActiveSnapshotToRemote();
+      pushRemoteChatList();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       void vscode.window.showErrorMessage(`Pi remote: ${message}`);
