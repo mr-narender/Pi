@@ -6,6 +6,7 @@ import { request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import { URL } from 'node:url';
 import WebSocket from 'ws';
+import type { SecretStorage } from 'vscode';
 
 import { hostWsUrl, httpBase } from './remoteConfig';
 
@@ -25,6 +26,7 @@ export interface RemoteSession {
 type Json = Record<string, unknown>;
 
 export class RemoteHostClient {
+  private static readonly persistedSessionKey = 'pi.remote.hostSession';
   private socket: WebSocket | undefined;
   private session: RemoteSession | undefined;
   private brokerUrl = '';
@@ -34,6 +36,8 @@ export class RemoteHostClient {
   private presenceHandler:
     | ((devices: Array<{ id: string; name: string; role: string }>, count: number) => void)
     | undefined;
+
+  public constructor(private readonly secrets?: SecretStorage) {}
 
   public onPrompt(handler: (message: string) => void): void {
     this.promptHandler = handler;
@@ -84,7 +88,46 @@ export class RemoteHostClient {
     }
     this.session = session;
     await this.openSocket(session);
+    await this.persistSession();
     return session;
+  }
+
+  /** Reconnect a session preserved across an extension/VS Code reload. */
+  public async restore(): Promise<boolean> {
+    if (!this.secrets) {
+      return false;
+    }
+    const raw = await this.secrets.get(RemoteHostClient.persistedSessionKey);
+    if (!raw) {
+      return false;
+    }
+    try {
+      const saved = JSON.parse(raw) as { brokerUrl?: unknown; session?: RemoteSession };
+      if (
+        typeof saved.brokerUrl !== 'string' ||
+        !saved.brokerUrl ||
+        !saved.session?.sessionId ||
+        !saved.session.hostToken
+      ) {
+        throw new Error('invalid persisted remote session');
+      }
+      this.brokerUrl = saved.brokerUrl;
+      this.session = saved.session;
+      await this.openSocket(saved.session);
+      return true;
+    } catch {
+      this.socket = undefined;
+      this.stateHandler?.(false);
+      return false;
+    }
+  }
+
+  /** Disconnect transport only; the broker session remains resumable. */
+  public disconnect(): void {
+    const socket = this.socket;
+    this.socket = undefined;
+    socket?.close();
+    this.stateHandler?.(false);
   }
 
   /** Forward the active chat's snapshot to remote viewers (best-effort). */
@@ -117,7 +160,17 @@ export class RemoteHostClient {
         /* best-effort teardown */
       }
     }
+    await this.secrets?.delete(RemoteHostClient.persistedSessionKey);
     this.stateHandler?.(false);
+  }
+
+  private async persistSession(): Promise<void> {
+    if (this.secrets && this.session && this.brokerUrl) {
+      await this.secrets.store(
+        RemoteHostClient.persistedSessionKey,
+        JSON.stringify({ brokerUrl: this.brokerUrl, session: this.session })
+      );
+    }
   }
 
   private openSocket(session: RemoteSession): Promise<void> {

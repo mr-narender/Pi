@@ -108,9 +108,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // restored, so restored tabs resolve to their session identity.
   initChatUriRegistry(context.workspaceState);
   const chatTabs = new ChatTabManager(context, registry, uiState, logger);
-  const remoteHost = new RemoteHostClient();
+  const remoteHost = new RemoteHostClient(context.secrets);
   chatTabs.setRemoteSink((snapshot) => remoteHost.pushSnapshot(snapshot));
-  context.subscriptions.push({ dispose: () => void remoteHost.stop() });
+  // VS Code reload/deactivation is a transport disconnect, not an explicit
+  // Stop-sharing action. Keep the broker session resumable across reloads.
+  context.subscriptions.push({ dispose: () => remoteHost.disconnect() });
   const chatEditorProvider = new ChatEditorProvider(chatTabs);
   const broker = new ExtensionUiBroker(registry, uiState, (controller) =>
     chatTabs.hasOpenChatFor(controller)
@@ -1935,6 +1937,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   logger.info(
     `Registered ${registrations.size} command handlers for ${contributedIds.size} contributed commands`
   );
+
+  // Reattach the host socket after VS Code reload without creating a new
+  // pairing session. The persisted session is cleared only by explicit Stop.
+  if (await remoteHost.restore()) {
+    const active = chatTabs.getActiveContext();
+    if (active) {
+      await chatTabs.setSharing(active.resource, 'your device (reconnected)');
+      await chatTabs.pushActiveSnapshotToRemote();
+    }
+  }
 
   const firstFolder = vscode.workspace.workspaceFolders?.[0];
   if (settings.autoStart && vscode.workspace.isTrusted && firstFolder) {
