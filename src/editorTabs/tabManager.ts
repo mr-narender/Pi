@@ -1327,6 +1327,20 @@ export class ChatTabManager implements vscode.Disposable {
     }
   }
 
+  /** Bring the shared chat to the front (after the pairing panel is dismissed). */
+  public async revealSharedChat(): Promise<void> {
+    if (!this.sharing) {
+      return;
+    }
+    for (const host of this.hosts.values()) {
+      if (this.keyFor(host.resource) === this.sharing.key) {
+        host.panel.reveal(host.panel.viewColumn, false);
+        await this.renderResource(host.resource, { active: true });
+        return;
+      }
+    }
+  }
+
   public async ensureActiveChat(): Promise<void> {
     if (this.getActiveContext()) {
       return;

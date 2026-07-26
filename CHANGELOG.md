@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.107
+
+- Remote: pairing panel opens in the same editor group (no split) and is replaced by the shared chat once a device pairs (single-window flow).
+
 ## 0.0.106
 
 - Remote shared session: in-chat info bar ("Shared with <device>" + Stop sharing) on the bound chat, same-window binding, device names via presence, and a guard so you can't start a duplicate share.

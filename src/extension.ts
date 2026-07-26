@@ -1430,10 +1430,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   });
   remoteHost.onViewer((event, count) => {
     if (event === 'joined') {
-      setPairingStatus(`Connected — ${count} device${count === 1 ? '' : 's'}`, true);
+      // Pairing established: replace the connect panel with the live session.
+      closePairingPanel();
       void vscode.window.showInformationMessage('Pi: a device connected to your remote session.');
       void (async () => {
-        await chatTabs.ensureActiveChat();
+        await chatTabs.revealSharedChat();
         await chatTabs.pushActiveSnapshotToRemote();
       })();
     } else if (count === 0) {

@@ -19,6 +19,9 @@ interface Handlers {
 
 let panel: vscode.WebviewPanel | undefined;
 let current: PairingInfo | undefined;
+// True when WE dispose the panel (on pair / on stop) so onDidDispose doesn't
+// re-trigger onStop and kill a session that just got paired.
+let dismissing = false;
 
 export async function showPairingPanel(info: PairingInfo, handlers: Handlers): Promise<void> {
   current = info;
@@ -28,15 +31,21 @@ export async function showPairingPanel(info: PairingInfo, handlers: Handlers): P
     color: { dark: '#e6edf3', light: '#0000' },
   });
   if (!panel) {
+    // Open in the ACTIVE column (a tab beside the chat in the same group), not a
+    // split — so it's a single editor area. On pair it's replaced by the chat.
     panel = vscode.window.createWebviewPanel(
       'piRemotePairing',
-      'Pi — Remote Session',
-      { viewColumn: vscode.ViewColumn.Beside, preserveFocus: false },
+      'Pi — Connect your phone',
+      { viewColumn: vscode.ViewColumn.Active, preserveFocus: false },
       { enableScripts: true, retainContextWhenHidden: true }
     );
     panel.onDidDispose(() => {
+      const wasDismissed = dismissing;
+      dismissing = false;
       panel = undefined;
-      handlers.onStop();
+      if (!wasDismissed) {
+        handlers.onStop(); // user closed the tab -> stop the session
+      }
     });
     panel.webview.onDidReceiveMessage((message: { type?: string }) => {
       if (message?.type === 'copy' && current) {
@@ -55,8 +64,10 @@ export function setPairingStatus(text: string, connected: boolean): void {
   void panel?.webview.postMessage({ type: 'status', text, connected });
 }
 
+/** Dispose the pairing panel WITHOUT stopping the session (on pair or on stop). */
 export function closePairingPanel(): void {
   const p = panel;
+  dismissing = true;
   panel = undefined;
   current = undefined;
   p?.dispose();
