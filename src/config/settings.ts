@@ -38,7 +38,10 @@ export function getSettings(): PiRpcSettings {
     allowApproveInTrustedWorkspace: config.get<boolean>('allowApproveInTrustedWorkspace', false),
     responseTimeoutMs: config.get<number>('responseTimeoutMs', 15000),
     longRunningTimeoutMs: config.get<number>('longRunningTimeoutMs', 120000),
-    maxRecordBytes: config.get<number>('maxRecordBytes', 16777216),
+    // Session replay can contain one large JSONL record (for example an
+    // embedded image or a large tool result). Keep a bounded but practical
+    // default; users can lower this explicitly if required.
+    maxRecordBytes: config.get<number>('maxRecordBytes', 64 * 1024 * 1024),
     maxPendingRequests: config.get<number>('maxPendingRequests', 256),
     maxQueuedWrites: config.get<number>('maxQueuedWrites', 256),
     maxTranscriptItems: config.get<number>('maxTranscriptItems', 400),
