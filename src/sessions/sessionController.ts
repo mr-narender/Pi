@@ -18,9 +18,10 @@ import {
   resetControllerProjection,
 } from '../state/reducer';
 import { createInitialControllerState, type ControllerState } from '../state/types';
+import { createReadStream } from 'node:fs';
+import { createInterface } from 'node:readline';
 import { open, stat } from 'node:fs/promises';
 import { canonicalizeSessionPath } from './paths';
-import { describeShape, extractMessageArray } from './reconcileShape';
 
 export class SessionController implements vscode.Disposable {
   private readonly changeEmitter = new vscode.EventEmitter<ControllerState>();
@@ -186,11 +187,12 @@ export class SessionController implements vscode.Disposable {
 
   public async reconcile(): Promise<void> {
     const client = this.requireClient();
-    const [state, messages, entries, tree, commands, stats] = await Promise.all([
+    // Do not request the complete historical transcript/entry tree over RPC.
+    // Pi returns each as one JSONL response record; old sessions with images or
+    // large tool output make that record huge and block the handshake. Runtime
+    // metadata is small and the transcript is read locally below.
+    const [state, commands, stats] = await Promise.all([
       client.getState(),
-      client.getMessages(),
-      client.getEntries(),
-      client.getTree(),
       client.getCommands(),
       client.getSessionStats(),
     ]).catch((error: unknown) => {
@@ -200,23 +202,30 @@ export class SessionController implements vscode.Disposable {
       throw error instanceof Error ? error : new Error(String(error));
     });
     const sessionState = mergeSessionState(this.state.state, (state ?? {}) as SessionState);
-    // Tolerant extraction: prefer the documented `messages` array, but fall back
-    // to a bare array or common alternates so a shape difference across Pi
-    // versions doesn't render an empty transcript for a resumed session.
-    const messageList = extractMessageArray(messages);
+    const sessionFile =
+      typeof sessionState.sessionFile === 'string'
+        ? sessionState.sessionFile
+        : typeof this.state.state.sessionFile === 'string'
+          ? this.state.state.sessionFile
+          : undefined;
+    const messageList = sessionFile ? await this.readRecentSessionMessages(sessionFile) : [];
+    // Entries/tree are intentionally lazy. Fork/tree commands request them only
+    // when the user opens those actions, keeping normal resume fast and bounded.
+    const entries: JsonObject = { entries: [] };
+    const tree: JsonObject = { tree: [] };
     this.state = {
       ...this.state,
       connectionState: sessionState.isStreaming || sessionState.isCompacting ? 'busy' : 'ready',
       state: sessionState,
       messages: messageList,
-      entries: Array.isArray(entries?.entries) ? (entries.entries as JsonObject[]) : [],
-      tree: Array.isArray(tree?.tree) ? (tree.tree as JsonObject[]) : [],
+      entries: Array.isArray(entries.entries) ? (entries.entries as JsonObject[]) : [],
+      tree: Array.isArray(tree.tree) ? (tree.tree as JsonObject[]) : [],
       commands: Array.isArray(commands?.commands) ? (commands.commands as JsonObject[]) : [],
       lastSessionStats: (stats ?? undefined) as JsonObject | undefined,
       leafId:
-        typeof entries?.leafId === 'string'
+        typeof entries.leafId === 'string'
           ? entries.leafId
-          : typeof tree?.leafId === 'string'
+          : typeof tree.leafId === 'string'
             ? tree.leafId
             : null,
     };
@@ -224,14 +233,39 @@ export class SessionController implements vscode.Disposable {
     // diagnosable: which call held the data, and how many.
     this.logger.info(
       `Reconciled '${this.folder.name}': state=${this.state.connectionState}, ` +
-        `messages=${messageList.length} (getMessages ${describeShape(messages)}), ` +
-        `entries=${this.state.entries.length} (${describeShape(entries)}), ` +
-        `tree=${this.state.tree.length} (${describeShape(tree)}), ` +
+        `messages=${messageList.length} (local session tail), ` +
+        `entries=${this.state.entries.length} (lazy), ` +
+        `tree=${this.state.tree.length} (lazy), ` +
         `session=${this.state.state.sessionFile ?? '(none)'}`
     );
     // We now hold the full transcript; the file tail beyond this is external.
     await this.syncFileReadOffset();
     this.fire();
+  }
+
+  private async readRecentSessionMessages(sessionFile: string): Promise<JsonObject[]> {
+    const limit = Math.max(50, this.settings.maxTranscriptItems);
+    const messages: JsonObject[] = [];
+    try {
+      const input = createReadStream(sessionFile, { encoding: 'utf8' });
+      const lines = createInterface({ input, crlfDelay: Infinity });
+      for await (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const record = JSON.parse(line) as { type?: unknown; message?: unknown };
+          if (record.type === 'message' && record.message && typeof record.message === 'object') {
+            messages.push(record.message as JsonObject);
+            if (messages.length > limit) messages.shift();
+          }
+        } catch {
+          // A malformed/partial historical line must not prevent the chat from opening.
+        }
+      }
+      return messages;
+    } catch (error) {
+      this.logger.warn(`Could not read local transcript for '${sessionFile}': ${String(error)}`);
+      return [];
+    }
   }
 
   /** ms since we last wrote to our own session file. */
