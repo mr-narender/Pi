@@ -1378,29 +1378,50 @@ button.ghost:hover,
   opacity: 0.9;
 }
 #messages .md-table-wrap {
-  margin: 8px 0;
+  margin: 10px 0;
   overflow-x: auto;
+  /* Visible outer frame + rounded corners so the whole table reads as a unit. */
+  border: 1px solid var(--vscode-widget-border, rgba(140, 140, 140, 0.55));
+  border-radius: 6px;
 }
 #messages .md-table {
   border-collapse: collapse;
-  width: auto;
-  max-width: 100%;
+  width: 100%;
   font-size: 0.95em;
+  line-height: 1.5;
 }
 #messages .md-table th,
 #messages .md-table td {
-  border: 1px solid var(--vscode-panel-border);
-  padding: 4px 10px;
+  /* Full grid: a visible line between every row and column. */
+  border: 1px solid var(--vscode-widget-border, rgba(140, 140, 140, 0.45));
+  padding: 6px 12px;
   text-align: left;
   vertical-align: top;
   overflow-wrap: anywhere;
 }
+/* Drop the doubled outer edges (the wrap already draws the frame). */
+#messages .md-table tr th:first-child,
+#messages .md-table tr td:first-child {
+  border-left: none;
+}
+#messages .md-table tr th:last-child,
+#messages .md-table tr td:last-child {
+  border-right: none;
+}
+#messages .md-table thead th {
+  border-top: none;
+}
+#messages .md-table tbody tr:last-child td {
+  border-bottom: none;
+}
 #messages .md-table th {
-  background: var(--vscode-editorWidget-background, rgba(127, 127, 127, 0.08));
+  background: var(--vscode-editorWidget-background, rgba(127, 127, 127, 0.14));
   font-weight: 600;
+  /* Stronger separator under the header row. */
+  border-bottom: 2px solid var(--vscode-widget-border, rgba(140, 140, 140, 0.7));
 }
 #messages .md-table tbody tr:nth-child(even) td {
-  background: rgba(127, 127, 127, 0.04);
+  background: rgba(127, 127, 127, 0.06);
 }
 #messages del {
   opacity: 0.75;
