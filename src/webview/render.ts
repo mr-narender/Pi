@@ -307,6 +307,77 @@ function isBlockStart(line: string): boolean {
   );
 }
 
+// --- GFM tables -----------------------------------------------------------
+// A table is a header row of `|`-separated cells immediately followed by a
+// delimiter row (e.g. `| --- | :--: | ---: |`). Rendered as a real <table> so
+// columns align in the proportional webview font (space-padded ASCII, which the
+// monospace TUI relies on, cannot align in the GUI).
+type TableAlign = 'left' | 'center' | 'right' | '';
+
+function isTableDelimiterRow(line: string): boolean {
+  const trimmed = line.trim();
+  // Must contain a dash and at least one column separator to be a delimiter row.
+  if (!trimmed.includes('-')) {
+    return false;
+  }
+  return /^\|?\s*:?-{1,}:?\s*(\|\s*:?-{1,}:?\s*)*\|?$/.test(trimmed);
+}
+
+function isTableStart(current: string, next: string): boolean {
+  return current.includes('|') && current.trim().length > 0 && isTableDelimiterRow(next);
+}
+
+function splitTableRow(line: string): string[] {
+  let trimmed = line.trim();
+  if (trimmed.startsWith('|')) trimmed = trimmed.slice(1);
+  if (trimmed.endsWith('|')) trimmed = trimmed.slice(0, -1);
+  const cells: string[] = [];
+  let current = '';
+  for (let index = 0; index < trimmed.length; index += 1) {
+    const char = trimmed[index];
+    if (char === '\\' && trimmed[index + 1] === '|') {
+      current += '|';
+      index += 1;
+      continue;
+    }
+    if (char === '|') {
+      cells.push(current.trim());
+      current = '';
+      continue;
+    }
+    current += char;
+  }
+  cells.push(current.trim());
+  return cells;
+}
+
+function cellAlignment(spec: string): TableAlign {
+  const trimmed = spec.trim();
+  const left = trimmed.startsWith(':');
+  const right = trimmed.endsWith(':');
+  if (left && right) return 'center';
+  if (right) return 'right';
+  if (left) return 'left';
+  return '';
+}
+
+function renderTable(header: string[], aligns: TableAlign[], rows: string[][]): string {
+  const style = (index: number): string =>
+    aligns[index] ? ` style="text-align:${aligns[index]}"` : '';
+  const head = header
+    .map((cell, index) => `<th${style(index)}>${renderInlineMarkdown(cell)}</th>`)
+    .join('');
+  const body = rows
+    .map(
+      (row) =>
+        `<tr>${header
+          .map((_, index) => `<td${style(index)}>${renderInlineMarkdown(row[index] ?? '')}</td>`)
+          .join('')}</tr>`
+    )
+    .join('');
+  return `<div class="md-table-wrap"><table class="md-table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
+}
+
 // Block-level Markdown: headings, lists, blockquotes, hr, paragraphs.
 function renderMarkdownBlock(text: string): string {
   const lines = text.split('\n');
@@ -324,6 +395,18 @@ function renderMarkdownBlock(text: string): string {
     if (/^\s*([-*_])\1{2,}\s*$/.test(line)) {
       out.push('<hr class="md-hr" />');
       i += 1;
+      continue;
+    }
+    if (isTableStart(line, lines[i + 1] ?? '')) {
+      const header = splitTableRow(line);
+      const aligns = splitTableRow(lines[i + 1] ?? '').map(cellAlignment);
+      i += 2;
+      const rows: string[][] = [];
+      while (i < lines.length && (lines[i] ?? '').includes('|') && (lines[i] ?? '').trim()) {
+        rows.push(splitTableRow(lines[i] ?? ''));
+        i += 1;
+      }
+      out.push(renderTable(header, aligns, rows));
       continue;
     }
     if (/^\s*>\s?/.test(line)) {
@@ -364,7 +447,12 @@ function renderMarkdownBlock(text: string): string {
       continue;
     }
     const para: string[] = [];
-    while (i < lines.length && (lines[i] ?? '').trim() && !isBlockStart(lines[i] ?? '')) {
+    while (
+      i < lines.length &&
+      (lines[i] ?? '').trim() &&
+      !isBlockStart(lines[i] ?? '') &&
+      !isTableStart(lines[i] ?? '', lines[i + 1] ?? '')
+    ) {
       para.push(lines[i] ?? '');
       i += 1;
     }

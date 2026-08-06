@@ -614,3 +614,20 @@ test('accessibility: live status region, transcript live=off, author labels', ()
   assert.match(html, /aria-label="You said"/);
   assert.match(html, /aria-label="Pi said"/);
 });
+
+test('renderRichText renders a GFM table as an HTML table with alignment', () => {
+  const md = ['| Name | Score |', '| :--- | ----: |', '| Ann | 10 |', '| Bob | 5 |'].join('\n');
+  const html = renderRichText(md);
+  assert.match(html, /<table class="md-table">/);
+  assert.match(html, /<th style="text-align:left">Name<\/th>/);
+  assert.match(html, /<th style="text-align:right">Score<\/th>/);
+  assert.match(html, /<td style="text-align:right">10<\/td>/);
+  assert.match(html, /<td style="text-align:left">Bob<\/td>/);
+  // The raw pipe-row text must not leak as a paragraph.
+  assert.doesNotMatch(html, /<p class="msg-para">\| Name/);
+});
+
+test('renderRichText leaves a lone pipe line as a paragraph (not a table)', () => {
+  const html = renderRichText('a | b but no delimiter row');
+  assert.doesNotMatch(html, /<table/);
+});

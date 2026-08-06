@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.114
+
+- Chat: render Markdown tables as real HTML tables (aligned columns) instead of broken pipe text in the VS Code GUI.
+
 ## 0.0.107
 
 - Remote: pairing panel opens in the same editor group (no split) and is replaced by the shared chat once a device pairs (single-window flow).
