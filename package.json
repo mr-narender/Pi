@@ -2,7 +2,7 @@
   "name": "pi",
   "displayName": "Pi – this one is (y)ours",
   "description": "An unofficial, personal VS Code chat UI for the Pi coding agent (pi.dev). Not affiliated with pi.dev — shared for anyone who wants it.",
-  "version": "0.0.114",
+  "version": "0.0.115",
   "publisher": "mr-narender",
   "license": "MIT",
   "private": true,
@@ -59,6 +59,7 @@
     "audit:prod": "npm audit --omit=dev"
   },
   "dependencies": {
+    "highlight.js": "^11.11.1",
     "markdown-it": "14.3.0",
     "qrcode": "^1.5.4",
     "ws": "^8.21.1"

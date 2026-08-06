@@ -1,4 +1,5 @@
 import type { WebviewSnapshot } from '../state/types';
+import { highlightCode } from './highlight';
 import { chipPrivacyLabel, summarizeChip, type PendingContextItem } from './composer';
 import { formatUsageChip } from './usageSummary';
 import { editReplacements, editToolFilePath, type EditReplacement } from './editToolPath';
@@ -286,15 +287,110 @@ function renderMetaBlock(block: MessageBlock): string {
 // matters so ** inside `code` isn't bolded.
 function renderInlineMarkdown(text: string): string {
   let html = escapeHtml(text);
+  // Inline code first so its contents aren't transformed by later passes.
   html = html.replace(/`([^`\n]+)`/g, '<code class="inline-code">$1</code>');
+  // Images ![alt](url): rendered as a safe labeled link (CSP forbids remote
+  // image fetches, and embedding arbitrary remote images is a tracking vector).
+  html = html.replace(
+    /!\[([^\]\n]*)\]\((https?:\/\/[^\s)]+)\)/g,
+    (_m, alt: string, url: string) =>
+      `<a class="md-link md-img-link" data-href="${url}">\u{1F5BC} ${alt || 'image'}</a>`
+  );
+  // Explicit links [text](url).
   html = html.replace(
     /\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g,
     (_m, label: string, url: string) => `<a class="md-link" data-href="${url}">${label}</a>`
   );
+  // Autolink bare URLs. The `(^|[\s(])` prefix prevents matching URLs already
+  // moved into a data-href="…" attribute above (those are preceded by a quote).
+  html = html.replace(/(^|[\s(])(https?:\/\/[^\s<>"')]+)/g, (_m, pre: string, url: string) => {
+    const trailing = /[.,;:!?]+$/.exec(url);
+    const clean = trailing ? url.slice(0, url.length - trailing[0].length) : url;
+    const tail = trailing ? trailing[0] : '';
+    return `${pre}<a class="md-link" data-href="${clean}">${clean}</a>${tail}`;
+  });
   html = html.replace(/\*\*(?!\s)([^\n*]+?)\*\*/g, '<strong>$1</strong>');
   html = html.replace(/(?<![\w*])\*(?!\s)([^\n*]+?)\*(?![\w*])/g, '<em>$1</em>');
   html = html.replace(/(?<![\w_])_(?!\s)([^\n_]+?)_(?![\w_])/g, '<em>$1</em>');
+  // Strikethrough ~~text~~ (GFM).
+  html = html.replace(/~~(?!\s)([^\n~]+?)~~/g, '<del>$1</del>');
   return html;
+}
+
+// --- lists (nested + GFM task lists) --------------------------------------
+interface ListItem {
+  indent: number;
+  ordered: boolean;
+  task: boolean | null; // null = not a task item; true/false = checked state
+  content: string;
+}
+
+const LIST_ITEM_RE = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/;
+
+function consumeListItems(lines: string[], start: number): { items: ListItem[]; next: number } {
+  const items: ListItem[] = [];
+  let i = start;
+  while (i < lines.length) {
+    const match = LIST_ITEM_RE.exec(lines[i] ?? '');
+    if (!match) {
+      break;
+    }
+    let content = match[3] ?? '';
+    let task: boolean | null = null;
+    const taskMatch = /^\[([ xX])\]\s+(.*)$/.exec(content);
+    if (taskMatch) {
+      task = (taskMatch[1] ?? ' ').toLowerCase() === 'x';
+      content = taskMatch[2] ?? '';
+    }
+    items.push({
+      indent: (match[1] ?? '').length,
+      ordered: /\d/.test(match[2] ?? ''),
+      task,
+      content,
+    });
+    i += 1;
+  }
+  return { items, next: i };
+}
+
+function buildListHtml(
+  items: ListItem[],
+  pos: number,
+  indent: number
+): { html: string; pos: number } {
+  const ordered = items[pos]!.ordered;
+  const tag = ordered ? 'ol' : 'ul';
+  const cls = ordered ? 'md-ol' : 'md-ul';
+  let html = `<${tag} class="${cls}">`;
+  let cursor = pos;
+  while (cursor < items.length && items[cursor]!.indent >= indent) {
+    if (items[cursor]!.indent > indent) {
+      // Deeper items are handled as children of the previous <li>; a stray
+      // over-indent with no parent is absorbed at this level defensively.
+      const child = buildListHtml(items, cursor, items[cursor]!.indent);
+      html += child.html;
+      cursor = child.pos;
+      continue;
+    }
+    const item = items[cursor]!;
+    cursor += 1;
+    let inner = '';
+    if (cursor < items.length && items[cursor]!.indent > indent) {
+      const child = buildListHtml(items, cursor, items[cursor]!.indent);
+      inner = child.html;
+      cursor = child.pos;
+    }
+    if (item.task === null) {
+      html += `<li>${renderInlineMarkdown(item.content)}${inner}</li>`;
+    } else {
+      const checked = item.task ? ' checked' : '';
+      html +=
+        `<li class="md-task"><input type="checkbox" disabled${checked} />` +
+        `<span>${renderInlineMarkdown(item.content)}</span>${inner}</li>`;
+    }
+  }
+  html += `</${tag}>`;
+  return { html, pos: cursor };
 }
 
 function isBlockStart(line: string): boolean {
@@ -420,26 +516,11 @@ function renderMarkdownBlock(text: string): string {
       );
       continue;
     }
-    if (/^\s*[-*+]\s+/.test(line)) {
-      const items: string[] = [];
-      while (i < lines.length && /^\s*[-*+]\s+/.test(lines[i] ?? '')) {
-        items.push((lines[i] ?? '').replace(/^\s*[-*+]\s+/, ''));
-        i += 1;
-      }
-      out.push(
-        `<ul class="md-ul">${items.map((it) => `<li>${renderInlineMarkdown(it)}</li>`).join('')}</ul>`
-      );
-      continue;
-    }
-    if (/^\s*\d+[.)]\s+/.test(line)) {
-      const items: string[] = [];
-      while (i < lines.length && /^\s*\d+[.)]\s+/.test(lines[i] ?? '')) {
-        items.push((lines[i] ?? '').replace(/^\s*\d+[.)]\s+/, ''));
-        i += 1;
-      }
-      out.push(
-        `<ol class="md-ol">${items.map((it) => `<li>${renderInlineMarkdown(it)}</li>`).join('')}</ol>`
-      );
+    if (LIST_ITEM_RE.test(line)) {
+      const { items, next } = consumeListItems(lines, i);
+      const baseIndent = Math.min(...items.map((item) => item.indent));
+      out.push(buildListHtml(items, 0, baseIndent).html);
+      i = next;
       continue;
     }
     if (!line.trim()) {
@@ -485,15 +566,23 @@ export function renderRichText(raw: string): string {
         index += 1;
       }
       index += 1; // skip closing fence
+      const codeText = code.join('\n');
+      // Syntax-highlight the block (falls back to plain escaped text). The
+      // resolved language (explicit or auto-detected) drives the label + class.
+      const highlighted = highlightCode(codeText, language, escapeHtml);
+      const labelLang = language.trim() || highlighted.language || '';
       // Fenced code renders as its OWN block with a Copy button. Only show a
       // language label for a REAL language — never a generic "text"/"code".
       const generic = new Set(['', 'text', 'txt', 'plain', 'plaintext', 'code', 'output', 'log']);
-      const showLang = !generic.has(language.trim().toLowerCase());
+      const showLang = !generic.has(labelLang.toLowerCase());
       const langSlot = showLang
-        ? `<span class="code-lang-name">${escapeHtml(language)}</span>`
+        ? `<span class="code-lang-name">${escapeHtml(labelLang)}</span>`
         : '<span class="code-lang-spacer"></span>';
+      const codeClass = highlighted.language
+        ? `hljs language-${escapeHtml(highlighted.language)}`
+        : 'hljs';
       out.push(
-        `<div class="code-wrap" data-lang="${escapeHtml(language)}"><div class="code-lang">${langSlot}<div class="code-actions"><button type="button" class="code-btn code-insert" title="Insert at cursor in the active editor" aria-label="Insert code at cursor">Insert</button><button type="button" class="code-btn code-newfile" title="Open in a new file" aria-label="Open code in a new file">New file</button><button type="button" class="code-btn code-copy" aria-label="Copy code">Copy</button></div></div><pre class="code-block"><code>${escapeHtml(code.join('\n'))}</code></pre></div>`
+        `<div class="code-wrap" data-lang="${escapeHtml(language)}"><div class="code-lang">${langSlot}<div class="code-actions"><button type="button" class="code-btn code-insert" title="Insert at cursor in the active editor" aria-label="Insert code at cursor">Insert</button><button type="button" class="code-btn code-newfile" title="Open in a new file" aria-label="Open code in a new file">New file</button><button type="button" class="code-btn code-copy" aria-label="Copy code">Copy</button></div></div><pre class="code-block"><code class="${codeClass}">${highlighted.html}</code></pre></div>`
       );
     } else {
       buffer.push(lines[index] ?? '');

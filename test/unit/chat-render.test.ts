@@ -173,7 +173,8 @@ test('renderRichText formats fenced code blocks and inline code', () => {
   assert.match(html, /class="code-wrap"/);
   assert.match(html, /class="code-lang-name">ts</); // language label
   assert.match(html, /code-copy"/); // copy button
-  assert.match(html, /const x = 1;/);
+  assert.match(html, /class="hljs language-typescript"/); // highlighted
+  assert.match(html, /hljs-keyword">const<\/span>/);
   assert.match(html, /class="inline-code">inline<\/code>/);
   assert.match(html, /<p class="msg-para">before/);
 });
@@ -216,7 +217,7 @@ test('renderChatApp renders thinking, tool, and code blocks distinctly', () => {
   assert.match(html, /tool-name">bash/);
   assert.match(html, /class="tl-dot"/);
   assert.match(html, /class="meta-icon"/); // inline SVG icon, not an emoji
-  assert.match(html, /const y = 2;/);
+  assert.match(html, /hljs-keyword">const<\/span>/);
   assert.match(html, /class="code-block"/);
 });
 
@@ -630,4 +631,33 @@ test('renderRichText renders a GFM table as an HTML table with alignment', () =>
 test('renderRichText leaves a lone pipe line as a paragraph (not a table)', () => {
   const html = renderRichText('a | b but no delimiter row');
   assert.doesNotMatch(html, /<table/);
+});
+
+test('renderRichText syntax-highlights fenced code with a language', () => {
+  const html = renderRichText(['```js', 'const x = 1;', '```'].join('\n'));
+  assert.match(html, /<code class="hljs language-javascript">/);
+  assert.match(html, /hljs-keyword/); // `const` tokenized
+});
+
+test('renderRichText renders GFM strikethrough, autolinks, and task lists', () => {
+  assert.match(renderRichText('~~gone~~'), /<del>gone<\/del>/);
+  const auto = renderRichText('see https://example.com/x for details');
+  assert.match(
+    auto,
+    /<a class="md-link" data-href="https:\/\/example\.com\/x">https:\/\/example\.com\/x<\/a>/
+  );
+  const tasks = renderRichText(['- [x] done', '- [ ] todo'].join('\n'));
+  assert.match(tasks, /<li class="md-task"><input type="checkbox" disabled checked \/>/);
+  assert.match(tasks, /<li class="md-task"><input type="checkbox" disabled \/>/);
+});
+
+test('renderRichText nests sub-lists by indentation', () => {
+  const html = renderRichText(['- parent', '  - child', '- parent2'].join('\n'));
+  assert.match(html, /<li>parent<ul class="md-ul"><li>child<\/li><\/ul><\/li>/);
+});
+
+test('renderRichText renders a markdown image as a safe link (no remote img)', () => {
+  const html = renderRichText('![cat](https://ex.com/c.png)');
+  assert.doesNotMatch(html, /<img/);
+  assert.match(html, /<a class="md-link md-img-link" data-href="https:\/\/ex\.com\/c\.png">/);
 });

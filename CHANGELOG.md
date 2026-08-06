@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.115
+
+- Chat rendering parity: syntax-highlighted code blocks (highlight.js, theme-aware), GFM tables, strikethrough, task-list checkboxes, nested lists, autolinked URLs, and safe image links.
+
 ## 0.0.114
 
 - Chat: render Markdown tables as real HTML tables (aligned columns) instead of broken pipe text in the VS Code GUI.

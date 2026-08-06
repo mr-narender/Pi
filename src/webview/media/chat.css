@@ -1402,6 +1402,93 @@ button.ghost:hover,
 #messages .md-table tbody tr:nth-child(even) td {
   background: rgba(127, 127, 127, 0.04);
 }
+#messages del {
+  opacity: 0.75;
+}
+#messages .md-task {
+  list-style: none;
+  margin-left: -1.1em;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+#messages .md-task input[type='checkbox'] {
+  margin: 0;
+  transform: translateY(1px);
+}
+#messages .md-ul .md-ul,
+#messages .md-ul .md-ol,
+#messages .md-ol .md-ul,
+#messages .md-ol .md-ol {
+  margin: 2px 0 2px 0;
+}
+#messages .md-img-link::before {
+  content: '';
+}
+
+/* Syntax highlighting (highlight.js token classes). Colors map to VS Code's
+   theme-aware ANSI terminal palette so code follows the active theme. */
+#messages .hljs {
+  color: var(--vscode-editor-foreground);
+}
+#messages .hljs-comment,
+#messages .hljs-quote {
+  color: var(--vscode-terminal-ansi-green, #6a9955);
+  font-style: italic;
+}
+#messages .hljs-keyword,
+#messages .hljs-selector-tag,
+#messages .hljs-literal,
+#messages .hljs-section,
+#messages .hljs-doctag {
+  color: var(--vscode-terminal-ansi-blue, #569cd6);
+}
+#messages .hljs-built_in,
+#messages .hljs-type,
+#messages .hljs-class .hljs-title,
+#messages .hljs-title.class_,
+#messages .hljs-tag {
+  color: var(--vscode-terminal-ansi-cyan, #4ec9b0);
+}
+#messages .hljs-string,
+#messages .hljs-regexp,
+#messages .hljs-char,
+#messages .hljs-meta-string,
+#messages .hljs-attr,
+#messages .hljs-attribute {
+  color: var(--vscode-terminal-ansi-yellow, #ce9178);
+}
+#messages .hljs-number,
+#messages .hljs-symbol,
+#messages .hljs-bullet {
+  color: var(--vscode-terminal-ansi-brightCyan, #b5cea8);
+}
+#messages .hljs-title,
+#messages .hljs-title.function_,
+#messages .hljs-function .hljs-title {
+  color: var(--vscode-terminal-ansi-brightYellow, #dcdcaa);
+}
+#messages .hljs-variable,
+#messages .hljs-template-variable,
+#messages .hljs-params {
+  color: var(--vscode-editor-foreground);
+}
+#messages .hljs-meta,
+#messages .hljs-link {
+  color: var(--vscode-terminal-ansi-magenta, #c586c0);
+}
+#messages .hljs-deletion {
+  color: var(--vscode-terminal-ansi-red, #f14c4c);
+}
+#messages .hljs-addition {
+  color: var(--vscode-terminal-ansi-green, #6a9955);
+}
+#messages .hljs-emphasis {
+  font-style: italic;
+}
+#messages .hljs-strong {
+  font-weight: 600;
+}
 #messages .md-hr {
   border: none;
   border-top: 1px solid var(--vscode-panel-border);
