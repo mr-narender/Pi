@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.117
+
+- Connect a phone is now opt-in via the new piRpc.remote.enabled setting (off by default); the button and remote commands are hidden until enabled.
+
 ## 0.0.115
 
 - Chat rendering parity: syntax-highlighted code blocks (highlight.js, theme-aware), GFM tables, strikethrough, task-list checkboxes, nested lists, autolinked URLs, and safe image links.

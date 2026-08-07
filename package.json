@@ -2,7 +2,7 @@
   "name": "pi",
   "displayName": "Pi – this one is (y)ours",
   "description": "An unofficial, personal VS Code chat UI for the Pi coding agent (pi.dev). Not affiliated with pi.dev — shared for anyone who wants it.",
-  "version": "0.0.116",
+  "version": "0.0.117",
   "publisher": "mr-narender",
   "license": "MIT",
   "private": true,
@@ -839,6 +839,11 @@
           "default": true,
           "description": "Show an inline \"Ask Pi\" action above functions/methods in code files."
         },
+        "piRpc.remote.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable the Connect a phone feature (watch or drive a chat from your phone). Off by default; when off the Connect a phone button and the remote-session commands are hidden."
+        },
         "piRpc.remote.brokerUrl": {
           "type": "string",
           "default": "",
@@ -872,6 +877,14 @@
         {
           "command": "piRpcInternal.renameSession",
           "when": "false"
+        },
+        {
+          "command": "piRpc.remote.start",
+          "when": "piRpc.remoteEnabled"
+        },
+        {
+          "command": "piRpc.remote.stop",
+          "when": "piRpc.remoteEnabled"
         }
       ],
       "editor/context": [

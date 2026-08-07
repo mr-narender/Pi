@@ -1492,6 +1492,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }
   });
   registrations.set('piRpc.remote.start', async () => {
+    if (!getSettings().remoteEnabled) {
+      void vscode.window.showInformationMessage(
+        'Pi: the Connect a phone feature is off. Enable “piRpc.remote.enabled” in Settings to use it.'
+      );
+      return;
+    }
     const cfg = vscode.workspace.getConfiguration('piRpc');
     const brokerUrl = (cfg.get<string>('remote.brokerUrl', '') || '').trim();
     const hostSecret = (cfg.get<string>('remote.hostSecret', '') || '').trim();
@@ -1991,6 +1997,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       await chatTabs.pushActiveSnapshotToRemote();
     }
   }
+
+  // Gate the phone/remote feature behind an opt-in setting: drive the
+  // command-palette `when` clause via a context key and keep it in sync.
+  const applyRemoteEnabledContext = (): void => {
+    void vscode.commands.executeCommand(
+      'setContext',
+      'piRpc.remoteEnabled',
+      getSettings().remoteEnabled
+    );
+  };
+  applyRemoteEnabledContext();
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration((event) => {
+      if (event.affectsConfiguration('piRpc.remote.enabled')) {
+        applyRemoteEnabledContext();
+        sessionsView.refresh();
+      }
+    })
+  );
 
   const firstFolder = vscode.workspace.workspaceFolders?.[0];
   if (settings.autoStart && vscode.workspace.isTrusted && firstFolder) {

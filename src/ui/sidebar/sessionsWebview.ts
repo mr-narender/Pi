@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import type { RecentSessionService } from '../../sessions/recentSessionService';
 import type { SessionRegistry } from '../../sessions/sessionRegistry';
+import { getSettings } from '../../config/settings';
 import { buildSidebarState, type SidebarSessionItem, type SidebarState } from './state';
 
 export { buildSidebarState, type SidebarSessionItem, type SidebarState };
@@ -51,7 +52,9 @@ export class SessionsWebviewProvider implements vscode.WebviewViewProvider {
             await vscode.commands.executeCommand('piRpc.newSession');
             break;
           case 'remoteStart':
-            await vscode.commands.executeCommand('piRpc.remote.start');
+            if (getSettings().remoteEnabled) {
+              await vscode.commands.executeCommand('piRpc.remote.start');
+            }
             break;
           case 'open':
             if (msg.sessionPath) {
@@ -94,7 +97,11 @@ export class SessionsWebviewProvider implements vscode.WebviewViewProvider {
   }
 
   public refresh(): void {
-    this.view?.webview.postMessage({ type: 'state', state: this.buildState() });
+    this.view?.webview.postMessage({
+      type: 'state',
+      state: this.buildState(),
+      remoteEnabled: getSettings().remoteEnabled,
+    });
   }
 
   private buildState(): SidebarState {
@@ -192,7 +199,7 @@ export class SessionsWebviewProvider implements vscode.WebviewViewProvider {
   <body>
     <div class="wrap">
       <button class="new-btn" id="new-btn" type="button" title="Start a new chat">+ New Chat</button>
-      <button class="remote-btn" id="remote-btn" type="button" title="Watch or drive this chat from your phone"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2" width="10" height="20" rx="2.5"/><path d="M11 18h2"/></svg>Connect a phone</button>
+      <button class="remote-btn" id="remote-btn" type="button" style="display:none" title="Watch or drive this chat from your phone"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2" width="10" height="20" rx="2.5"/><path d="M11 18h2"/></svg>Connect a phone</button>
       <input class="search" id="search" type="text" placeholder="Search chats\u2026" aria-label="Search chats" />
       <div class="list" id="list"></div>
     </div>
@@ -226,6 +233,10 @@ export class SessionsWebviewProvider implements vscode.WebviewViewProvider {
       }
       document.getElementById('new-btn').addEventListener('click', () => vscode.postMessage({ type: 'newChat' }));
       document.getElementById('remote-btn').addEventListener('click', () => vscode.postMessage({ type: 'remoteStart' }));
+      function applyRemoteEnabled(on) {
+        const btn = document.getElementById('remote-btn');
+        if (btn) btn.style.display = on ? '' : 'none';
+      }
       searchEl.addEventListener('input', () => { filter = searchEl.value; render(); });
       listEl.addEventListener('click', (e) => {
         const btn = e.target.closest('.icon-btn');
@@ -242,7 +253,11 @@ export class SessionsWebviewProvider implements vscode.WebviewViewProvider {
       });
       window.addEventListener('message', (event) => {
         const msg = event.data;
-        if (msg && msg.type === 'state') { sessions = (msg.state && msg.state.sessions) || []; render(); }
+        if (msg && msg.type === 'state') {
+          sessions = (msg.state && msg.state.sessions) || [];
+          applyRemoteEnabled(!!msg.remoteEnabled);
+          render();
+        }
       });
       vscode.postMessage({ type: 'refresh' });
     </script>

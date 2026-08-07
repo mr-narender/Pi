@@ -27,6 +27,7 @@ export interface PiRpcSettings {
   typewriterSpeed: string;
   autoCompactThreshold: number;
   codeLensEnabled: boolean;
+  remoteEnabled: boolean;
 }
 
 export function getSettings(): PiRpcSettings {
@@ -36,6 +37,9 @@ export function getSettings(): PiRpcSettings {
     additionalArgs: config.get<string[]>('additionalArgs', []),
     offline: config.get<boolean>('offline', true),
     allowApproveInTrustedWorkspace: config.get<boolean>('allowApproveInTrustedWorkspace', false),
+    // Phone/remote-session feature is opt-in. When false the Connect a phone
+    // button and the Start/Stop Remote Session commands are hidden.
+    remoteEnabled: config.get<boolean>('remote.enabled', false),
     responseTimeoutMs: config.get<number>('responseTimeoutMs', 15000),
     longRunningTimeoutMs: config.get<number>('longRunningTimeoutMs', 120000),
     // Session replay can contain one large JSONL record (for example an
