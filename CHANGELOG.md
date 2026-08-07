@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.121
+
+- Chat: tool results collapse by default (errors stay open); inline code, JSON keys and tool names are now mint text with no background chip.
+
 ## 0.0.120
 
 - Chat: fixed scrollbar flicker while typing — the panel no longer rebuilds the DOM on each keystroke, and the conversation reserves a stable scrollbar gutter.

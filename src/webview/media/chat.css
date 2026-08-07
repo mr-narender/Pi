@@ -1533,8 +1533,8 @@ button.ghost:hover,
 #messages .json-table td.json-key {
   font-weight: 600;
   white-space: nowrap;
-  color: var(--vscode-foreground);
-  background: rgba(127, 127, 127, 0.06);
+  /* Mint key text on the native background (no chip). */
+  color: var(--pi-tool-accent, #4ec9b0);
 }
 /* Nested tables inside a cell shouldn't add outer margin/frame doubling. */
 #messages .json-table td .json-table-wrap {
@@ -1736,10 +1736,10 @@ button.ghost:hover,
 #messages .inline-code {
   font-family: var(--vscode-editor-font-family, ui-monospace, monospace);
   font-size: 0.9em;
-  padding: 1px 5px;
-  border-radius: 5px;
   overflow-wrap: anywhere;
-  background: var(--vscode-textCodeBlock-background, rgba(127, 127, 127, 0.16));
+  /* No background chip — highlight with mint text on the native background. */
+  background: transparent;
+  color: var(--pi-tool-accent, #4ec9b0);
 }
 
 /* ================= Meta sections: thinking / tool / result / image =========
@@ -1781,8 +1781,7 @@ button.ghost:hover,
 #messages .tool-name {
   font-family: var(--vscode-editor-font-family, ui-monospace, monospace);
   font-size: 0.85em;
-  color: var(--vscode-foreground);
-  opacity: 0.85;
+  color: var(--pi-tool-accent, #4ec9b0);
   overflow-wrap: anywhere;
   word-break: break-word;
 }
@@ -2019,8 +2018,7 @@ button.ghost:hover,
 #messages .tl-card .tool-name {
   font-family: var(--vscode-editor-font-family, ui-monospace, monospace);
   font-size: 0.85em;
-  color: var(--vscode-foreground);
-  opacity: 0.85;
+  color: var(--pi-tool-accent, #4ec9b0);
   overflow-wrap: anywhere;
   word-break: break-word;
 }

@@ -358,7 +358,8 @@ function renderTimelineNode(node: TimelineNode, streamingAnswer = false): string
     }
     case 'toolResult': {
       const err = node.isError === true;
-      return `<div class="tl-node tl-result${err ? ' is-error' : ''}">${marker}<details class="tl-card" open><summary class="tl-head">${err ? META_ICONS.error : META_ICONS.result}<span class="tl-label">${err ? 'Error' : 'Result'}</span>${node.name ? `<code class="tool-name">${escapeHtml(node.name)}</code>` : ''}${CARET_ICON}</summary>${renderToolContent(node.text)}</details></div>`;
+      // Results collapse by default (they're often long/noisy); errors stay open.
+      return `<div class="tl-node tl-result${err ? ' is-error' : ''}">${marker}<details class="tl-card"${err ? ' open' : ''}><summary class="tl-head">${err ? META_ICONS.error : META_ICONS.result}<span class="tl-label">${err ? 'Error' : 'Result'}</span>${node.name ? `<code class="tool-name">${escapeHtml(node.name)}</code>` : ''}${CARET_ICON}</summary>${renderToolContent(node.text)}</details></div>`;
     }
     case 'image':
       return `<div class="tl-node tl-tool">${marker}<div class="tl-card"><div class="tl-head">${META_ICONS.image}<span class="tl-label">Image</span><span class="tool-name">${escapeHtml(node.mimeType)}</span></div></div></div>`;
@@ -906,7 +907,7 @@ function renderMessageBody(
 /** A standalone tool-result / bash-execution message rendered as a Result card. */
 function renderResultMessage(message: WebviewSnapshot['messages'][number]): string {
   const text = message.text ?? '';
-  return `<div class="timeline timeline-standalone"><div class="tl-node tl-result"><span class="tl-dot"></span><details class="tl-card" open><summary class="tl-head">${META_ICONS.result}<span class="tl-label">Result</span>${CARET_ICON}</summary>${renderClampedOutput(text)}</details></div></div>`;
+  return `<div class="timeline timeline-standalone"><div class="tl-node tl-result"><span class="tl-dot"></span><details class="tl-card"><summary class="tl-head">${META_ICONS.result}<span class="tl-label">Result</span>${CARET_ICON}</summary>${renderClampedOutput(text)}</details></div></div>`;
 }
 
 function renderContextChip(item: PendingContextItem): string {
