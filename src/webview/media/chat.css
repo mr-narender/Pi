@@ -352,6 +352,7 @@ textarea.drop-target {
   z-index: 20;
   max-height: 240px;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   display: flex;
   flex-direction: column;
   padding: 4px;
@@ -1000,6 +1001,10 @@ button.ghost:hover,
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
+  /* Reserve the scrollbar track so it never appears/disappears (and shifts
+     layout) as the virtualized list re-measures — the source of typing-time
+     scrollbar flicker. */
+  scrollbar-gutter: stable;
   display: block;
   padding: 16px;
 }

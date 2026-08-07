@@ -247,7 +247,10 @@ export class ChatPanelProvider implements vscode.Disposable {
         await controller.abort();
         return;
       case 'setDraft':
-        controller.setDraft(parsed.text);
+        // silent: the webview already shows the typed text; echoing a full
+        // snapshot back on every keystroke rebuilds the DOM and flickers the
+        // conversation scrollbar. Persist the draft without a re-render.
+        controller.setDraft(parsed.text, { silent: true });
         await this.uiState.updateDraft(controller, parsed.text);
         return;
       case 'setFocus':

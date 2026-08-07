@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.120
+
+- Chat: fixed scrollbar flicker while typing — the panel no longer rebuilds the DOM on each keystroke, and the conversation reserves a stable scrollbar gutter.
+
 ## 0.0.119
 
 - Chat: JSON tool args/results now render as structured tables (key/value grids; arrays of objects as columnar tables) instead of raw JSON, for clearer reading.
