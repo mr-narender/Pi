@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.119
+
+- Chat: JSON tool args/results now render as structured tables (key/value grids; arrays of objects as columnar tables) instead of raw JSON, for clearer reading.
+
 ## 0.0.117
 
 - Connect a phone is now opt-in via the new piRpc.remote.enabled setting (off by default); the button and remote commands are hidden until enabled.

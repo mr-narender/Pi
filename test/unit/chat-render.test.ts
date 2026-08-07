@@ -661,3 +661,32 @@ test('renderRichText renders a markdown image as a safe link (no remote img)', (
   assert.doesNotMatch(html, /<img/);
   assert.match(html, /<a class="md-link md-img-link" data-href="https:\/\/ex\.com\/c\.png">/);
 });
+
+test('renderChatApp renders JSON tool output as a structured table', () => {
+  const html = renderChatApp(
+    snapshot({
+      messages: [
+        {
+          id: 'm1',
+          role: 'assistant',
+          text: 'x',
+          blocks: [
+            { kind: 'tool', name: 'q', args: '{"path":"a.ts","limit":5}' },
+            {
+              kind: 'toolResult',
+              name: 'q',
+              text: '[{"name":"a","size":1},{"name":"b","size":2}]',
+              isError: false,
+            },
+          ],
+          attachments: [],
+        },
+      ],
+    })
+  );
+  assert.match(html, /class="md-table json-table"/); // object args -> grid
+  assert.match(html, /class="json-key">path</);
+  assert.match(html, /<th>name<\/th>/); // array of objects -> columns
+  assert.match(html, /<th>size<\/th>/);
+  assert.doesNotMatch(html, /\[\{&quot;name/); // no raw JSON dump
+});

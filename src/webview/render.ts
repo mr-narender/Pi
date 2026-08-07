@@ -221,6 +221,120 @@ function renderClampedOutput(text: string): string {
   return `<div class="clampable"><div class="clamp-body">${pre}</div><button type="button" class="code-showmore">Show more</button></div>`;
 }
 
+// --- JSON pretty rendering ------------------------------------------------
+// Tool args and tool results are frequently JSON. Raw JSON is hard to scan, so
+// render objects as key/value grids and arrays-of-objects as columnar tables
+// (recursively), which matches the "tabular for clarity" goal. Non-JSON falls
+// back to the plain preformatted block.
+const JSON_MAX_DEPTH = 6;
+
+function tryParseJson(text: string): unknown {
+  const trimmed = text.trim();
+  if (trimmed.length < 2 || trimmed.length > 200_000) {
+    return undefined;
+  }
+  const first = trimmed[0];
+  if (first !== '{' && first !== '[') {
+    return undefined;
+  }
+  try {
+    const parsed: unknown = JSON.parse(trimmed);
+    return parsed !== null && typeof parsed === 'object' ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function jsonScalar(value: unknown): string {
+  if (value === null) {
+    return '<span class="json-null">null</span>';
+  }
+  if (typeof value === 'boolean') {
+    return `<span class="json-bool">${value ? 'true' : 'false'}</span>`;
+  }
+  if (typeof value === 'number') {
+    return `<span class="json-num">${escapeHtml(String(value))}</span>`;
+  }
+  return `<span class="json-str">${escapeHtml(String(value))}</span>`;
+}
+
+function jsonTable(inner: string): string {
+  return `<div class="md-table-wrap json-table-wrap"><table class="md-table json-table">${inner}</table></div>`;
+}
+
+function renderJsonValue(value: unknown, depth = 0): string {
+  if (value === null || typeof value !== 'object') {
+    return jsonScalar(value);
+  }
+  if (depth >= JSON_MAX_DEPTH) {
+    return `<code class="inline-code">${escapeHtml(JSON.stringify(value))}</code>`;
+  }
+  if (Array.isArray(value)) {
+    if (value.length === 0) {
+      return '<span class="json-empty">[ ]</span>';
+    }
+    // Array of objects -> one column per key (union, first-seen order).
+    if (value.every(isPlainObject)) {
+      const cols: string[] = [];
+      for (const item of value) {
+        for (const key of Object.keys(item)) {
+          if (!cols.includes(key)) {
+            cols.push(key);
+          }
+        }
+      }
+      const head = cols.map((col) => `<th>${escapeHtml(col)}</th>`).join('');
+      const rows = value
+        .map(
+          (item) =>
+            `<tr>${cols
+              .map((col) => `<td>${col in item ? renderJsonValue(item[col], depth + 1) : ''}</td>`)
+              .join('')}</tr>`
+        )
+        .join('');
+      return jsonTable(`<thead><tr>${head}</tr></thead><tbody>${rows}</tbody>`);
+    }
+    // Mixed/scalar array -> indexed rows.
+    const rows = value
+      .map(
+        (item, index) =>
+          `<tr><td class="json-key">${index}</td><td>${renderJsonValue(item, depth + 1)}</td></tr>`
+      )
+      .join('');
+    return jsonTable(`<tbody>${rows}</tbody>`);
+  }
+  const entries = Object.entries(value);
+  if (entries.length === 0) {
+    return '<span class="json-empty">{ }</span>';
+  }
+  const rows = entries
+    .map(
+      ([key, val]) =>
+        `<tr><td class="json-key">${escapeHtml(key)}</td><td>${renderJsonValue(val, depth + 1)}</td></tr>`
+    )
+    .join('');
+  return jsonTable(`<tbody>${rows}</tbody>`);
+}
+
+// Render tool args / results: as a structured JSON table when the content is
+// JSON, otherwise as the plain preformatted block. Long output stays clamped.
+function renderToolContent(text: string): string {
+  const parsed = tryParseJson(text);
+  const inner =
+    parsed !== undefined
+      ? `<div class="json-view">${renderJsonValue(parsed)}</div>`
+      : `<pre class="code-block"><code>${escapeHtml(text)}</code></pre>`;
+  const long = text.length > 1400 || text.split('\n').length > 16;
+  if (!long) {
+    return inner;
+  }
+  return `<div class="clampable"><div class="clamp-body">${inner}</div><button type="button" class="code-showmore">Show more</button></div>`;
+}
+
 function renderTimelineNode(node: TimelineNode, streamingAnswer = false): string {
   // Small colored marker on the rail; the identifying icon lives in the card
   // header (icon + rounded border make each section obvious).
@@ -235,7 +349,7 @@ function renderTimelineNode(node: TimelineNode, streamingAnswer = false): string
         replacements.length > 0
           ? renderEditDiff(replacements)
           : node.args
-            ? renderClampedOutput(node.args)
+            ? renderToolContent(node.args)
             : '';
       const fileActions = editPath
         ? `<div class="tl-file-actions"><span class="tl-file-path">${escapeHtml(editPath)}</span><button type="button" class="tl-file-btn" data-file-open="${escapeHtml(editPath)}">Open file</button><button type="button" class="tl-file-btn" data-file-diff="${escapeHtml(editPath)}">Open changes</button></div>`
@@ -244,7 +358,7 @@ function renderTimelineNode(node: TimelineNode, streamingAnswer = false): string
     }
     case 'toolResult': {
       const err = node.isError === true;
-      return `<div class="tl-node tl-result${err ? ' is-error' : ''}">${marker}<details class="tl-card" open><summary class="tl-head">${err ? META_ICONS.error : META_ICONS.result}<span class="tl-label">${err ? 'Error' : 'Result'}</span>${node.name ? `<code class="tool-name">${escapeHtml(node.name)}</code>` : ''}${CARET_ICON}</summary>${renderClampedOutput(node.text)}</details></div>`;
+      return `<div class="tl-node tl-result${err ? ' is-error' : ''}">${marker}<details class="tl-card" open><summary class="tl-head">${err ? META_ICONS.error : META_ICONS.result}<span class="tl-label">${err ? 'Error' : 'Result'}</span>${node.name ? `<code class="tool-name">${escapeHtml(node.name)}</code>` : ''}${CARET_ICON}</summary>${renderToolContent(node.text)}</details></div>`;
     }
     case 'image':
       return `<div class="tl-node tl-tool">${marker}<div class="tl-card"><div class="tl-head">${META_ICONS.image}<span class="tl-label">Image</span><span class="tool-name">${escapeHtml(node.mimeType)}</span></div></div></div>`;
@@ -267,10 +381,10 @@ function renderMetaBlock(block: MessageBlock): string {
     case 'thinking':
       return `<details class="meta-block meta-thinking"><summary class="meta-head">${metaLabel('thinking', 'Thinking')}</summary><div class="meta-body">${renderRichText(block.text)}</div></details>`;
     case 'tool':
-      return `<div class="meta-block meta-tool"><div class="meta-head">${metaLabel('tool', 'Tool')}<code class="tool-name">${escapeHtml(block.name)}</code></div>${block.args ? `<pre class="code-block tool-args"><code>${escapeHtml(block.args)}</code></pre>` : ''}</div>`;
+      return `<div class="meta-block meta-tool"><div class="meta-head">${metaLabel('tool', 'Tool')}<code class="tool-name">${escapeHtml(block.name)}</code></div>${block.args ? renderToolContent(block.args) : ''}</div>`;
     case 'toolResult': {
       const err = block.isError === true;
-      return `<details class="meta-block meta-tool-result${err ? ' is-error' : ''}"><summary class="meta-head">${metaLabel(err ? 'error' : 'result', err ? 'Tool error' : 'Tool result')}${block.name ? `<code class="tool-name">${escapeHtml(block.name)}</code>` : ''}</summary><pre class="code-block"><code>${escapeHtml(block.text)}</code></pre></details>`;
+      return `<details class="meta-block meta-tool-result${err ? ' is-error' : ''}"><summary class="meta-head">${metaLabel(err ? 'error' : 'result', err ? 'Tool error' : 'Tool result')}${block.name ? `<code class="tool-name">${escapeHtml(block.name)}</code>` : ''}</summary>${renderToolContent(block.text)}</details></div>`;
     }
     case 'image':
       return `<div class="meta-block meta-image meta-head">${metaLabel('image', 'Image')}<span class="tool-name">${escapeHtml(block.mimeType)}</span></div>`;

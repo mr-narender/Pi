@@ -1512,6 +1512,45 @@ button.ghost:hover,
 #messages .hljs-strong {
   font-weight: 600;
 }
+
+/* Structured JSON view for tool args / results. Reuses the .md-table grid. */
+#messages .json-view {
+  margin: 2px 0;
+  font-size: 0.92em;
+}
+#messages .json-table {
+  width: auto;
+  max-width: 100%;
+}
+#messages .json-table td {
+  vertical-align: top;
+}
+#messages .json-table td.json-key {
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--vscode-foreground);
+  background: rgba(127, 127, 127, 0.06);
+}
+/* Nested tables inside a cell shouldn't add outer margin/frame doubling. */
+#messages .json-table td .json-table-wrap {
+  margin: 0;
+  border-radius: 4px;
+}
+#messages .json-str {
+  color: var(--vscode-foreground);
+  overflow-wrap: anywhere;
+}
+#messages .json-num {
+  color: var(--vscode-terminal-ansi-brightCyan, #b5cea8);
+}
+#messages .json-bool {
+  color: var(--vscode-terminal-ansi-blue, #569cd6);
+}
+#messages .json-null,
+#messages .json-empty {
+  color: var(--vscode-descriptionForeground);
+  font-style: italic;
+}
 #messages .md-hr {
   border: none;
   border-top: 1px solid var(--vscode-panel-border);
