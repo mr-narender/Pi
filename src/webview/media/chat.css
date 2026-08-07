@@ -1477,7 +1477,8 @@ button.ghost:hover,
 #messages .hljs-meta-string,
 #messages .hljs-attr,
 #messages .hljs-attribute {
-  color: var(--vscode-terminal-ansi-yellow, #ce9178);
+  /* Mint to match the Pi TUI (was the theme's golden/yellow). */
+  color: var(--pi-tool-accent, #4ec9b0);
 }
 #messages .hljs-number,
 #messages .hljs-symbol,
@@ -1487,7 +1488,8 @@ button.ghost:hover,
 #messages .hljs-title,
 #messages .hljs-title.function_,
 #messages .hljs-function .hljs-title {
-  color: var(--vscode-terminal-ansi-brightYellow, #dcdcaa);
+  /* Mint to match the Pi TUI (was the theme's golden/yellow). */
+  color: var(--pi-tool-accent, #4ec9b0);
 }
 #messages .hljs-variable,
 #messages .hljs-template-variable,
