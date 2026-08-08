@@ -18,7 +18,13 @@ import {
   resetControllerProjection,
 } from '../state/reducer';
 import { createInitialControllerState, type ControllerState } from '../state/types';
-import { createReadStream } from 'node:fs';
+import {
+  createReadStream,
+  watch as fsWatch,
+  watchFile,
+  unwatchFile,
+  type FSWatcher,
+} from 'node:fs';
 import { createInterface } from 'node:readline';
 import { open, stat } from 'node:fs/promises';
 import { canonicalizeSessionPath } from './paths';
@@ -175,9 +181,98 @@ export class SessionController implements vscode.Disposable {
 
   public async stop(): Promise<void> {
     this.stopping = true;
+    this.disarmSessionFileWatcher();
     await this.supervisor.stop();
     this.state = { ...this.state, connectionState: 'stopped' };
     this.fire();
+  }
+
+  // ---- Native session-file watcher (real-time TUI -> GUI sync) -------------
+  // VS Code's workspace file watcher is unreliable/high-latency for the Pi
+  // sessions dir (it lives OUTSIDE the workspace under ~/.pi/agent). A direct
+  // OS-level fs.watch on the active session file surfaces terminal appends
+  // within ~150ms; we fall back to stat-polling where fs.watch is unavailable.
+  private sessionWatcher: FSWatcher | undefined;
+  private watchedSessionFile: string | undefined;
+  private watchFallbackActive = false;
+  private watchDebounce: ReturnType<typeof setTimeout> | undefined;
+  private static readonly WATCH_DEBOUNCE_MS = 150;
+  private static readonly WATCH_SELF_WRITE_GRACE_MS = 1500;
+
+  private armSessionFileWatcher(): void {
+    const file = this.activeSessionFile;
+    if (file === this.watchedSessionFile) {
+      return; // already watching the right file
+    }
+    this.disarmSessionFileWatcher();
+    if (!file) {
+      return;
+    }
+    this.watchedSessionFile = file;
+    try {
+      this.sessionWatcher = fsWatch(file, { persistent: false }, () => this.onSessionFileEvent());
+      this.sessionWatcher.on('error', () => this.enableWatchFallback(file));
+    } catch {
+      this.enableWatchFallback(file);
+    }
+  }
+
+  private enableWatchFallback(file: string): void {
+    if (this.sessionWatcher) {
+      try {
+        this.sessionWatcher.close();
+      } catch {
+        /* ignore */
+      }
+      this.sessionWatcher = undefined;
+    }
+    this.watchFallbackActive = true;
+    this.watchedSessionFile = file;
+    watchFile(file, { persistent: false, interval: 1000 }, () => this.onSessionFileEvent());
+  }
+
+  private onSessionFileEvent(): void {
+    if (this.watchDebounce) {
+      clearTimeout(this.watchDebounce);
+    }
+    this.watchDebounce = setTimeout(() => {
+      this.watchDebounce = undefined;
+      // Skip our own writes and non-idle states; appendExternalMessages also
+      // dedupes by id and guards on 'ready', so this is just to reduce churn.
+      if (this.state.connectionState !== 'ready') {
+        return;
+      }
+      if (this.msSinceSelfWrite() < SessionController.WATCH_SELF_WRITE_GRACE_MS) {
+        return;
+      }
+      void this.appendExternalMessages().catch(() => {
+        /* best-effort live append */
+      });
+    }, SessionController.WATCH_DEBOUNCE_MS);
+  }
+
+  private disarmSessionFileWatcher(): void {
+    if (this.watchDebounce) {
+      clearTimeout(this.watchDebounce);
+      this.watchDebounce = undefined;
+    }
+    if (this.sessionWatcher) {
+      try {
+        this.sessionWatcher.close();
+      } catch {
+        /* ignore */
+      }
+      this.sessionWatcher = undefined;
+    }
+    if (this.watchFallbackActive && this.watchedSessionFile) {
+      try {
+        unwatchFile(this.watchedSessionFile);
+      } catch {
+        /* ignore */
+      }
+      this.watchFallbackActive = false;
+    }
+    this.watchedSessionFile = undefined;
   }
 
   public async restart(): Promise<void> {
@@ -240,6 +335,9 @@ export class SessionController implements vscode.Disposable {
     );
     // We now hold the full transcript; the file tail beyond this is external.
     await this.syncFileReadOffset();
+    // (Re)arm the native file watcher so terminal (TUI) appends to THIS session
+    // file push into the GUI in near real time.
+    this.armSessionFileWatcher();
     this.fire();
   }
 
@@ -684,6 +782,7 @@ export class SessionController implements vscode.Disposable {
   }
 
   public dispose(): void {
+    this.disarmSessionFileWatcher();
     void this.stop();
     this.supervisor.dispose();
     this.changeEmitter.dispose();

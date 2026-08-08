@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.125
+
+- Real-time TUI->GUI sync: a native fs.watch on the active session file (with a stat-poll fallback) pushes terminal edits into the open chat within ~150ms, replacing the laggy out-of-workspace VS Code watcher path.
+
 ## 0.0.124
 
 - Auto-compaction: new piRpc.autoCompact.mode (auto|off) + piRpc.autoCompact.percent (default 65) auto-detect the current model max context and compact at that percent; piRpc.autoCompact.resumeTask continues the in-progress task after compacting. (Deprecates autoCompactThreshold.)
