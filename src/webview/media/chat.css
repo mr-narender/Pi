@@ -1521,7 +1521,12 @@ button.ghost:hover,
 /* Structured JSON view for tool args / results. Reuses the .md-table grid. */
 #messages .json-view {
   margin: 2px 0;
-  font-size: 0.92em;
+  /* Same font family + size as thinking / Pi response for a uniform card look. */
+  font-family: var(
+    --pi-chat-font-family,
+    var(--vscode-editor-font-family, var(--vscode-font-family))
+  );
+  font-size: var(--pi-chat-font-size, var(--vscode-font-size, 13px));
 }
 #messages .json-table {
   width: auto;
@@ -1930,7 +1935,12 @@ button.ghost:hover,
   /* Use the CHAT text color, not the editor's foreground (which is gold in some
      themes). Tool args / result output should read as neutral text. */
   color: var(--vscode-foreground);
-  font-size: 0.9em;
+  /* Same font family + size as thinking / Pi response so cards are uniform. */
+  font-family: var(
+    --pi-chat-font-family,
+    var(--vscode-editor-font-family, var(--vscode-font-family))
+  );
+  font-size: var(--pi-chat-font-size, var(--vscode-font-size, 13px));
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   word-break: break-word;
@@ -1945,9 +1955,10 @@ button.ghost:hover,
 #messages .tl-card .code-wrap .code-block code {
   margin: 0;
   padding: 12px 14px;
+  /* A REAL fenced code block stays monospace (actual code), unlike the plain
+     tool output above which matches the chat font. */
+  font-family: var(--vscode-editor-font-family, ui-monospace, monospace);
   font-size: 0.92em;
-  /* A real fenced code block keeps the editor's own foreground (theme code
-     color). */
   color: var(--vscode-editor-foreground, inherit);
 }
 
