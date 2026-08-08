@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.122
+
+- UI: consolidated controls — the status bar is now a single passive Pi-status indicator; model and usage live only in the chat composer (removed duplicate status-bar items and duplicate More-menu entries).
+
 ## 0.0.121
 
 - Chat: tool results collapse by default (errors stay open); inline code, JSON keys and tool names are now mint text with no background chip.

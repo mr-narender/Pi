@@ -1,29 +1,24 @@
 import * as vscode from 'vscode';
-import { summarizeModel, summarizeQueue } from '../../state/selectors';
 import type { SessionController } from '../../sessions/sessionController';
 
+// The status bar is a PASSIVE Pi-status indicator only. All configuration
+// (model, usage/cost, thinking level, etc.) lives in the chat composer toolbar
+// so controls have a single, focused home and don't compete across surfaces.
 export class StatusBarController implements vscode.Disposable {
   private mode: 'simple' | 'advanced' = 'simple';
   private readonly connection = vscode.window.createStatusBarItem(
     vscode.StatusBarAlignment.Left,
     100
   );
-  private readonly model = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 99);
-  private readonly queue = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 98);
-  private readonly usage = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 97);
+  // Agent-driven transient statuses (e.g. plan mode) — informational, not config.
   private readonly keyed = new Map<string, vscode.StatusBarItem>();
   private controller: SessionController | undefined;
   private subscription: vscode.Disposable | undefined;
 
   public constructor() {
     this.connection.command = 'piRpcInternal.showHealth';
-    this.model.command = 'piRpc.showModels';
-    this.queue.command = 'piRpcInternal.openChat';
-    this.usage.command = 'piRpc.showSessionStats';
+    this.connection.tooltip = 'Pi connection status — click for health details';
     this.connection.show();
-    this.model.show();
-    this.queue.show();
-    this.usage.show();
   }
 
   public setMode(mode: 'simple' | 'advanced'): void {
@@ -43,18 +38,12 @@ export class StatusBarController implements vscode.Disposable {
     }
     this.clearKeyed();
     this.connection.text = '$(plug) Pi: inactive';
-    this.model.text = '$(hubot) No model';
-    this.queue.text = '$(list-unordered) Queue';
-    this.usage.text = '$(pulse) Usage';
   }
 
   public dispose(): void {
     this.subscription?.dispose();
     this.clearKeyed();
     this.connection.dispose();
-    this.model.dispose();
-    this.queue.dispose();
-    this.usage.dispose();
   }
 
   private render(state: SessionController['snapshot']): void {
@@ -62,22 +51,11 @@ export class StatusBarController implements vscode.Disposable {
     const visible = this.mode === 'advanced' || state.connectionState === 'faulted';
     if (!visible) {
       this.connection.hide();
-      this.model.hide();
-      this.queue.hide();
-      this.usage.hide();
       this.clearKeyed();
       return;
     }
     this.connection.show();
-    this.model.show();
-    this.queue.show();
-    this.usage.show();
     this.connection.text = `$(plug) ${folder}: ${state.connectionState}`;
-    this.model.text = `$(hubot) ${summarizeModel(state)}`;
-    this.queue.text = `$(list-unordered) ${summarizeQueue(state)}`;
-    const stats = state.lastSessionStats;
-    const total = typeof stats?.cost === 'number' ? stats.cost.toFixed(4) : 'n/a';
-    this.usage.text = `$(pulse) Cost ${total}`;
     this.renderKeyedStatuses(state.statuses);
   }
 
