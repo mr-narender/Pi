@@ -26,6 +26,9 @@ export interface PiRpcSettings {
   notifyOnComplete: boolean;
   typewriterSpeed: string;
   autoCompactThreshold: number;
+  autoCompactMode: 'auto' | 'off';
+  autoCompactPercent: number;
+  autoCompactResumeTask: boolean;
   codeLensEnabled: boolean;
   remoteEnabled: boolean;
 }
@@ -59,6 +62,12 @@ export function getSettings(): PiRpcSettings {
     notifyOnComplete: config.get<boolean>('notifyOnComplete', true),
     typewriterSpeed: config.get<string>('typewriterSpeed', 'normal'),
     autoCompactThreshold: config.get<number>('autoCompactThreshold', 70),
+    // 'auto' = detect the current model's max context and compact at
+    // autoCompact.percent of it; 'off' = never auto-compact (Pi still
+    // compacts when nearly full).
+    autoCompactMode: config.get<'auto' | 'off'>('autoCompact.mode', 'auto'),
+    autoCompactPercent: config.get<number>('autoCompact.percent', 65),
+    autoCompactResumeTask: config.get<boolean>('autoCompact.resumeTask', true),
     codeLensEnabled: config.get<boolean>('codeLensEnabled', true),
     restartOnCrash: config.get<boolean>('restartOnCrash', true),
     maxRestartAttempts: config.get<number>('maxRestartAttempts', 3),

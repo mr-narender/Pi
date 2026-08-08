@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.124
+
+- Auto-compaction: new piRpc.autoCompact.mode (auto|off) + piRpc.autoCompact.percent (default 65) auto-detect the current model max context and compact at that percent; piRpc.autoCompact.resumeTask continues the in-progress task after compacting. (Deprecates autoCompactThreshold.)
+
 ## 0.0.122
 
 - UI: consolidated controls — the status bar is now a single passive Pi-status indicator; model and usage live only in the chat composer (removed duplicate status-bar items and duplicate More-menu entries).

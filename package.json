@@ -2,7 +2,7 @@
   "name": "pi",
   "displayName": "Pi – this one is (y)ours",
   "description": "An unofficial, personal VS Code chat UI for the Pi coding agent (pi.dev). Not affiliated with pi.dev — shared for anyone who wants it.",
-  "version": "0.0.123",
+  "version": "0.0.124",
   "publisher": "mr-narender",
   "license": "MIT",
   "private": true,
@@ -827,12 +827,38 @@
           "default": "normal",
           "description": "How smoothly streamed answers type out. \"off\" shows Pi's coarse chunks directly."
         },
+        "piRpc.autoCompact.mode": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "off"
+          ],
+          "enumDescriptions": [
+            "Auto-detect the current model's maximum context window and compact when usage reaches piRpc.autoCompact.percent of it.",
+            "Never auto-compact from the extension (Pi still compacts when nearly full)."
+          ],
+          "default": "auto",
+          "description": "Auto-compaction mode. 'auto' detects the current model's max tokens and compacts at the configured percent; 'off' disables it."
+        },
+        "piRpc.autoCompact.percent": {
+          "type": "number",
+          "default": 65,
+          "minimum": 10,
+          "maximum": 95,
+          "description": "When mode is 'auto', compact once context usage reaches this percent of the current model's auto-detected maximum context window."
+        },
+        "piRpc.autoCompact.resumeTask": {
+          "type": "boolean",
+          "default": true,
+          "description": "After an auto-compaction, automatically continue the in-progress task on the freshly compacted context."
+        },
         "piRpc.autoCompactThreshold": {
           "type": "number",
           "default": 70,
           "minimum": 0,
           "maximum": 100,
-          "description": "Automatically compact the conversation when context usage reaches this percent, then continue. 0 disables (Pi still auto-compacts when nearly full)."
+          "deprecationMessage": "Deprecated. Use piRpc.autoCompact.mode and piRpc.autoCompact.percent instead.",
+          "description": "Deprecated — replaced by piRpc.autoCompact.mode + piRpc.autoCompact.percent."
         },
         "piRpc.codeLensEnabled": {
           "type": "boolean",

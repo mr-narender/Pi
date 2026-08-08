@@ -762,33 +762,70 @@ export class SessionController implements vscode.Disposable {
    * near-full auto-compaction; this triggers earlier at a user-chosen percent.
    */
   private async maybeAutoCompact(): Promise<void> {
-    const threshold = getSettings().autoCompactThreshold;
-    if (!threshold || threshold <= 0 || threshold >= 100) {
+    const settings = getSettings();
+    if (settings.autoCompactMode !== 'auto') {
       return;
     }
+    const threshold = Math.min(95, Math.max(10, settings.autoCompactPercent));
     if (this.autoCompactInFlight || this.state.state.isCompacting === true) {
       return;
     }
     const stats = await this.requireClient()
       .getSessionStats()
       .catch(() => undefined);
-    const context =
-      stats && typeof stats.contextUsage === 'object' && stats.contextUsage !== null
-        ? (stats.contextUsage as JsonObject)
-        : undefined;
-    const percent = typeof context?.percent === 'number' ? context.percent : undefined;
+    const percent = this.contextUsagePercent(stats);
     if (percent === undefined || percent < threshold) {
       return;
     }
     this.autoCompactInFlight = true;
     try {
-      this.logger.info(`Auto-compacting: context ${percent}% >= ${threshold}% threshold`);
+      this.logger.info(
+        `Auto-compacting: context ${percent.toFixed(0)}% >= ${threshold}% of the model's max context`
+      );
       await this.compact();
       await this.refreshState();
       await this.refreshMessages();
+      // Resume whatever task was underway on the freshly compacted context.
+      if (settings.autoCompactResumeTask) {
+        this.logger.info('Resuming task after auto-compaction');
+        await this.prompt('Continue.');
+      }
     } finally {
       this.autoCompactInFlight = false;
     }
+  }
+
+  /**
+   * Context usage as a percent of the current model's max context window.
+   * Prefers Pi's reported `contextUsage.percent` (already relative to the
+   * model's window); otherwise computes it from the used tokens and the
+   * auto-detected `model.contextWindow` (max tokens the model supports).
+   */
+  private contextUsagePercent(stats: JsonObject | undefined): number | undefined {
+    const context =
+      stats && typeof stats.contextUsage === 'object' && stats.contextUsage !== null
+        ? (stats.contextUsage as JsonObject)
+        : undefined;
+    if (typeof context?.percent === 'number') {
+      return context.percent;
+    }
+    const asNum = (value: unknown): number | undefined =>
+      typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+    const tokens =
+      stats && typeof stats.tokens === 'object' && stats.tokens !== null
+        ? (stats.tokens as JsonObject)
+        : undefined;
+    const model = this.state.state.model;
+    const max =
+      asNum(context?.max) ??
+      asNum(context?.total) ??
+      asNum(context?.contextWindow) ??
+      (model && typeof model.contextWindow === 'number' ? model.contextWindow : undefined);
+    const used = asNum(context?.used) ?? asNum(context?.tokens) ?? asNum(tokens?.total);
+    if (max && used && max > 0) {
+      return (used / max) * 100;
+    }
+    return undefined;
   }
 
   private onExtensionUi(request: ExtensionUiRequest): void {
