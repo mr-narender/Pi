@@ -1109,6 +1109,10 @@ button.ghost:hover,
   min-height: 44px;
   resize: none;
   border-radius: 0;
+  /* Auto-grows via JS up to ~10 lines, then scrolls. Reserve the scrollbar
+     gutter so appearing/disappearing never shifts or flickers. */
+  overflow-y: hidden;
+  scrollbar-gutter: stable;
 }
 
 .composer-card textarea:focus-visible {

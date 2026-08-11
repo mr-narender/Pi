@@ -159,7 +159,10 @@ test('composer typing is protected from caret reset and re-render loops', () => 
   assert.match(chat, /composerWasFocused/);
   assert.match(chat, /setSelectionRange/);
   const tab = readFileSync('src/editorTabs/tabManager.ts', 'utf8');
-  assert.match(tab, /setDraft\(parsed\.text, \{ silent: true \}\)/);
+  // Draft typing persists silently (no controller/UI-state fire -> no re-render).
+  assert.match(tab, /setComposerStateForIdentity\([^)]*\{\s*silent: true/s);
+  const composerState = readFileSync('src/webview/composerState.ts', 'utf8');
+  assert.match(composerState, /options\?\.silent \? \{ silent: true \}/);
 });
 
 test('opening a saved session reveals an existing tab instead of duplicating', () => {

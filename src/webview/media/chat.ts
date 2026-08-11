@@ -30,6 +30,28 @@ let slashMatches: Array<{ name: string; description: string }> = [];
 function composerField(): HTMLTextAreaElement | null {
   return document.getElementById(COMPOSER_FIELD_ID) as HTMLTextAreaElement | null;
 }
+
+// Auto-grow the composer to fit its content up to COMPOSER_MAX_LINES; beyond
+// that it scrolls (with the current line kept in view). Avoids the fixed-height
+// textarea showing an internal scrollbar for multi-line drafts.
+const COMPOSER_MAX_LINES = 10;
+function autosizeComposer(ta: HTMLTextAreaElement | null): void {
+  if (!ta) {
+    return;
+  }
+  ta.style.height = 'auto';
+  const cs = getComputedStyle(ta);
+  const line = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.4 || 18;
+  const padY = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
+  const border = (parseFloat(cs.borderTopWidth) || 0) + (parseFloat(cs.borderBottomWidth) || 0);
+  const maxHeight = Math.round(line * COMPOSER_MAX_LINES + padY + border);
+  ta.style.height = `${Math.min(ta.scrollHeight, maxHeight)}px`;
+  ta.style.overflowY = ta.scrollHeight > maxHeight ? 'auto' : 'hidden';
+  // Keep the line being typed visible when the caret is at the end.
+  if (ta.selectionStart === ta.value.length && ta.selectionEnd === ta.value.length) {
+    ta.scrollTop = ta.scrollHeight;
+  }
+}
 function closeSlashMenu(): void {
   document.getElementById('slash-menu')?.remove();
   slashMatches = [];
@@ -496,7 +518,10 @@ function render(snapshot: WebviewSnapshot): void {
       /* ignore */
     }
   }
+  // Size the composer to the (possibly restored) draft before wiring input.
+  autosizeComposer(textarea);
   textarea?.addEventListener('input', () => {
+    autosizeComposer(textarea);
     vscode.postMessage({ type: 'setDraft', text: textarea.value });
   });
   textarea?.addEventListener('focus', () => {

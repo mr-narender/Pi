@@ -123,15 +123,20 @@ export class ChatUiState implements vscode.Disposable {
   public async setComposerStateForIdentity(
     controller: SessionController,
     identity: ChatTabTarget,
-    state: ComposerSessionState
+    state: ComposerSessionState,
+    options?: { silent?: boolean }
   ): Promise<void> {
     const key = sessionStateKeyForIdentity(identity);
     this.composerStates.set(key, cloneComposerState(state));
     await this.persist();
     if (sessionStateKeyForIdentity(currentIdentity(controller)) === key) {
-      controller.setDraft(state.draft);
+      // silent (draft typing): update the controller draft WITHOUT firing a
+      // state change, which would re-render the whole chat on every keystroke.
+      controller.setDraft(state.draft, options?.silent ? { silent: true } : undefined);
     }
-    this.emitter.fire();
+    if (!options?.silent) {
+      this.emitter.fire();
+    }
   }
 
   public async clearComposerStateForIdentity(
@@ -158,7 +163,8 @@ export class ChatUiState implements vscode.Disposable {
   ): Promise<void> {
     const state = await this.getComposerStateForIdentity(controller, identity);
     state.draft = draft;
-    await this.setComposerStateForIdentity(controller, identity, state);
+    // Draft typing must never trigger a re-render (silent).
+    await this.setComposerStateForIdentity(controller, identity, state, { silent: true });
   }
 
   public async restoreControllerDraft(controller: SessionController): Promise<void> {

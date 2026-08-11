@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.126
+
+- Composer: auto-grows to fit up to 10 lines (then scrolls, keeping the current line in view) instead of showing a fixed-height inner scrollbar.
+- Fixed the conversation scrollbar flicker on typing at its true root: draft persistence is now fully silent (no controller/UI-state fire), so a keystroke never re-renders the chat DOM.
+
 ## 0.0.125
 
 - Real-time TUI->GUI sync: a native fs.watch on the active session file (with a stat-poll fallback) pushes terminal edits into the open chat within ~150ms, replacing the laggy out-of-workspace VS Code watcher path.
