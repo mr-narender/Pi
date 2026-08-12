@@ -1115,6 +1115,77 @@ button.ghost:hover,
   scrollbar-gutter: stable;
 }
 
+/* ---- Chat header ("sidecar" top bar) with the per-chat overflow menu ---- */
+.chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 12px;
+  border-bottom: 1px solid var(--vscode-panel-border);
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+  flex: 0 0 auto;
+}
+.chat-header-title {
+  color: var(--vscode-foreground);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chat-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+/* ---- Composer: borderless Model label (clickable) + read-only Cost ---- */
+.composer-actions-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.composer-actions-right .model-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--vscode-foreground);
+  font-size: 12px;
+  cursor: pointer;
+}
+.composer-actions-right .model-label:hover {
+  background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.12));
+}
+.composer-actions-right .model-label:hover .model-name {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.composer-actions-right .model-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--pi-tool-accent, #4ec9b0);
+  flex: 0 0 auto;
+}
+.composer-actions-right .cost-label {
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 4px;
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+  opacity: 0.85;
+  cursor: default;
+  user-select: none;
+}
+
 .composer-card textarea:focus-visible {
   outline: none;
 }

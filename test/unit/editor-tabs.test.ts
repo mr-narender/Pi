@@ -152,9 +152,9 @@ test('editorTabs.open.multiRootIsolation', () => {
 
 test('editorTabs.render.headerHasModelChipAndMore', () => {
   const html = renderChatApp(snapshot());
-  assert.match(html, /class="model-chip"/);
+  assert.match(html, /class="model-label"/);
   assert.match(html, /mock\/model/);
-  assert.match(html, /aria-label="More actions"/);
+  assert.match(html, /aria-label="Chat actions"/);
   assert.doesNotMatch(html, />New</);
   assert.doesNotMatch(html, />History</);
   assert.match(html, /Current · workspace · Demo Session · Ready/);

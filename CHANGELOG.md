@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.127
+
+- UI redesign: Settings gear moved to the top of the sidebar; composer is minimal (borderless clickable Model label + read-only Cost + Send); per-chat actions moved to a chat-header “…” menu; removed the Continue button and de-duplicated controls.
+
 ## 0.0.126
 
 - Composer: auto-grows to fit up to 10 lines (then scrolls, keeping the current line in view) instead of showing a fixed-height inner scrollbar.

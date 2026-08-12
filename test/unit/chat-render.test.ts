@@ -47,18 +47,21 @@ function snapshot(overrides: Partial<WebviewSnapshot> = {}): WebviewSnapshot {
   };
 }
 
-test('renderChatApp renders the controls in the composer toolbar (clean top)', () => {
+test('renderChatApp renders a minimal composer + chat header (clean layout)', () => {
   const html = renderChatApp(snapshot());
-  // Controls now live in a toolbar with the composer; the top brand-bar is gone.
-  assert.match(html, /class="composer-toolbar brand-controls"/);
+  // The above-input toolbar band is gone; per-chat actions live in the header.
+  assert.doesNotMatch(html, /class="composer-toolbar brand-controls"/);
   assert.doesNotMatch(html, /class="brand-bar"/);
-  assert.match(html, /class="settings-menu"|id="settings-menu"/);
+  // Settings moved to the sidebar; no settings menu inside the composer.
+  assert.doesNotMatch(html, /id="settings-menu"/);
+  assert.match(html, /class="chat-header"/);
   assert.match(html, /Skip to composer/);
   assert.match(html, /class="composer-dock"/);
   assert.match(html, /class="composer-card"/);
   assert.match(html, /placeholder="Ask Pi to edit/);
-  assert.match(html, /class="model-chip"/);
-  assert.match(html, /aria-label="More actions"/);
+  // Model is a borderless clickable label inside the composer; More is "⋯".
+  assert.match(html, /class="model-label"/);
+  assert.match(html, /aria-label="Chat actions"/);
   assert.doesNotMatch(html, /data-command="piRpc\.newSession"/);
   assert.doesNotMatch(html, /data-command="piRpc\.switchSession"/);
   assert.match(html, /aria-label="Add a file"/);
@@ -412,10 +415,12 @@ test('#5 usage chip renders in header when stats present', () => {
   const html = renderChatApp(
     snapshot({ usage: { totalTokens: 12345, contextPercent: 6, cost: 0.0234 } })
   );
-  assert.match(html, /class="usage-chip"[^>]*data-command="piRpc.showSessionStats"/);
+  // Cost is now a read-only label (not a clickable usage-chip).
+  assert.match(html, /class="cost-label"[^>]*title="Session cost"/);
+  assert.doesNotMatch(html, /class="usage-chip"/);
   assert.match(html, /6% · 12k tok · \$0.023/);
   const bare = renderChatApp(snapshot({}));
-  assert.doesNotMatch(bare, /class="usage-chip"/);
+  assert.doesNotMatch(bare, /class="cost-label"/);
 });
 
 test('#3 edit tool cards show Open file / Open changes', () => {
@@ -525,12 +530,13 @@ test('inline approval card renders for confirm/select requests', () => {
   assert.doesNotMatch(renderChatApp(snapshot({})), /approval-card/);
 });
 
-test('queue tray + Continue affordance render appropriately', () => {
+test('queue tray renders; Continue button was removed', () => {
   const queued = renderChatApp(snapshot({ queue: { steering: ['do X'], followUp: ['then Y'] } }));
   assert.match(queued, /class="queue-tray"/);
   assert.match(queued, /do X/);
   assert.match(queued, /then Y/);
 
+  // The manual Continue affordance is gone (replaced by an in-text suggestion).
   const idleAfterAssistant = renderChatApp(
     snapshot({
       connectionState: 'ready',
@@ -546,24 +552,8 @@ test('queue tray + Continue affordance render appropriately', () => {
       ],
     })
   );
-  assert.match(idleAfterAssistant, /data-command="piRpcInternal.continue"/);
-  // Not shown while the user is typing.
-  const typing = renderChatApp(
-    snapshot({
-      connectionState: 'ready',
-      draft: 'new question',
-      messages: [
-        {
-          id: 'a',
-          role: 'assistant',
-          text: 'hi',
-          blocks: [{ kind: 'text', text: 'hi' }],
-          attachments: [],
-        },
-      ],
-    })
-  );
-  assert.doesNotMatch(typing, /continue-btn/);
+  assert.doesNotMatch(idleAfterAssistant, /data-command="piRpcInternal.continue"/);
+  assert.doesNotMatch(idleAfterAssistant, /continue-btn/);
 });
 
 test('edit tool card renders a colored diff', () => {
@@ -611,7 +601,7 @@ test('accessibility: live status region, transcript live=off, author labels', ()
   );
   assert.match(html, /id="a11y-status"[^>]*role="status"[^>]*aria-live="polite"/);
   assert.match(html, /id="messages"[^>]*aria-live="off"/);
-  assert.match(html, /class="model-chip"[^>]*aria-label="Choose model"/);
+  assert.match(html, /class="model-label"[^>]*aria-label="Choose model"/);
   assert.match(html, /aria-label="You said"/);
   assert.match(html, /aria-label="Pi said"/);
 });

@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pi — layout mockup: sidebar gear + minimal composer</title>
+    <style>
+      :root {
+        --bg: #1e1e1e; --panel: #252526; --fg: #d4d4d4; --muted: #9aa0a6;
+        --border: #3c3c3c; --mint: #4ec9b0; --input-bg: #2a2d2e; --sidebar: #202020;
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: var(--bg); color: var(--fg); font-family: -apple-system, Segoe UI, Roboto, sans-serif; font-size: 13px; padding: 24px; }
+      h1 { font-size: 15px; margin: 0 0 4px; }
+      .sub { color: var(--muted); font-size: 12px; margin: 0 0 14px; }
+      .tag { display: inline-block; font-size: 11px; letter-spacing: .04em; text-transform: uppercase; color: var(--mint); margin: 0 0 8px; }
+
+      .layout { display: flex; gap: 0; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; max-width: 900px; }
+
+      /* ---------- Sidebar (the "sidecar") ---------- */
+      .sidebar { width: 230px; background: var(--sidebar); border-right: 1px solid var(--border); padding: 8px; display: flex; flex-direction: column; gap: 8px; }
+      .sb-top { display: flex; justify-content: flex-end; }
+      .iconbtn { width: 28px; height: 28px; border: 1px solid var(--border); border-radius: 7px; background: transparent; color: var(--fg); cursor: pointer; display: grid; place-items: center; font-size: 14px; }
+      .iconbtn:hover { background: rgba(128,128,128,.15); }
+      .sb-btn { width: 100%; text-align: left; border: 1px solid var(--border); background: transparent; color: var(--fg); border-radius: 8px; padding: 8px 10px; cursor: pointer; font-size: 12.5px; }
+      .sb-btn.primary { border-color: rgba(78,201,176,.4); color: var(--mint); }
+      .sb-search { width: 100%; background: var(--input-bg); border: 1px solid var(--border); color: var(--fg); border-radius: 8px; padding: 7px 9px; font-size: 12px; }
+      .sb-list { display: flex; flex-direction: column; gap: 2px; margin-top: 2px; }
+      .sb-item { padding: 7px 9px; border-radius: 7px; color: var(--fg); cursor: pointer; }
+      .sb-item:hover { background: rgba(128,128,128,.12); }
+      .sb-item.active { background: rgba(78,201,176,.14); }
+      .sb-note { color: var(--muted); font-size: 10.5px; padding: 2px 4px; }
+
+      /* ---------- Chat (right) ---------- */
+      .chat { flex: 1; display: flex; flex-direction: column; background: var(--bg); min-width: 0; }
+      .chat-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-bottom: 1px solid var(--border); color: var(--muted); font-size: 12px; }
+      .chat-header .title { color: var(--fg); font-weight: 600; }
+      .chat-header .right { display: flex; align-items: center; gap: 8px; }
+
+      .tl { flex: 1; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+      .node { border-left: 2px solid var(--border); padding-left: 12px; }
+      .node .head { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+      .node code.name { color: var(--mint); font-family: ui-monospace, monospace; font-size: .9em; background: transparent; }
+      .think { font-style: italic; color: var(--muted); margin-top: 6px; }
+      table.json { border-collapse: collapse; margin-top: 6px; border: 1px solid #555; border-radius: 6px; overflow: hidden; }
+      table.json td, table.json th { border: 1px solid #4a4a4a; padding: 5px 11px; text-align: left; }
+      td.k, th { color: var(--mint); font-weight: 600; background: transparent; }
+
+      /* ---------- Composer (minimal) ---------- */
+      .composer { border-top: 1px solid var(--border); background: var(--input-bg); padding: 8px 10px; margin: 10px; border: 1px solid var(--border); border-radius: 12px; }
+      .ghostwrap { position: relative; }
+      .composer textarea { width: 100%; border: 0; background: transparent; color: var(--fg); resize: none; font-size: 13px; line-height: 1.5; padding: 4px 2px; min-height: 44px; outline: none; }
+      .ghost { position: absolute; left: 2px; top: 4px; right: 2px; color: var(--muted); font-style: italic; font-size: 13px; line-height: 1.5; pointer-events: none; }
+      .ghost b { color: var(--fg); font-style: normal; }
+      .actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 4px; }
+      .actions .left, .actions .right { display: flex; align-items: center; gap: 6px; }
+      .sm { width: 26px; height: 26px; font-size: 13px; }
+      /* Model = clean clickable label (no border/box), mint dot, subtle hover */
+      .chip { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 6px; border: 0; border-radius: 6px; background: transparent; color: var(--fg); font-size: 12px; cursor: pointer; }
+      .chip:hover { background: rgba(128,128,128,.12); }
+      .chip:hover .name { text-decoration: underline; text-underline-offset: 2px; }
+      .chip .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--mint); }
+      .cost { display: inline-flex; align-items: center; height: 26px; padding: 0 6px; font-size: 12px; color: var(--muted); opacity: .8; cursor: default; user-select: none; }
+      .send { width: 28px; height: 28px; border-radius: 8px; border: 0; background: var(--mint); color: #06231d; display: grid; place-items: center; cursor: pointer; }
+      .tabhint { font-size: 11px; color: var(--muted); }
+      .kbd { border: 1px solid var(--border); border-radius: 4px; padding: 0 5px; font-size: 10px; color: var(--fg); }
+      .callouts { max-width: 900px; margin-top: 14px; color: var(--muted); font-size: 12px; line-height: 1.7; }
+      .callouts b { color: var(--fg); }
+    </style>
+  </head>
+  <body>
+    <h1>Pi — settings gear in the sidebar, minimal composer</h1>
+    <p class="sub">Mockup only (plain HTML, approximate VS Code dark theme).</p>
+    <span class="tag">Proposed layout</span>
+
+    <div class="layout">
+      <!-- SIDEBAR: gear at the very top, above New Chat -->
+      <aside class="sidebar">
+        <div class="sb-top">
+          <button class="iconbtn" title="Settings — font size, animation, typewriter, all Pi settings, restart Pi, connection health, logs, help">⚙</button>
+        </div>
+        <button class="sb-btn primary">+  New Chat</button>
+        <button class="sb-btn">📱  Connect a phone</button>
+        <input class="sb-search" placeholder="Search chats…" />
+        <div class="sb-list">
+          <div class="sb-item active">refactor auth</div>
+          <div class="sb-item">fix redirect bug</div>
+          <div class="sb-item">add tests</div>
+        </div>
+        <div class="sb-note">⚙ (top) = global settings &amp; system. Per‑chat actions live in the chat “…”.</div>
+      </aside>
+
+      <!-- CHAT -->
+      <section class="chat">
+        <div class="chat-header">
+          <span class="title">refactor auth</span>
+          <div class="right">
+            <span>claude-sonnet</span>
+            <button class="iconbtn" title="Chat actions — Rename · Retry · Retry with model · Thinking level · Compact · Copy as Markdown · Export as HTML">…</button>
+          </div>
+        </div>
+
+        <div class="tl">
+          <div class="node"><div class="head">🧠 <span>Thinking</span></div><div class="think">Filtering the file list by size…</div></div>
+          <div class="node">
+            <div class="head">⚙ <span>Tool</span> <code class="name">read_files</code></div>
+            <table class="json"><tbody><tr><td class="k">path</td><td>src/app.ts</td></tr><tr><td class="k">limit</td><td>5</td></tr></tbody></table>
+          </div>
+        </div>
+
+        <!-- MINIMAL composer -->
+        <div class="composer">
+          <div class="ghostwrap">
+            <textarea rows="2" placeholder=""></textarea>
+            <div class="ghost">Suggested: <b>Run the tests and fix the failing auth redirect</b> — press Tab</div>
+          </div>
+          <div class="actions">
+            <div class="left">
+              <button class="iconbtn sm" title="Add a file">+</button>
+              <button class="iconbtn sm" title="Commands">/</button>
+              <span class="tabhint"><span class="kbd">Tab</span> accept</span>
+            </div>
+            <div class="right">
+              <button class="chip" title="Choose model"><span class="dot"></span><span class="name">claude-sonnet</span></button>
+              <span class="cost" title="Session cost (read-only)">$0.0142</span>
+              <button class="send" title="Send">➤</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div class="callouts">
+      • <b>⚙ Settings</b> moved to the <b>top of the sidebar</b>, above New Chat (global app/display + system: font size, animation, typewriter, all Pi settings, restart, health, logs, help).<br />
+      • <b>Composer</b> is minimal: <b>+ /</b> on the left, <b>Model · Cost (read‑only) · Send</b> on the right, plus the in‑text suggestion (Tab to accept). No gear, no More, no Continue.<br />
+      • <b>Per‑chat “…”</b> in the chat header: Rename · Retry · Retry with model · Thinking level · Compact · Copy as Markdown · Export as HTML.<br />
+      • <b>De‑duplicated</b>: Model = chip only · Cost = label only · connection health/logs live once (under ⚙).
+    </div>
+  </body>
+</html>

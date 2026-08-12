@@ -1236,6 +1236,30 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   registrations.set('piRpcInternal.increaseChatFont', () => adjustChatFont(1));
   registrations.set('piRpcInternal.decreaseChatFont', () => adjustChatFont(-1));
 
+  // The Settings gear (top of the sidebar) opens this menu of global/app + system
+  // actions. Per-chat actions live in the chat header “…” menu instead.
+  registrations.set('piRpcInternal.openSettingsMenu', async () => {
+    const items: Array<vscode.QuickPickItem & { command: string }> = [
+      { label: '$(add) Increase chat font size', command: 'piRpcInternal.increaseChatFont' },
+      { label: '$(remove) Decrease chat font size', command: 'piRpcInternal.decreaseChatFont' },
+      { label: '$(watch) Working animation…', command: 'piRpcInternal.setWorkingAnimation' },
+      { label: '$(keyboard) Typewriter speed…', command: 'piRpcInternal.setTypewriterSpeed' },
+      { label: '$(settings-gear) All Pi settings…', command: 'piRpcInternal.openSettings' },
+      { label: 'System', kind: vscode.QuickPickItemKind.Separator, command: '' },
+      { label: '$(debug-restart) Restart Pi', command: 'piRpcInternal.restart' },
+      { label: '$(pulse) Connection health', command: 'piRpcInternal.showHealth' },
+      { label: '$(output) Show logs', command: 'piRpcInternal.showLogs' },
+      { label: '$(question) Help', command: 'piRpcInternal.showHelp' },
+    ];
+    const pick = await vscode.window.showQuickPick(items, {
+      title: 'Pi — Settings',
+      placeHolder: 'Choose a setting or action',
+    });
+    if (pick?.command) {
+      await vscode.commands.executeCommand(pick.command);
+    }
+  });
+
   const pickSetting = async (key: string, title: string, options: string[]): Promise<void> => {
     const config = vscode.workspace.getConfiguration('piRpc');
     const current = config.get<string>(key);

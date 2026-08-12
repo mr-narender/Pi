@@ -750,7 +750,8 @@ function renderApprovals(snapshot: WebviewSnapshot): string {
 }
 
 // #5 — compact tokens / context% / cost chip. Click opens full session stats.
-function renderUsageChip(snapshot: WebviewSnapshot): string {
+// Cost is a read-only, non-interactive label (not a button).
+function renderCostLabel(snapshot: WebviewSnapshot): string {
   const usage = snapshot.usage;
   if (!usage) {
     return '';
@@ -759,7 +760,20 @@ function renderUsageChip(snapshot: WebviewSnapshot): string {
   if (!label) {
     return '';
   }
-  return `<button type="button" class="usage-chip" data-command="piRpc.showSessionStats" title="Session usage — click for details" aria-label="Session usage and cost — open details">${escapeHtml(label)}</button>`;
+  return `<span class="cost-label" title="Session cost">${escapeHtml(label)}</span>`;
+}
+
+// Model = clean, borderless, clickable label (mint dot + name).
+function renderModelControl(snapshot: WebviewSnapshot): string {
+  return `<button type="button" class="model-label" data-command="piRpc.showModels" title="Choose model" aria-label="Choose model"><span class="model-dot"></span><span class="model-name">${escapeHtml(modelLabel(snapshot))}</span></button>`;
+}
+
+// Chat header ("sidecar" top bar): per-chat overflow actions live here.
+function renderChatHeader(snapshot: WebviewSnapshot, folderSelect: string): string {
+  return `<div class="chat-header">
+    <span class="chat-header-title" title="${escapeHtml(sessionLabel(snapshot))}">${escapeHtml(sessionLabel(snapshot))}</span>
+    <div class="chat-header-actions">${folderSelect}${renderMoreMenu(snapshot)}</div>
+  </div>`;
 }
 
 function modelLabel(snapshot: WebviewSnapshot): string {
@@ -1077,37 +1091,10 @@ function renderQueueTray(snapshot: WebviewSnapshot): string {
   return `<div class="queue-tray"><div class="section-label">Queued for Pi</div>${rows}</div>`;
 }
 
-// A subtle "Continue" affordance after a completed turn (when idle and the
-// composer is empty), to nudge Pi to keep going / finish a truncated answer.
-function renderContinue(snapshot: WebviewSnapshot): string {
-  const last = snapshot.messages[snapshot.messages.length - 1];
-  if (!last || last.role !== 'assistant' || snapshot.draft.trim().length > 0) {
-    return '';
-  }
-  return `<button type="button" class="continue-btn" data-command="piRpcInternal.continue" title="Ask Pi to continue" aria-label="Ask Pi to continue">Continue</button>`;
-}
-
-// Settings gear popover — quick presentation controls next to the composer.
-function renderSettingsMenu(): string {
-  const gear =
-    '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="2.1"/><path d="M8 1.6v1.6M8 12.8v1.6M14.4 8h-1.6M3.2 8H1.6M12.5 3.5l-1.1 1.1M4.6 11.4l-1.1 1.1M12.5 12.5l-1.1-1.1M4.6 4.6L3.5 3.5" stroke-linecap="round"/></svg>';
-  return `
-    <details class="menu-details settings-menu" id="settings-menu">
-      <summary aria-label="Settings" title="Settings">${gear}</summary>
-      <div class="menu-panel" role="menu">
-        <div class="menu-group">Appearance</div>
-        <div class="menu-row"><span>Chat font size</span><span class="menu-stepper"><button type="button" data-command="piRpcInternal.decreaseChatFont" aria-label="Decrease font size">−</button><button type="button" data-command="piRpcInternal.increaseChatFont" aria-label="Increase font size">+</button></span></div>
-        <button type="button" class="menu-item" data-command="piRpcInternal.setWorkingAnimation"><span class="dot"></span>Working animation…</button>
-        <button type="button" class="menu-item" data-command="piRpcInternal.setTypewriterSpeed"><span class="dot"></span>Typewriter speed…</button>
-        <button type="button" class="menu-item" data-command="piRpcInternal.openSettings"><span class="dot"></span>All Pi settings…</button>
-      </div>
-    </details>`;
-}
-
 function renderMoreMenu(_snapshot: WebviewSnapshot): string {
   return `
     <details class="menu-details more-menu" id="more-menu">
-      <summary aria-label="More actions">More ▾</summary>
+      <summary aria-label="Chat actions" title="Chat actions">⋯</summary>
       <div class="menu-panel" role="menu">
         <div class="menu-group">Session</div>
         <button type="button" class="menu-item cat-session" data-command="piRpc.renameSession"><span class="dot"></span>Rename chat</button>
@@ -1165,6 +1152,7 @@ export function renderChatApp(snapshot: WebviewSnapshot): string {
       <div class="header-summary visually-hidden" aria-label="Current chat summary">${escapeHtml(summaryLine)}</div>
       <div id="a11y-status" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></div>
 
+      ${renderChatHeader(snapshot, folderSelect)}
       ${restrictedBanner}
       ${renderShareBar(snapshot)}
       ${renderRecovery(snapshot)}
@@ -1180,15 +1168,6 @@ export function renderChatApp(snapshot: WebviewSnapshot): string {
 
       ${renderApprovals(snapshot)}
       <section class="composer-dock" aria-labelledby="composer-heading">
-        <div class="composer-toolbar brand-controls">
-          <span class="toolbar-spacer"></span>
-          ${folderSelect}
-          <button type="button" class="model-chip" data-command="piRpc.showModels" title="Choose model" aria-label="Choose model"><span class="model-dot"></span>${escapeHtml(modelLabel(snapshot))}</button>
-          ${renderUsageChip(snapshot)}
-          ${busy ? '' : renderContinue(snapshot)}
-          ${renderSettingsMenu()}
-          ${renderMoreMenu(snapshot)}
-        </div>
         <h2 id="composer-heading" class="visually-hidden">Message Pi</h2>
         <label class="visually-hidden" for="${COMPOSER_FIELD_ID}">Message Pi</label>
         ${
@@ -1210,6 +1189,8 @@ export function renderChatApp(snapshot: WebviewSnapshot): string {
               <button type="button" class="icon-button" data-command="piRpc.showPiCommands" title="Commands" aria-label="Commands" ${disabledAttr}>/</button>
             </div>
             <div class="composer-actions-right">
+              ${connecting ? '' : renderModelControl(snapshot)}
+              ${connecting ? '' : renderCostLabel(snapshot)}
               ${busy ? '<button type="button" class="ghost" data-action="abort">Stop</button>' : ''}
               <button type="button" id="${SEND_BUTTON_ID}" class="send-button" data-send-command="${sendCommand}" title="${sendLabel}" aria-label="${sendLabel}" ${disabledAttr}><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12.5 4v3a1.5 1.5 0 0 1-1.5 1.5H4.5"/><path d="M7 6L4.3 8.5 7 11"/></svg></button>
             </div>
