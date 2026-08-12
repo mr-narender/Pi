@@ -2,7 +2,7 @@
   "name": "pi",
   "displayName": "Pi – this one is (y)ours",
   "description": "An unofficial, personal VS Code chat UI for the Pi coding agent (pi.dev). Not affiliated with pi.dev — shared for anyone who wants it.",
-  "version": "0.0.127",
+  "version": "0.0.128",
   "publisher": "mr-narender",
   "license": "MIT",
   "private": true,
@@ -658,6 +658,12 @@
         "command": "piRpc.remote.stop",
         "title": "Stop Remote Session",
         "category": "Pi"
+      },
+      {
+        "command": "piRpcInternal.openSettingsMenu",
+        "title": "Pi Settings",
+        "category": "Pi",
+        "icon": "$(gear)"
       }
     ],
     "configuration": {
@@ -883,6 +889,13 @@
       }
     },
     "menus": {
+      "view/title": [
+        {
+          "command": "piRpcInternal.openSettingsMenu",
+          "when": "view == piRpc.sessions",
+          "group": "navigation@1"
+        }
+      ],
       "editor/title": [
         {
           "command": "piRpcInternal.openChat",
@@ -911,6 +924,10 @@
         {
           "command": "piRpc.remote.stop",
           "when": "piRpc.remoteEnabled"
+        },
+        {
+          "command": "piRpcInternal.openSettingsMenu",
+          "when": "false"
         }
       ],
       "editor/context": [

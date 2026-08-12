@@ -151,13 +151,6 @@ export class SessionsWebviewProvider implements vscode.WebviewViewProvider {
       * { box-sizing: border-box; }
       body { margin: 0; color: var(--vscode-foreground); font-family: var(--vscode-font-family); }
       .wrap { display: flex; flex-direction: column; gap: 10px; padding: 10px; }
-      .sb-top { display: flex; justify-content: flex-end; margin-bottom: 2px; }
-      .gear-btn {
-        width: 28px; height: 28px; display: grid; place-items: center;
-        color: var(--vscode-foreground); background: transparent;
-        border: 1px solid var(--vscode-panel-border); border-radius: 7px; cursor: pointer;
-      }
-      .gear-btn:hover { background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,0.15)); }
       .new-btn {
         width: 100%;
         display: flex; align-items: center; justify-content: center; gap: 8px;
@@ -208,7 +201,6 @@ export class SessionsWebviewProvider implements vscode.WebviewViewProvider {
   </head>
   <body>
     <div class="wrap">
-      <div class="sb-top"><button class="gear-btn" id="gear-btn" type="button" title="Settings — font size, animation, typewriter, all Pi settings, restart, health, logs, help" aria-label="Settings"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="2.1"/><path d="M8 1.6v1.6M8 12.8v1.6M14.4 8h-1.6M3.2 8H1.6M12.5 3.5l-1.1 1.1M4.6 11.4l-1.1 1.1M12.5 12.5l-1.1-1.1M4.6 4.6L3.5 3.5" stroke-linecap="round"/></svg></button></div>
       <button class="new-btn" id="new-btn" type="button" title="Start a new chat">+ New Chat</button>
       <button class="remote-btn" id="remote-btn" type="button" style="display:none" title="Watch or drive this chat from your phone"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2" width="10" height="20" rx="2.5"/><path d="M11 18h2"/></svg>Connect a phone</button>
       <input class="search" id="search" type="text" placeholder="Search chats\u2026" aria-label="Search chats" />
@@ -242,7 +234,6 @@ export class SessionsWebviewProvider implements vscode.WebviewViewProvider {
           '</div>'
         ).join('');
       }
-      document.getElementById('gear-btn').addEventListener('click', () => vscode.postMessage({ type: 'settings' }));
       document.getElementById('new-btn').addEventListener('click', () => vscode.postMessage({ type: 'newChat' }));
       document.getElementById('remote-btn').addEventListener('click', () => vscode.postMessage({ type: 'remoteStart' }));
       function applyRemoteEnabled(on) {
