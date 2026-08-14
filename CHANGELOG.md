@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.138
+
+- Hardened the sent-text-reappears fix: the composer will never re-show text you just submitted while the draft is empty (covers the after-completion caret-restore race).
+
 ## 0.0.137
 
 - Composer: up-arrow prompt history (like the TUI) - Up at the start walks back through your sent prompts, Down walks forward, past the newest restores your draft.

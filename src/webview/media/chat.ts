@@ -358,6 +358,10 @@ let renderedStructureSig: string | undefined;
 // in-progress draft. `historyIndex === -1` means not currently navigating.
 let historyIndex = -1;
 let historyStash: string | undefined;
+// The text most recently submitted. The composer must NEVER re-show this while
+// the authoritative draft is empty (guards the send-clear race that made an
+// already-sent message reappear after Pi finished). Cleared when the user types.
+let lastSubmittedText: string | undefined;
 // Message-windowing scroll state.
 let lastMessageKey: string | undefined;
 let lastWindowOffset: number | undefined;
@@ -429,6 +433,7 @@ function submitComposer(command: string): void {
   if (!hasPending) {
     const textarea = document.getElementById(COMPOSER_FIELD_ID) as HTMLTextAreaElement | null;
     if (textarea) {
+      lastSubmittedText = textarea.value; // remember it so no later render restores it
       textarea.value = '';
     }
   }
@@ -588,7 +593,13 @@ function render(snapshot: WebviewSnapshot): void {
   const textarea = document.getElementById(COMPOSER_FIELD_ID) as HTMLTextAreaElement | null;
   if (textarea && composerWasFocused && !authoritativeReset && document.hasFocus()) {
     if (typeof preservedValue === 'string') {
-      textarea.value = preservedValue;
+      // Never restore text that was just submitted while the draft is empty
+      // (the extension cleared it) — that is the sent-text-reappears bug.
+      const wouldReshowSubmitted =
+        preservedValue.length > 0 &&
+        preservedValue === lastSubmittedText &&
+        (snapshot.draft ?? '') === '';
+      textarea.value = wouldReshowSubmitted ? '' : preservedValue;
     }
     textarea.focus();
     const caret = preservedStart ?? textarea.value.length;
@@ -611,6 +622,7 @@ function render(snapshot: WebviewSnapshot): void {
   autosizeComposer(textarea);
   textarea?.addEventListener('input', () => {
     exitHistory(); // typing leaves history-navigation mode
+    lastSubmittedText = undefined; // fresh text — stop guarding
     autosizeComposer(textarea);
     vscode.postMessage({ type: 'setDraft', text: textarea.value });
   });
