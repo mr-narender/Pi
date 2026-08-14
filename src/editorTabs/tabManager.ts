@@ -1061,6 +1061,13 @@ export class ChatTabManager implements vscode.Disposable {
         await this.renderResource(resource);
         return;
       }
+      // Clear the draft NOW (before preparePromptContext, which renders): the
+      // preview already captured the text, so no intermediate render should ever
+      // show the sent text again. sendPreview() clears again defensively.
+      state.draft = '';
+      state.composerResetSeq = (state.composerResetSeq ?? 0) + 1;
+      context.controller.setDraft('');
+      await this.uiState.setComposerStateForIdentity(context.controller, context.target, state);
       context = await this.preparePromptContext(resource);
       if (!context) {
         return;

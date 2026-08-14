@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.135
+
+- Fixed sent text reappearing in the composer: the draft is now cleared before the send re-renders, so an already-sent message never comes back.
+
 ## 0.0.134
 
 - Root-cause fix (Windows): Pi crashed on start because its shell-inheritance extension could not determine the launch shell. The extension now sets PI_LAUNCH_SHELL in Pi’s spawn env (default cmd.exe on Windows; configurable via piRpc.launchShell, e.g. Git Bash), so Pi starts with all extensions.
