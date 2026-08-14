@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.133
+
+- Pi now starts ONLINE by default (piRpc.offline defaults to false), matching the TUI, so extensions that need the network at startup work and sessions load first try. Set piRpc.offline=true to force offline.
+
 ## 0.0.132
 
 - Root-cause fix for “couldn’t load this chat”: VS Code ran Pi with --offline (the TUI runs online), so an extension needing the network crashed Pi on load. Now recovers by retrying ONLINE with extensions KEPT (matching the TUI); extensions are only disabled as a last resort.

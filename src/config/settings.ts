@@ -38,7 +38,9 @@ export function getSettings(): PiRpcSettings {
   return {
     executable: config.get<string>('executable', 'pi'),
     additionalArgs: config.get<string[]>('additionalArgs', []),
-    offline: config.get<boolean>('offline', true),
+    // Online by default, like the Pi TUI. Running --offline broke sessions whose
+    // extensions need the network at startup. Set true only to force offline.
+    offline: config.get<boolean>('offline', false),
     allowApproveInTrustedWorkspace: config.get<boolean>('allowApproveInTrustedWorkspace', false),
     // Phone/remote-session feature is opt-in. When false the Connect a phone
     // button and the Start/Stop Remote Session commands are hidden.

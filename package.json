@@ -2,7 +2,7 @@
   "name": "pi",
   "displayName": "Pi – this one is (y)ours",
   "description": "An unofficial, personal VS Code chat UI for the Pi coding agent (pi.dev). Not affiliated with pi.dev — shared for anyone who wants it.",
-  "version": "0.0.132",
+  "version": "0.0.133",
   "publisher": "mr-narender",
   "license": "MIT",
   "private": true,
@@ -689,8 +689,8 @@
         },
         "piRpc.offline": {
           "type": "boolean",
-          "default": true,
-          "description": "Launch Pi with --offline by default."
+          "default": false,
+          "description": "Launch Pi with --offline. Off by default so Pi runs online like the TUI (some extensions need the network at startup). Enable only to force offline."
         },
         "piRpc.allowApproveInTrustedWorkspace": {
           "type": "boolean",
