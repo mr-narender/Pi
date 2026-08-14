@@ -31,6 +31,66 @@ function composerField(): HTMLTextAreaElement | null {
   return document.getElementById(COMPOSER_FIELD_ID) as HTMLTextAreaElement | null;
 }
 
+// User prompts in this chat, oldest->newest (deduped), for history navigation.
+function promptHistory(): string[] {
+  const messages = currentSnapshot?.messages ?? [];
+  const out: string[] = [];
+  for (const m of messages) {
+    if (m.role === 'user') {
+      const text = (m.text ?? '').trim();
+      if (text && out[out.length - 1] !== text) {
+        out.push(text);
+      }
+    }
+  }
+  return out;
+}
+
+function exitHistory(): void {
+  historyIndex = -1;
+  historyStash = undefined;
+}
+
+// Returns true if the key was consumed (caller should preventDefault).
+function navigateHistory(ta: HTMLTextAreaElement, direction: 'older' | 'newer'): boolean {
+  const items = promptHistory();
+  if (items.length === 0) {
+    return false;
+  }
+  if (direction === 'older') {
+    if (historyIndex === -1) {
+      historyStash = ta.value;
+      historyIndex = items.length - 1;
+    } else if (historyIndex > 0) {
+      historyIndex -= 1;
+    } else {
+      return true; // already at the oldest — consume but don't move
+    }
+  } else {
+    if (historyIndex === -1) {
+      return false;
+    }
+    if (historyIndex < items.length - 1) {
+      historyIndex += 1;
+    } else {
+      // Past the newest entry: restore the draft that was in progress.
+      ta.value = historyStash ?? '';
+      exitHistory();
+      const end = ta.value.length;
+      ta.setSelectionRange(end, end);
+      autosizeComposer(ta);
+      vscode.postMessage({ type: 'setDraft', text: ta.value });
+      return true;
+    }
+  }
+  ta.value = items[historyIndex] ?? '';
+  const end = ta.value.length;
+  ta.setSelectionRange(end, end);
+  autosizeComposer(ta);
+  vscode.postMessage({ type: 'setDraft', text: ta.value });
+  return true;
+}
+
 // Auto-grow the composer to fit its content up to COMPOSER_MAX_LINES; beyond
 // that it scrolls (with the current line kept in view). Avoids the fixed-height
 // textarea showing an internal scrollbar for multi-line drafts.
@@ -293,6 +353,11 @@ let lastComposerResetSeq: number | undefined;
 // the growing text of the streaming answer). Lets us patch just the answer
 // during a reply instead of rebuilding the whole transcript (flicker source).
 let renderedStructureSig: string | undefined;
+// Prompt history (like the TUI): Up at the start of the input walks back through
+// previously-sent prompts; Down walks forward; past the newest restores the
+// in-progress draft. `historyIndex === -1` means not currently navigating.
+let historyIndex = -1;
+let historyStash: string | undefined;
 // Message-windowing scroll state.
 let lastMessageKey: string | undefined;
 let lastWindowOffset: number | undefined;
@@ -354,6 +419,7 @@ function queueFocus(targetId?: string, fallbackId = COMPOSER_FIELD_ID): void {
 
 function submitComposer(command: string): void {
   previewReturnFocusId = SEND_BUTTON_ID;
+  exitHistory();
   // Optimistically clear the input immediately on submit (native chat feel),
   // unless there are pending attachments — those open a preview instead of
   // sending. If the send fails, the extension restores the draft via recovery.
@@ -544,6 +610,7 @@ function render(snapshot: WebviewSnapshot): void {
   // Size the composer to the (possibly restored) draft before wiring input.
   autosizeComposer(textarea);
   textarea?.addEventListener('input', () => {
+    exitHistory(); // typing leaves history-navigation mode
     autosizeComposer(textarea);
     vscode.postMessage({ type: 'setDraft', text: textarea.value });
   });
@@ -619,6 +686,21 @@ function render(snapshot: WebviewSnapshot): void {
     // #6/#9 — slash and mention menu navigation take priority when open.
     if (handleSlashKeydown(event) || handleMentionKeydown(event)) {
       return;
+    }
+    // Prompt history: Up when the caret is at the very start (or already
+    // navigating) walks back; Down walks forward. Like the TUI.
+    if (event.key === 'ArrowUp' && !event.isComposing) {
+      const atStart = textarea.selectionStart === 0 && textarea.selectionEnd === 0;
+      if ((historyIndex >= 0 || atStart) && navigateHistory(textarea, 'older')) {
+        event.preventDefault();
+        return;
+      }
+    }
+    if (event.key === 'ArrowDown' && !event.isComposing && historyIndex >= 0) {
+      if (navigateHistory(textarea, 'newer')) {
+        event.preventDefault();
+        return;
+      }
     }
     // Enter submits (TUI-style); Shift+Enter inserts a newline. Cmd/Ctrl+Enter
     // also submits. IME composition Enter is ignored so it doesn't send mid-word.
