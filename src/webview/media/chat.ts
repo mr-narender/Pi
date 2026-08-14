@@ -289,6 +289,10 @@ let pendingFocusTargetId: string | undefined;
 let pendingFocusFallbackId: string | undefined;
 let previewReturnFocusId: string | undefined;
 let lastComposerResetSeq: number | undefined;
+// Signature of the last FULLY-rendered snapshot's structure (everything except
+// the growing text of the streaming answer). Lets us patch just the answer
+// during a reply instead of rebuilding the whole transcript (flicker source).
+let renderedStructureSig: string | undefined;
 // Message-windowing scroll state.
 let lastMessageKey: string | undefined;
 let lastWindowOffset: number | undefined;
@@ -446,6 +450,24 @@ function render(snapshot: WebviewSnapshot): void {
   if (!root) {
     return;
   }
+
+  // Streaming fast-path: if the only change since the last full render is the
+  // growing answer text, patch that ONE element and let the typewriter reveal
+  // it — do NOT rebuild the transcript (which flickers every prior message
+  // 2-3x/second during a reply).
+  const isBusy = snapshot.connectionState === 'busy' || snapshot.isStreaming === true;
+  const sig = structureSignature(snapshot);
+  if (isBusy && sig === renderedStructureSig) {
+    const el = streamTarget();
+    const text = lastStreamText(snapshot);
+    if (el && typeof text === 'string') {
+      el.setAttribute('data-raw', text);
+      advanceTypewriter();
+      keepPinnedToBottom();
+      return;
+    }
+  }
+
   announceTurnState(snapshot);
 
   // Capture pre-render scroll metrics so we can decide, after the DOM is
@@ -488,6 +510,7 @@ function render(snapshot: WebviewSnapshot): void {
   }
 
   root.innerHTML = renderChatApp(snapshot);
+  renderedStructureSig = sig;
 
   for (const id of openMenus) {
     const el = document.getElementById(id) as HTMLDetailsElement | null;
@@ -1049,6 +1072,49 @@ function stopTypewriter(): void {
 function streamTarget(): HTMLElement | undefined {
   const nodes = document.querySelectorAll<HTMLElement>('#messages .js-stream-text');
   return nodes.length > 0 ? nodes[nodes.length - 1] : undefined;
+}
+
+// A signature of everything that affects the DOM structure EXCEPT the growing
+// text of the last message's answer block. Two consecutive streaming snapshots
+// (only the answer grew) share a signature, so we can patch instead of rebuild.
+function structureSignature(s: WebviewSnapshot): string {
+  const n = s.messages.length;
+  const msgs = s.messages
+    .map((m, i) => {
+      const isLast = i === n - 1;
+      const blocks = (m.blocks ?? [])
+        .map((block) => {
+          const b = block as { kind: string; text?: string; name?: string; isError?: boolean };
+          const isAnswer = b.kind === 'text';
+          const textLen = isLast && isAnswer ? '' : String((b.text ?? '').length);
+          return `${b.kind}:${b.name ?? ''}:${textLen}:${b.isError ? 'E' : ''}`;
+        })
+        .join(',');
+      const textLen = isLast ? '' : String((m.text ?? '').length);
+      return `${m.role}:${m.id}:${textLen}:[${blocks}]`;
+    })
+    .join('#');
+  return (
+    `${msgs}|${s.connectionState}|${s.isCompacting ? 1 : 0}` +
+    `|q${(s.queue?.steering.length ?? 0) + (s.queue?.followUp.length ?? 0)}` +
+    `|a${s.approvals?.length ?? 0}|p${s.pendingContextItems.length}/${s.pendingImages.length}`
+  );
+}
+
+// Text of the last message's answer block — what the streaming element reveals.
+function lastStreamText(s: WebviewSnapshot): string | undefined {
+  const m = s.messages[s.messages.length - 1];
+  if (!m || m.role !== 'assistant') {
+    return undefined;
+  }
+  const blocks = m.blocks ?? [];
+  for (let i = blocks.length - 1; i >= 0; i -= 1) {
+    const b = blocks[i] as { kind?: string; text?: string } | undefined;
+    if (b?.kind === 'text') {
+      return b.text ?? '';
+    }
+  }
+  return m.text ?? '';
 }
 function keepPinnedToBottom(): void {
   const messages = document.getElementById('messages');

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.136
+
+- Fixed heavy transcript flicker while Pi replies: streaming now patches only the growing answer instead of rebuilding the whole message list on every update.
+
 ## 0.0.135
 
 - Fixed sent text reappearing in the composer: the draft is now cleared before the send re-renders, so an already-sent message never comes back.
