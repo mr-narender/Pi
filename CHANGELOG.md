@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.132
+
+- Root-cause fix for “couldn’t load this chat”: VS Code ran Pi with --offline (the TUI runs online), so an extension needing the network crashed Pi on load. Now recovers by retrying ONLINE with extensions KEPT (matching the TUI); extensions are only disabled as a last resort.
+
 ## 0.0.131
 
 - Fixed “couldn’t load this chat” when Pi crashes on session load (exit code 1) due to a failing extension: the extension now auto-retries the SAME session with Pi extensions disabled (pi -ne) so the chat loads, instead of falling back to a blank session.

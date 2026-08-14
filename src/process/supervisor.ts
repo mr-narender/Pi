@@ -58,7 +58,7 @@ export class PiProcessSupervisor extends TypedEmitter implements vscode.Disposab
 
   public async start(
     existingSessionPath?: string,
-    options?: { noExtensions?: boolean }
+    options?: { noExtensions?: boolean; offline?: boolean }
   ): Promise<RpcClient> {
     if (this.client) {
       return this.client;
@@ -66,7 +66,11 @@ export class PiProcessSupervisor extends TypedEmitter implements vscode.Disposab
     validateAdditionalArgs(this.settings.additionalArgs);
     await this.assertVersion();
     this.generation += 1;
-    const args = this.buildArgs(existingSessionPath, options);
+    const offline = options?.offline ?? this.settings.offline;
+    const args = this.buildArgs(existingSessionPath, {
+      noExtensions: options?.noExtensions,
+      offline,
+    });
     this.logger.info(
       `Starting Pi for ${this.folder.name} (generation=${this.generation}): ` +
         `${this.settings.executable} ${args.join(' ')} [cwd=${this.folder.uri.fsPath}, shell=${SPAWN_WITH_SHELL}]`
@@ -79,7 +83,7 @@ export class PiProcessSupervisor extends TypedEmitter implements vscode.Disposab
         ...process.env,
         PI_TELEMETRY: '0',
         PI_SKIP_VERSION_CHECK: '1',
-        ...(this.settings.offline ? { PI_OFFLINE: '1' } : {}),
+        ...(offline ? { PI_OFFLINE: '1' } : {}),
       },
       stdio: 'pipe',
     });
@@ -220,9 +224,12 @@ export class PiProcessSupervisor extends TypedEmitter implements vscode.Disposab
     }
   }
 
-  private buildArgs(existingSessionPath?: string, options?: { noExtensions?: boolean }): string[] {
+  private buildArgs(
+    existingSessionPath?: string,
+    options?: { noExtensions?: boolean; offline?: boolean }
+  ): string[] {
     const args = ['--mode', 'rpc'];
-    if (this.settings.offline) {
+    if (options?.offline ?? this.settings.offline) {
       args.push('--offline');
     }
     if (!vscode.workspace.isTrusted || !this.settings.allowApproveInTrustedWorkspace) {

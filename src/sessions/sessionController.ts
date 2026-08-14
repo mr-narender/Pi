@@ -122,10 +122,7 @@ export class SessionController implements vscode.Disposable {
     return this.supervisor.currentGeneration;
   }
 
-  public async start(
-    sessionFile = this.state.state.sessionFile,
-    options?: { noExtensions?: boolean }
-  ): Promise<void> {
+  public async start(sessionFile = this.state.state.sessionFile): Promise<void> {
     if (this.state.connectionState === 'ready' || this.state.connectionState === 'busy') {
       return;
     }
@@ -133,79 +130,106 @@ export class SessionController implements vscode.Disposable {
       throw new Error('Virtual workspaces are unsupported for Pi');
     }
     this.stopping = false;
-    // While an explicit start (incl. the no-extensions retry below) is in flight,
-    // the crash 'exit' handler must NOT also auto-restart — start() owns recovery.
+    // While an explicit start (incl. the recovery ladder) is in flight, the crash
+    // 'exit' handler must NOT also auto-restart — start() owns recovery.
     this.startInProgress = true;
-    this.state = {
-      ...this.state,
-      state: { ...this.state.state, sessionFile },
-      connectionState: 'starting',
-    };
-    this.fire();
-    try {
-      const client = await this.supervisor.start(sessionFile, options);
-      client.onEvent((event) => this.onEvent(event));
-      client.onExtensionUi((request) => this.onExtensionUi(request));
-      client.onResponseFailure((response) => {
-        this.addDiagnostic(
-          response.command === 'parse' ? 'error' : 'warning',
-          `RPC response failed: ${response.command}`,
-          response.success ? '' : response.error
-        );
-      });
-      client.onProtocolFault((error) =>
-        this.addDiagnostic('error', 'Protocol fault', error.message)
-      );
-      client.onDisconnected((error) =>
-        this.addDiagnostic('warning', 'Disconnected', error.message)
-      );
-      client.onStderr((text) => {
-        this.state = { ...this.state, stderrTail: [...this.state.stderrTail.slice(-49), text] };
-        this.fire();
-      });
+
+    // Recovery ladder. VS Code runs Pi with --offline by default; the TUI runs
+    // online. An extension that needs the network at startup crashes Pi offline
+    // (exit 1) even though the same session opens fine in the TUI. So: try as
+    // configured, then retry ONLINE keeping extensions (matches the TUI), and
+    // only disable extensions as a last resort — we never silently drop
+    // capabilities the user may want.
+    const configuredOffline = this.settings.offline;
+    const ladder: Array<{ offline: boolean; noExtensions: boolean; note?: string }> = sessionFile
+      ? [
+          { offline: configuredOffline, noExtensions: false },
+          ...(configuredOffline
+            ? [
+                {
+                  offline: false,
+                  noExtensions: false,
+                  note: 'loaded this chat by letting Pi go online (an extension needs the network at startup). Extensions are kept.',
+                },
+              ]
+            : []),
+          {
+            offline: false,
+            noExtensions: true,
+            note: 'loaded this chat with Pi extensions disabled (an extension failed to start even online). Restart Pi to re-enable them.',
+          },
+        ]
+      : [{ offline: configuredOffline, noExtensions: false }];
+
+    let lastError: unknown;
+    for (let index = 0; index < ladder.length; index += 1) {
+      const attempt = ladder[index]!;
       this.state = {
         ...this.state,
-        connectionState: 'handshaking',
-        generation: this.supervisor.currentGeneration,
+        state: { ...this.state.state, sessionFile },
+        connectionState: 'starting',
       };
       this.fire();
-      this.logger.info(`Handshaking with Pi for '${this.folder.name}'…`);
-      await this.reconcile();
-      this.logger.info(
-        `Pi is ready for '${this.folder.name}' (state=${this.state.connectionState})`
-      );
-      this.restartAttempts = 0;
-    } catch (error) {
-      // A crashing Pi EXTENSION is the most common cause of "Pi exited code=1"
-      // while loading a session (Pi's own hint: "pi -ne"). Retry the SAME
-      // session ONCE with extensions disabled so the chat still loads, instead
-      // of falling back to a blank session and losing it.
-      if (sessionFile && !options?.noExtensions) {
-        this.logger.warn(
-          `Pi crashed loading '${this.folder.name}' with extensions; retrying with extensions disabled (pi -ne)…`
-        );
+      try {
+        await this.launchOnce(sessionFile, attempt);
+        this.restartAttempts = 0;
         this.startInProgress = false;
-        try {
-          await this.start(sessionFile, { noExtensions: true });
-          void vscode.window.showWarningMessage(
-            'Pi: loaded this chat with extensions disabled (an extension failed to start). Restart Pi to re-enable them.'
-          );
-          return;
-        } catch {
-          // fall through to the faulted state below
+        if (index > 0 && attempt.note) {
+          this.logger.warn(`Pi recovery: ${attempt.note}`);
+          void vscode.window.showWarningMessage(`Pi: ${attempt.note}`);
         }
+        return;
+      } catch (error) {
+        lastError = error;
+        this.logger.warn(
+          `Pi start attempt ${index + 1}/${ladder.length} failed ` +
+            `(offline=${attempt.offline}, noExtensions=${attempt.noExtensions}): ` +
+            `${error instanceof Error ? error.message : String(error)}`
+        );
+        await this.supervisor.stop().catch(() => undefined);
       }
-      // Surface the exact reason clearly: log it, record it as a diagnostic, and
-      // move to the 'faulted' state so the chat shows a recoverable error.
-      const message = error instanceof Error ? error.message : String(error);
-      this.logger.error(`Pi failed to start for '${this.folder.name}'`, error);
-      this.addDiagnostic('error', 'Pi failed to start', message);
-      this.state = { ...this.state, connectionState: 'faulted' };
-      this.fire();
-      throw error instanceof Error ? error : new Error(message);
-    } finally {
-      this.startInProgress = false;
     }
+
+    // Every attempt failed — surface the reason and move to the faulted state.
+    this.startInProgress = false;
+    const message = lastError instanceof Error ? lastError.message : String(lastError);
+    this.logger.error(`Pi failed to start for '${this.folder.name}'`, lastError);
+    this.addDiagnostic('error', 'Pi failed to start', message);
+    this.state = { ...this.state, connectionState: 'faulted' };
+    this.fire();
+    throw lastError instanceof Error ? lastError : new Error(message);
+  }
+
+  /** One launch attempt: spawn Pi, wire handlers, handshake + reconcile. */
+  private async launchOnce(
+    sessionFile: string | undefined,
+    options: { offline: boolean; noExtensions: boolean }
+  ): Promise<void> {
+    const client = await this.supervisor.start(sessionFile, options);
+    client.onEvent((event) => this.onEvent(event));
+    client.onExtensionUi((request) => this.onExtensionUi(request));
+    client.onResponseFailure((response) => {
+      this.addDiagnostic(
+        response.command === 'parse' ? 'error' : 'warning',
+        `RPC response failed: ${response.command}`,
+        response.success ? '' : response.error
+      );
+    });
+    client.onProtocolFault((error) => this.addDiagnostic('error', 'Protocol fault', error.message));
+    client.onDisconnected((error) => this.addDiagnostic('warning', 'Disconnected', error.message));
+    client.onStderr((text) => {
+      this.state = { ...this.state, stderrTail: [...this.state.stderrTail.slice(-49), text] };
+      this.fire();
+    });
+    this.state = {
+      ...this.state,
+      connectionState: 'handshaking',
+      generation: this.supervisor.currentGeneration,
+    };
+    this.fire();
+    this.logger.info(`Handshaking with Pi for '${this.folder.name}'…`);
+    await this.reconcile();
+    this.logger.info(`Pi is ready for '${this.folder.name}' (state=${this.state.connectionState})`);
   }
 
   public async stop(): Promise<void> {
