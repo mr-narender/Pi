@@ -75,6 +75,14 @@ export class PiProcessSupervisor extends TypedEmitter implements vscode.Disposab
       `Starting Pi for ${this.folder.name} (generation=${this.generation}): ` +
         `${this.settings.executable} ${args.join(' ')} [cwd=${this.folder.uri.fsPath}, shell=${SPAWN_WITH_SHELL}]`
     );
+    // Pi's shell-inheritance extension needs a known launch shell. When Pi is
+    // spawned non-interactively (here) it can't determine one on Windows and
+    // exits code=1 unless PI_LAUNCH_SHELL is set. Honor the setting, then an
+    // existing env value, else a sane per-platform default.
+    const launchShell =
+      this.settings.launchShell.trim() ||
+      process.env.PI_LAUNCH_SHELL ||
+      (process.platform === 'win32' ? process.env.ComSpec || 'cmd.exe' : process.env.SHELL || '');
     const child = spawn(this.settings.executable, args, {
       cwd: this.folder.uri.fsPath,
       shell: SPAWN_WITH_SHELL,
@@ -84,6 +92,7 @@ export class PiProcessSupervisor extends TypedEmitter implements vscode.Disposab
         PI_TELEMETRY: '0',
         PI_SKIP_VERSION_CHECK: '1',
         ...(offline ? { PI_OFFLINE: '1' } : {}),
+        ...(launchShell ? { PI_LAUNCH_SHELL: launchShell } : {}),
       },
       stdio: 'pipe',
     });

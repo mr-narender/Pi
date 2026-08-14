@@ -4,6 +4,7 @@ export interface PiRpcSettings {
   executable: string;
   additionalArgs: string[];
   offline: boolean;
+  launchShell: string;
   allowApproveInTrustedWorkspace: boolean;
   responseTimeoutMs: number;
   longRunningTimeoutMs: number;
@@ -38,6 +39,9 @@ export function getSettings(): PiRpcSettings {
   return {
     executable: config.get<string>('executable', 'pi'),
     additionalArgs: config.get<string[]>('additionalArgs', []),
+    // Sets PI_LAUNCH_SHELL so Pi's shell-inheritance extension can load. Needed
+    // on Windows (Pi can't determine the shell when spawned non-interactively).
+    launchShell: config.get<string>('launchShell', ''),
     // Online by default, like the Pi TUI. Running --offline broke sessions whose
     // extensions need the network at startup. Set true only to force offline.
     offline: config.get<boolean>('offline', false),

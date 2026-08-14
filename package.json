@@ -2,7 +2,7 @@
   "name": "pi",
   "displayName": "Pi – this one is (y)ours",
   "description": "An unofficial, personal VS Code chat UI for the Pi coding agent (pi.dev). Not affiliated with pi.dev — shared for anyone who wants it.",
-  "version": "0.0.133",
+  "version": "0.0.134",
   "publisher": "mr-narender",
   "license": "MIT",
   "private": true,
@@ -686,6 +686,11 @@
           "type": "boolean",
           "default": false,
           "description": "Start Pi automatically when a trusted file workspace is opened."
+        },
+        "piRpc.launchShell": {
+          "type": "string",
+          "default": "",
+          "description": "Path to your shell executable, exported as PI_LAUNCH_SHELL so Pi's shell-inheritance extension can load. Required on Windows for that extension (e.g. C:\\Program Files\\Git\\bin\\bash.exe, powershell.exe, pwsh.exe, or cmd.exe). Empty auto-detects (defaults to cmd.exe on Windows)."
         },
         "piRpc.offline": {
           "type": "boolean",

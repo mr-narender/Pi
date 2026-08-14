@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.134
+
+- Root-cause fix (Windows): Pi crashed on start because its shell-inheritance extension could not determine the launch shell. The extension now sets PI_LAUNCH_SHELL in Pi’s spawn env (default cmd.exe on Windows; configurable via piRpc.launchShell, e.g. Git Bash), so Pi starts with all extensions.
+
 ## 0.0.133
 
 - Pi now starts ONLINE by default (piRpc.offline defaults to false), matching the TUI, so extensions that need the network at startup work and sessions load first try. Set piRpc.offline=true to force offline.
