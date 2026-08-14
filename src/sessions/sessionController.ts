@@ -286,10 +286,13 @@ export class SessionController implements vscode.Disposable {
     // Pi returns each as one JSONL response record; old sessions with images or
     // large tool output make that record huge and block the handshake. Runtime
     // metadata is small and the transcript is read locally below.
+    // Use the LONG timeout: when a big session is still being parsed by Pi,
+    // these metadata calls block until it finishes loading. The short (15s)
+    // timeout made long chats fail with "couldn't load this chat" mid-load.
     const [state, commands, stats] = await Promise.all([
-      client.getState(),
-      client.getCommands(),
-      client.getSessionStats(),
+      client.getState('long'),
+      client.getCommands('long'),
+      client.getSessionStats('long'),
     ]).catch((error: unknown) => {
       // A reconcile failure (timeout, protocol fault) is why a tab can be stuck
       // in 'handshaking' — always record it so it's explainable from the logs.

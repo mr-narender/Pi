@@ -70,8 +70,8 @@ export class RpcClient {
     return this.command('new_session', { parentSession }, 'long');
   }
 
-  public async getState(): Promise<SessionState | undefined> {
-    return this.command('get_state', {}, 'short') as Promise<SessionState | undefined>;
+  public async getState(timeout: 'short' | 'long' = 'short'): Promise<SessionState | undefined> {
+    return this.command('get_state', {}, timeout) as Promise<SessionState | undefined>;
   }
 
   public async getMessages(): Promise<JsonObject | undefined> {
@@ -130,8 +130,10 @@ export class RpcClient {
     await this.command('abort_bash', {}, 'short');
   }
 
-  public async getSessionStats(): Promise<JsonObject | undefined> {
-    return this.command('get_session_stats', {}, 'short');
+  public async getSessionStats(
+    timeout: 'short' | 'long' = 'short'
+  ): Promise<JsonObject | undefined> {
+    return this.command('get_session_stats', {}, timeout);
   }
 
   public async exportHtml(outputPath?: string): Promise<JsonObject | undefined> {
@@ -170,8 +172,8 @@ export class RpcClient {
     await this.command('set_session_name', { name }, 'short');
   }
 
-  public async getCommands(): Promise<JsonObject | undefined> {
-    return this.command('get_commands', {}, 'short');
+  public async getCommands(timeout: 'short' | 'long' = 'short'): Promise<JsonObject | undefined> {
+    return this.command('get_commands', {}, timeout);
   }
 
   public async respondExtensionUi(response: JsonObject): Promise<void> {

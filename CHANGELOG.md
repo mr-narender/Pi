@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.129
+
+- Fixed “couldn’t load this chat” error on longer sessions: the initial load now waits (long timeout) for Pi to finish parsing the session instead of failing at 15s.
+
 ## 0.0.127
 
 - UI redesign: Settings gear moved to the top of the sidebar; composer is minimal (borderless clickable Model label + read-only Cost + Send); per-chat actions moved to a chat-header “…” menu; removed the Continue button and de-duplicated controls.
