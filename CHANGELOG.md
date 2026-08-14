@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.131
+
+- Fixed “couldn’t load this chat” when Pi crashes on session load (exit code 1) due to a failing extension: the extension now auto-retries the SAME session with Pi extensions disabled (pi -ne) so the chat loads, instead of falling back to a blank session.
+
 ## 0.0.130
 
 - Chat font consistency: the whole transcript and the composer input now follow the editor font (was: input used the UI font), so all chat text matches.

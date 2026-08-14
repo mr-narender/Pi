@@ -36,6 +36,7 @@ export class SessionController implements vscode.Disposable {
   private readonly settings: PiRpcSettings;
   private state: ControllerState;
   private restartAttempts = 0;
+  private startInProgress = false;
   private stopping = false;
   private lastLoggedConnectionState?: ControllerState['connectionState'];
   // When this controller last wrote to its own session file (generating,
@@ -56,6 +57,7 @@ export class SessionController implements vscode.Disposable {
       this.fire();
       if (
         !this.stopping &&
+        !this.startInProgress &&
         this.settings.restartOnCrash &&
         this.restartAttempts < this.settings.maxRestartAttempts
       ) {
@@ -120,7 +122,10 @@ export class SessionController implements vscode.Disposable {
     return this.supervisor.currentGeneration;
   }
 
-  public async start(sessionFile = this.state.state.sessionFile): Promise<void> {
+  public async start(
+    sessionFile = this.state.state.sessionFile,
+    options?: { noExtensions?: boolean }
+  ): Promise<void> {
     if (this.state.connectionState === 'ready' || this.state.connectionState === 'busy') {
       return;
     }
@@ -128,6 +133,9 @@ export class SessionController implements vscode.Disposable {
       throw new Error('Virtual workspaces are unsupported for Pi');
     }
     this.stopping = false;
+    // While an explicit start (incl. the no-extensions retry below) is in flight,
+    // the crash 'exit' handler must NOT also auto-restart — start() owns recovery.
+    this.startInProgress = true;
     this.state = {
       ...this.state,
       state: { ...this.state.state, sessionFile },
@@ -135,7 +143,7 @@ export class SessionController implements vscode.Disposable {
     };
     this.fire();
     try {
-      const client = await this.supervisor.start(sessionFile);
+      const client = await this.supervisor.start(sessionFile, options);
       client.onEvent((event) => this.onEvent(event));
       client.onExtensionUi((request) => this.onExtensionUi(request));
       client.onResponseFailure((response) => {
@@ -168,6 +176,25 @@ export class SessionController implements vscode.Disposable {
       );
       this.restartAttempts = 0;
     } catch (error) {
+      // A crashing Pi EXTENSION is the most common cause of "Pi exited code=1"
+      // while loading a session (Pi's own hint: "pi -ne"). Retry the SAME
+      // session ONCE with extensions disabled so the chat still loads, instead
+      // of falling back to a blank session and losing it.
+      if (sessionFile && !options?.noExtensions) {
+        this.logger.warn(
+          `Pi crashed loading '${this.folder.name}' with extensions; retrying with extensions disabled (pi -ne)…`
+        );
+        this.startInProgress = false;
+        try {
+          await this.start(sessionFile, { noExtensions: true });
+          void vscode.window.showWarningMessage(
+            'Pi: loaded this chat with extensions disabled (an extension failed to start). Restart Pi to re-enable them.'
+          );
+          return;
+        } catch {
+          // fall through to the faulted state below
+        }
+      }
       // Surface the exact reason clearly: log it, record it as a diagnostic, and
       // move to the 'faulted' state so the chat shows a recoverable error.
       const message = error instanceof Error ? error.message : String(error);
@@ -176,6 +203,8 @@ export class SessionController implements vscode.Disposable {
       this.state = { ...this.state, connectionState: 'faulted' };
       this.fire();
       throw error instanceof Error ? error : new Error(message);
+    } finally {
+      this.startInProgress = false;
     }
   }
 
@@ -364,7 +393,10 @@ export class SessionController implements vscode.Disposable {
       }
       return messages;
     } catch (error) {
-      this.logger.warn(`Could not read local transcript for '${sessionFile}': ${String(error)}`);
+      // A brand-new session file may not exist on disk yet — that's expected.
+      if ((error as NodeJS.ErrnoException)?.code !== 'ENOENT') {
+        this.logger.warn(`Could not read local transcript for '${sessionFile}': ${String(error)}`);
+      }
       return [];
     }
   }

@@ -56,14 +56,17 @@ export class PiProcessSupervisor extends TypedEmitter implements vscode.Disposab
     return this.generation;
   }
 
-  public async start(existingSessionPath?: string): Promise<RpcClient> {
+  public async start(
+    existingSessionPath?: string,
+    options?: { noExtensions?: boolean }
+  ): Promise<RpcClient> {
     if (this.client) {
       return this.client;
     }
     validateAdditionalArgs(this.settings.additionalArgs);
     await this.assertVersion();
     this.generation += 1;
-    const args = this.buildArgs(existingSessionPath);
+    const args = this.buildArgs(existingSessionPath, options);
     this.logger.info(
       `Starting Pi for ${this.folder.name} (generation=${this.generation}): ` +
         `${this.settings.executable} ${args.join(' ')} [cwd=${this.folder.uri.fsPath}, shell=${SPAWN_WITH_SHELL}]`
@@ -217,13 +220,17 @@ export class PiProcessSupervisor extends TypedEmitter implements vscode.Disposab
     }
   }
 
-  private buildArgs(existingSessionPath?: string): string[] {
+  private buildArgs(existingSessionPath?: string, options?: { noExtensions?: boolean }): string[] {
     const args = ['--mode', 'rpc'];
     if (this.settings.offline) {
       args.push('--offline');
     }
     if (!vscode.workspace.isTrusted || !this.settings.allowApproveInTrustedWorkspace) {
       args.push('--no-approve');
+    }
+    if (options?.noExtensions) {
+      // Recovery path: a crashing Pi extension can make session load exit code=1.
+      args.push('--no-extensions');
     }
     if (existingSessionPath) {
       args.push('--session', existingSessionPath);
