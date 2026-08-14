@@ -1007,6 +1007,12 @@ button.ghost:hover,
   scrollbar-gutter: stable;
   display: block;
   padding: 16px;
+  /* Everything in the transcript follows the EDITOR font (respecting an
+     explicit piRpc.chatFontFamily override), so all chat text is consistent. */
+  font-family: var(
+    --pi-chat-font-family,
+    var(--vscode-editor-font-family, var(--vscode-font-family, monospace))
+  );
 }
 
 .conversation .message-card {
@@ -1109,6 +1115,12 @@ button.ghost:hover,
   min-height: 44px;
   resize: none;
   border-radius: 0;
+  /* Match the transcript: the input uses the EDITOR font, not the UI font. */
+  font-family: var(
+    --pi-chat-font-family,
+    var(--vscode-editor-font-family, var(--vscode-font-family, monospace))
+  );
+  font-size: var(--pi-chat-font-size, var(--vscode-font-size, 13px));
   /* Auto-grows via JS up to ~10 lines, then scrolls. Reserve the scrollbar
      gutter so appearing/disappearing never shifts or flickers. */
   overflow-y: hidden;

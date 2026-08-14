@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.130
+
+- Chat font consistency: the whole transcript and the composer input now follow the editor font (was: input used the UI font), so all chat text matches.
+
 ## 0.0.129
 
 - Fixed “couldn’t load this chat” error on longer sessions: the initial load now waits (long timeout) for Pi to finish parsing the session instead of failing at 15s.
