@@ -685,6 +685,7 @@ test('renderChatApp shows a hint for an empty assistant response (not a blank bu
   const html = renderChatApp(
     snapshot({
       connectionState: 'ready',
+      model: { provider: 'openai-codex', id: 'gpt-5.6-sol' },
       messages: [
         { id: 'u', role: 'user', text: 'PING', attachments: [] },
         { id: 'a', role: 'assistant', text: '', blocks: [], attachments: [] },
@@ -693,4 +694,6 @@ test('renderChatApp shows a hint for an empty assistant response (not a blank bu
   );
   assert.match(html, /class="assistant-empty"/);
   assert.match(html, /empty response/i);
+  // Names the failing model so the user knows which one to switch away from.
+  assert.match(html, /openai-codex\/gpt-5\.6-sol/);
 });

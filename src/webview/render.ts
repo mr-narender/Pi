@@ -157,7 +157,8 @@ type TimelineNode = MessageBlock | { kind: 'response'; text: string };
  */
 function renderAssistantBody(
   message: WebviewSnapshot['messages'][number],
-  streamingAnswer = false
+  streamingAnswer = false,
+  modelName = ''
 ): string {
   const blocks: MessageBlock[] =
     message.blocks && message.blocks.length > 0
@@ -172,7 +173,8 @@ function renderAssistantBody(
     block.kind === 'text' || block.kind === 'thinking' ? Boolean((block.text ?? '').trim()) : true
   );
   if (!hasAnyContent && !streamingAnswer) {
-    return `<div class="assistant-empty">Pi returned an empty response — the model may be rate-limited or erroring. <button type="button" class="link-button" data-command="piRpcInternal.showLogs">Open Pi logs</button> or try another model.</div>`;
+    const who = modelName ? `<strong>${escapeHtml(modelName)}</strong>` : 'The model';
+    return `<div class="assistant-empty">${who} returned an empty response — it may be rate-limited or erroring. <button type="button" class="link-button" data-command="piRpcInternal.showLogs">Open Pi logs</button> or switch models.</div>`;
   }
   const hasProcess = blocks.some((block) => block.kind !== 'text');
   if (!hasProcess) {
@@ -864,6 +866,7 @@ function renderMessages(snapshot: WebviewSnapshot): string {
     ? `<div id="older-sentinel" class="older-sentinel" role="status"><span class="spinner spinner-sm" aria-hidden="true"></span>Loading earlier messages…</div>`
     : '';
   const busy = snapshot.connectionState === 'busy';
+  const modelName = modelLabel(snapshot);
   return (
     olderSentinel +
     snapshot.messages
@@ -872,7 +875,8 @@ function renderMessages(snapshot: WebviewSnapshot): string {
         return renderMessageArticle(
           message,
           isLast,
-          busy && isLast && message.role === 'assistant'
+          busy && isLast && message.role === 'assistant',
+          modelName
         );
       })
       .join('')
@@ -896,7 +900,8 @@ const EDIT_ICON =
 function renderMessageArticle(
   message: WebviewSnapshot['messages'][number],
   isLast = false,
-  streamingAnswer = false
+  streamingAnswer = false,
+  modelName = ''
 ): string {
   const role = message.role;
   const roleLabel = role === 'assistant' ? 'Pi' : role === 'user' ? 'You' : '';
@@ -909,17 +914,18 @@ function renderMessageArticle(
         <article class="message-card message-${escapeHtml(role)}${virtualClass}"${roleLabel ? ` aria-label="${roleLabel} said"` : ''}>
           ${roleLabel ? `<div class="message-role">${roleLabel}</div>` : ''}
           ${showCopy ? `<div class="msg-actions">${role === 'user' ? `<button type="button" class="msg-edit" title="Edit in composer" aria-label="Edit message">${EDIT_ICON}</button>` : ''}<button type="button" class="msg-copy" title="Copy message" aria-label="Copy message">${COPY_ICON}</button></div>` : ''}
-          ${renderMessageBody(message, streamingAnswer)}
+          ${renderMessageBody(message, streamingAnswer, modelName)}
           ${message.attachments.length > 0 ? `<div class="detail-stack">${message.attachments.map((attachment) => renderAttachment(attachment)).join('')}</div>` : ''}
         </article>`;
 }
 
 function renderMessageBody(
   message: WebviewSnapshot['messages'][number],
-  streamingAnswer = false
+  streamingAnswer = false,
+  modelName = ''
 ): string {
   if (message.role === 'assistant') {
-    return renderAssistantBody(message, streamingAnswer);
+    return renderAssistantBody(message, streamingAnswer, modelName);
   }
   if (isResultRole(message.role)) {
     return renderResultMessage(message);

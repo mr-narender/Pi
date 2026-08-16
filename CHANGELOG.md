@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.144
+
+- Empty-response hint now names the failing model (e.g. openai-codex/gpt-5.6-sol) so you know which model to switch away from.
+
 ## 0.0.143
 
 - Chat: show a clear hint when an assistant turn returns no content (e.g. the provider is rate-limited or errored) instead of a silent blank bubble, with a button to open Pi logs.
