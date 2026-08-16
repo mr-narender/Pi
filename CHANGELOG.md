@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.142
+
+- Fixed empty assistant responses on Pi 0.84+: message_update events are now delta-only (no message field), so the reducer applies streamed text/thinking deltas to the current assistant message instead of dropping them.
+
 ## 0.0.139
 
 - Chat: coalesce transcript re-renders while Pi is replying (thinking/tool streaming) to a calm rate, so the UI stays readable instead of flickering several times a second. Answer text still streams smoothly.

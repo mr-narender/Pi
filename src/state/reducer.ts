@@ -101,11 +101,6 @@ function messageIndex(messages: JsonObject[], key: string | undefined): number {
   return key ? messages.findIndex((message) => messageKey(message) === key) : -1;
 }
 
-function messageAt(messages: JsonObject[], key: string | undefined): JsonObject | undefined {
-  const index = messageIndex(messages, key);
-  return index === -1 ? undefined : asObject(messages[index]);
-}
-
 function upsertMessage(
   messages: JsonObject[],
   incoming: JsonObject | undefined,
@@ -344,11 +339,24 @@ export function reduceEvent(state: ControllerState, event: RpcEvent): Controller
     }
     case 'message_update': {
       const current = asObject(event.message);
-      const stored = messageAt(next.messages, messageKey(current));
+      // Pi 0.84 streams DELTA-ONLY message_update events (no cumulative `message`
+      // field). Locate the message the delta belongs to by key when present,
+      // otherwise the last assistant message being streamed. Without this every
+      // text_delta was dropped and the assistant bubble stayed empty.
+      let index = messageIndex(next.messages, messageKey(current));
+      if (index === -1) {
+        for (let i = next.messages.length - 1; i >= 0; i -= 1) {
+          if (asObject(next.messages[i])?.role === 'assistant') {
+            index = i;
+            break;
+          }
+        }
+      }
+      const stored = index === -1 ? undefined : asObject(next.messages[index]);
       const mergedSnapshot = stored
         ? {
             ...stored,
-            ...current,
+            ...(current ?? {}),
             content:
               Array.isArray(current?.content) && current.content.length > 0
                 ? current.content
@@ -356,7 +364,15 @@ export function reduceEvent(state: ControllerState, event: RpcEvent): Controller
           }
         : current;
       const merged = applyAssistantDelta(mergedSnapshot, event);
-      next = { ...next, messages: upsertMessage(next.messages, merged) };
+      if (merged) {
+        if (index === -1) {
+          next = { ...next, messages: upsertMessage(next.messages, merged) };
+        } else {
+          const messages = [...next.messages];
+          messages[index] = merged;
+          next = { ...next, messages };
+        }
+      }
       break;
     }
     case 'message_end': {
