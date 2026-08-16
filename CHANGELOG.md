@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.165
+
+- Fixed "Timed out waiting for Pi to be ready" when selecting a chat: the loading state was set before the readiness wait, deadlocking it. Now readiness is confirmed first, then the loader shows. Restored warm-start so Pi is live for instant switching.
+
 ## 0.0.164
 
 - Chat selection is now instant: clicking a session in the sidebar highlights it immediately, opens the tab right away, and shows a "Loading chat…" loader while the session reconciles in the background (the recent-list refresh and reconcile no longer block the tab from appearing, and the previous chat is no longer shown until the new one loads).

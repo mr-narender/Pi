@@ -695,21 +695,23 @@ export class SessionController implements vscode.Disposable {
   public async switchSession(sessionPath: string): Promise<JsonObject | undefined> {
     const canonical = await canonicalizeSessionPath(this.folder.uri.fsPath, sessionPath);
     this.logger.info(`Resuming session ${canonical} for '${this.folder.name}'`);
-    // Instant loading feedback: clear the current transcript and switch to a
-    // 'handshaking' state so the webview shows the "Loading chat…" loader right
-    // away, instead of showing the PREVIOUS chat until the RPC switch + reconcile
-    // finish (which can take a while for large sessions).
-    this.state = {
-      ...resetControllerProjection(this.state),
-      connectionState: 'handshaking',
-      state: { ...this.state.state, sessionFile: canonical },
-    };
-    this.fire();
     let result: JsonObject | undefined;
     try {
       // Ensure the RPC client is actually usable (handles the warm-start race
       // where connectionState is 'starting' but the client isn't created yet).
+      // MUST happen BEFORE we set the loading state below: whenReady() waits for
+      // 'ready'/'busy', so setting 'handshaking' first would deadlock it (30s
+      // "Timed out waiting for Pi to be ready").
       await this.whenReady();
+      // Instant loading feedback: now that Pi is confirmed up, clear the current
+      // transcript and show the "Loading chat…" loader while the RPC switch +
+      // reconcile run, instead of showing the PREVIOUS chat until they finish.
+      this.state = {
+        ...resetControllerProjection(this.state),
+        connectionState: 'handshaking',
+        state: { ...this.state.state, sessionFile: canonical },
+      };
+      this.fire();
       result = await this.requireClient().switchSession(canonical);
     } catch (error) {
       // Surface the real reason (path/permission/cwd errors are common on

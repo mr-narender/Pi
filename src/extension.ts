@@ -152,19 +152,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   statusBar.bind(registry.getActive());
   void recentSessions.refresh();
 
-  // Warm-start Pi ONLY for folders that already have a session to RESUME.
-  // Starting a controller with no sessionFile spawns Pi with no --session, which
-  // creates an ORPHAN session file; the chat tab then restarts Pi (gen=2) with
-  // the real session. That double-spawn churned a new orphan session on every
-  // activation (the climbing session count). Tabs start Pi with the correct
-  // session on activation, so on-demand start is enough when there's nothing to
-  // resume.
+  // Warm-start Pi for every workspace folder as soon as the extension activates
+  // so the RPC connection is already live. This is REQUIRED for instant session
+  // switching: selecting a chat calls switchSession/whenReady, which times out
+  // ("Timed out waiting for Pi to be ready") if Pi was never started.
   const warmFolders = vscode.workspace.workspaceFolders ?? [];
   for (const folder of warmFolders) {
     const controller = registry.getOrCreate(folder);
-    const hasResumableSession = typeof controller.snapshot.state.sessionFile === 'string';
-    if (controller.snapshot.connectionState === 'stopped' && hasResumableSession) {
-      logger.info(`Warm-starting Pi for '${folder.name}' (resuming existing session)`);
+    if (controller.snapshot.connectionState === 'stopped') {
+      logger.info(`Warm-starting Pi for '${folder.name}' on activation`);
       void controller.start().catch((error) => {
         logger.error(`Warm-start of Pi failed for '${folder.name}'`, error);
       });
