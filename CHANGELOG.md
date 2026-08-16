@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.160
+
+- Stop the extension creating orphan chat sessions on every activation: warm-start now only resumes an existing session instead of spawning Pi with no session (which created a throwaway session file, then the tab restarted Pi with the real one). This is the churn behind the climbing session count / new sessions.
+
 ## 0.0.159
 
 - FIX (root cause): inline edit did nothing in editor tabs because the forkAndSend handler existed only on the sidebar panel, not the ChatTabManager the tabs actually use. Editor tabs now handle forkAndSend on their own controller, so editing a message forks + resubmits and the truncation sticks.
