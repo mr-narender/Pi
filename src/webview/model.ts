@@ -332,6 +332,7 @@ export function createWebviewSnapshot(
     title: state.title,
     uiMode: extra.uiMode,
     connectionState: state.connectionState,
+    switchingSession: state.switchingSession === true,
     workspaceFolderName: state.workspaceFolderName,
     sessionName: typeof state.state.sessionName === 'string' ? state.state.sessionName : undefined,
     sessionId: typeof state.state.sessionId === 'string' ? state.state.sessionId : undefined,

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.166
+
+- Fixed frozen UI + timeout noise when several chats are open: the loading state now uses a dedicated switchingSession flag instead of connectionState, so concurrent session switches (one Pi per folder) no longer deadlock the readiness wait. Readiness timeouts during switching are logged, not shown as an error toast.
+- Removed the extension-version activation toast and the webview build badge (noise).
+
 ## 0.0.165
 
 - Fixed "Timed out waiting for Pi to be ready" when selecting a chat: the loading state was set before the readiness wait, deadlocking it. Now readiness is confirmed first, then the loader shows. Restored warm-start so Pi is live for instant switching.

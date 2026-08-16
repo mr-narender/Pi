@@ -32,7 +32,6 @@ export function renderChatWebviewHtml(
   </head>
   <body>
     <div id="app"></div>
-    <div id="pi-build" style="position:fixed;bottom:2px;left:6px;font:10px monospace;opacity:0.4;pointer-events:none;z-index:99999;color:var(--vscode-descriptionForeground)">pi build ${buildTag}</div>
     <script nonce="${nonce}" src="${scriptUri}"></script>
   </body>
 </html>`;

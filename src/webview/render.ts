@@ -1134,7 +1134,10 @@ export function renderChatApp(snapshot: WebviewSnapshot): string {
   const busy = snapshot.isStreaming || snapshot.connectionState === 'busy';
   const interactive = snapshot.connectionState === 'ready' || snapshot.connectionState === 'busy';
   const faulted = snapshot.connectionState === 'faulted';
-  const connecting = !interactive && !faulted;
+  // Show the loading spinner while connecting OR while switching to another
+  // session (the latter keeps connectionState 'ready' so switches don't deadlock,
+  // so it needs its own signal).
+  const connecting = (!interactive && !faulted) || snapshot.switchingSession === true;
   const disabledAttr = interactive ? '' : 'disabled';
   const sendLabel = busy ? 'Send next (Enter)' : 'Send (Enter · Shift+Enter for newline)';
   const sendCommand = busy ? 'follow_up' : 'prompt';

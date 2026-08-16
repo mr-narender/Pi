@@ -97,12 +97,12 @@ function compatibilityEvents(controller: SessionController) {
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const logger = new DiagnosticsLogger();
-  // Build marker: makes it unambiguous which build VS Code actually loaded.
-  const extVersion = String(
-    (context.extension.packageJSON as { version?: unknown }).version ?? 'unknown'
+  // Record the loaded build in the output channel only (no user-facing toast).
+  logger.info(
+    `Pi extension activating: v${String(
+      (context.extension.packageJSON as { version?: unknown }).version ?? 'unknown'
+    )}`
   );
-  logger.info(`Pi extension activating: v${extVersion}`);
-  void vscode.window.showInformationMessage(`Pi extension v${extVersion} loaded`);
   const registry = new SessionRegistry(logger);
   const settings = getSettings();
   const editorTabsEnabled = () => getSettings().editorTabsEnabled;
@@ -433,9 +433,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         await chatTabs.startResource(activeContext.resource);
         await recentSessions.refresh(activeContext.controller.folder);
         await uiState.restoreControllerDraft(activeContext.controller);
-        void vscode.window.showInformationMessage(
-          `Pi started for ${activeContext.controller.folder.name}`
-        );
         refreshViews();
         return activeContext.controller.folder.uri.toString();
       }
@@ -446,7 +443,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         await controller.reconcile();
         await recentSessions.refresh(controller.folder);
         await uiState.restoreControllerDraft(controller);
-        void vscode.window.showInformationMessage(`Pi started for ${controller.folder.name}`);
       },
       { autoStart: false, forcePicker: true }
     );

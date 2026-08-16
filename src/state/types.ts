@@ -89,6 +89,10 @@ export interface ControllerState {
   lastExportPath?: string;
   leafId?: string | null;
   restartCount: number;
+  // True while switching to another session (loads its transcript). Drives the
+  // "Loading chat…" loader WITHOUT changing connectionState, so concurrent
+  // switches don't deadlock whenReady() (which waits for 'ready'/'busy').
+  switchingSession?: boolean;
 }
 
 export function createInitialControllerState(
@@ -186,6 +190,7 @@ export interface WebviewSnapshot {
   bindingState?: 'current' | 'cached' | 'draft';
   uiMode: ChatUiMode;
   connectionState: ControllerState['connectionState'];
+  switchingSession?: boolean;
   workspaceFolderName: string;
   sessionName?: string;
   sessionId?: string;

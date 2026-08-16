@@ -686,18 +686,27 @@ export class ChatTabManager implements vscode.Disposable {
         await context.controller.reconcile();
       }
     } catch (error) {
-      this.logger.error(
-        `Failed to load session for ${context.target.sessionFile ?? context.target.kind}`,
-        error
-      );
       const message = error instanceof Error ? error.message : String(error);
-      void vscode.window
-        .showErrorMessage(`Pi: couldn't load this chat — ${message}`, 'Show Logs')
-        .then((choice) => {
-          if (choice === 'Show Logs') {
-            void vscode.commands.executeCommand('piRpcInternal.showLogs');
-          }
-        });
+      // A readiness timeout during (rapid) switching is transient and self-heals
+      // once the earlier operation finishes — log it, don't nag the user with a
+      // scary toast. Only surface genuine load failures.
+      if (/Timed out waiting for Pi to be ready|Pi is not running/i.test(message)) {
+        this.logger.warn(
+          `Session load deferred (Pi busy) for ${context.target.sessionFile ?? context.target.kind}: ${message}`
+        );
+      } else {
+        this.logger.error(
+          `Failed to load session for ${context.target.sessionFile ?? context.target.kind}`,
+          error
+        );
+        void vscode.window
+          .showErrorMessage(`Pi: couldn't load this chat — ${message}`, 'Show Logs')
+          .then((choice) => {
+            if (choice === 'Show Logs') {
+              void vscode.commands.executeCommand('piRpcInternal.showLogs');
+            }
+          });
+      }
     }
 
     await this.renderResource(resource, { active: true });

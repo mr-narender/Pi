@@ -703,17 +703,22 @@ export class SessionController implements vscode.Disposable {
       // 'ready'/'busy', so setting 'handshaking' first would deadlock it (30s
       // "Timed out waiting for Pi to be ready").
       await this.whenReady();
-      // Instant loading feedback: now that Pi is confirmed up, clear the current
-      // transcript and show the "Loading chat…" loader while the RPC switch +
-      // reconcile run, instead of showing the PREVIOUS chat until they finish.
+      // Loading feedback WITHOUT touching connectionState: clear the transcript
+      // and set `switchingSession` so the webview shows the "Loading chat…"
+      // loader. Using a flag (not 'handshaking') is critical — with one Pi per
+      // folder, concurrent session switches would otherwise deadlock each
+      // other's whenReady() (which waits for ready/busy), causing the frozen UI
+      // and the "Timed out waiting for Pi to be ready" noise.
       this.state = {
         ...resetControllerProjection(this.state),
-        connectionState: 'handshaking',
+        switchingSession: true,
         state: { ...this.state.state, sessionFile: canonical },
       };
       this.fire();
       result = await this.requireClient().switchSession(canonical);
     } catch (error) {
+      this.state = { ...this.state, switchingSession: false };
+      this.fire();
       // Surface the real reason (path/permission/cwd errors are common on
       // Windows) instead of failing silently.
       this.logger.error(`Failed to resume session ${canonical}`, error);
@@ -725,15 +730,14 @@ export class SessionController implements vscode.Disposable {
       throw error;
     }
     if (result?.cancelled === true) {
+      this.state = { ...this.state, switchingSession: false };
+      this.fire();
       this.addDiagnostic('info', 'Switch session cancelled');
       return result;
     }
-    // Show the loading state while the transcript is fetched: clear the old
-    // projection and mark the connection as handshaking so the webview renders
-    // a spinner instead of an empty transcript during the reconcile.
-    this.state = { ...resetControllerProjection(this.state), connectionState: 'handshaking' };
-    this.fire();
     await this.reconcile();
+    this.state = { ...this.state, switchingSession: false };
+    this.fire();
     return result;
   }
 
