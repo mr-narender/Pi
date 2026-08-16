@@ -28,6 +28,7 @@ import {
 import { createInterface } from 'node:readline';
 import { open, stat } from 'node:fs/promises';
 import { canonicalizeSessionPath } from './paths';
+import { selectActiveBranchMessages, type SessionRecord } from './activeBranch';
 
 export class SessionController implements vscode.Disposable {
   private readonly changeEmitter = new vscode.EventEmitter<ControllerState>();
@@ -409,23 +410,21 @@ export class SessionController implements vscode.Disposable {
 
   private async readRecentSessionMessages(sessionFile: string): Promise<JsonObject[]> {
     const limit = Math.max(50, this.settings.maxTranscriptItems);
-    const messages: JsonObject[] = [];
+    const records: SessionRecord[] = [];
     try {
       const input = createReadStream(sessionFile, { encoding: 'utf8' });
       const lines = createInterface({ input, crlfDelay: Infinity });
       for await (const line of lines) {
         if (!line.trim()) continue;
         try {
-          const record = JSON.parse(line) as { type?: unknown; message?: unknown };
-          if (record.type === 'message' && record.message && typeof record.message === 'object') {
-            messages.push(record.message as JsonObject);
-            if (messages.length > limit) messages.shift();
-          }
+          records.push(JSON.parse(line) as SessionRecord);
         } catch {
           // A malformed/partial historical line must not prevent the chat from opening.
         }
       }
-      return messages;
+      // Only the ACTIVE branch — Pi keeps every fork branch in the same file, so
+      // a plain read would resurrect dropped branches after an inline edit/fork.
+      return selectActiveBranchMessages<JsonObject>(records, limit);
     } catch (error) {
       // A brand-new session file may not exist on disk yet — that's expected.
       if ((error as NodeJS.ErrnoException)?.code !== 'ENOENT') {

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.152
+
+- Fixed old messages reappearing after an inline edit/fork on any focus/reconcile: the local transcript read now follows only the ACTIVE branch (Pi stores all fork branches in one file, linked by id/parentId). Legacy sessions without ids fall back to linear order.
+
 ## 0.0.151
 
 - Inline edit now surfaces errors instead of failing silently, and times out a stuck fork (30s) so a rate-limited/unresponsive model no longer makes the edit appear to do nothing. Icon row alignment uses align-self for exact edge alignment.
