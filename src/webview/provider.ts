@@ -259,6 +259,9 @@ export class ChatPanelProvider implements vscode.Disposable {
       case 'executeCommand':
         await vscode.commands.executeCommand(parsed.command, parsed.argument);
         return;
+      case 'forkFromMessage':
+        await this.forkFromMessage(controller, parsed.fromBottom, parsed.text);
+        return;
       case 'pickImages':
         await this.pickImages(controller);
         return;
@@ -447,6 +450,40 @@ export class ChatPanelProvider implements vscode.Disposable {
       data: image.data,
       mimeType: image.mimeType,
     }));
+  }
+
+  // Edit a user message: fork the session at that message so everything after it
+  // is dropped and its text returns to the composer to resend. `fromBottom` is
+  // the message's distance from the newest user message (0 = latest), which is
+  // stable even when the transcript is windowed.
+  private async forkFromMessage(
+    controller: SessionController,
+    fromBottom: number,
+    text: string
+  ): Promise<void> {
+    const entries = await controller.getForkMessages();
+    if (entries.length === 0) {
+      return;
+    }
+    const wanted = text.trim();
+    let entry = entries[entries.length - 1 - fromBottom];
+    // Verify the positional match against the message text; if it disagrees
+    // (e.g. transcript/fork lists diverged), fall back to the newest entry whose
+    // text matches.
+    if (wanted && (!entry || String(entry.text ?? '').trim() !== wanted)) {
+      for (let i = entries.length - 1; i >= 0; i -= 1) {
+        const candidate = entries[i];
+        if (candidate && String(candidate.text ?? '').trim() === wanted) {
+          entry = candidate;
+          break;
+        }
+      }
+    }
+    const entryId = typeof entry?.entryId === 'string' ? entry.entryId : undefined;
+    if (!entryId) {
+      return;
+    }
+    await vscode.commands.executeCommand('piRpc.forkSession', { entryId });
   }
 
   private async pickImages(controller: SessionController): Promise<void> {

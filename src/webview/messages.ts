@@ -11,6 +11,7 @@ export type WebviewInboundMessage =
       focus: 'composer' | 'attach' | 'contextChip' | 'imageChip' | 'preview' | 'none';
     }
   | { type: 'executeCommand'; command: string; argument?: unknown }
+  | { type: 'forkFromMessage'; fromBottom: number; text: string }
   | { type: 'pickImages' }
   | { type: 'clearAttachments' }
   | { type: 'appendActiveFile' }
@@ -81,6 +82,14 @@ export function parseWebviewMessage(value: unknown): WebviewInboundMessage | und
     case 'executeCommand':
       return typeof record.command === 'string'
         ? { type: 'executeCommand', command: record.command, argument: record.argument }
+        : undefined;
+    case 'forkFromMessage':
+      return typeof record.fromBottom === 'number' && Number.isFinite(record.fromBottom)
+        ? {
+            type: 'forkFromMessage',
+            fromBottom: record.fromBottom,
+            text: typeof record.text === 'string' ? record.text : '',
+          }
         : undefined;
     case 'removeContextItem':
     case 'removeImageItem':

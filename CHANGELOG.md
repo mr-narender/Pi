@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.145
+
+- Edit (pencil) on a user message now forks the session at that message: everything after it is dropped and its text returns to the composer to resend (edit-and-restart-from-here). Pi fork creates a branch, so the original transcript is preserved.
+
 ## 0.0.144
 
 - Empty-response hint now names the failing model (e.g. openai-codex/gpt-5.6-sol) so you know which model to switch away from.

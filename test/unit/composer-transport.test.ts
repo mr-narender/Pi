@@ -7,6 +7,7 @@ import {
   serializeContextEnvelope,
 } from '../../src/webview/composer';
 import { renderChatApp } from '../../src/webview/render';
+import { parseWebviewMessage } from '../../src/webview/messages';
 import type { WebviewSnapshot } from '../../src/state/types';
 
 function snapshot(overrides: Partial<WebviewSnapshot> = {}): WebviewSnapshot {
@@ -185,4 +186,10 @@ test('chat css covers narrow, high-contrast, and reduced-motion modes', () => {
   assert.match(css, /@media \(forced-colors: active\)/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
   assert.match(css, /var\(--vscode-focusBorder\)/);
+});
+
+test('parseWebviewMessage accepts forkFromMessage (edit & restart from a message)', () => {
+  const parsed = parseWebviewMessage({ type: 'forkFromMessage', fromBottom: 0, text: 'PING' });
+  assert.deepEqual(parsed, { type: 'forkFromMessage', fromBottom: 0, text: 'PING' });
+  assert.equal(parseWebviewMessage({ type: 'forkFromMessage', text: 'x' }), undefined);
 });

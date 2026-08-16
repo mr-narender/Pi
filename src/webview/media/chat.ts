@@ -969,22 +969,21 @@ function renderNow(snapshot: WebviewSnapshot): void {
     });
   }
 
-  // #4 — edit a message back into the composer (client-side, updates the draft).
+  // #4 — edit a user message: fork the session AT that message (dropping every
+  // message after it) and reload its text into the composer to resend. Pi's
+  // fork creates a branch, so the original transcript is preserved. Keyed by
+  // distance-from-bottom so it stays correct even when the transcript is
+  // windowed (the tail is always shown).
   for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>('.msg-edit'))) {
     button.addEventListener('click', () => {
       const article = button.closest('.message-card');
-      const text = article?.querySelector('.message-body')?.textContent?.trim() ?? '';
-      const textarea = document.getElementById(COMPOSER_FIELD_ID) as HTMLTextAreaElement | null;
-      if (textarea && text) {
-        textarea.value = text;
-        textarea.dispatchEvent(new Event('input', { bubbles: true }));
-        textarea.focus();
-        try {
-          textarea.setSelectionRange(text.length, text.length);
-        } catch {
-          /* ignore */
-        }
+      if (!article) {
+        return;
       }
+      const text = article.querySelector('.message-body')?.textContent?.trim() ?? '';
+      const userCards = Array.from(root.querySelectorAll('.message-card.message-user'));
+      const fromBottom = userCards.length - 1 - userCards.indexOf(article);
+      vscode.postMessage({ type: 'forkFromMessage', fromBottom, text });
     });
   }
 
