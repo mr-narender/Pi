@@ -26,7 +26,7 @@ import {
   type FSWatcher,
 } from 'node:fs';
 import { createInterface } from 'node:readline';
-import { open, stat } from 'node:fs/promises';
+import { stat } from 'node:fs/promises';
 import { canonicalizeSessionPath } from './paths';
 import { selectActiveBranchMessages, type SessionRecord } from './activeBranch';
 
@@ -291,16 +291,16 @@ export class SessionController implements vscode.Disposable {
     }
     this.watchDebounce = setTimeout(() => {
       this.watchDebounce = undefined;
-      // Skip our own writes and non-idle states; appendExternalMessages also
-      // dedupes by id and guards on 'ready', so this is just to reduce churn.
+      // Skip our own writes and non-idle states.
       if (this.state.connectionState !== 'ready') {
         return;
       }
       if (this.msSinceSelfWrite() < SessionController.WATCH_SELF_WRITE_GRACE_MS) {
         return;
       }
+      // Resync the authoritative active branch over RPC (see appendExternalMessages).
       void this.appendExternalMessages().catch(() => {
-        /* best-effort live append */
+        /* best-effort live resync */
       });
     }, SessionController.WATCH_DEBOUNCE_MS);
   }
@@ -463,10 +463,12 @@ export class SessionController implements vscode.Disposable {
   }
 
   /**
-   * Silently append messages a terminal added to the SAME session file, by
-   * reading only the new tail bytes and appending unseen messages — no reload,
-   * no "Loading chat…" flash, no connection-state change. Idle-only; throttled
-   * by the caller. Dedupes by message id.
+   * A terminal (or a fork/branch switch) changed the SAME session file. Resync
+   * the transcript from Pi's AUTHORITATIVE active branch over RPC instead of
+   * tailing the file: the file stores EVERY fork branch, so a local tail-append
+   * can only add (never remove) and would resurrect dropped branches. RPC
+   * get_messages returns exactly the active branch, so this also reflects
+   * truncations (e.g. after an inline edit/fork). Idle-only.
    */
   public async appendExternalMessages(): Promise<void> {
     const file = this.activeSessionFile;
@@ -479,69 +481,11 @@ export class SessionController implements vscode.Disposable {
     } catch {
       return;
     }
-    if (size <= this.lastReadFileSize) {
-      if (size < this.lastReadFileSize) {
-        this.lastReadFileSize = size; // file was rewritten/shrank
-      }
-      return;
+    if (size === this.lastReadFileSize) {
+      return; // nothing changed on disk since we last synced
     }
-    const length = size - this.lastReadFileSize;
-    const buffer = Buffer.alloc(length);
-    let handle: Awaited<ReturnType<typeof open>> | undefined;
-    try {
-      handle = await open(file, 'r');
-      await handle.read(buffer, 0, length, this.lastReadFileSize);
-    } catch {
-      return;
-    } finally {
-      await handle?.close();
-    }
-    const text = buffer.toString('utf8');
-    const lastNewline = text.lastIndexOf('\n');
-    if (lastNewline < 0) {
-      return; // no complete line appended yet
-    }
-    const complete = text.slice(0, lastNewline);
-    this.lastReadFileSize += Buffer.byteLength(complete, 'utf8') + 1;
-
-    const existingIds = new Set(
-      this.state.messages
-        .map((message) => (typeof message.id === 'string' ? message.id : undefined))
-        .filter((id): id is string => Boolean(id))
-    );
-    const additions: JsonObject[] = [];
-    for (const line of complete.split('\n')) {
-      const trimmed = line.trim();
-      if (!trimmed) {
-        continue;
-      }
-      let entry: unknown;
-      try {
-        entry = JSON.parse(trimmed);
-      } catch {
-        continue;
-      }
-      const record = entry as { type?: unknown; message?: unknown } | null;
-      if (record?.type === 'message' && record.message && typeof record.message === 'object') {
-        const message = record.message as JsonObject;
-        const id = typeof message.id === 'string' ? message.id : undefined;
-        if (id && existingIds.has(id)) {
-          continue;
-        }
-        if (id) {
-          existingIds.add(id);
-        }
-        additions.push(message);
-      }
-    }
-    if (additions.length === 0) {
-      return;
-    }
-    this.logger.info(
-      `Silently appended ${additions.length} external message(s) to '${this.folder.name}'`
-    );
-    this.state = { ...this.state, messages: [...this.state.messages, ...additions] };
-    this.fire();
+    this.lastReadFileSize = size;
+    await this.refreshMessages();
   }
 
   public async prompt(

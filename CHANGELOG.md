@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.154
+
+- Re-architected the transcript to use Pi RPC get_messages (authoritative ACTIVE branch) as the single source of truth. The live file watcher now resyncs over RPC instead of tail-appending the local file, which stored every fork branch and could only add (never remove) messages. This fixes old/dropped branch messages reappearing after an inline edit/fork or while typing.
+
 ## 0.0.153
 
 - Added [edit] trace logging to the Pi output channel for the inline edit/fork flow to aid diagnosis.
