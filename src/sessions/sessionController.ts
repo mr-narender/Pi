@@ -791,6 +791,12 @@ export class SessionController implements vscode.Disposable {
     } catch (error) {
       this.logger.warn(`Could not refresh messages after fork: ${String(error)}`);
     }
+    // The file watcher tails the session file (which holds every branch) and
+    // appends "new" lines. Fork rewrites/branches the file, so move the tail
+    // pointer to EOF and mark a self-write; otherwise the just-dropped branch
+    // would be re-appended and the post-fork messages would reappear.
+    this.selfWriteAt = Date.now();
+    await this.syncFileReadOffset();
     return result;
   }
 

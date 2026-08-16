@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.149
+
+- Fork/inline-edit truncation now sticks: after forking, the session file tail pointer is moved to EOF and a self-write is marked so the live file watcher cannot re-append the dropped branch.
+
 ## 0.0.148
 
 - Fixed inline edit not truncating: after forking, messages are now refreshed over RPC (active branch only) so the post-fork messages no longer reappear; the edited turn is resubmitted.
