@@ -1367,20 +1367,19 @@ button.ghost:hover,
 /* Message actions sit UNDER the text (not floating above it), aligned to the
  * message side, revealed on hover for a calm transcript. */
 #messages .msg-actions {
-  display: flex;
+  display: inline-flex;
   gap: 6px;
   margin-top: 6px;
-  width: 100%;
   opacity: 0;
   transition: opacity 0.12s ease;
 }
-/* Align actions to the SAME edge as the bubble: right under your messages,
- * left under Pi's. Full-width row so the edge alignment is exact. */
+/* align-self positions the row directly against the same edge as the bubble:
+ * right under your messages, left under Pi's. */
 #messages .message-user .msg-actions {
-  justify-content: flex-end;
+  align-self: flex-end;
 }
 #messages .message-assistant .msg-actions {
-  justify-content: flex-start;
+  align-self: flex-start;
 }
 #messages .message-card:hover .msg-actions,
 #messages .msg-actions:focus-within {

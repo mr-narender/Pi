@@ -463,45 +463,79 @@ export class ChatPanelProvider implements vscode.Disposable {
     originalText: string,
     text: string
   ): Promise<void> {
-    ensureTrustedForMutation();
     const edited = text.trim();
     if (!edited) {
       return;
     }
-    const entries = await controller.getForkMessages();
-    if (entries.length === 0) {
-      return;
-    }
-    const wanted = originalText.trim();
-    let entry = entries[entries.length - 1 - fromBottom];
-    if (wanted && (!entry || String(entry.text ?? '').trim() !== wanted)) {
-      for (let i = entries.length - 1; i >= 0; i -= 1) {
-        const candidate = entries[i];
-        if (candidate && String(candidate.text ?? '').trim() === wanted) {
-          entry = candidate;
-          break;
+    try {
+      ensureTrustedForMutation();
+      const entries = await controller.getForkMessages();
+      if (entries.length === 0) {
+        void vscode.window.showWarningMessage(
+          'Pi: this session has no branch points to edit from yet.'
+        );
+        return;
+      }
+      const wanted = originalText.trim();
+      let entry = entries[entries.length - 1 - fromBottom];
+      if (wanted && (!entry || String(entry.text ?? '').trim() !== wanted)) {
+        for (let i = entries.length - 1; i >= 0; i -= 1) {
+          const candidate = entries[i];
+          if (candidate && String(candidate.text ?? '').trim() === wanted) {
+            entry = candidate;
+            break;
+          }
         }
       }
+      const entryId = typeof entry?.entryId === 'string' ? entry.entryId : undefined;
+      if (!entryId) {
+        void vscode.window.showWarningMessage('Pi: could not locate that message to edit.');
+        return;
+      }
+      // NODE MODEL: fork creates a new branch from the edited message (removing it
+      // and everything after), then we resubmit the edited text so the LLM
+      // produces a fresh response on the new branch. A timeout stops a stuck
+      // provider/session from hanging the edit silently.
+      await this.withTimeout(controller.fork(entryId), 30_000, 'Fork');
+      controller.setDraft('');
+      const cleared = await this.uiState.getComposerState(controller);
+      cleared.draft = '';
+      cleared.preview = undefined;
+      cleared.acceptedSendSnapshot = undefined;
+      await this.uiState.setComposerState(controller, cleared);
+      await this.postSnapshot(controller);
+      if (controller.snapshot.connectionState === 'stopped') {
+        await controller.start();
+      }
+      await controller.prompt(edited, 'prompt', []);
+      await this.postSnapshot(controller);
+    } catch (error) {
+      void vscode.window.showErrorMessage(
+        `Pi: edit & resend failed \u2014 ${error instanceof Error ? error.message : String(error)}`
+      );
     }
-    const entryId = typeof entry?.entryId === 'string' ? entry.entryId : undefined;
-    if (!entryId) {
-      return;
+  }
+
+  private async withTimeout<T>(work: Promise<T>, ms: number, label: string): Promise<T> {
+    let timer: NodeJS.Timeout | undefined;
+    const timeout = new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(
+        () =>
+          reject(
+            new Error(
+              `${label} timed out after ${ms / 1000}s (the model or session is unresponsive)`
+            )
+          ),
+        ms
+      );
+    });
+    try {
+      return await Promise.race([work, timeout]);
+    } finally {
+      if (timer) {
+        clearTimeout(timer);
+      }
     }
-    // Fork removes the edited message and everything after it, then we resubmit
-    // the edited text so the conversation continues from that point.
-    await controller.fork(entryId);
-    controller.setDraft('');
-    const cleared = await this.uiState.getComposerState(controller);
-    cleared.draft = '';
-    cleared.preview = undefined;
-    cleared.acceptedSendSnapshot = undefined;
-    await this.uiState.setComposerState(controller, cleared);
-    await this.postSnapshot(controller);
-    if (controller.snapshot.connectionState === 'stopped') {
-      await controller.start();
-    }
-    await controller.prompt(edited, 'prompt', []);
-    await this.postSnapshot(controller);
   }
 
   private async pickImages(controller: SessionController): Promise<void> {

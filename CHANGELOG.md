@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.151
+
+- Inline edit now surfaces errors instead of failing silently, and times out a stuck fork (30s) so a rate-limited/unresponsive model no longer makes the edit appear to do nothing. Icon row alignment uses align-self for exact edge alignment.
+
 ## 0.0.150
 
 - Fixed dropped-branch messages reappearing after inline edit/fork on any reconcile (session focus/switch): the transcript is now corrected from Pi active branch over RPC in the background, so forked sessions no longer reload the old chat.
