@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.143
+
+- Chat: show a clear hint when an assistant turn returns no content (e.g. the provider is rate-limited or errored) instead of a silent blank bubble, with a button to open Pi logs.
+
 ## 0.0.142
 
 - Fixed empty assistant responses on Pi 0.84+: message_update events are now delta-only (no message field), so the reducer applies streamed text/thinking deltas to the current assistant message instead of dropping them.

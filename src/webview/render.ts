@@ -165,6 +165,15 @@ function renderAssistantBody(
       : message.text
         ? [{ kind: 'text', text: message.text }]
         : [];
+  // A settled assistant turn with NO content means the model returned nothing
+  // (commonly a provider error / rate limit that Pi couldn't surface as an
+  // event). Show a clear hint instead of a silent blank bubble.
+  const hasAnyContent = blocks.some((block) =>
+    block.kind === 'text' || block.kind === 'thinking' ? Boolean((block.text ?? '').trim()) : true
+  );
+  if (!hasAnyContent && !streamingAnswer) {
+    return `<div class="assistant-empty">Pi returned an empty response — the model may be rate-limited or erroring. <button type="button" class="link-button" data-command="piRpcInternal.showLogs">Open Pi logs</button> or try another model.</div>`;
+  }
   const hasProcess = blocks.some((block) => block.kind !== 'text');
   if (!hasProcess) {
     return renderMessageStream(message, streamingAnswer);

@@ -2391,3 +2391,19 @@ button.ghost:hover,
   max-height: 140px;
   border-radius: 6px;
 }
+
+/* Empty assistant turn (provider error / rate limit): a clear hint, not a blank. */
+#messages .assistant-empty {
+  color: var(--vscode-descriptionForeground);
+  font-style: italic;
+  padding: 4px 0;
+}
+#messages .assistant-empty .link-button {
+  font-style: normal;
+  color: var(--vscode-textLink-foreground);
+  background: transparent;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+}

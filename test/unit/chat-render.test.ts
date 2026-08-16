@@ -680,3 +680,17 @@ test('renderChatApp renders JSON tool output as a structured table', () => {
   assert.match(html, /<th>size<\/th>/);
   assert.doesNotMatch(html, /\[\{&quot;name/); // no raw JSON dump
 });
+
+test('renderChatApp shows a hint for an empty assistant response (not a blank bubble)', () => {
+  const html = renderChatApp(
+    snapshot({
+      connectionState: 'ready',
+      messages: [
+        { id: 'u', role: 'user', text: 'PING', attachments: [] },
+        { id: 'a', role: 'assistant', text: '', blocks: [], attachments: [] },
+      ],
+    })
+  );
+  assert.match(html, /class="assistant-empty"/);
+  assert.match(html, /empty response/i);
+});
