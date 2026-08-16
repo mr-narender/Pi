@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.139
+
+- Chat: coalesce transcript re-renders while Pi is replying (thinking/tool streaming) to a calm rate, so the UI stays readable instead of flickering several times a second. Answer text still streams smoothly.
+
 ## 0.0.138
 
 - Hardened the sent-text-reappears fix: the composer will never re-show text you just submitted while the draft is empty (covers the after-completion caret-restore race).

@@ -353,6 +353,12 @@ let lastComposerResetSeq: number | undefined;
 // the growing text of the streaming answer). Lets us patch just the answer
 // during a reply instead of rebuilding the whole transcript (flicker source).
 let renderedStructureSig: string | undefined;
+// Coalesce full re-renders while Pi is replying so the transcript doesn't
+// rebuild (and flicker) several times per second as thinking/tool blocks stream.
+let pendingSnapshot: WebviewSnapshot | undefined;
+let flushTimer: ReturnType<typeof setTimeout> | undefined;
+let lastFullRenderAt = 0;
+const BUSY_MIN_RENDER_INTERVAL = 150;
 // Prompt history (like the TUI): Up at the start of the input walks back through
 // previously-sent prompts; Down walks forward; past the newest restores the
 // in-progress draft. `historyIndex === -1` means not currently navigating.
@@ -521,13 +527,11 @@ function render(snapshot: WebviewSnapshot): void {
   if (!root) {
     return;
   }
-
-  // Streaming fast-path: if the only change since the last full render is the
-  // growing answer text, patch that ONE element and let the typewriter reveal
-  // it — do NOT rebuild the transcript (which flickers every prior message
-  // 2-3x/second during a reply).
   const isBusy = snapshot.connectionState === 'busy' || snapshot.isStreaming === true;
   const sig = structureSignature(snapshot);
+
+  // Fast-path: only the answer text grew -> patch that ONE element and let the
+  // typewriter reveal it; do NOT rebuild the transcript.
   if (isBusy && sig === renderedStructureSig) {
     const el = streamTarget();
     const text = lastStreamText(snapshot);
@@ -539,6 +543,45 @@ function render(snapshot: WebviewSnapshot): void {
     }
   }
 
+  // Structural change while replying (new thinking/tool block, etc.): coalesce
+  // to a calm max rate instead of rebuilding the DOM on every 400ms snapshot.
+  if (isBusy) {
+    pendingSnapshot = snapshot;
+    const now = performance.now();
+    const wait = BUSY_MIN_RENDER_INTERVAL - (now - lastFullRenderAt);
+    if (wait <= 0) {
+      lastFullRenderAt = now;
+      pendingSnapshot = undefined;
+      renderNow(snapshot);
+    } else if (!flushTimer) {
+      flushTimer = setTimeout(() => {
+        flushTimer = undefined;
+        lastFullRenderAt = performance.now();
+        const pending = pendingSnapshot;
+        pendingSnapshot = undefined;
+        if (pending) {
+          renderNow(pending);
+        }
+      }, wait);
+    }
+    return;
+  }
+
+  // Idle / final snapshot: render immediately (authoritative).
+  if (flushTimer) {
+    clearTimeout(flushTimer);
+    flushTimer = undefined;
+  }
+  pendingSnapshot = undefined;
+  lastFullRenderAt = performance.now();
+  renderNow(snapshot);
+}
+
+function renderNow(snapshot: WebviewSnapshot): void {
+  currentSnapshot = snapshot;
+  if (!root) {
+    return;
+  }
   announceTurnState(snapshot);
 
   // Capture pre-render scroll metrics so we can decide, after the DOM is
@@ -581,7 +624,7 @@ function render(snapshot: WebviewSnapshot): void {
   }
 
   root.innerHTML = renderChatApp(snapshot);
-  renderedStructureSig = sig;
+  renderedStructureSig = structureSignature(snapshot);
 
   for (const id of openMenus) {
     const el = document.getElementById(id) as HTMLDetailsElement | null;
