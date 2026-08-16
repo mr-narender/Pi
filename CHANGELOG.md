@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.164
+
+- Chat selection is now instant: clicking a session in the sidebar highlights it immediately, opens the tab right away, and shows a "Loading chat…" loader while the session reconciles in the background (the recent-list refresh and reconcile no longer block the tab from appearing, and the previous chat is no longer shown until the new one loads).
+
 ## 0.0.163
 
 - Fixed the sent text reappearing in the composer after pressing Enter: a re-render (including an authoritative composer reset or one while the composer is unfocused) can no longer repopulate the just-submitted text. Typing clears the guard so re-typing the same text still works.

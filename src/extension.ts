@@ -974,12 +974,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (!picked) {
         return { cancelled: true };
       }
-      await recentSessions.refresh(controller.folder);
+      // Open the tab IMMEDIATELY for instant feedback. The webview renders a
+      // "Loading chat…" loader (switchSession sets a handshaking state) while the
+      // session reconciles. The recent-list refresh and the reconcile run in the
+      // background so neither blocks the tab from appearing.
+      void recentSessions.refresh(controller.folder);
       const resource = await chatTabs.openForSessionFile(controller, picked.sessionPath, {
         focusComposer: true,
       });
-      await chatTabs.activateResource(resource, { startIfStopped: false });
-      refreshViews();
+      void chatTabs
+        .activateResource(resource, { startIfStopped: false })
+        .finally(() => refreshViews());
       return picked;
     }
     return withController(

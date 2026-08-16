@@ -695,6 +695,16 @@ export class SessionController implements vscode.Disposable {
   public async switchSession(sessionPath: string): Promise<JsonObject | undefined> {
     const canonical = await canonicalizeSessionPath(this.folder.uri.fsPath, sessionPath);
     this.logger.info(`Resuming session ${canonical} for '${this.folder.name}'`);
+    // Instant loading feedback: clear the current transcript and switch to a
+    // 'handshaking' state so the webview shows the "Loading chat…" loader right
+    // away, instead of showing the PREVIOUS chat until the RPC switch + reconcile
+    // finish (which can take a while for large sessions).
+    this.state = {
+      ...resetControllerProjection(this.state),
+      connectionState: 'handshaking',
+      state: { ...this.state.state, sessionFile: canonical },
+    };
+    this.fire();
     let result: JsonObject | undefined;
     try {
       // Ensure the RPC client is actually usable (handles the warm-start race

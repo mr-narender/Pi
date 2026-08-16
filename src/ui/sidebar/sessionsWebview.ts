@@ -252,6 +252,12 @@ export class SessionsWebviewProvider implements vscode.WebviewViewProvider {
           vscode.postMessage({ type: btn.getAttribute('data-act'), sessionPath, sessionLabel });
           return;
         }
+        // Instant selection feedback: highlight the clicked item immediately,
+        // before the tab finishes loading, so the click is acknowledged at once.
+        document.querySelectorAll('.item.active').forEach(function (el) {
+          el.classList.remove('active');
+        });
+        item.classList.add('active');
         vscode.postMessage({ type: 'open', sessionPath });
       });
       window.addEventListener('message', (event) => {
