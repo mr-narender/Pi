@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.159
+
+- FIX (root cause): inline edit did nothing in editor tabs because the forkAndSend handler existed only on the sidebar panel, not the ChatTabManager the tabs actually use. Editor tabs now handle forkAndSend on their own controller, so editing a message forks + resubmits and the truncation sticks.
+
 ## 0.0.158
 
 - Fixed inline edit doing nothing: transcript re-renders are now suspended while a message is being edited in place, so background snapshot churn (reconcile handshakes/streaming) can no longer destroy the editor before Enter is pressed.

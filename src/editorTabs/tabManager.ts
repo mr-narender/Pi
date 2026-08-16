@@ -1040,8 +1040,84 @@ export class ChatTabManager implements vscode.Disposable {
         await this.openCurrentChat({ folderUri: parsed.folderUri });
         return;
       }
+      case 'debugLog':
+        context.controller.log('info', `[webview] ${parsed.text}`);
+        return;
+      case 'forkAndSend':
+        await this.forkAndSendInTab(context, parsed.fromBottom, parsed.originalText, parsed.text);
+        return;
       default:
         return;
+    }
+  }
+
+  // Inline edit + resubmit for editor tabs (ChatGPT/Continue style): fork the
+  // session at the edited user message (dropping everything after it), then send
+  // the edited text as the new turn on the tab's OWN controller.
+  private async forkAndSendInTab(
+    context: ChatTabContext,
+    fromBottom: number,
+    originalText: string,
+    text: string
+  ): Promise<void> {
+    const controller = context.controller;
+    const edited = text.trim();
+    controller.log(
+      'info',
+      `[edit] forkAndSend (tab): fromBottom=${fromBottom}, chars=${edited.length}`
+    );
+    if (!edited) {
+      return;
+    }
+    try {
+      ensureTrustedForMutation();
+      const entries = await controller.getForkMessages();
+      controller.log('info', `[edit] fork points available: ${entries.length}`);
+      if (entries.length === 0) {
+        void vscode.window.showWarningMessage(
+          'Pi: this session has no branch points to edit from yet.'
+        );
+        return;
+      }
+      const wanted = originalText.trim();
+      let entry = entries[entries.length - 1 - fromBottom];
+      if (wanted && (!entry || String(entry.text ?? '').trim() !== wanted)) {
+        for (let i = entries.length - 1; i >= 0; i -= 1) {
+          const candidate = entries[i];
+          if (candidate && String(candidate.text ?? '').trim() === wanted) {
+            entry = candidate;
+            break;
+          }
+        }
+      }
+      const entryId = typeof entry?.entryId === 'string' ? entry.entryId : undefined;
+      if (!entryId) {
+        void vscode.window.showWarningMessage('Pi: could not locate that message to edit.');
+        return;
+      }
+      controller.log('info', `[edit] forking at entryId=${entryId}`);
+      await controller.fork(entryId);
+      controller.setDraft('');
+      const state = await this.uiState.getComposerStateForIdentity(
+        context.controller,
+        context.target
+      );
+      state.draft = '';
+      state.preview = undefined;
+      state.acceptedSendSnapshot = undefined;
+      await this.uiState.setComposerStateForIdentity(context.controller, context.target, state);
+      await this.renderResource(context.resource);
+      controller.log('info', '[edit] fork complete; resubmitting edited text to the model');
+      if (controller.snapshot.connectionState === 'stopped') {
+        await controller.start();
+      }
+      await controller.prompt(edited, 'prompt', []);
+      controller.log('info', '[edit] prompt sent to model');
+      await this.renderResource(context.resource);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      controller.log('error', `[edit] failed: ${detail}`);
+      void vscode.window.showErrorMessage(`Pi: edit & resend failed \u2014 ${detail}`);
     }
   }
 
