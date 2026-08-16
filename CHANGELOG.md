@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.158
+
+- Fixed inline edit doing nothing: transcript re-renders are now suspended while a message is being edited in place, so background snapshot churn (reconcile handshakes/streaming) can no longer destroy the editor before Enter is pressed.
+
 ## 0.0.157
 
 - Center the message action icons under the message. Added webview-side debug logging ([webview] pencil clicked / enter: posting forkAndSend) to diagnose the inline edit flow.

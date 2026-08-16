@@ -533,9 +533,34 @@ function prefersReducedMotion(): boolean {
   return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
 }
 
+// While an inline message editor is open, suspend transcript re-renders. Every
+// render rebuilds `#app` via innerHTML, which would destroy the editor the user
+// is typing in. Snapshot churn (reconcile handshakes, streaming, status) fires
+// constantly, so without this the editor vanishes the instant it's opened and
+// the edit silently "does nothing". The latest snapshot is stashed and applied
+// when editing ends.
+let inlineEditActive = false;
+let deferredSnapshot: WebviewSnapshot | undefined;
+function beginInlineEdit(): void {
+  inlineEditActive = true;
+}
+function endInlineEdit(applyDeferred: boolean): void {
+  inlineEditActive = false;
+  const pending = deferredSnapshot;
+  deferredSnapshot = undefined;
+  if (applyDeferred && pending) {
+    render(pending);
+  }
+}
+
 function render(snapshot: WebviewSnapshot): void {
   currentSnapshot = snapshot;
   if (!root) {
+    return;
+  }
+  if (inlineEditActive) {
+    // Defer: don't rebuild the DOM while the user is editing a message in place.
+    deferredSnapshot = snapshot;
     return;
   }
   const isBusy = snapshot.connectionState === 'busy' || snapshot.isStreaming === true;
@@ -1022,6 +1047,8 @@ function renderNow(snapshot: WebviewSnapshot): void {
         actions.style.display = 'none';
       }
       body.insertAdjacentElement('afterend', editor);
+      // Suspend re-renders so snapshot churn can't wipe this editor.
+      beginInlineEdit();
       ta.focus();
       ta.setSelectionRange(ta.value.length, ta.value.length);
       grow(ta);
@@ -1033,6 +1060,8 @@ function renderNow(snapshot: WebviewSnapshot): void {
         if (actions) {
           actions.style.display = '';
         }
+        // Resume rendering and repaint the authoritative state.
+        endInlineEdit(true);
       };
       ta.addEventListener('keydown', (event) => {
         if (event.key === 'Enter' && !event.shiftKey) {
@@ -1065,6 +1094,9 @@ function renderNow(snapshot: WebviewSnapshot): void {
             originalText: original,
             text: edited,
           });
+          // Resume rendering; the fork's fresh snapshots repaint the truncated
+          // transcript + new response. Discard the stale (pre-fork) deferred one.
+          endInlineEdit(false);
         } else if (event.key === 'Escape') {
           event.preventDefault();
           cancel();
