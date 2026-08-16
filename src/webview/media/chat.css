@@ -1370,9 +1370,12 @@ button.ghost:hover,
   display: flex;
   gap: 6px;
   margin-top: 6px;
+  width: 100%;
   opacity: 0;
   transition: opacity 0.12s ease;
 }
+/* Align actions to the SAME edge as the bubble: right under your messages,
+ * left under Pi's. Full-width row so the edge alignment is exact. */
 #messages .message-user .msg-actions {
   justify-content: flex-end;
 }

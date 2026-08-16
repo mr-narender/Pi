@@ -395,6 +395,16 @@ export class SessionController implements vscode.Disposable {
     // file push into the GUI in near real time.
     this.armSessionFileWatcher();
     this.fire();
+    // The local tail read above includes EVERY branch stored in the session
+    // file, so a forked session would resurrect the dropped branch on any
+    // reconcile (session open/switch/focus). Correct the transcript from Pi's
+    // authoritative ACTIVE branch over RPC — in the background so resume stays
+    // instant and this never blocks or fails the load.
+    if (this.state.connectionState === 'ready') {
+      void this.refreshMessages().catch(() => {
+        /* best-effort; the local tail is already painted */
+      });
+    }
   }
 
   private async readRecentSessionMessages(sessionFile: string): Promise<JsonObject[]> {

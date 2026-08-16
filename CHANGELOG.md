@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.150
+
+- Fixed dropped-branch messages reappearing after inline edit/fork on any reconcile (session focus/switch): the transcript is now corrected from Pi active branch over RPC in the background, so forked sessions no longer reload the old chat.
+
 ## 0.0.149
 
 - Fork/inline-edit truncation now sticks: after forking, the session file tail pointer is moved to EOF and a self-write is marked so the live file watcher cannot re-append the dropped branch.
