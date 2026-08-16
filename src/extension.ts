@@ -97,6 +97,12 @@ function compatibilityEvents(controller: SessionController) {
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const logger = new DiagnosticsLogger();
+  // Build marker: makes it unambiguous which build VS Code actually loaded.
+  const extVersion = String(
+    (context.extension.packageJSON as { version?: unknown }).version ?? 'unknown'
+  );
+  logger.info(`Pi extension activating: v${extVersion}`);
+  void vscode.window.showInformationMessage(`Pi extension v${extVersion} loaded`);
   const registry = new SessionRegistry(logger);
   const settings = getSettings();
   const editorTabsEnabled = () => getSettings().editorTabsEnabled;
