@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.156
+
+- Added a build badge (bottom-left of the chat: "pi build X webview live") and cache-busted webview assets, so it is unambiguous that BOTH the extension host and the webview bundle are the current build.
+
 ## 0.0.155
 
 - Added an activation toast + log showing the loaded extension version, to make it unambiguous which build VS Code is running.

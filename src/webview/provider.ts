@@ -745,6 +745,6 @@ export class ChatPanelProvider implements vscode.Disposable {
   }
 
   private renderHtml(webview: vscode.Webview): string {
-    return renderChatWebviewHtml(this.context.extensionUri, webview, 'Current Chat');
+    return renderChatWebviewHtml(this.context.extensionUri, webview, 'Current Chat', __PI_BUILD__);
   }
 }

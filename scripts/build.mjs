@@ -1,8 +1,11 @@
-import { mkdir, copyFile } from 'node:fs/promises';
+import { mkdir, copyFile, readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { build } from 'esbuild';
 
 await mkdir('dist', { recursive: true });
+
+const pkg = JSON.parse(await readFile('package.json', 'utf8'));
+const define = { __PI_BUILD__: JSON.stringify(String(pkg.version)) };
 
 await build({
   entryPoints: ['src/extension.ts'],
@@ -12,6 +15,7 @@ await build({
   format: 'cjs',
   target: 'node18',
   external: ['vscode'],
+  define,
   sourcemap: false,
   legalComments: 'none',
 });
@@ -23,6 +27,7 @@ await build({
   platform: 'browser',
   format: 'iife',
   target: 'es2022',
+  define,
   sourcemap: false,
   legalComments: 'none',
 });

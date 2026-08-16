@@ -21,6 +21,17 @@ const vscode = acquireVsCodeApi();
 const root = document.getElementById('app');
 let currentSnapshot: WebviewSnapshot | undefined;
 
+// Stamp the build badge from the WEBVIEW bundle so it's unambiguous that this
+// chat.js (not just the extension host) is the current build.
+try {
+  const badge = document.getElementById('pi-build');
+  if (badge) {
+    badge.textContent = `pi build ${__PI_BUILD__} \u00b7 webview live`;
+  }
+} catch {
+  /* non-fatal */
+}
+
 // #6 — inline slash-command autocomplete state.
 let slashCommands: Array<{ name: string; description: string }> | null = null;
 let slashRequested = false;

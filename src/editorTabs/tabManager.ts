@@ -151,7 +151,12 @@ class ChatEditorHost implements vscode.Disposable {
       enableScripts: true,
       localResourceRoots: [extensionUri, vscode.Uri.joinPath(extensionUri, 'dist')],
     };
-    this.panel.webview.html = renderChatWebviewHtml(extensionUri, this.panel.webview, 'Pi Chat');
+    this.panel.webview.html = renderChatWebviewHtml(
+      extensionUri,
+      this.panel.webview,
+      'Pi Chat',
+      __PI_BUILD__
+    );
     this.disposables.push(
       this.panel.webview.onDidReceiveMessage(
         (message: unknown) => void this.manager.onMessage(this, message)
