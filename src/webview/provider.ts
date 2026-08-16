@@ -259,8 +259,8 @@ export class ChatPanelProvider implements vscode.Disposable {
       case 'executeCommand':
         await vscode.commands.executeCommand(parsed.command, parsed.argument);
         return;
-      case 'forkFromMessage':
-        await this.forkFromMessage(controller, parsed.fromBottom, parsed.text);
+      case 'forkAndSend':
+        await this.forkAndSend(controller, parsed.fromBottom, parsed.originalText, parsed.text);
         return;
       case 'pickImages':
         await this.pickImages(controller);
@@ -452,24 +452,28 @@ export class ChatPanelProvider implements vscode.Disposable {
     }));
   }
 
-  // Edit a user message: fork the session at that message so everything after it
-  // is dropped and its text returns to the composer to resend. `fromBottom` is
-  // the message's distance from the newest user message (0 = latest), which is
-  // stable even when the transcript is windowed.
-  private async forkFromMessage(
+  // Inline edit + resubmit (ChatGPT/Continue style): fork the session AT the
+  // edited user message so everything after it is dropped, then send the edited
+  // text as the new turn. `fromBottom` is the message's distance from the newest
+  // user message (0 = latest), stable even when the transcript is windowed;
+  // `originalText` disambiguates when positions and the fork list diverge.
+  private async forkAndSend(
     controller: SessionController,
     fromBottom: number,
+    originalText: string,
     text: string
   ): Promise<void> {
+    ensureTrustedForMutation();
+    const edited = text.trim();
+    if (!edited) {
+      return;
+    }
     const entries = await controller.getForkMessages();
     if (entries.length === 0) {
       return;
     }
-    const wanted = text.trim();
+    const wanted = originalText.trim();
     let entry = entries[entries.length - 1 - fromBottom];
-    // Verify the positional match against the message text; if it disagrees
-    // (e.g. transcript/fork lists diverged), fall back to the newest entry whose
-    // text matches.
     if (wanted && (!entry || String(entry.text ?? '').trim() !== wanted)) {
       for (let i = entries.length - 1; i >= 0; i -= 1) {
         const candidate = entries[i];
@@ -483,7 +487,21 @@ export class ChatPanelProvider implements vscode.Disposable {
     if (!entryId) {
       return;
     }
-    await vscode.commands.executeCommand('piRpc.forkSession', { entryId });
+    // Fork removes the edited message and everything after it, then we resubmit
+    // the edited text so the conversation continues from that point.
+    await controller.fork(entryId);
+    controller.setDraft('');
+    const cleared = await this.uiState.getComposerState(controller);
+    cleared.draft = '';
+    cleared.preview = undefined;
+    cleared.acceptedSendSnapshot = undefined;
+    await this.uiState.setComposerState(controller, cleared);
+    await this.postSnapshot(controller);
+    if (controller.snapshot.connectionState === 'stopped') {
+      await controller.start();
+    }
+    await controller.prompt(edited, 'prompt', []);
+    await this.postSnapshot(controller);
   }
 
   private async pickImages(controller: SessionController): Promise<void> {

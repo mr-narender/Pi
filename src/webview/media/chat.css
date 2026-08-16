@@ -1387,8 +1387,8 @@ button.ghost:hover,
 #messages .msg-edit {
   display: grid;
   place-items: center;
-  width: 24px;
-  height: 24px;
+  width: 30px;
+  height: 30px;
   border: 1px solid transparent;
   border-radius: 6px;
   background: transparent;
@@ -2412,4 +2412,33 @@ button.ghost:hover,
   padding: 0;
   cursor: pointer;
   text-decoration: underline;
+}
+
+/* Inline message edit (ChatGPT/Continue style): edit in place, Enter resubmits. */
+#messages .inline-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
+#messages .inline-edit-field {
+  width: 100%;
+  box-sizing: border-box;
+  resize: none;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--vscode-focusBorder, var(--vscode-widget-border));
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  font-family: var(--pi-chat-font-family, inherit);
+  font-size: inherit;
+  line-height: 1.5;
+}
+#messages .inline-edit-field:focus {
+  outline: none;
+  border-color: var(--vscode-focusBorder);
+}
+#messages .inline-edit-hint {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
 }

@@ -969,21 +969,89 @@ function renderNow(snapshot: WebviewSnapshot): void {
     });
   }
 
-  // #4 — edit a user message: fork the session AT that message (dropping every
-  // message after it) and reload its text into the composer to resend. Pi's
-  // fork creates a branch, so the original transcript is preserved. Keyed by
-  // distance-from-bottom so it stays correct even when the transcript is
-  // windowed (the tail is always shown).
+  // #4 — edit a user message INLINE (ChatGPT/Continue style): the bubble text
+  // becomes an editable field in place; pressing Enter forks the session at that
+  // message (dropping every message after it) and resubmits the edited text.
+  // Esc cancels. Keyed by distance-from-bottom so it stays correct even when the
+  // transcript is windowed (the tail is always shown).
   for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>('.msg-edit'))) {
     button.addEventListener('click', () => {
-      const article = button.closest('.message-card');
-      if (!article) {
+      const article = button.closest('.message-card') as HTMLElement | null;
+      if (!article || article.querySelector('.inline-edit')) {
         return;
       }
-      const text = article.querySelector('.message-body')?.textContent?.trim() ?? '';
+      const body = article.querySelector('.message-body') as HTMLElement | null;
+      if (!body) {
+        return;
+      }
+      const original = body.textContent?.trim() ?? '';
       const userCards = Array.from(root.querySelectorAll('.message-card.message-user'));
       const fromBottom = userCards.length - 1 - userCards.indexOf(article);
-      vscode.postMessage({ type: 'forkFromMessage', fromBottom, text });
+
+      const grow = (ta: HTMLTextAreaElement): void => {
+        ta.style.height = 'auto';
+        ta.style.height = `${Math.min(ta.scrollHeight, 320)}px`;
+      };
+      const editor = document.createElement('div');
+      editor.className = 'inline-edit';
+      const ta = document.createElement('textarea');
+      ta.className = 'inline-edit-field';
+      ta.value = original;
+      const hint = document.createElement('div');
+      hint.className = 'inline-edit-hint';
+      hint.textContent = 'Enter to save & resend · Esc to cancel';
+      editor.append(ta, hint);
+
+      const actions = article.querySelector('.msg-actions') as HTMLElement | null;
+      body.style.display = 'none';
+      if (actions) {
+        actions.style.display = 'none';
+      }
+      body.insertAdjacentElement('afterend', editor);
+      ta.focus();
+      ta.setSelectionRange(ta.value.length, ta.value.length);
+      grow(ta);
+      ta.addEventListener('input', () => grow(ta));
+
+      const cancel = (): void => {
+        editor.remove();
+        body.style.display = '';
+        if (actions) {
+          actions.style.display = '';
+        }
+      };
+      ta.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' && !event.shiftKey) {
+          event.preventDefault();
+          const edited = ta.value.trim();
+          if (!edited) {
+            cancel();
+            return;
+          }
+          // Instant feedback: hide every message after this one until the
+          // forked snapshot arrives.
+          let sibling = article.nextElementSibling as HTMLElement | null;
+          while (sibling) {
+            sibling.style.display = 'none';
+            sibling = sibling.nextElementSibling as HTMLElement | null;
+          }
+          editor.remove();
+          body.textContent = edited;
+          body.style.display = '';
+          if (actions) {
+            actions.style.display = '';
+          }
+          vscode.postMessage({
+            type: 'forkAndSend',
+            fromBottom,
+            originalText: original,
+            text: edited,
+          });
+        } else if (event.key === 'Escape') {
+          event.preventDefault();
+          cancel();
+        }
+      });
     });
   }
 

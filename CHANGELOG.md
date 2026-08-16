@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.147
+
+- Edit a user message INLINE (ChatGPT/Continue style): the bubble text becomes editable in place; press Enter to fork the session at that message (removing everything after it) and resubmit the edited text. Esc cancels. Larger edit/copy icons.
+
 ## 0.0.146
 
 - Message actions (edit/copy) now sit UNDER the message text with clearer spacing and size, aligned to the message side, revealed on hover.

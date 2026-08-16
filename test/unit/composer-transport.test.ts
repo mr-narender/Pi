@@ -188,8 +188,20 @@ test('chat css covers narrow, high-contrast, and reduced-motion modes', () => {
   assert.match(css, /var\(--vscode-focusBorder\)/);
 });
 
-test('parseWebviewMessage accepts forkFromMessage (edit & restart from a message)', () => {
-  const parsed = parseWebviewMessage({ type: 'forkFromMessage', fromBottom: 0, text: 'PING' });
-  assert.deepEqual(parsed, { type: 'forkFromMessage', fromBottom: 0, text: 'PING' });
-  assert.equal(parseWebviewMessage({ type: 'forkFromMessage', text: 'x' }), undefined);
+test('parseWebviewMessage accepts forkAndSend (inline edit + resubmit)', () => {
+  const parsed = parseWebviewMessage({
+    type: 'forkAndSend',
+    fromBottom: 0,
+    originalText: 'PING',
+    text: 'PONG',
+  });
+  assert.deepEqual(parsed, {
+    type: 'forkAndSend',
+    fromBottom: 0,
+    originalText: 'PING',
+    text: 'PONG',
+  });
+  // Missing fromBottom or empty text is rejected.
+  assert.equal(parseWebviewMessage({ type: 'forkAndSend', text: 'x' }), undefined);
+  assert.equal(parseWebviewMessage({ type: 'forkAndSend', fromBottom: 0, text: '   ' }), undefined);
 });
