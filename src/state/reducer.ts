@@ -292,9 +292,15 @@ export function reduceEvent(state: ControllerState, event: RpcEvent): Controller
       };
       break;
     case 'agent_end':
+      // The agent has finished responding. Release the UI to 'ready' here rather
+      // than waiting for `agent_settled`: post-turn work (e.g. memory_search /
+      // qmd, summarization) can delay or drop `agent_settled`, which would leave
+      // the composer stuck on "Working…", queue follow-ups, and not clear the
+      // input. If a queued turn starts next, `agent_start`/`turn_start` set busy
+      // again. Stay busy only while compacting.
       next = {
         ...next,
-        connectionState: 'busy',
+        connectionState: next.state.isCompacting ? 'busy' : 'ready',
         state: {
           ...next.state,
           isStreaming: false,

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.162
+
+- Fixed stuck "Working…" animation after the agent responds (and the follow-on regressions: follow-ups queuing, input not clearing). The UI now returns to ready on agent_end instead of waiting for agent_settled, which post-turn work (memory_search/qmd, summarization) can delay or drop. Stays busy only while compacting.
+
 ## 0.0.161
 
 - Inline edit now uses a lean IN-PLACE fork (RPC fork + transcript refresh, no full reconcile), so editing branches within the SAME session/tab instead of spawning a new tab and a new sidebar session entry.

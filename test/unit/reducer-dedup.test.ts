@@ -102,3 +102,29 @@ test('delta-only message_update (Pi 0.84) accumulates assistant text', () => {
   const content = (assistants[0] as { content?: Array<{ type?: string; text?: string }> }).content;
   assert.equal(content?.[0]?.text, 'Hello world');
 });
+
+// A turn that finishes with agent_end (but no agent_settled — e.g. post-turn
+// memory/qmd work delays it) must still release the UI to 'ready' so the
+// "Working…" banner clears, sends aren't queued, and the input clears.
+test('agent_end releases connectionState to ready without agent_settled', () => {
+  let state = createInitialControllerState('w', '/tmp');
+  state = reduceEvent(state, ev({ type: 'agent_start' }));
+  state = reduceEvent(state, ev({ type: 'turn_start' }));
+  assert.equal(state.connectionState, 'busy');
+  state = reduceEvent(
+    state,
+    ev({ type: 'turn_end', message: { role: 'assistant', timestamp: 1 } })
+  );
+  state = reduceEvent(state, ev({ type: 'agent_end', messages: [] }));
+  assert.equal(state.connectionState, 'ready');
+  assert.equal(state.state.isStreaming, false);
+});
+
+// While compacting, agent_end must stay busy (compaction is still running).
+test('agent_end stays busy while compacting', () => {
+  let state = createInitialControllerState('w', '/tmp');
+  state = reduceEvent(state, ev({ type: 'compaction_start' }));
+  assert.equal(state.state.isCompacting, true);
+  state = reduceEvent(state, ev({ type: 'agent_end', messages: [] }));
+  assert.equal(state.connectionState, 'busy');
+});
