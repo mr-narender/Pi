@@ -464,12 +464,17 @@ export class ChatPanelProvider implements vscode.Disposable {
     text: string
   ): Promise<void> {
     const edited = text.trim();
+    controller.log(
+      'info',
+      `[edit] forkAndSend requested: fromBottom=${fromBottom}, chars=${edited.length}`
+    );
     if (!edited) {
       return;
     }
     try {
       ensureTrustedForMutation();
       const entries = await controller.getForkMessages();
+      controller.log('info', `[edit] fork points available: ${entries.length}`);
       if (entries.length === 0) {
         void vscode.window.showWarningMessage(
           'Pi: this session has no branch points to edit from yet.'
@@ -496,7 +501,9 @@ export class ChatPanelProvider implements vscode.Disposable {
       // and everything after), then we resubmit the edited text so the LLM
       // produces a fresh response on the new branch. A timeout stops a stuck
       // provider/session from hanging the edit silently.
+      controller.log('info', `[edit] forking at entryId=${entryId}`);
       await this.withTimeout(controller.fork(entryId), 30_000, 'Fork');
+      controller.log('info', '[edit] fork complete; resubmitting edited text to the model');
       controller.setDraft('');
       const cleared = await this.uiState.getComposerState(controller);
       cleared.draft = '';
@@ -508,8 +515,13 @@ export class ChatPanelProvider implements vscode.Disposable {
         await controller.start();
       }
       await controller.prompt(edited, 'prompt', []);
+      controller.log('info', '[edit] prompt sent to model');
       await this.postSnapshot(controller);
     } catch (error) {
+      controller.log(
+        'error',
+        `[edit] failed: ${error instanceof Error ? error.message : String(error)}`
+      );
       void vscode.window.showErrorMessage(
         `Pi: edit & resend failed \u2014 ${error instanceof Error ? error.message : String(error)}`
       );

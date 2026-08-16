@@ -1023,6 +1023,17 @@ export class SessionController implements vscode.Disposable {
     this.fire();
   }
 
+  /** Public log passthrough so UI flows (e.g. inline edit) can trace to the Pi output channel. */
+  public log(level: 'info' | 'warn' | 'error', message: string): void {
+    if (level === 'warn') {
+      this.logger.warn(message);
+    } else if (level === 'error') {
+      this.logger.error(message);
+    } else {
+      this.logger.info(message);
+    }
+  }
+
   private appendDiagnostic(
     state: ControllerState,
     kind: 'info' | 'warning' | 'error',

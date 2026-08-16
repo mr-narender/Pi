@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.153
+
+- Added [edit] trace logging to the Pi output channel for the inline edit/fork flow to aid diagnosis.
+
 ## 0.0.152
 
 - Fixed old messages reappearing after an inline edit/fork on any focus/reconcile: the local transcript read now follows only the ACTIVE branch (Pi stores all fork branches in one file, linked by id/parentId). Legacy sessions without ids fall back to linear order.
