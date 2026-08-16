@@ -662,6 +662,18 @@ function renderNow(snapshot: WebviewSnapshot): void {
   root.innerHTML = renderChatApp(snapshot);
   renderedStructureSig = structureSignature(snapshot);
 
+  // Robust sent-text-reappears guard: after an optimistic submit-clear we hold
+  // `lastSubmittedText`. If ANY re-render (including an authoritative composer
+  // reset, or one that arrives while the composer is unfocused) rebuilds the
+  // textarea with exactly that submitted text, blank it. Typing resets
+  // `lastSubmittedText` to undefined, so a genuine re-type is never blanked.
+  if (lastSubmittedText !== undefined) {
+    const submittedField = document.getElementById(COMPOSER_FIELD_ID) as HTMLTextAreaElement | null;
+    if (submittedField && submittedField.value === lastSubmittedText) {
+      submittedField.value = '';
+    }
+  }
+
   for (const id of openMenus) {
     const el = document.getElementById(id) as HTMLDetailsElement | null;
     if (el) {

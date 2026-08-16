@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.163
+
+- Fixed the sent text reappearing in the composer after pressing Enter: a re-render (including an authoritative composer reset or one while the composer is unfocused) can no longer repopulate the just-submitted text. Typing clears the guard so re-typing the same text still works.
+
 ## 0.0.162
 
 - Fixed stuck "Working…" animation after the agent responds (and the follow-on regressions: follow-ups queuing, input not clearing). The UI now returns to ready on agent_end instead of waiting for agent_settled, which post-turn work (memory_search/qmd, summarization) can delay or drop. Stays busy only while compacting.
