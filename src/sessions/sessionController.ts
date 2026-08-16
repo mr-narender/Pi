@@ -753,6 +753,28 @@ export class SessionController implements vscode.Disposable {
     return result;
   }
 
+  // Lean in-place fork for the inline-edit flow. Unlike fork(), this does NOT
+  // reset the projection or run a full reconcile (which re-reads get_state and
+  // makes the tab treat it as a session switch, spawning a new tab + sidebar
+  // entry). Pi's fork branches in-place in the SAME session file, so we only
+  // refresh the transcript from the active branch over RPC and keep the tab
+  // bound to the same session.
+  public async forkInPlace(entryId: string): Promise<JsonObject | undefined> {
+    const result = await this.requireClient().fork(entryId);
+    if (result?.cancelled === true) {
+      this.addDiagnostic('info', 'Fork cancelled');
+      return result;
+    }
+    try {
+      await this.refreshMessages();
+    } catch (error) {
+      this.logger.warn(`Could not refresh messages after in-place fork: ${String(error)}`);
+    }
+    this.selfWriteAt = Date.now();
+    await this.syncFileReadOffset();
+    return result;
+  }
+
   public async clone(): Promise<JsonObject | undefined> {
     const result = await this.requireClient().clone();
     if (result?.cancelled === true) {

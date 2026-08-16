@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.161
+
+- Inline edit now uses a lean IN-PLACE fork (RPC fork + transcript refresh, no full reconcile), so editing branches within the SAME session/tab instead of spawning a new tab and a new sidebar session entry.
+
 ## 0.0.160
 
 - Stop the extension creating orphan chat sessions on every activation: warm-start now only resumes an existing session instead of spawning Pi with no session (which created a throwaway session file, then the tab restarted Pi with the real one). This is the churn behind the climbing session count / new sessions.

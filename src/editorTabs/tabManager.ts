@@ -1095,8 +1095,10 @@ export class ChatTabManager implements vscode.Disposable {
         void vscode.window.showWarningMessage('Pi: could not locate that message to edit.');
         return;
       }
-      controller.log('info', `[edit] forking at entryId=${entryId}`);
-      await controller.fork(entryId);
+      controller.log('info', `[edit] forking IN-PLACE at entryId=${entryId}`);
+      // Lean in-place fork: branches in the SAME session file without a full
+      // reconcile, so the tab stays bound to this session (no new tab/session).
+      await controller.forkInPlace(entryId);
       controller.setDraft('');
       const state = await this.uiState.getComposerStateForIdentity(
         context.controller,
