@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.157
+
+- Center the message action icons under the message. Added webview-side debug logging ([webview] pencil clicked / enter: posting forkAndSend) to diagnose the inline edit flow.
+
 ## 0.0.156
 
 - Added a build badge (bottom-left of the chat: "pi build X webview live") and cache-busted webview assets, so it is unambiguous that BOTH the extension host and the webview bundle are the current build.

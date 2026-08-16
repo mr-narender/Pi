@@ -259,6 +259,9 @@ export class ChatPanelProvider implements vscode.Disposable {
       case 'executeCommand':
         await vscode.commands.executeCommand(parsed.command, parsed.argument);
         return;
+      case 'debugLog':
+        controller.log('info', `[webview] ${parsed.text}`);
+        return;
       case 'forkAndSend':
         await this.forkAndSend(controller, parsed.fromBottom, parsed.originalText, parsed.text);
         return;

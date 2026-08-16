@@ -1366,20 +1366,16 @@ button.ghost:hover,
 /* #3/#4 — per-message actions (copy, edit) on hover. */
 /* Message actions sit UNDER the text (not floating above it), aligned to the
  * message side, revealed on hover for a calm transcript. */
+/* Action icons centered under the message. */
 #messages .msg-actions {
-  display: inline-flex;
-  gap: 6px;
+  display: flex;
+  justify-content: center;
+  align-self: center;
+  width: 100%;
+  gap: 8px;
   margin-top: 6px;
   opacity: 0;
   transition: opacity 0.12s ease;
-}
-/* align-self positions the row directly against the same edge as the bubble:
- * right under your messages, left under Pi's. */
-#messages .message-user .msg-actions {
-  align-self: flex-end;
-}
-#messages .message-assistant .msg-actions {
-  align-self: flex-start;
 }
 #messages .message-card:hover .msg-actions,
 #messages .msg-actions:focus-within {

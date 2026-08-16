@@ -987,12 +987,15 @@ function renderNow(snapshot: WebviewSnapshot): void {
   // transcript is windowed (the tail is always shown).
   for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>('.msg-edit'))) {
     button.addEventListener('click', () => {
+      vscode.postMessage({ type: 'debugLog', text: 'pencil clicked' });
       const article = button.closest('.message-card') as HTMLElement | null;
       if (!article || article.querySelector('.inline-edit')) {
+        vscode.postMessage({ type: 'debugLog', text: 'pencil: no article or already editing' });
         return;
       }
       const body = article.querySelector('.message-body') as HTMLElement | null;
       if (!body) {
+        vscode.postMessage({ type: 'debugLog', text: 'pencil: no .message-body found' });
         return;
       }
       const original = body.textContent?.trim() ?? '';
@@ -1052,6 +1055,10 @@ function renderNow(snapshot: WebviewSnapshot): void {
           if (actions) {
             actions.style.display = '';
           }
+          vscode.postMessage({
+            type: 'debugLog',
+            text: `enter: posting forkAndSend (chars=${edited.length})`,
+          });
           vscode.postMessage({
             type: 'forkAndSend',
             fromBottom,

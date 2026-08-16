@@ -12,6 +12,7 @@ export type WebviewInboundMessage =
     }
   | { type: 'executeCommand'; command: string; argument?: unknown }
   | { type: 'forkAndSend'; fromBottom: number; originalText: string; text: string }
+  | { type: 'debugLog'; text: string }
   | { type: 'pickImages' }
   | { type: 'clearAttachments' }
   | { type: 'appendActiveFile' }
@@ -83,6 +84,8 @@ export function parseWebviewMessage(value: unknown): WebviewInboundMessage | und
       return typeof record.command === 'string'
         ? { type: 'executeCommand', command: record.command, argument: record.argument }
         : undefined;
+    case 'debugLog':
+      return typeof record.text === 'string' ? { type: 'debugLog', text: record.text } : undefined;
     case 'forkAndSend':
       return typeof record.fromBottom === 'number' &&
         Number.isFinite(record.fromBottom) &&
