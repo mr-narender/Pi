@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.146
+
+- Message actions (edit/copy) now sit UNDER the message text with clearer spacing and size, aligned to the message side, revealed on hover.
+
 ## 0.0.145
 
 - Edit (pencil) on a user message now forks the session at that message: everything after it is dropped and its text returns to the composer to resend (edit-and-restart-from-here). Pi fork creates a branch, so the original transcript is preserved.
