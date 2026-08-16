@@ -1398,6 +1398,7 @@ button.ghost:hover,
 #messages .msg-copy:hover,
 #messages .msg-edit:hover {
   border-color: var(--vscode-panel-border);
+  background: var(--vscode-toolbar-hoverBackground, rgba(255, 255, 255, 0.06));
   color: var(--vscode-foreground);
 }
 #messages .msg-copy.is-copied {
@@ -2415,6 +2416,14 @@ button.ghost:hover,
 }
 
 /* Inline message edit (ChatGPT/Continue style): edit in place, Enter resubmits. */
+/* While a message is being edited, stretch its card to the full conversation
+ * width so the editor is not constrained by the (narrow, right-aligned) bubble. */
+#messages .message-card:has(.inline-edit) {
+  align-self: stretch;
+  align-items: stretch;
+  max-width: 100%;
+  width: 100%;
+}
 #messages .inline-edit {
   display: flex;
   flex-direction: column;

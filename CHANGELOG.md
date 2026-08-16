@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.148
+
+- Fixed inline edit not truncating: after forking, messages are now refreshed over RPC (active branch only) so the post-fork messages no longer reappear; the edited turn is resubmitted.
+- Inline edit field now spans the full conversation width.
+- Clearer edit/copy icon hover.
+
 ## 0.0.147
 
 - Edit a user message INLINE (ChatGPT/Continue style): the bubble text becomes editable in place; press Enter to fork the session at that message (removing everything after it) and resubmit the edited text. Esc cancels. Larger edit/copy icons.

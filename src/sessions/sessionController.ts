@@ -782,6 +782,15 @@ export class SessionController implements vscode.Disposable {
     this.state = { ...resetControllerProjection(this.state), draft: text };
     this.fire();
     await this.reconcile();
+    // reconcile reads the transcript locally from the session file, which holds
+    // ALL branches — so the pre-fork messages would reappear. Override with the
+    // active (forked) branch over RPC so everything after the fork point stays
+    // dropped.
+    try {
+      await this.refreshMessages();
+    } catch (error) {
+      this.logger.warn(`Could not refresh messages after fork: ${String(error)}`);
+    }
     return result;
   }
 
