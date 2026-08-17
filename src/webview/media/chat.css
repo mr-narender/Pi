@@ -526,33 +526,45 @@ textarea.drop-target {
   }
 }
 
-/* #6 — jump-to-latest button: sticks to the bottom-right of the MESSAGES area
- * (inside the scroll container), not floating over the composer/input box. */
+/* #6 — scroll-to-latest button: a modern circular chevron pinned to the
+ * bottom-CENTER of the messages area (in the reading flow, above the composer),
+ * the ergonomic spot used by ChatGPT/Claude/Messenger. Sticky so it stays put
+ * as the transcript scrolls; only shown when scrolled away from the bottom. */
 .jump-latest {
   position: sticky;
-  bottom: 12px;
+  bottom: 14px;
   margin-left: auto;
-  margin-right: 4px;
-  width: 32px;
-  height: 32px;
+  margin-right: auto;
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
-  border: 1px solid var(--vscode-panel-border);
+  border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
   background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
   color: var(--vscode-foreground);
   cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: grid;
+  place-items: center;
   padding: 0;
-  line-height: 0;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  opacity: 0.92;
+  box-shadow:
+    0 4px 14px rgba(0, 0, 0, 0.28),
+    0 1px 3px rgba(0, 0, 0, 0.22);
+  transition:
+    transform 0.12s ease,
+    opacity 0.12s ease,
+    border-color 0.12s ease;
   z-index: 6;
 }
 .jump-latest svg {
   display: block;
 }
 .jump-latest:hover {
+  opacity: 1;
+  transform: translateY(-1px);
   border-color: var(--pi-tool-accent, var(--vscode-focusBorder));
+}
+.jump-latest:active {
+  transform: translateY(0);
 }
 .jump-latest[hidden] {
   display: none;

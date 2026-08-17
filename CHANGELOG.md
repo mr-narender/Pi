@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.170
+
+- Modernized the scroll-to-latest button: cleaner chevron icon, bottom-center placement (in the reading flow, above the composer) with a subtle shadow and hover lift.
+
 ## 0.0.169
 
 - Removed content-visibility virtualization that made scrolling noisy (messages re-measuring as they scrolled into view) and made scroll-to-bottom run downhill. With morphdom + windowing the transcript renders with stable real heights, so scrolling and scroll-to-bottom are smooth/instant.
