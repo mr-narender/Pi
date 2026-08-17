@@ -4,6 +4,7 @@ declare function acquireVsCodeApi(): {
   getState(): unknown;
 };
 
+import morphdom from 'morphdom';
 import type { WebviewSnapshot } from '../../state/types';
 import {
   COMPOSER_FIELD_ID,
@@ -20,6 +21,30 @@ import {
 const vscode = acquireVsCodeApi();
 const root = document.getElementById('app');
 let currentSnapshot: WebviewSnapshot | undefined;
+
+// Wiring guard for morphdom: renderNow re-runs the event wiring on every render,
+// but morphdom REUSES DOM nodes, so their listeners persist. bindOnce binds each
+// element's listeners exactly once (in the render pass where the node first
+// appears) and skips nodes carried over from a previous pass — while still
+// allowing multiple listeners on the same element within a single pass.
+let currentWirePass = 0;
+const lastWiredPass = new WeakMap<EventTarget, number>();
+function bindOnce<K extends keyof HTMLElementEventMap>(
+  el: EventTarget | null | undefined,
+  event: K,
+  handler: (ev: HTMLElementEventMap[K]) => void,
+  options?: boolean | AddEventListenerOptions
+): void {
+  if (!el) {
+    return;
+  }
+  const seen = lastWiredPass.get(el);
+  if (seen !== undefined && seen !== currentWirePass) {
+    return; // node reused from an earlier render pass — already wired
+  }
+  lastWiredPass.set(el, currentWirePass);
+  el.addEventListener(event, handler as EventListener, options);
+}
 
 // #6 — inline slash-command autocomplete state.
 let slashCommands: Array<{ name: string; description: string }> | null = null;
@@ -648,7 +673,19 @@ function renderNow(snapshot: WebviewSnapshot): void {
     }
   }
 
-  root.innerHTML = renderChatApp(snapshot);
+  // Patch the DOM instead of rebuilding it (root.innerHTML = ...). Rebuilding
+  // destroyed and recreated every node on each update, which caused the heavy
+  // flicker and reset the scroll position. morphdom reuses unchanged nodes, so
+  // the transcript stays stable and the scroll position is preserved naturally.
+  // A new wiring pass so bindOnce only wires freshly-added nodes.
+  currentWirePass += 1;
+  try {
+    morphdom(root, `<div id="app">${renderChatApp(snapshot)}</div>`);
+  } catch {
+    // Defensive: if a morph ever fails, fall back to a full rebuild so the chat
+    // never gets stuck.
+    root.innerHTML = renderChatApp(snapshot);
+  }
   renderedStructureSig = structureSignature(snapshot);
 
   // Robust sent-text-reappears guard: after an optimistic submit-clear we hold
@@ -699,114 +736,116 @@ function renderNow(snapshot: WebviewSnapshot): void {
     }
   }
   // Size the composer to the (possibly restored) draft before wiring input.
-  autosizeComposer(textarea);
-  textarea?.addEventListener('input', () => {
-    exitHistory(); // typing leaves history-navigation mode
-    lastSubmittedText = undefined; // fresh text — stop guarding
+  if (textarea) {
     autosizeComposer(textarea);
-    vscode.postMessage({ type: 'setDraft', text: textarea.value });
-  });
-  textarea?.addEventListener('focus', () => {
-    vscode.postMessage({ type: 'setFocus', focus: 'composer' });
-  });
-  textarea?.addEventListener('input', () => {
-    updateSlashMenu();
-    updateMentionMenu();
-  });
-  textarea?.addEventListener('keyup', (event) => {
-    // Arrow/click caret moves can enter/leave an @ context without an input event.
-    if (event.key.startsWith('Arrow') || event.key === 'Home' || event.key === 'End') {
+    bindOnce(textarea, 'input', () => {
+      exitHistory(); // typing leaves history-navigation mode
+      lastSubmittedText = undefined; // fresh text — stop guarding
+      autosizeComposer(textarea);
+      vscode.postMessage({ type: 'setDraft', text: textarea.value });
+    });
+    bindOnce(textarea, 'focus', () => {
+      vscode.postMessage({ type: 'setFocus', focus: 'composer' });
+    });
+    bindOnce(textarea, 'input', () => {
+      updateSlashMenu();
       updateMentionMenu();
-    }
-  });
-  // Image paste: pasting a screenshot/image into the composer attaches it.
-  textarea?.addEventListener('paste', (event) => {
-    const items = event.clipboardData?.items;
-    if (!items) {
-      return;
-    }
-    for (const entry of Array.from(items)) {
-      if (entry.kind === 'file' && entry.type.startsWith('image/')) {
-        const file = entry.getAsFile();
-        if (!file) {
-          continue;
-        }
-        event.preventDefault();
-        const reader = new FileReader();
-        reader.onload = () => {
-          const result = typeof reader.result === 'string' ? reader.result : '';
-          const comma = result.indexOf(',');
-          const data = comma >= 0 ? result.slice(comma + 1) : '';
-          if (data) {
-            vscode.postMessage({ type: 'pasteImage', data, mimeType: file.type });
+    });
+    bindOnce(textarea, 'keyup', (event) => {
+      // Arrow/click caret moves can enter/leave an @ context without an input event.
+      if (event.key.startsWith('Arrow') || event.key === 'Home' || event.key === 'End') {
+        updateMentionMenu();
+      }
+    });
+    // Image paste: pasting a screenshot/image into the composer attaches it.
+    bindOnce(textarea, 'paste', (event) => {
+      const items = event.clipboardData?.items;
+      if (!items) {
+        return;
+      }
+      for (const entry of Array.from(items)) {
+        if (entry.kind === 'file' && entry.type.startsWith('image/')) {
+          const file = entry.getAsFile();
+          if (!file) {
+            continue;
           }
-        };
-        reader.readAsDataURL(file);
+          event.preventDefault();
+          const reader = new FileReader();
+          reader.onload = () => {
+            const result = typeof reader.result === 'string' ? reader.result : '';
+            const comma = result.indexOf(',');
+            const data = comma >= 0 ? result.slice(comma + 1) : '';
+            if (data) {
+              vscode.postMessage({ type: 'pasteImage', data, mimeType: file.type });
+            }
+          };
+          reader.readAsDataURL(file);
+        }
       }
-    }
-  });
-  // #9 — drag a file from the Explorer onto the composer to attach it.
-  textarea?.addEventListener('dragover', (event) => {
-    event.preventDefault();
-    textarea.classList.add('drop-target');
-  });
-  textarea?.addEventListener('dragleave', () => textarea.classList.remove('drop-target'));
-  textarea?.addEventListener('drop', (event) => {
-    textarea.classList.remove('drop-target');
-    const data =
-      event.dataTransfer?.getData('text/uri-list') ||
-      event.dataTransfer?.getData('resourceurls') ||
-      '';
-    if (!data) {
-      return;
-    }
-    event.preventDefault();
-    let uris: string[] = [];
-    try {
-      const parsed = JSON.parse(data) as unknown;
-      uris = Array.isArray(parsed) ? parsed.map(String) : [];
-    } catch {
-      uris = data.split(/\r?\n/);
-    }
-    for (const uri of uris
-      .map((value) => value.trim())
-      .filter((value) => value && value[0] !== '#')) {
-      vscode.postMessage({ type: 'attachFile', path: uri });
-    }
-  });
-  textarea?.addEventListener('keydown', (event) => {
-    // #6/#9 — slash and mention menu navigation take priority when open.
-    if (handleSlashKeydown(event) || handleMentionKeydown(event)) {
-      return;
-    }
-    // Prompt history: Up when the caret is at the very start (or already
-    // navigating) walks back; Down walks forward. Like the TUI.
-    if (event.key === 'ArrowUp' && !event.isComposing) {
-      const atStart = textarea.selectionStart === 0 && textarea.selectionEnd === 0;
-      if ((historyIndex >= 0 || atStart) && navigateHistory(textarea, 'older')) {
-        event.preventDefault();
-        return;
-      }
-    }
-    if (event.key === 'ArrowDown' && !event.isComposing && historyIndex >= 0) {
-      if (navigateHistory(textarea, 'newer')) {
-        event.preventDefault();
-        return;
-      }
-    }
-    // Enter submits (TUI-style); Shift+Enter inserts a newline. Cmd/Ctrl+Enter
-    // also submits. IME composition Enter is ignored so it doesn't send mid-word.
-    if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
+    });
+    // #9 — drag a file from the Explorer onto the composer to attach it.
+    bindOnce(textarea, 'dragover', (event) => {
       event.preventDefault();
-      const sendButton = document.getElementById(SEND_BUTTON_ID) as HTMLButtonElement | null;
-      if (!sendButton || sendButton.disabled) {
+      textarea.classList.add('drop-target');
+    });
+    bindOnce(textarea, 'dragleave', () => textarea.classList.remove('drop-target'));
+    bindOnce(textarea, 'drop', (event) => {
+      textarea.classList.remove('drop-target');
+      const data =
+        event.dataTransfer?.getData('text/uri-list') ||
+        event.dataTransfer?.getData('resourceurls') ||
+        '';
+      if (!data) {
         return;
       }
-      submitComposer(sendButton.dataset.sendCommand ?? 'prompt');
-    }
-  });
+      event.preventDefault();
+      let uris: string[] = [];
+      try {
+        const parsed = JSON.parse(data) as unknown;
+        uris = Array.isArray(parsed) ? parsed.map(String) : [];
+      } catch {
+        uris = data.split(/\r?\n/);
+      }
+      for (const uri of uris
+        .map((value) => value.trim())
+        .filter((value) => value && value[0] !== '#')) {
+        vscode.postMessage({ type: 'attachFile', path: uri });
+      }
+    });
+    bindOnce(textarea, 'keydown', (event) => {
+      // #6/#9 — slash and mention menu navigation take priority when open.
+      if (handleSlashKeydown(event) || handleMentionKeydown(event)) {
+        return;
+      }
+      // Prompt history: Up when the caret is at the very start (or already
+      // navigating) walks back; Down walks forward. Like the TUI.
+      if (event.key === 'ArrowUp' && !event.isComposing) {
+        const atStart = textarea.selectionStart === 0 && textarea.selectionEnd === 0;
+        if ((historyIndex >= 0 || atStart) && navigateHistory(textarea, 'older')) {
+          event.preventDefault();
+          return;
+        }
+      }
+      if (event.key === 'ArrowDown' && !event.isComposing && historyIndex >= 0) {
+        if (navigateHistory(textarea, 'newer')) {
+          event.preventDefault();
+          return;
+        }
+      }
+      // Enter submits (TUI-style); Shift+Enter inserts a newline. Cmd/Ctrl+Enter
+      // also submits. IME composition Enter is ignored so it doesn't send mid-word.
+      if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
+        event.preventDefault();
+        const sendButton = document.getElementById(SEND_BUTTON_ID) as HTMLButtonElement | null;
+        if (!sendButton || sendButton.disabled) {
+          return;
+        }
+        submitComposer(sendButton.dataset.sendCommand ?? 'prompt');
+      }
+    });
+  }
 
-  document.getElementById('folder-select')?.addEventListener('change', (event) => {
+  bindOnce(document.getElementById('folder-select'), 'change', (event) => {
     const target = event.target as HTMLSelectElement;
     vscode.postMessage({ type: 'switchFolder', folderUri: target.value });
   });
@@ -814,7 +853,7 @@ function renderNow(snapshot: WebviewSnapshot): void {
   for (const button of Array.from(
     root.querySelectorAll<HTMLButtonElement>('button[data-send-command]')
   )) {
-    button.addEventListener('click', () => {
+    bindOnce(button, 'click', () => {
       previewReturnFocusId = button.id || SEND_BUTTON_ID;
       submitComposer(button.dataset.sendCommand ?? 'prompt');
     });
@@ -823,7 +862,7 @@ function renderNow(snapshot: WebviewSnapshot): void {
   for (const button of Array.from(
     root.querySelectorAll<HTMLButtonElement>('button[data-action]')
   )) {
-    button.addEventListener('click', () => {
+    bindOnce(button, 'click', () => {
       const action = button.dataset.action;
       if (!action) {
         return;
@@ -857,7 +896,7 @@ function renderNow(snapshot: WebviewSnapshot): void {
   for (const button of Array.from(
     root.querySelectorAll<HTMLButtonElement>('button[data-command]')
   )) {
-    button.addEventListener('click', () => {
+    bindOnce(button, 'click', () => {
       // Close the containing dropdown menu (if any) so it doesn't linger.
       button.closest('details')?.removeAttribute('open');
       vscode.postMessage({ type: 'executeCommand', command: button.dataset.command });
@@ -867,7 +906,7 @@ function renderNow(snapshot: WebviewSnapshot): void {
   for (const button of Array.from(
     root.querySelectorAll<HTMLButtonElement>('button[data-remove-context]')
   )) {
-    button.addEventListener('click', () => {
+    bindOnce(button, 'click', () => {
       if (!currentSnapshot || !button.dataset.removeContext) {
         return;
       }
@@ -880,7 +919,7 @@ function renderNow(snapshot: WebviewSnapshot): void {
   for (const button of Array.from(
     root.querySelectorAll<HTMLButtonElement>('button[data-remove-image]')
   )) {
-    button.addEventListener('click', () => {
+    bindOnce(button, 'click', () => {
       if (!currentSnapshot || !button.dataset.removeImage) {
         return;
       }
@@ -893,7 +932,7 @@ function renderNow(snapshot: WebviewSnapshot): void {
   for (const button of Array.from(
     root.querySelectorAll<HTMLButtonElement>('button[data-attachment-uri]')
   )) {
-    button.addEventListener('click', () => {
+    bindOnce(button, 'click', () => {
       vscode.postMessage({ type: 'openAttachment', uri: button.dataset.attachmentUri });
     });
   }
@@ -907,7 +946,7 @@ function renderNow(snapshot: WebviewSnapshot): void {
   };
   // Tool approval: Allow/Deny (or option) buttons respond to the pending request.
   for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>('.approval-btn'))) {
-    button.addEventListener('click', () => {
+    bindOnce(button, 'click', () => {
       const id = button.getAttribute('data-ui-id');
       if (!id) {
         return;
@@ -929,7 +968,7 @@ function renderNow(snapshot: WebviewSnapshot): void {
 
   // Onboarding: clicking an example prompt loads it into the composer.
   for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>('[data-example]'))) {
-    button.addEventListener('click', () => {
+    bindOnce(button, 'click', () => {
       const text = button.getAttribute('data-example') ?? '';
       const field = composerField();
       if (field && text) {
@@ -943,7 +982,7 @@ function renderNow(snapshot: WebviewSnapshot): void {
 
   // #3 — open file / open changes for edit-tool cards.
   for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>('[data-file-open]'))) {
-    button.addEventListener('click', () => {
+    bindOnce(button, 'click', () => {
       const path = button.getAttribute('data-file-open');
       if (path) {
         vscode.postMessage({ type: 'openFile', path });
@@ -951,7 +990,7 @@ function renderNow(snapshot: WebviewSnapshot): void {
     });
   }
   for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>('[data-file-diff]'))) {
-    button.addEventListener('click', () => {
+    bindOnce(button, 'click', () => {
       const path = button.getAttribute('data-file-diff');
       if (path) {
         vscode.postMessage({ type: 'openDiff', path });
@@ -959,7 +998,7 @@ function renderNow(snapshot: WebviewSnapshot): void {
     });
   }
   for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>('.code-insert'))) {
-    button.addEventListener('click', () => {
+    bindOnce(button, 'click', () => {
       const { text, language } = codeTextAndLang(button);
       if (text) {
         vscode.postMessage({ type: 'insertCode', text, language });
@@ -967,7 +1006,7 @@ function renderNow(snapshot: WebviewSnapshot): void {
     });
   }
   for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>('.code-newfile'))) {
-    button.addEventListener('click', () => {
+    bindOnce(button, 'click', () => {
       const { text, language } = codeTextAndLang(button);
       if (text) {
         vscode.postMessage({ type: 'newFileFromCode', text, language });
@@ -975,7 +1014,7 @@ function renderNow(snapshot: WebviewSnapshot): void {
     });
   }
   for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>('.code-copy'))) {
-    button.addEventListener('click', () => {
+    bindOnce(button, 'click', () => {
       const code = button.closest('.code-wrap')?.querySelector('.code-block code');
       const text = code?.textContent ?? '';
       void navigator.clipboard
@@ -993,11 +1032,11 @@ function renderNow(snapshot: WebviewSnapshot): void {
     });
   }
 
-  document.getElementById(PREVIEW_DIALOG_ID)?.addEventListener('keydown', handlePreviewKeydown);
+  bindOnce(document.getElementById(PREVIEW_DIALOG_ID), 'keydown', handlePreviewKeydown);
 
   // #1 — Markdown links open externally (no in-webview navigation).
   for (const link of Array.from(root.querySelectorAll<HTMLElement>('.md-link'))) {
-    link.addEventListener('click', (event) => {
+    bindOnce(link, 'click', (event) => {
       event.preventDefault();
       const url = link.getAttribute('data-href');
       if (url) {
@@ -1012,7 +1051,7 @@ function renderNow(snapshot: WebviewSnapshot): void {
   // Esc cancels. Keyed by distance-from-bottom so it stays correct even when the
   // transcript is windowed (the tail is always shown).
   for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>('.msg-edit'))) {
-    button.addEventListener('click', () => {
+    bindOnce(button, 'click', () => {
       vscode.postMessage({ type: 'debugLog', text: 'pencil clicked' });
       const article = button.closest('.message-card') as HTMLElement | null;
       if (!article || article.querySelector('.inline-edit')) {
@@ -1053,7 +1092,7 @@ function renderNow(snapshot: WebviewSnapshot): void {
       ta.focus();
       ta.setSelectionRange(ta.value.length, ta.value.length);
       grow(ta);
-      ta.addEventListener('input', () => grow(ta));
+      bindOnce(ta, 'input', () => grow(ta));
 
       const cancel = (): void => {
         editor.remove();
@@ -1064,7 +1103,7 @@ function renderNow(snapshot: WebviewSnapshot): void {
         // Resume rendering and repaint the authoritative state.
         endInlineEdit(true);
       };
-      ta.addEventListener('keydown', (event) => {
+      bindOnce(ta, 'keydown', (event) => {
         if (event.key === 'Enter' && !event.shiftKey) {
           event.preventDefault();
           const edited = ta.value.trim();
@@ -1108,7 +1147,7 @@ function renderNow(snapshot: WebviewSnapshot): void {
 
   // #3 — copy a single message's output.
   for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>('.msg-copy'))) {
-    button.addEventListener('click', () => {
+    bindOnce(button, 'click', () => {
       const article = button.closest('.message-card');
       const text =
         article?.querySelector('.tl-answer .tl-body')?.textContent ??
@@ -1130,7 +1169,7 @@ function renderNow(snapshot: WebviewSnapshot): void {
 
   // #7 — clamp toggle for long tool/result output.
   for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>('.code-showmore'))) {
-    button.addEventListener('click', () => {
+    bindOnce(button, 'click', () => {
       const wrap = button.closest('.clampable');
       const expanded = wrap?.classList.toggle('expanded') ?? false;
       button.textContent = expanded ? 'Show less' : 'Show more';
@@ -1138,7 +1177,7 @@ function renderNow(snapshot: WebviewSnapshot): void {
   }
 
   const messagesEl = document.getElementById('messages');
-  messagesEl?.addEventListener('scroll', persistViewState, { passive: true });
+  bindOnce(messagesEl, 'scroll', persistViewState, { passive: true });
 
   // #6 — jump-to-latest button appears when scrolled up.
   const jumpBtn = document.getElementById('jump-latest') as HTMLButtonElement | null;
@@ -1147,8 +1186,8 @@ function renderNow(snapshot: WebviewSnapshot): void {
       const distance = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight;
       jumpBtn.hidden = distance < 120;
     };
-    messagesEl.addEventListener('scroll', updateJump, { passive: true });
-    jumpBtn.addEventListener('click', () => {
+    bindOnce(messagesEl, 'scroll', updateJump, { passive: true });
+    bindOnce(jumpBtn, 'click', () => {
       messagesEl.scrollTop = messagesEl.scrollHeight;
       jumpBtn.hidden = true;
     });

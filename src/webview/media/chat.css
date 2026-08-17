@@ -526,13 +526,15 @@ textarea.drop-target {
   }
 }
 
-/* #6 — jump-to-latest floating button. */
+/* #6 — jump-to-latest button: sticks to the bottom-right of the MESSAGES area
+ * (inside the scroll container), not floating over the composer/input box. */
 .jump-latest {
-  position: absolute;
-  right: 18px;
-  bottom: 96px;
-  width: 30px;
-  height: 30px;
+  position: sticky;
+  bottom: 12px;
+  margin-left: auto;
+  margin-right: 4px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   border: 1px solid var(--vscode-panel-border);
   background: var(--vscode-editorWidget-background, var(--vscode-editor-background));

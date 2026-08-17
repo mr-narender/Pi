@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.168
+
+- Eliminated transcript flicker while the agent works: the chat now patches the DOM with morphdom instead of rebuilding it every update, so unchanged messages stay put and the scroll position is preserved (no more jumping to the top). Removed content-visibility (its estimated heights caused the scroll jank).
+- Moved the scroll-to-bottom button into the messages area (sticky), out of the composer/input.
+- Reduced notification spam: Pi info/warning notifications now show transiently in the status bar instead of stacking as toasts; only errors get a toast.
+
 ## 0.0.167
 
 - Major chat-switch performance fix for large sessions: the transcript now reads only the tail of the session file (~19ms) instead of the whole file (~200ms for 40MB), windows the message list, and no longer re-fetches the full 11MB+ active branch over RPC on every switch. Switching is now dominated only by Pi loading the session.

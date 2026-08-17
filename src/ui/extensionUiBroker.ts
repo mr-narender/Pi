@@ -72,12 +72,14 @@ export class ExtensionUiBroker implements vscode.Disposable {
     switch (request.method) {
       case 'notify': {
         const message = request.message ?? 'Pi notification';
+        // Only ERRORS get a (dismissable) toast. Info/warning notifications are
+        // shown transiently in the status bar so a chatty agent/extension can't
+        // bury the user under a stack of 15 toasts they must close one by one.
         if (request.notifyType === 'error') {
           void vscode.window.showErrorMessage(message);
-        } else if (request.notifyType === 'warning') {
-          void vscode.window.showWarningMessage(message);
         } else {
-          void vscode.window.showInformationMessage(message);
+          const icon = request.notifyType === 'warning' ? '$(warning)' : '$(info)';
+          vscode.window.setStatusBarMessage(`${icon} Pi: ${message}`, 6000);
         }
         return { shown: true };
       }
