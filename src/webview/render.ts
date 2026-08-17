@@ -906,12 +906,11 @@ function renderMessageArticle(
   const role = message.role;
   const roleLabel = role === 'assistant' ? 'Pi' : role === 'user' ? 'You' : '';
   const showCopy = role === 'assistant' || role === 'user';
-  // Virtualization: off-screen messages get `content-visibility: auto` so the
-  // browser skips their layout/paint. The last message is exempt so streaming
-  // growth and scroll-to-bottom stay exact.
-  const virtualClass = isLast ? '' : ' msg-virtual';
+  // (content-visibility virtualization removed — see chat.css note; it caused
+  // scrollbar jumpiness. `isLast` retained for future use.)
+  void isLast;
   return `
-        <article class="message-card message-${escapeHtml(role)}${virtualClass}"${roleLabel ? ` aria-label="${roleLabel} said"` : ''}>
+        <article class="message-card message-${escapeHtml(role)}"${roleLabel ? ` aria-label="${roleLabel} said"` : ''}>
           ${roleLabel ? `<div class="message-role">${roleLabel}</div>` : ''}
           ${renderMessageBody(message, streamingAnswer, modelName)}
           ${message.attachments.length > 0 ? `<div class="detail-stack">${message.attachments.map((attachment) => renderAttachment(attachment)).join('')}</div>` : ''}

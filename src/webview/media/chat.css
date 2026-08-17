@@ -1353,17 +1353,12 @@ button.ghost:hover,
 }
 
 /*
- * Virtualization: let the browser skip layout + paint for off-screen messages
- * while keeping them in the DOM (so find-in-page, live-append, and the copy/edit
- * handlers still work). `contain-intrinsic-size: auto <estimate>` reserves space
- * so the scrollbar stays stable, and the `auto` keyword remembers each message's
- * real size after it has been rendered once. The last message is exempt
- * (no .msg-virtual) so streaming growth and scroll-to-bottom stay exact.
+ * NOTE: content-visibility virtualization was removed. Its ESTIMATED off-screen
+ * heights (contain-intrinsic-size) made scrollHeight change as messages scrolled
+ * into view, so the scrollbar jumped and scroll-to-bottom "ran downhill". The
+ * transcript is windowed (bounded message count), so rendering the real heights
+ * is affordable and keeps scrolling stable and instant.
  */
-#messages .message-card.msg-virtual {
-  content-visibility: auto;
-  contain-intrinsic-size: auto 160px;
-}
 
 /* #3/#4 — per-message actions (copy, edit) on hover. */
 /* Message actions sit UNDER the text (not floating above it), aligned to the

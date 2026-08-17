@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.169
+
+- Removed content-visibility virtualization that made scrolling noisy (messages re-measuring as they scrolled into view) and made scroll-to-bottom run downhill. With morphdom + windowing the transcript renders with stable real heights, so scrolling and scroll-to-bottom are smooth/instant.
+
 ## 0.0.168
 
 - Eliminated transcript flicker while the agent works: the chat now patches the DOM with morphdom instead of rebuilding it every update, so unchanged messages stay put and the scroll position is preserved (no more jumping to the top). Removed content-visibility (its estimated heights caused the scroll jank).
