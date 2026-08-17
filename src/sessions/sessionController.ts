@@ -396,25 +396,34 @@ export class SessionController implements vscode.Disposable {
     // file push into the GUI in near real time.
     this.armSessionFileWatcher();
     this.fire();
-    // The local tail read above includes EVERY branch stored in the session
-    // file, so a forked session would resurrect the dropped branch on any
-    // reconcile (session open/switch/focus). Correct the transcript from Pi's
-    // authoritative ACTIVE branch over RPC — in the background so resume stays
-    // instant and this never blocks or fails the load.
-    if (this.state.connectionState === 'ready') {
-      void this.refreshMessages().catch(() => {
-        /* best-effort; the local tail is already painted */
-      });
-    }
+    // NOTE: the tail read above is already branch-aware (selectActiveBranchMessages
+    // walks the active leaf), so we do NOT resync via getMessages here — that
+    // transferred the full 11MB+ active branch on every switch and was the main
+    // remaining switch lag. Live edits/forks/TUI writes still resync via the
+    // session-file watcher and the agent_end/settled handlers.
   }
 
   private async readRecentSessionMessages(sessionFile: string): Promise<JsonObject[]> {
     const limit = Math.max(50, this.settings.maxTranscriptItems);
     const records: SessionRecord[] = [];
     try {
-      const input = createReadStream(sessionFile, { encoding: 'utf8' });
+      // Read only the TAIL of the file, not the whole thing. Sessions grow to
+      // tens of MB (images / large tool output); reading all of it on every
+      // open/switch was the main switch lag (~200ms+ for a 40MB file). The tail
+      // holds the most recent messages, which is what the transcript shows;
+      // the authoritative active branch is resynced over RPC separately.
+      const TAIL_BYTES = 3 * 1024 * 1024;
+      const size = (await stat(sessionFile)).size;
+      const start = size > TAIL_BYTES ? size - TAIL_BYTES : 0;
+      const input = createReadStream(sessionFile, { encoding: 'utf8', start });
       const lines = createInterface({ input, crlfDelay: Infinity });
+      let skipPartialFirstLine = start > 0;
       for await (const line of lines) {
+        if (skipPartialFirstLine) {
+          // When starting mid-file the first line is a partial record fragment.
+          skipPartialFirstLine = false;
+          continue;
+        }
         if (!line.trim()) continue;
         try {
           records.push(JSON.parse(line) as SessionRecord);
@@ -542,10 +551,12 @@ export class SessionController implements vscode.Disposable {
 
   public async refreshMessages(): Promise<void> {
     const data = await this.requireClient().getMessages();
-    this.state = {
-      ...this.state,
-      messages: Array.isArray(data?.messages) ? (data.messages as JsonObject[]) : [],
-    };
+    const all = Array.isArray(data?.messages) ? (data.messages as JsonObject[]) : [];
+    // Window to the most recent N. Large sessions return an 11MB+ list; rendering
+    // all of it is slow and unnecessary (older messages load lazily on scroll).
+    const limit = Math.max(50, this.settings.maxTranscriptItems);
+    const messages = all.length > limit ? all.slice(-limit) : all;
+    this.state = { ...this.state, messages };
     this.fire();
   }
 

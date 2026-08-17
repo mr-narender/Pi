@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.167
+
+- Major chat-switch performance fix for large sessions: the transcript now reads only the tail of the session file (~19ms) instead of the whole file (~200ms for 40MB), windows the message list, and no longer re-fetches the full 11MB+ active branch over RPC on every switch. Switching is now dominated only by Pi loading the session.
+
 ## 0.0.166
 
 - Fixed frozen UI + timeout noise when several chats are open: the loading state now uses a dedicated switchingSession flag instead of connectionState, so concurrent session switches (one Pi per folder) no longer deadlock the readiness wait. Readiness timeouts during switching are logged, not shown as an error toast.
