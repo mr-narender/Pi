@@ -237,7 +237,7 @@ function renderClampedOutput(text: string): string {
 // render objects as key/value grids and arrays-of-objects as columnar tables
 // (recursively), which matches the "tabular for clarity" goal. Non-JSON falls
 // back to the plain preformatted block.
-const JSON_MAX_DEPTH = 6;
+const JSON_MAX_DEPTH = 8;
 
 function tryParseJson(text: string): unknown {
   const trimmed = text.trim();
@@ -282,7 +282,11 @@ function renderJsonValue(value: unknown, depth = 0): string {
     return jsonScalar(value);
   }
   if (depth >= JSON_MAX_DEPTH) {
-    return `<code class="inline-code">${escapeHtml(JSON.stringify(value))}</code>`;
+    // Too deep to keep nesting tables — pretty-print (readable) instead of a
+    // compact one-line dump.
+    return `<pre class="code-block json-deep"><code>${escapeHtml(
+      JSON.stringify(value, null, 2)
+    )}</code></pre>`;
   }
   if (Array.isArray(value)) {
     if (value.length === 0) {
@@ -329,6 +333,12 @@ function renderJsonValue(value: unknown, depth = 0): string {
     )
     .join('');
   return jsonTable(`<tbody>${rows}</tbody>`);
+}
+
+// A JSON value from Pi's ANSWER, shown as a structured table with a toggle to
+// reveal/copy the raw JSON.
+function renderJsonBlock(value: unknown, raw: string): string {
+  return `<div class="json-block" data-json-block><div class="json-block-bar"><span class="json-block-label">JSON</span><button type="button" class="json-toggle" data-mode="table" aria-pressed="false" title="Toggle table / raw JSON">Raw</button></div><div class="json-block-view">${renderJsonValue(value)}</div><pre class="code-block json-raw" hidden><code class="hljs language-json">${escapeHtml(raw)}</code></pre></div>`;
 }
 
 // Render tool args / results: as a structured JSON table when the content is
@@ -693,6 +703,18 @@ export function renderRichText(raw: string): string {
       }
       index += 1; // skip closing fence
       const codeText = code.join('\n');
+      // JSON in Pi's ANSWER: render it as the same structured table used for
+      // tool output (easier to read than raw JSON), with a toggle to view/copy
+      // the raw JSON. Only for an explicit ```json fence or an unlabeled fence
+      // whose content actually parses as a JSON object/array — real code in
+      // other languages is left as a highlighted code block.
+      const fenceLang = language.trim().toLowerCase();
+      const jsonFenceLangs = new Set(['', 'json', 'json5', 'jsonc', 'text', 'txt', 'output']);
+      const jsonValue = jsonFenceLangs.has(fenceLang) ? tryParseJson(codeText) : undefined;
+      if (jsonValue !== undefined) {
+        out.push(renderJsonBlock(jsonValue, codeText));
+        continue;
+      }
       // Syntax-highlight the block (falls back to plain escaped text). The
       // resolved language (explicit or auto-detected) drives the label + class.
       const highlighted = highlightCode(codeText, language, escapeHtml);

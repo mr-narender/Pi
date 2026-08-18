@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.172
+
+- JSON in Pi answers is now rendered as an easy-to-read structured table (same renderer as tool output), with a Raw toggle to view/copy the original JSON. Only applies to json fences / unlabeled fences that actually parse as JSON; other languages stay as code blocks. Deeply nested JSON now pretty-prints instead of dumping one-line raw.
+
 ## 0.0.171
 
 - Scroll-to-latest button is now a perfect circle (fixed min/max dimensions + aspect-ratio so surrounding layout / global button padding can no longer make it oval).

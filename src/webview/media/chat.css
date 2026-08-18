@@ -1638,6 +1638,50 @@ button.ghost:hover,
   );
   font-size: var(--pi-chat-font-size, var(--vscode-font-size, 13px));
 }
+
+/* JSON in Pi's answer rendered as a table (with a Raw toggle). */
+#messages .json-block {
+  margin: 12px 0;
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+#messages .json-block-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 6px 4px 10px;
+  background: var(--vscode-editorWidget-background, rgba(255, 255, 255, 0.04));
+  border-bottom: 1px solid var(--vscode-panel-border);
+}
+#messages .json-block-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vscode-descriptionForeground);
+}
+#messages .json-toggle {
+  font-size: 11px;
+  padding: 2px 9px;
+  border-radius: 5px;
+  border: 1px solid var(--vscode-panel-border);
+  background: transparent;
+  color: var(--vscode-foreground);
+  cursor: pointer;
+}
+#messages .json-toggle:hover {
+  border-color: var(--vscode-focusBorder);
+}
+#messages .json-block-view {
+  padding: 8px 10px;
+}
+#messages .json-block .json-raw {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+}
 #messages .json-table {
   width: auto;
   max-width: 100%;

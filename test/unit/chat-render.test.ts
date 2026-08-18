@@ -441,7 +441,7 @@ test('#3 edit tool cards show Open file / Open changes', () => {
   assert.match(html, /data-file-diff="src\/x.ts"/);
 });
 
-test('virtualization: off-screen messages get msg-virtual, the last is exempt', () => {
+test('messages render without content-visibility virtualization (removed for stable scrolling)', () => {
   const html = renderChatApp(
     snapshot({
       messages: [
@@ -457,11 +457,9 @@ test('virtualization: off-screen messages get msg-virtual, the last is exempt', 
       ],
     })
   );
-  // Exactly the first two (non-last) are virtualized.
-  assert.equal((html.match(/msg-virtual/g) ?? []).length, 2);
-  // The last article ("three") must NOT be virtualized.
-  const lastIdx = html.lastIndexOf('message-card');
-  assert.doesNotMatch(html.slice(lastIdx, lastIdx + 60), /msg-virtual/);
+  // Virtualization was removed (caused scrollbar jumpiness) — no msg-virtual class.
+  assert.equal((html.match(/msg-virtual/g) ?? []).length, 0);
+  assert.equal((html.match(/message-card/g) ?? []).length, 3);
 });
 
 test('onboarding empty-state shows example prompts and hints', () => {
@@ -696,4 +694,37 @@ test('renderChatApp shows a hint for an empty assistant response (not a blank bu
   assert.match(html, /empty response/i);
   // Names the failing model so the user knows which one to switch away from.
   assert.match(html, /openai-codex\/gpt-5\.6-sol/);
+});
+
+test('renderChatApp tabularizes a ```json block in Pi answer (with raw toggle)', () => {
+  const answer = [
+    'Here are the results:',
+    '',
+    '```json',
+    '[{"name":"a","qty":1},{"name":"b","qty":2}]',
+    '```',
+  ].join('\n');
+  const html = renderChatApp(
+    snapshot({
+      messages: [
+        { id: 'u', role: 'user', text: 'list', attachments: [] },
+        { id: 'a', role: 'assistant', text: answer, attachments: [] },
+      ],
+    })
+  );
+  assert.match(html, /class="json-block"/);
+  assert.match(html, /json-table|md-table/); // rendered as a table
+  assert.match(html, /class="json-toggle"/); // raw toggle present
+  assert.match(html, /<th>name<\/th>/); // column header from the array-of-objects
+});
+
+test('renderChatApp leaves non-JSON code fences as code blocks', () => {
+  const answer = ['```js', 'const x = 1;', '```'].join('\n');
+  const html = renderChatApp(
+    snapshot({
+      messages: [{ id: 'a', role: 'assistant', text: answer, attachments: [] }],
+    })
+  );
+  assert.match(html, /code-wrap/);
+  assert.doesNotMatch(html, /class="json-block"/);
 });

@@ -1176,6 +1176,24 @@ function renderNow(snapshot: WebviewSnapshot): void {
     });
   }
 
+  // JSON block: toggle between the structured table and the raw JSON.
+  for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>('.json-toggle'))) {
+    bindOnce(button, 'click', () => {
+      const block = button.closest('.json-block');
+      const view = block?.querySelector('.json-block-view') as HTMLElement | null;
+      const raw = block?.querySelector('.json-raw') as HTMLElement | null;
+      if (!view || !raw) {
+        return;
+      }
+      const showRaw = button.getAttribute('data-mode') !== 'raw';
+      view.hidden = showRaw;
+      raw.hidden = !showRaw;
+      button.setAttribute('data-mode', showRaw ? 'raw' : 'table');
+      button.setAttribute('aria-pressed', showRaw ? 'true' : 'false');
+      button.textContent = showRaw ? 'Table' : 'Raw';
+    });
+  }
+
   const messagesEl = document.getElementById('messages');
   bindOnce(messagesEl, 'scroll', persistViewState, { passive: true });
 
