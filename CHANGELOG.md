@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.175
+
+- PARALLEL CHATS (Bug 2): each chat tab now owns its OWN Pi process/controller (keyed by session, not folder), so multiple chats run independently at the same time. Closing a tab tears down its Pi.
+- Edit stays in the same chat (Bug 1): a tab repaints from the controller that OWNS it, so an edit/fork keeps the same tab (no new chat). Removed session-switching on the shared controller.
+- Message edit/copy icons moved to the top-right of each message (hover-revealed).
+
 ## 0.0.174
 
 - Approach 2 (inprocess): run the bundled Pi IN-PROCESS on a worker thread (no subprocess) via piRpc.piSource=inprocess. Reuses the same RPC transport; a worker-local process.cwd override gives Pi the workspace dir without touching the host.

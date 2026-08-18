@@ -298,9 +298,7 @@ export class ChatTabManager implements vscode.Disposable {
   }
 
   public trackController(controller: SessionController): void {
-    this.controllerSubscriptions.push(
-      controller.onDidChangeState(() => void this.onControllerChanged(controller))
-    );
+    this.ensureTracked(controller);
   }
 
   public async resolveEditor(
@@ -664,26 +662,19 @@ export class ChatTabManager implements vscode.Disposable {
     // faulted state and the webview renders it; a throw would abort the caller
     // (including resolveCustomEditor) and trigger a VS Code assertion.
     try {
-      if (context.target.kind === 'sessionFile' && context.target.sessionFile) {
-        // Opening a saved session MUST load it into the controller. If Pi is not
-        // running, start it directly on that session file. Otherwise WAIT until
-        // the RPC client is actually usable before switching — the warm-start
-        // sets state to 'starting' ~1s before the client exists, so switching
-        // too early failed with "Pi is not started for this workspace".
-        if (connectionState === 'stopped') {
-          await context.controller.start(context.target.sessionFile);
+      // Per-tab controller: it is DEDICATED to this tab's session, so we only ever
+      // START it (on its session file, or a fresh one) — never switchSession.
+      // That keeps chats independent (parallel) and, after an edit/fork moves the
+      // controller onto a new branch, never yanks it back to the old session.
+      const sessionFile =
+        context.target.kind === 'sessionFile' ? context.target.sessionFile : undefined;
+      if (connectionState === 'stopped') {
+        if (sessionFile || options?.startIfStopped) {
+          await context.controller.start(sessionFile);
           await context.controller.reconcile();
-        } else {
-          await context.controller.whenReady();
-          if (!sameTarget(currentTargetForController(context.controller), context.target)) {
-            await this.uiState.captureControllerDraft(context.controller);
-            await context.controller.switchSession(context.target.sessionFile);
-            await this.uiState.restoreControllerDraft(context.controller);
-          }
         }
-      } else if (options?.startIfStopped && connectionState === 'stopped') {
-        await context.controller.start(undefined);
-        await context.controller.reconcile();
+      } else {
+        await context.controller.whenReady();
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -830,6 +821,11 @@ export class ChatTabManager implements vscode.Disposable {
       this.hosts.delete(key);
     }
     await this.cache.markClosed(host.resource);
+    // Closing the tab tears down its dedicated Pi process (parallel-session
+    // model), unless another open tab still references the same session key.
+    if (!this.hosts.has(key)) {
+      this.registry.remove(key);
+    }
   }
 
   public async onHostViewStateChanged(host: ChatEditorHost, active: boolean): Promise<void> {
@@ -1292,15 +1288,40 @@ export class ChatTabManager implements vscode.Disposable {
     return target ? chatTargetSessionKey(target) : resource.toString();
   }
 
+  // Each chat tab (session) owns its OWN controller + Pi process, keyed by the
+  // session, so multiple chats run IN PARALLEL. (Previously every tab in a folder
+  // shared one controller, so opening a 2nd chat yanked the 1st.)
+  private readonly controllerResource = new Map<SessionController, vscode.Uri>();
+  private readonly trackedControllers = new Set<SessionController>();
+
+  private folderForUri(uri: string): vscode.WorkspaceFolder | undefined {
+    return (vscode.workspace.workspaceFolders ?? []).find((f) => f.uri.toString() === uri);
+  }
+
+  private ensureTracked(controller: SessionController): void {
+    if (this.trackedControllers.has(controller)) {
+      return;
+    }
+    this.trackedControllers.add(controller);
+    this.controllerSubscriptions.push(
+      controller.onDidChangeState(() => void this.onControllerChanged(controller))
+    );
+  }
+
   private contextForResource(resource: vscode.Uri): ChatTabContext | undefined {
     const target = parseChatUri(resource);
     if (!target) {
       return undefined;
     }
-    const controller = this.registry.getByFolderUri(target.workspaceFolderUri);
-    if (!controller) {
+    const folder = this.folderForUri(target.workspaceFolderUri);
+    if (!folder) {
       return undefined;
     }
+    const controller = this.registry.getOrCreateFor(this.keyFor(resource), folder);
+    this.ensureTracked(controller);
+    // Remember which tab to repaint when THIS controller changes (its session may
+    // move under it after an edit/fork, but it still belongs to this tab).
+    this.controllerResource.set(controller, resource);
     return { controller, resource, target };
   }
 
@@ -1314,15 +1335,12 @@ export class ChatTabManager implements vscode.Disposable {
   private async onControllerChanged(controller: SessionController): Promise<void> {
     this.detectTurnCompletion(controller);
     await this.uiState.restoreControllerDraft(controller);
-    const currentResource = buildChatUri(currentTargetForController(controller));
-    await this.renderResource(currentResource);
-
-    const activeResource = this.activeResourceByWorkspace.get(controller.folder.uri.toString());
-    if (activeResource && activeResource !== currentResource.toString()) {
-      const parsed = safeParseUri(activeResource);
-      if (parsed) {
-        await this.renderResource(parsed);
-      }
+    // Repaint the tab that OWNS this controller — by its resource, NOT by the
+    // controller's current session. After an edit/fork the controller's session
+    // changes, but the SAME tab must keep showing it (no new chat).
+    const owner = this.controllerResource.get(controller);
+    if (owner) {
+      await this.renderResource(owner);
     }
   }
 
@@ -1666,6 +1684,11 @@ export class ChatTabManager implements vscode.Disposable {
     to: vscode.Uri,
     controller: SessionController
   ): Promise<void> {
+    // The draft's dedicated controller now owns a real session: move it to the
+    // session key so the promoted tab reuses the SAME controller/Pi (not a new
+    // one), and repaint it under the new resource.
+    this.registry.rekey(this.keyFor(from), this.keyFor(to));
+    this.controllerResource.set(controller, to);
     const fromState = this.cache.get(from);
     if (fromState) {
       await this.cache.set({

@@ -2,53 +2,135 @@ import * as vscode from 'vscode';
 import { DiagnosticsLogger } from '../diagnostics/logger';
 import { SessionController } from './sessionController';
 
+/**
+ * Pool of Pi controllers. Historically there was ONE controller per workspace
+ * FOLDER (all chat tabs shared it), which made parallel chats impossible — a
+ * single Pi can only be on one session at a time. Now controllers are keyed by
+ * an arbitrary string (the chat tab resource), so each open chat owns its own
+ * controller + Pi process and they run independently. `getOrCreate(folder)` is
+ * kept (key = folderUri) for folder-level / draft use.
+ */
 export class SessionRegistry implements vscode.Disposable {
   private readonly controllers = new Map<string, SessionController>();
-  private activeFolderUri: string | undefined;
+  private readonly folderByKey = new Map<string, string>();
+  private activeKey: string | undefined;
 
   public constructor(private readonly logger: DiagnosticsLogger) {}
 
+  /** Folder-level controller (key = folderUri). Used for drafts / fallback. */
   public getOrCreate(folder: vscode.WorkspaceFolder): SessionController {
-    const key = folder.uri.toString();
+    return this.getOrCreateFor(folder.uri.toString(), folder);
+  }
+
+  /** Per-session controller (key = a unique string, e.g. the chat tab resource). */
+  public getOrCreateFor(key: string, folder: vscode.WorkspaceFolder): SessionController {
     const existing = this.controllers.get(key);
     if (existing) {
       return existing;
     }
     const controller = new SessionController(folder, this.logger);
     this.controllers.set(key, controller);
-    if (!this.activeFolderUri) {
-      this.activeFolderUri = key;
+    this.folderByKey.set(key, folder.uri.toString());
+    if (!this.activeKey) {
+      this.activeKey = key;
     }
     return controller;
+  }
+
+  /** Move a controller to a new key (e.g. a draft that just got a real session). */
+  public rekey(oldKey: string, newKey: string): void {
+    if (oldKey === newKey) {
+      return;
+    }
+    const controller = this.controllers.get(oldKey);
+    if (!controller) {
+      return;
+    }
+    this.controllers.delete(oldKey);
+    this.folderByKey.delete(oldKey);
+    this.controllers.set(newKey, controller);
+    this.folderByKey.set(newKey, controller.folder.uri.toString());
+    if (this.activeKey === oldKey) {
+      this.activeKey = newKey;
+    }
+  }
+
+  public keyForController(controller: SessionController): string | undefined {
+    for (const [key, value] of this.controllers) {
+      if (value === controller) {
+        return key;
+      }
+    }
+    return undefined;
+  }
+
+  /** Dispose + drop the controller for a key (e.g. when its tab closes). */
+  public remove(key: string): void {
+    const controller = this.controllers.get(key);
+    if (!controller) {
+      return;
+    }
+    controller.dispose();
+    this.controllers.delete(key);
+    this.folderByKey.delete(key);
+    if (this.activeKey === key) {
+      this.activeKey = undefined;
+    }
   }
 
   public list(): SessionController[] {
     return [...this.controllers.values()];
   }
 
+  /** The active controller for a folder (else any controller for it). */
   public getByFolderUri(folderUri: string): SessionController | undefined {
-    return this.controllers.get(folderUri);
+    if (this.activeKey && this.folderByKey.get(this.activeKey) === folderUri) {
+      return this.controllers.get(this.activeKey);
+    }
+    for (const [key, folder] of this.folderByKey) {
+      if (folder === folderUri) {
+        return this.controllers.get(key);
+      }
+    }
+    return undefined;
   }
 
   public setActive(
-    folderOrController: vscode.WorkspaceFolder | SessionController | string
+    target: vscode.WorkspaceFolder | SessionController | string
   ): SessionController | undefined {
-    const folderUri =
-      typeof folderOrController === 'string'
-        ? folderOrController
-        : 'folder' in folderOrController
-          ? folderOrController.folder.uri.toString()
-          : folderOrController.uri.toString();
-    const controller = this.controllers.get(folderUri);
+    if (target instanceof SessionController) {
+      const key = this.keyForController(target);
+      if (key) {
+        this.activeKey = key;
+        return target;
+      }
+      return undefined;
+    }
+    // String: a controller key first, else a folderUri.
+    const asKey = typeof target === 'string' ? target : target.uri.toString();
+    if (this.controllers.has(asKey)) {
+      this.activeKey = asKey;
+      return this.controllers.get(asKey);
+    }
+    const folderUri = typeof target === 'string' ? target : target.uri.toString();
+    const controller = this.getByFolderUri(folderUri);
     if (controller) {
-      this.activeFolderUri = folderUri;
+      this.activeKey = this.keyForController(controller);
     }
     return controller;
   }
 
   public getActive(): SessionController | undefined {
-    if (this.activeFolderUri) {
-      return this.controllers.get(this.activeFolderUri);
+    if (this.activeKey) {
+      const controller = this.controllers.get(this.activeKey);
+      if (controller) {
+        return controller;
+      }
+    }
+    // Fallback: any existing controller, else create the first folder's.
+    const first = this.controllers.values().next().value as SessionController | undefined;
+    if (first) {
+      return first;
     }
     const folder = vscode.workspace.workspaceFolders?.[0];
     return folder ? this.getOrCreate(folder) : undefined;
@@ -61,29 +143,18 @@ export class SessionRegistry implements vscode.Disposable {
     if (folders.length === 0) {
       return undefined;
     }
-    if (folders.length === 1) {
-      const onlyFolder = folders[0];
-      if (!onlyFolder) {
-        return undefined;
-      }
-      const controller = this.getOrCreate(onlyFolder);
-      this.activeFolderUri = onlyFolder.uri.toString();
-      return controller;
+    if (folders.length === 1 && folders[0]) {
+      return this.getOrCreate(folders[0]);
     }
     const picked = await vscode.window.showQuickPick(
       folders.map((folder) => ({
         label: folder.name,
         description: folder.uri.fsPath,
-        detail: this.activeFolderUri === folder.uri.toString() ? 'Active Pi folder' : undefined,
         folder,
       })),
       { title }
     );
-    if (!picked) {
-      return undefined;
-    }
-    this.activeFolderUri = picked.folder.uri.toString();
-    return this.getOrCreate(picked.folder);
+    return picked ? this.getOrCreate(picked.folder) : undefined;
   }
 
   public async getSelectedOrPick(options?: {
@@ -101,5 +172,6 @@ export class SessionRegistry implements vscode.Disposable {
       controller.dispose();
     }
     this.controllers.clear();
+    this.folderByKey.clear();
   }
 }

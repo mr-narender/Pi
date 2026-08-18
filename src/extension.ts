@@ -177,20 +177,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   statusBar.bind(registry.getActive());
   void recentSessions.refresh();
 
-  // Warm-start Pi for every workspace folder as soon as the extension activates
-  // so the RPC connection is already live. This is REQUIRED for instant session
-  // switching: selecting a chat calls switchSession/whenReady, which times out
-  // ("Timed out waiting for Pi to be ready") if Pi was never started.
-  const warmFolders = vscode.workspace.workspaceFolders ?? [];
-  for (const folder of warmFolders) {
-    const controller = registry.getOrCreate(folder);
-    if (controller.snapshot.connectionState === 'stopped') {
-      logger.info(`Warm-starting Pi for '${folder.name}' on activation`);
-      void controller.start().catch((error) => {
-        logger.error(`Warm-start of Pi failed for '${folder.name}'`, error);
-      });
-    }
-  }
+  // No global warm-start: with the PER-TAB controller model each chat tab owns
+  // and starts its own Pi process on activation (parallel sessions), so a
+  // folder-level warm-start would only spawn an orphan Pi + session. Tabs start
+  // on demand in activateResource.
 
   const sessionsView = new SessionsWebviewProvider(
     context.extensionUri,
