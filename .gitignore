@@ -6,3 +6,4 @@ dist/
 coverage/
 CLAUDE.md
 pi-session-*.html
+vendor/

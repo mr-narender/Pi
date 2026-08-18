@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.173
+
+- Approach 1: the Pi agent is now BUNDLED with the extension (vendor/pi) and runs on VS Code own Node 24 runtime (ELECTRON_RUN_AS_NODE) — no external install required. New setting piRpc.piSource (bundled default | external); falls back to external automatically if the bundle is missing.
+
 ## 0.0.172
 
 - JSON in Pi answers is now rendered as an easy-to-read structured table (same renderer as tool output), with a Raw toggle to view/copy the original JSON. Only applies to json fences / unlabeled fences that actually parse as JSON; other languages stay as code blocks. Deeply nested JSON now pretty-prints instead of dumping one-line raw.

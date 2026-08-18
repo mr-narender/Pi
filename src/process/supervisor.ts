@@ -1,4 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { resolvePiLaunch } from './piLauncher';
 
 // On Windows the npm-installed `pi` is a `pi.cmd` shim, which Node's spawn cannot
 // execute directly (ENOENT / EINVAL). A shell is required there; on POSIX we keep
@@ -71,9 +72,12 @@ export class PiProcessSupervisor extends TypedEmitter implements vscode.Disposab
       noExtensions: options?.noExtensions,
       offline,
     });
+    const launch = resolvePiLaunch(this.settings);
+    const fullArgs = [...launch.prefixArgs, ...args];
+    const useShell = launch.usingBundled ? false : SPAWN_WITH_SHELL;
     this.logger.info(
-      `Starting Pi for ${this.folder.name} (generation=${this.generation}): ` +
-        `${this.settings.executable} ${args.join(' ')} [cwd=${this.folder.uri.fsPath}, shell=${SPAWN_WITH_SHELL}]`
+      `Starting Pi for ${this.folder.name} (generation=${this.generation}) via ${launch.label}: ` +
+        `${launch.command} ${fullArgs.join(' ')} [cwd=${this.folder.uri.fsPath}, shell=${useShell}]`
     );
     // Pi's shell-inheritance extension needs a known launch shell. When Pi is
     // spawned non-interactively (here) it can't determine one on Windows and
@@ -83,12 +87,13 @@ export class PiProcessSupervisor extends TypedEmitter implements vscode.Disposab
       this.settings.launchShell.trim() ||
       process.env.PI_LAUNCH_SHELL ||
       (process.platform === 'win32' ? process.env.ComSpec || 'cmd.exe' : process.env.SHELL || '');
-    const child = spawn(this.settings.executable, args, {
+    const child = spawn(launch.command, fullArgs, {
       cwd: this.folder.uri.fsPath,
-      shell: SPAWN_WITH_SHELL,
+      shell: useShell,
       windowsHide: true,
       env: {
         ...process.env,
+        ...launch.extraEnv,
         PI_TELEMETRY: '0',
         PI_SKIP_VERSION_CHECK: '1',
         ...(offline ? { PI_OFFLINE: '1' } : {}),
@@ -177,11 +182,12 @@ export class PiProcessSupervisor extends TypedEmitter implements vscode.Disposab
 
   private probeVersion(): Promise<{ code: number | null; stdout: string; stderr: string }> {
     return new Promise((resolve, reject) => {
-      const child = spawn(this.settings.executable, ['--version'], {
+      const launch = resolvePiLaunch(this.settings);
+      const child = spawn(launch.command, [...launch.prefixArgs, '--version'], {
         cwd: this.folder.uri.fsPath,
-        shell: SPAWN_WITH_SHELL,
+        shell: launch.usingBundled ? false : SPAWN_WITH_SHELL,
         windowsHide: true,
-        env: { ...process.env, PI_OFFLINE: '1' },
+        env: { ...process.env, ...launch.extraEnv, PI_OFFLINE: '1' },
         stdio: ['ignore', 'pipe', 'pipe'],
       });
       let stdout = '';

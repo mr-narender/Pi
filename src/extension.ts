@@ -1,4 +1,6 @@
 import * as vscode from 'vscode';
+import { existsSync } from 'node:fs';
+import { setBundledPiCliPath } from './process/piLauncher';
 import { COMMAND_IDS, CONTRIBUTED_COMMANDS } from './config/commands';
 import { getSettings } from './config/settings';
 import { createRedactedDiagnosticsExport } from './diagnostics/export';
@@ -97,6 +99,21 @@ function compatibilityEvents(controller: SessionController) {
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const logger = new DiagnosticsLogger();
+  // Point the launcher at the Pi bundled inside this extension (vendor/pi). When
+  // present + piRpc.piSource='bundled', Pi runs from here with VS Code's own
+  // Node runtime — no external `pi` install required. Missing bundle -> falls
+  // back to the external `pi` automatically.
+  const bundledCli = vscode.Uri.joinPath(
+    context.extensionUri,
+    'vendor',
+    'pi',
+    'dist',
+    'cli.js'
+  ).fsPath;
+  setBundledPiCliPath(bundledCli);
+  logger.info(
+    `Bundled Pi CLI: ${existsSync(bundledCli) ? bundledCli : '(not bundled — will use external pi)'}`
+  );
   // Record the loaded build in the output channel only (no user-facing toast).
   logger.info(
     `Pi extension activating: v${String(

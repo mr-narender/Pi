@@ -2,7 +2,7 @@
   "name": "pi",
   "displayName": "Pi – this one is (y)ours",
   "description": "An unofficial, personal VS Code chat UI for the Pi coding agent (pi.dev). Not affiliated with pi.dev — shared for anyone who wants it.",
-  "version": "0.0.172",
+  "version": "0.0.173",
   "publisher": "mr-narender",
   "license": "MIT",
   "private": true,
@@ -35,14 +35,6 @@
   "extensionKind": [
     "workspace"
   ],
-  "files": [
-    "dist",
-    "media",
-    "README.md",
-    "CHANGELOG.md",
-    "LICENSE",
-    "NOTICE"
-  ],
   "scripts": {
     "clean": "rm -rf dist .tmp coverage *.vsix",
     "build": "npm run clean && node ./scripts/build.mjs",
@@ -55,7 +47,8 @@
     "test:integration": "node --import tsx --test test/integration/**/*.test.ts",
     "test:extension": "node --import tsx test/extension/run.ts",
     "smoke:real-pi": "node --import tsx --test test/integration/real-pi-smoke.test.ts",
-    "package:vsix": "npm run build && npx @vscode/vsce package --no-dependencies --allow-missing-repository",
+    "vendor:pi": "node ./scripts/vendor-pi.mjs",
+    "package:vsix": "npm run build && npm run vendor:pi && npx @vscode/vsce package --no-dependencies --allow-missing-repository",
     "audit:prod": "npm audit --omit=dev"
   },
   "dependencies": {
@@ -669,10 +662,23 @@
     "configuration": {
       "title": "Pi",
       "properties": {
+        "piRpc.piSource": {
+          "type": "string",
+          "enum": [
+            "bundled",
+            "external"
+          ],
+          "enumDescriptions": [
+            "Run the Pi agent bundled inside this extension (no external install needed).",
+            "Run the `pi` on your PATH or the 'Pi: Executable' override."
+          ],
+          "default": "bundled",
+          "description": "Where to run the Pi agent from. 'bundled' uses the Pi shipped with this extension and VS Code's own Node runtime; 'external' uses your installed `pi`."
+        },
         "piRpc.executable": {
           "type": "string",
           "default": "pi",
-          "description": "Pi executable resolved on the workspace extension host."
+          "description": "Pi executable (used when Pi Source = external, or as a fallback if the bundled Pi is missing)."
         },
         "piRpc.additionalArgs": {
           "type": "array",

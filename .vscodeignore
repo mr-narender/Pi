@@ -1,0 +1,29 @@
+# The extension ships as the esbuild bundle in dist/ plus the vendored Pi agent
+# in vendor/pi/. Everything below is source/tooling excluded from the VSIX.
+#
+# NOTE: because this file exists, vsce ignores .gitignore for packaging, so the
+# git-ignored vendor/ IS included (it is not listed here). `node_modules/**` is
+# root-anchored (minimatch), so vendor/pi/node_modules is kept.
+.vscode/**
+.github/**
+src/**
+test/**
+scripts/**
+docs/**
+node_modules/**
+*.vsix
+tsconfig.json
+test/tsconfig.json
+eslint.config.mjs
+.prettierrc
+.prettierrc.json
+.prettierignore
+.editorconfig
+.gitignore
+.gitattributes
+CLAUDE.md
+package-lock.json
+coverage/**
+.tmp/**
+*.log
+**/.DS_Store
