@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { resolvePiLaunch } from './piLauncher';
 import { spawnSubprocessPi, spawnWorkerPi, type PiProcessHandle } from './piProcess';
+import { getSharedPiHost } from './sharedPiHost';
 
 // On Windows the npm-installed `pi` is a `pi.cmd` shim, which Node's spawn cannot
 // execute directly (ENOENT / EINVAL). A shell is required there; on POSIX we keep
@@ -65,6 +66,29 @@ export class PiProcessSupervisor extends TypedEmitter implements vscode.Disposab
       return this.client;
     }
     validateAdditionalArgs(this.settings.additionalArgs);
+    // Shared-runtime fast path: one host worker hosts THIS session (and every
+    // other open chat) on a single ModelRuntime — no version probe (vendored Pi)
+    // and no CLI args. Falls back to a per-chat process if the host can't open.
+    const sharedHost = this.settings.sharedRuntime ? getSharedPiHost() : undefined;
+    if (sharedHost) {
+      try {
+        this.generation += 1;
+        const handle = await sharedHost.openSession({
+          cwd: this.folder.uri.fsPath,
+          sessionFile: existingSessionPath,
+        });
+        this.logger.info(
+          `Starting Pi for ${this.folder.name} (generation=${this.generation}) via shared host ` +
+            `[cwd=${this.folder.uri.fsPath}, session=${existingSessionPath ?? '(new)'}]`
+        );
+        return this.attachClient(handle, 'shared host');
+      } catch (error) {
+        this.logger.warn(
+          `Shared Pi host unavailable (${error instanceof Error ? error.message : String(error)}); ` +
+            `falling back to a per-chat process`
+        );
+      }
+    }
     await this.assertVersion();
     this.generation += 1;
     const offline = options?.offline ?? this.settings.offline;
@@ -105,9 +129,15 @@ export class PiProcessSupervisor extends TypedEmitter implements vscode.Disposab
             env,
             useShell,
           });
+    return this.attachClient(piProcess, launch.label);
+  }
+
+  // Wire a spawned process OR a shared-host session handle into transport+client.
+  // Both paths are identical from here down — the handle just exposes stdio.
+  private attachClient(piProcess: PiProcessHandle, label: string): RpcClient {
     this.piProcess = piProcess;
     piProcess.onError((error) => {
-      this.logger.error(`Failed to launch Pi via ${launch.label}. ${this.spawnHint(error)}`, error);
+      this.logger.error(`Failed to launch Pi via ${label}. ${this.spawnHint(error)}`, error);
       this.transport?.disconnect(error instanceof Error ? error : new Error(String(error)));
     });
     const transport = new RpcTransport(piProcess.stdin, piProcess.stdout, piProcess.stderr, {

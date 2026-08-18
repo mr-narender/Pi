@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { existsSync } from 'node:fs';
 import { setBundledPiCliPath, setManagedPiCliPath } from './process/piLauncher';
+import { initSharedPiHost, disposeSharedPiHost } from './process/sharedPiHost';
 import { ensureManagedPi, managedPiCliPath } from './process/piManaged';
 import { COMMAND_IDS, CONTRIBUTED_COMMANDS } from './config/commands';
 import { getSettings } from './config/settings';
@@ -115,6 +116,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   logger.info(
     `Bundled Pi CLI: ${existsSync(bundledCli) ? bundledCli : '(not bundled — will use external pi)'}`
   );
+  // Shared Pi host: ONE worker hosts every chat on a single shared ModelRuntime
+  // (many AgentSessions, one runtime) instead of one OS process per chat. This
+  // is the parallel-sessions engine; supervisors fall back to a per-chat process
+  // if it can't open. Toggle with piRpc.sharedRuntime.
+  if (getSettings().sharedRuntime) {
+    initSharedPiHost(context.extensionPath, process.env, logger);
+    context.subscriptions.push({ dispose: () => disposeSharedPiHost() });
+  }
   // #3 (managed): register an already-installed managed Pi, and if the user
   // selected piSource='managed', install it into globalStorage on activation.
   const managedCli = managedPiCliPath(context);

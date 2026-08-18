@@ -2,6 +2,10 @@ import * as vscode from 'vscode';
 
 export interface PiRpcSettings {
   piSource: 'bundled' | 'inprocess' | 'managed' | 'external';
+  // When true (default), all chats share ONE Pi runtime (many AgentSessions in a
+  // single host worker) instead of one OS process per chat. Big memory win for
+  // parallel chats. Falls back to a per-chat process if the host can't open.
+  sharedRuntime: boolean;
   executable: string;
   additionalArgs: string[];
   offline: boolean;
@@ -41,6 +45,7 @@ export function getSettings(): PiRpcSettings {
     // 'bundled' runs the Pi shipped inside this extension (no external install
     // needed); 'external' runs the `pi` on PATH / the `executable` override.
     piSource: config.get<PiRpcSettings['piSource']>('piSource', 'bundled'),
+    sharedRuntime: config.get<boolean>('sharedRuntime', true),
     executable: config.get<string>('executable', 'pi'),
     additionalArgs: config.get<string[]>('additionalArgs', []),
     // Sets PI_LAUNCH_SHELL so Pi's shell-inheritance extension can load. Needed

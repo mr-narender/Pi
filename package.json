@@ -2,7 +2,7 @@
   "name": "pi",
   "displayName": "Pi – this one is (y)ours",
   "description": "An unofficial, personal VS Code chat UI for the Pi coding agent (pi.dev). Not affiliated with pi.dev — shared for anyone who wants it.",
-  "version": "0.0.175",
+  "version": "0.0.176",
   "publisher": "mr-narender",
   "license": "MIT",
   "private": true,
@@ -678,6 +678,11 @@
           ],
           "default": "bundled",
           "description": "Where to run the Pi agent from. 'bundled' (default) and 'inprocess' need no external install; 'managed' auto-installs Pi; 'external' uses your installed `pi`. Each falls back to external `pi` if unavailable."
+        },
+        "piRpc.sharedRuntime": {
+          "type": "boolean",
+          "default": true,
+          "description": "Run all chats on ONE shared Pi runtime (many sessions in a single host worker) instead of one process per chat. Big memory win for parallel chats. Falls back to a per-chat process automatically if the shared host can't start."
         },
         "piRpc.executable": {
           "type": "string",

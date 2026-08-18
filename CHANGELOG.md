@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.176
+
+- SHARED RUNTIME (Option D): all chats now run on ONE shared Pi ModelRuntime via a single host worker (host/pi-multi-host.mjs) that hosts many AgentSessions at once — true parallel chats WITHOUT one OS process per chat. Massive memory win vs per-tab processes. New setting piRpc.sharedRuntime (default on); supervisors fall back to a per-chat process if the host can't open.
+
 ## 0.0.175
 
 - PARALLEL CHATS (Bug 2): each chat tab now owns its OWN Pi process/controller (keyed by session, not folder), so multiple chats run independently at the same time. Closing a tab tears down its Pi.
