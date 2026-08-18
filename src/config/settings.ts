@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 
 export interface PiRpcSettings {
-  piSource: 'bundled' | 'external';
+  piSource: 'bundled' | 'inprocess' | 'managed' | 'external';
   executable: string;
   additionalArgs: string[];
   offline: boolean;
@@ -40,7 +40,7 @@ export function getSettings(): PiRpcSettings {
   return {
     // 'bundled' runs the Pi shipped inside this extension (no external install
     // needed); 'external' runs the `pi` on PATH / the `executable` override.
-    piSource: config.get<'bundled' | 'external'>('piSource', 'bundled'),
+    piSource: config.get<PiRpcSettings['piSource']>('piSource', 'bundled'),
     executable: config.get<string>('executable', 'pi'),
     additionalArgs: config.get<string[]>('additionalArgs', []),
     // Sets PI_LAUNCH_SHELL so Pi's shell-inheritance extension can load. Needed

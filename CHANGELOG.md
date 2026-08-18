@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.174
+
+- Approach 2 (inprocess): run the bundled Pi IN-PROCESS on a worker thread (no subprocess) via piRpc.piSource=inprocess. Reuses the same RPC transport; a worker-local process.cwd override gives Pi the workspace dir without touching the host.
+- Approach 3 (managed): piRpc.piSource=managed auto-installs Pi into the extension globalStorage on first use (keeps the VSIX small; needs npm+network once).
+- Refactored process launching behind a PiProcessHandle (subprocess | worker) selected by piSource (bundled default | inprocess | managed | external), each with automatic external fallback.
+
 ## 0.0.173
 
 - Approach 1: the Pi agent is now BUNDLED with the extension (vendor/pi) and runs on VS Code own Node 24 runtime (ELECTRON_RUN_AS_NODE) — no external install required. New setting piRpc.piSource (bundled default | external); falls back to external automatically if the bundle is missing.

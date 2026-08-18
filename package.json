@@ -2,7 +2,7 @@
   "name": "pi",
   "displayName": "Pi – this one is (y)ours",
   "description": "An unofficial, personal VS Code chat UI for the Pi coding agent (pi.dev). Not affiliated with pi.dev — shared for anyone who wants it.",
-  "version": "0.0.173",
+  "version": "0.0.174",
   "publisher": "mr-narender",
   "license": "MIT",
   "private": true,
@@ -666,14 +666,18 @@
           "type": "string",
           "enum": [
             "bundled",
+            "inprocess",
+            "managed",
             "external"
           ],
           "enumDescriptions": [
-            "Run the Pi agent bundled inside this extension (no external install needed).",
+            "Run the bundled Pi as a subprocess on VS Code's Node. No external install.",
+            "Run the bundled Pi in-process on a worker thread (no subprocess). Experimental.",
+            "Auto-install Pi into the extension storage on first use (small VSIX; needs npm + network once).",
             "Run the `pi` on your PATH or the 'Pi: Executable' override."
           ],
           "default": "bundled",
-          "description": "Where to run the Pi agent from. 'bundled' uses the Pi shipped with this extension and VS Code's own Node runtime; 'external' uses your installed `pi`."
+          "description": "Where to run the Pi agent from. 'bundled' (default) and 'inprocess' need no external install; 'managed' auto-installs Pi; 'external' uses your installed `pi`. Each falls back to external `pi` if unavailable."
         },
         "piRpc.executable": {
           "type": "string",

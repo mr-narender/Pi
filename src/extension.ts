@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { existsSync } from 'node:fs';
-import { setBundledPiCliPath } from './process/piLauncher';
+import { setBundledPiCliPath, setManagedPiCliPath } from './process/piLauncher';
+import { ensureManagedPi, managedPiCliPath } from './process/piManaged';
 import { COMMAND_IDS, CONTRIBUTED_COMMANDS } from './config/commands';
 import { getSettings } from './config/settings';
 import { createRedactedDiagnosticsExport } from './diagnostics/export';
@@ -114,6 +115,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   logger.info(
     `Bundled Pi CLI: ${existsSync(bundledCli) ? bundledCli : '(not bundled — will use external pi)'}`
   );
+  // #3 (managed): register an already-installed managed Pi, and if the user
+  // selected piSource='managed', install it into globalStorage on activation.
+  const managedCli = managedPiCliPath(context);
+  setManagedPiCliPath(existsSync(managedCli) ? managedCli : undefined);
+  if (getSettings().piSource === 'managed' && !existsSync(managedCli)) {
+    void ensureManagedPi(context, logger).then((cli) => setManagedPiCliPath(cli));
+  }
   // Record the loaded build in the output channel only (no user-facing toast).
   logger.info(
     `Pi extension activating: v${String(

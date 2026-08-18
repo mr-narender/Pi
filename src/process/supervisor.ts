@@ -1,11 +1,11 @@
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { resolvePiLaunch } from './piLauncher';
+import { spawnSubprocessPi, spawnWorkerPi, type PiProcessHandle } from './piProcess';
 
 // On Windows the npm-installed `pi` is a `pi.cmd` shim, which Node's spawn cannot
 // execute directly (ENOENT / EINVAL). A shell is required there; on POSIX we keep
 // shell:false so arguments are passed verbatim without shell interpretation.
 const SPAWN_WITH_SHELL = process.platform === 'win32';
-import { once } from 'node:events';
 import { EventEmitter } from 'node:events';
 import * as vscode from 'vscode';
 import { DiagnosticsLogger } from '../diagnostics/logger';
@@ -36,7 +36,7 @@ class TypedEmitter extends EventEmitter {
 }
 
 export class PiProcessSupervisor extends TypedEmitter implements vscode.Disposable {
-  private child: ChildProcessWithoutNullStreams | undefined;
+  private piProcess: PiProcessHandle | undefined;
   private transport: RpcTransport | undefined;
   private client: RpcClient | undefined;
   private generation = 0;
@@ -73,12 +73,7 @@ export class PiProcessSupervisor extends TypedEmitter implements vscode.Disposab
       offline,
     });
     const launch = resolvePiLaunch(this.settings);
-    const fullArgs = [...launch.prefixArgs, ...args];
     const useShell = launch.usingBundled ? false : SPAWN_WITH_SHELL;
-    this.logger.info(
-      `Starting Pi for ${this.folder.name} (generation=${this.generation}) via ${launch.label}: ` +
-        `${launch.command} ${fullArgs.join(' ')} [cwd=${this.folder.uri.fsPath}, shell=${useShell}]`
-    );
     // Pi's shell-inheritance extension needs a known launch shell. When Pi is
     // spawned non-interactively (here) it can't determine one on Windows and
     // exits code=1 unless PI_LAUNCH_SHELL is set. Honor the setting, then an
@@ -87,29 +82,35 @@ export class PiProcessSupervisor extends TypedEmitter implements vscode.Disposab
       this.settings.launchShell.trim() ||
       process.env.PI_LAUNCH_SHELL ||
       (process.platform === 'win32' ? process.env.ComSpec || 'cmd.exe' : process.env.SHELL || '');
-    const child = spawn(launch.command, fullArgs, {
-      cwd: this.folder.uri.fsPath,
-      shell: useShell,
-      windowsHide: true,
-      env: {
-        ...process.env,
-        ...launch.extraEnv,
-        PI_TELEMETRY: '0',
-        PI_SKIP_VERSION_CHECK: '1',
-        ...(offline ? { PI_OFFLINE: '1' } : {}),
-        ...(launchShell ? { PI_LAUNCH_SHELL: launchShell } : {}),
-      },
-      stdio: 'pipe',
-    });
-    this.child = child;
-    child.once('error', (error) => {
-      this.logger.error(
-        `Failed to launch Pi (executable='${this.settings.executable}'). ${this.spawnHint(error)}`,
-        error
-      );
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      ...launch.extraEnv,
+      PI_TELEMETRY: '0',
+      PI_SKIP_VERSION_CHECK: '1',
+      ...(offline ? { PI_OFFLINE: '1' } : {}),
+      ...(launchShell ? { PI_LAUNCH_SHELL: launchShell } : {}),
+    };
+    const cwd = this.folder.uri.fsPath;
+    this.logger.info(
+      `Starting Pi for ${this.folder.name} (generation=${this.generation}) via ${launch.label} ` +
+        `[mode=${launch.mode}, args=${args.join(' ')}, cwd=${cwd}]`
+    );
+    const piProcess =
+      launch.mode === 'worker' && launch.cliPath
+        ? spawnWorkerPi({ cliPath: launch.cliPath, args, cwd, env })
+        : spawnSubprocessPi({
+            command: launch.command,
+            args: [...launch.prefixArgs, ...args],
+            cwd,
+            env,
+            useShell,
+          });
+    this.piProcess = piProcess;
+    piProcess.onError((error) => {
+      this.logger.error(`Failed to launch Pi via ${launch.label}. ${this.spawnHint(error)}`, error);
       this.transport?.disconnect(error instanceof Error ? error : new Error(String(error)));
     });
-    const transport = new RpcTransport(child.stdin, child.stdout, child.stderr, {
+    const transport = new RpcTransport(piProcess.stdin, piProcess.stdout, piProcess.stderr, {
       maxRecordBytes: this.settings.maxRecordBytes,
       // The residual buffer only ever holds one partial record, so it needs at
       // least maxRecordBytes; give generous headroom so resuming a large session
@@ -123,15 +124,15 @@ export class PiProcessSupervisor extends TypedEmitter implements vscode.Disposab
     transport.on('disconnected', (error) =>
       this.logger.warn(`Transport disconnected: ${error.message}`)
     );
-    child.once('exit', (code, signal) => {
+    piProcess.onExit((code, signal) => {
       this.logger.warn(`Pi exited code=${String(code)} signal=${String(signal)}`);
       this.transport?.disconnect(
         new Error(`Pi exited code=${String(code)} signal=${String(signal)}`)
       );
       this.transport = undefined;
       this.client = undefined;
-      this.child = undefined;
-      this.emit('exit', code, signal);
+      this.piProcess = undefined;
+      this.emit('exit', code, signal as NodeJS.Signals | null);
     });
     this.transport = transport;
     this.client = new RpcClient(this.generation, transport, {
@@ -142,23 +143,14 @@ export class PiProcessSupervisor extends TypedEmitter implements vscode.Disposab
   }
 
   public async stop(): Promise<void> {
-    const child = this.child;
+    const piProcess = this.piProcess;
     this.transport = undefined;
     this.client = undefined;
-    this.child = undefined;
-    if (!child) {
+    this.piProcess = undefined;
+    if (!piProcess) {
       return;
     }
-    child.stdin.end();
-    child.kill('SIGTERM');
-    const timeout = setTimeout(() => child.kill('SIGKILL'), 2000);
-    try {
-      await once(child, 'exit');
-    } catch {
-      // ignore
-    } finally {
-      clearTimeout(timeout);
-    }
+    await piProcess.stop();
   }
 
   public dispose(): void {
