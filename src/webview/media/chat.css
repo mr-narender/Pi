@@ -535,8 +535,17 @@ textarea.drop-target {
   bottom: 14px;
   margin-left: auto;
   margin-right: auto;
+  /* Force a perfect circle regardless of the surrounding flex/block context or
+   * the global button padding (aspect-ratio + fixed min/max keep it square). */
+  box-sizing: border-box;
   width: 34px;
   height: 34px;
+  min-width: 34px;
+  min-height: 34px;
+  max-width: 34px;
+  max-height: 34px;
+  flex: 0 0 auto;
+  aspect-ratio: 1 / 1;
   border-radius: 50%;
   border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
   background: var(--vscode-editorWidget-background, var(--vscode-editor-background));

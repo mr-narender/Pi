@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.171
+
+- Scroll-to-latest button is now a perfect circle (fixed min/max dimensions + aspect-ratio so surrounding layout / global button padding can no longer make it oval).
+
 ## 0.0.170
 
 - Modernized the scroll-to-latest button: cleaner chevron icon, bottom-center placement (in the reading flow, above the composer) with a subtle shadow and hover lift.
