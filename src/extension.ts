@@ -1311,6 +1311,37 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }
     return name;
   });
+  // Aggregate usage/cost across every OPEN chat (parallel sessions).
+  registrations.set('piRpc.showAllChatsUsage', async () => {
+    const chats = chatTabs.listOpenChats();
+    if (chats.length === 0) {
+      void vscode.window.showInformationMessage('No Pi chats are open.');
+      return;
+    }
+    const lines: string[] = ['# Pi usage — open chats', ''];
+    let totalCost = 0;
+    let totalTokens = 0;
+    for (const chat of chats) {
+      try {
+        const stats = await chat.controller.showSessionStats();
+        const cost = typeof stats?.cost === 'number' ? stats.cost : 0;
+        const tokensObj = stats?.tokens as { total?: number } | undefined;
+        const tokens = typeof tokensObj?.total === 'number' ? tokensObj.total : 0;
+        totalCost += cost;
+        totalTokens += tokens;
+        lines.push(`- **${chat.title}** — ${tokens.toLocaleString()} tokens · $${cost.toFixed(4)}`);
+      } catch {
+        lines.push(`- **${chat.title}** — stats unavailable (chat not started)`);
+      }
+    }
+    lines.push('', `**Total: ${totalTokens.toLocaleString()} tokens · $${totalCost.toFixed(4)}**`);
+    const doc = await vscode.workspace.openTextDocument({
+      content: lines.join('\n'),
+      language: 'markdown',
+    });
+    await vscode.window.showTextDocument(doc, { preview: true });
+  });
+
   // Turn review: consolidated "files changed this turn" — diff/revert.
   registrations.set('piRpc.reviewLastTurn', async () => {
     const controller = chatTabs.getActiveContext()?.controller ?? registry.getActive();

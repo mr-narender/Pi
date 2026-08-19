@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.0.180
+
+- PERF: chats in the same project now share loaded services (extensions/skills/settings scan) inside the shared runtime — opening a 2nd+ chat went from ~2s to ~20ms. MCP servers remain per-chat (isolation preserved).
+- PERF: a draft session is prewarmed at idle, so New Chat opens instantly.
+- Mission Control: status bar shows open/running/waiting chat counts (click to jump to any chat); sidebar rows get live pulsing badges (generating / waiting); a background chat blocked on an approval now raises a notification with "Open Chat".
+- FIX: permission dialogs now work in every parallel chat (controllers created after activation were never wired to the dialog broker).
+- Turn review: when a turn changes files, review a consolidated list — open before↔after diffs, revert one file or all (git snapshot per turn; setting piRpc.turnReview).
+- Chat versions: "Pi: Show Chat Versions" lists the fork lineage of the current chat (every edit forks a version) and opens any earlier version.
+- Full-text search: the sidebar search now also matches chat CONTENT across all projects (results under "Message matches").
+- Quick switcher: "Pi: Switch Chat…" (Cmd/Ctrl+Alt+P) fuzzy-jumps to any chat in any project.
+- "Pi: Show Usage for All Open Chats" — aggregate tokens/cost across parallel chats.
+- "Pi: Restart Shared Runtime" — one-click host self-heal.
+- FIX: turn-completion notifications now track each parallel chat separately (was folder-keyed).
+
 ## 0.0.179
 
 - Sidebar now shows ALL your chats: the current workspace's chats first, then an "Other projects" group listing every chat from every other project folder (Pi stores sessions per cwd — previously only the current workspace's were visible). Clicking one opens it running against its own project directory. Worktree checkouts get readable badges (agent-registry/main), temp-dir sessions are hidden, and the list cap was raised to 300+200.

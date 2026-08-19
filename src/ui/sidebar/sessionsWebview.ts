@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { readFile, stat } from 'node:fs/promises';
 import type { RecentSessionService } from '../../sessions/recentSessionService';
 import type { SessionRegistry } from '../../sessions/sessionRegistry';
 import { getSettings } from '../../config/settings';
@@ -18,6 +19,79 @@ export class SessionsWebviewProvider implements vscode.WebviewViewProvider {
     private readonly recentSessions: RecentSessionService,
     private readonly memento?: vscode.Memento
   ) {}
+
+  // Full-text search across chat CONTENT (titles are matched client-side).
+  // Bounded: ≤60 newest files, ≤2MB each, ≤20 matches, stale runs cancelled.
+  private searchSeq = 0;
+
+  private async contentSearch(query: string): Promise<void> {
+    const needle = query.trim().toLowerCase();
+    const seq = ++this.searchSeq;
+    if (needle.length < 3) {
+      return;
+    }
+    const active = this.registry.getActive();
+    if (!active) {
+      return;
+    }
+    const state = this.recentSessions.getState(active.folder);
+    const candidates = [
+      ...state.items.map((record) => ({
+        path: record.path,
+        name: record.displayName,
+        cwd: record.cwd,
+        other: false,
+      })),
+      ...(state.others ?? []).map((record) => ({
+        path: record.path,
+        name: record.displayName,
+        cwd: record.cwd,
+        other: true,
+      })),
+    ].slice(0, 60);
+    const matches: Array<{
+      path: string;
+      name: string;
+      preview: string;
+      cwd: string;
+      other: boolean;
+    }> = [];
+    for (const candidate of candidates) {
+      if (matches.length >= 20 || seq !== this.searchSeq) {
+        break;
+      }
+      try {
+        const stats = await stat(candidate.path);
+        if (stats.size > 2 * 1024 * 1024) {
+          continue;
+        }
+        const raw = await readFile(candidate.path, 'utf8');
+        const index = raw.toLowerCase().indexOf(needle);
+        if (index < 0) {
+          continue;
+        }
+        const preview = raw
+          .slice(Math.max(0, index - 60), index + needle.length + 60)
+          .replace(/\\+[nrt]/g, ' ')
+          .replace(/[\\"{}[\]]/g, '')
+          .replace(/\s+/g, ' ')
+          .trim();
+        matches.push({
+          path: candidate.path,
+          name: candidate.name,
+          preview: `…${preview}…`,
+          cwd: candidate.cwd,
+          other: candidate.other,
+        });
+      } catch {
+        /* unreadable file — skip */
+      }
+    }
+    if (seq !== this.searchSeq) {
+      return;
+    }
+    void this.view?.webview.postMessage({ type: 'contentMatches', query, matches });
+  }
 
   private pinnedPaths(): Set<string> {
     const raw = this.memento?.get<string[]>(SessionsWebviewProvider.PINNED_KEY, []) ?? [];
@@ -58,6 +132,9 @@ export class SessionsWebviewProvider implements vscode.WebviewViewProvider {
             if (getSettings().remoteEnabled) {
               await vscode.commands.executeCommand('piRpc.remote.start');
             }
+            break;
+          case 'contentSearch':
+            void this.contentSearch(String((msg as { query?: string }).query ?? ''));
             break;
           case 'open':
             if (msg.sessionPath) {
@@ -237,18 +314,16 @@ export class SessionsWebviewProvider implements vscode.WebviewViewProvider {
       const vscode = acquireVsCodeApi();
       let sessions = [];
       let filter = '';
+      let contentMatches = null;
+      let searchTimer;
       const listEl = document.getElementById('list');
       const searchEl = document.getElementById('search');
       function esc(s) { return String(s).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
       function render() {
         const f = filter.trim().toLowerCase();
         const items = sessions.filter((s) => !f || (s.name + ' ' + s.meta).toLowerCase().includes(f));
-        if (items.length === 0) {
-          listEl.innerHTML = '<div class="muted">' + (sessions.length ? 'No matching chats.' : 'No chats yet.') + '</div>';
-          return;
-        }
         let dividerDone = false;
-        listEl.innerHTML = items.map((s) => {
+        let html = items.map((s) => {
           const divider = s.other && !dividerDone
             ? (dividerDone = true, '<div class="group-divider">Other projects</div>')
             : '';
@@ -265,6 +340,17 @@ export class SessionsWebviewProvider implements vscode.WebviewViewProvider {
             '</div>' +
           '</div>';
         }).join('');
+        if (f.length >= 3 && contentMatches && String(contentMatches.query || '').trim().toLowerCase() === f) {
+          const rows = (contentMatches.matches || []).filter((m) => !items.some((s) => s.path === m.path));
+          if (rows.length) {
+            html += '<div class="group-divider">Message matches</div>' + rows.map((m) =>
+              '<div class="item' + (m.other ? ' other' : '') + '" data-path="' + esc(m.path) + '" data-name="' + esc(m.name) + '"' + (m.other ? ' data-other="1" data-cwd="' + esc(m.cwd || '') + '"' : '') + '>' +
+                '<div class="body"><div class="name">' + esc(m.name) + '</div><div class="meta">' + esc(m.preview) + '</div></div>' +
+              '</div>').join('');
+          }
+        }
+        if (!html) { listEl.innerHTML = '<div class="muted">' + (sessions.length ? 'No matching chats.' : 'No chats yet.') + '</div>'; return; }
+        listEl.innerHTML = html;
       }
       document.getElementById('new-btn').addEventListener('click', () => vscode.postMessage({ type: 'newChat' }));
       document.getElementById('remote-btn').addEventListener('click', () => vscode.postMessage({ type: 'remoteStart' }));
@@ -272,7 +358,13 @@ export class SessionsWebviewProvider implements vscode.WebviewViewProvider {
         const btn = document.getElementById('remote-btn');
         if (btn) btn.style.display = on ? '' : 'none';
       }
-      searchEl.addEventListener('input', () => { filter = searchEl.value; render(); });
+      searchEl.addEventListener('input', () => {
+        filter = searchEl.value; render();
+        clearTimeout(searchTimer);
+        const q = filter.trim();
+        if (q.length >= 3) searchTimer = setTimeout(() => vscode.postMessage({ type: 'contentSearch', query: q }), 350);
+        else contentMatches = null;
+      });
       listEl.addEventListener('click', (e) => {
         const btn = e.target.closest('.icon-btn');
         const item = e.target.closest('.item');
@@ -294,6 +386,11 @@ export class SessionsWebviewProvider implements vscode.WebviewViewProvider {
       });
       window.addEventListener('message', (event) => {
         const msg = event.data;
+        if (msg && msg.type === 'contentMatches') {
+          contentMatches = msg;
+          render();
+          return;
+        }
         if (msg && msg.type === 'state') {
           sessions = (msg.state && msg.state.sessions) || [];
           applyRemoteEnabled(!!msg.remoteEnabled);
