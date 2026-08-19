@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { existsSync } from 'node:fs';
+import { basename } from 'node:path';
 import { setBundledPiCliPath, setManagedPiCliPath } from './process/piLauncher';
 import { initSharedPiHost, disposeSharedPiHost } from './process/sharedPiHost';
 import { ensureManagedPi, managedPiCliPath, managedPiRoot } from './process/piManaged';
@@ -438,6 +439,38 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }
     refreshViews();
     void vscode.window.showInformationMessage(`Renamed chat to “${trimmed}”.`);
+  });
+
+  // Open a chat that belongs to ANOTHER project (sidebar "Other projects"). The
+  // chat runs with its OWN cwd via a synthesized folder handle — controllers and
+  // the shared host only need uri.fsPath + name, not a real workspace folder.
+  registrations.set('piRpcInternal.openOtherChat', async (value?: unknown) => {
+    const rec = asRecord(value);
+    const sessionPath = asString(rec?.sessionPath);
+    const cwd = asString(rec?.cwd);
+    if (!sessionPath || !cwd) {
+      return;
+    }
+    ensureTrustedForMutation();
+    if (!existsSync(cwd)) {
+      void vscode.window.showWarningMessage(
+        `Pi: that chat's project folder no longer exists (${cwd}).`
+      );
+      return;
+    }
+    const real = (vscode.workspace.workspaceFolders ?? []).find((f) => f.uri.fsPath === cwd);
+    const folder: vscode.WorkspaceFolder = real ?? {
+      uri: vscode.Uri.file(cwd),
+      name: basename(cwd) || cwd,
+      index: vscode.workspace.workspaceFolders?.length ?? 0,
+    };
+    const controller = registry.getOrCreate(folder);
+    const resource = await chatTabs.openForSessionFile(controller, sessionPath, {
+      focusComposer: true,
+    });
+    void chatTabs
+      .activateResource(resource, { startIfStopped: false })
+      .finally(() => refreshViews());
   });
 
   registrations.set('piRpcInternal.deleteSession', async (value?: unknown) => {

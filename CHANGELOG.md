@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.179
+
+- Sidebar now shows ALL your chats: the current workspace's chats first, then an "Other projects" group listing every chat from every other project folder (Pi stores sessions per cwd — previously only the current workspace's were visible). Clicking one opens it running against its own project directory. Worktree checkouts get readable badges (agent-registry/main), temp-dir sessions are hidden, and the list cap was raised to 300+200.
+
 ## 0.0.178
 
 - Sidebar: renamed chats no longer appear to "spread" their name — every message edit forks a new session file that copies the parent's history (including its name), and the stale parent file kept showing as a separate chat. The sidebar now collapses those stale fork ancestors (a session is hidden when a newer session forked from it and it has no activity since); deliberately cloned chats stay visible.

@@ -1,6 +1,6 @@
 import { createReadStream, existsSync, realpathSync } from 'node:fs';
 import { readFile, readdir, stat } from 'node:fs/promises';
-import { homedir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { redactText } from '../diagnostics/redaction';
@@ -443,6 +443,79 @@ function collapseForkAncestors(sessions: RecentSessionRecord[]): RecentSessionRe
     }
   }
   return hidden.size === 0 ? sessions : sessions.filter((session) => !hidden.has(session.path));
+}
+
+// "main" alone is a useless project badge — for generic leaf dirs (worktree
+// checkouts), include the repo dir: …/agent-registry/worktrees/main →
+// "agent-registry/main".
+const GENERIC_LEAF_DIRS = new Set(['main', 'master', 'trunk', 'dev', 'src', 'repo', 'work']);
+function projectLabelForCwd(cwd: string): string {
+  const parts = cwd.split(/[/\\]/).filter(Boolean);
+  const leaf = parts[parts.length - 1] ?? cwd;
+  if (!GENERIC_LEAF_DIRS.has(leaf.toLowerCase()) || parts.length < 2) {
+    return leaf;
+  }
+  const parent = parts[parts.length - 2] ?? '';
+  const repo = parent.toLowerCase() === 'worktrees' ? (parts[parts.length - 3] ?? parent) : parent;
+  return repo ? `${repo}/${leaf}` : leaf;
+}
+
+/**
+ * Chats from EVERY project (each cwd has its own session dir under
+ * ~/.pi/agent/sessions). Used for the sidebar's "Other projects" group so all
+ * chats are reachable from any window — not just the current workspace's.
+ * Bounded: newest 40 project dirs, 200 rows total; per-file scan caps apply.
+ */
+export async function readAllProjectsSessions(
+  excludeCwds: string[]
+): Promise<RecentSessionRecord[]> {
+  const root = getSessionsRootDir();
+  if (!existsSync(root)) {
+    return [];
+  }
+  const excluded = new Set(excludeCwds.map((cwd) => resolve(cwd)));
+  // macOS tmpdir() is /var/folders/… while session cwds record the resolved
+  // /private/var/folders/… — match both spellings.
+  const tempRoot = resolve(tmpdir());
+  const tempRoots = [
+    tempRoot,
+    tempRoot.startsWith('/private/') ? tempRoot.slice('/private'.length) : `/private${tempRoot}`,
+  ];
+  const now = Date.now();
+  const dirents = await readdir(root, { withFileTypes: true }).catch(() => []);
+  const dirs = await Promise.all(
+    dirents
+      .filter((entry) => entry.isDirectory())
+      .map(async (entry) => {
+        const path = join(root, entry.name);
+        const stats = await stat(path).catch(() => undefined);
+        return { path, mtime: stats?.mtimeMs ?? 0 };
+      })
+  );
+  dirs.sort((left, right) => right.mtime - left.mtime);
+  const sessions: RecentSessionRecord[] = [];
+  for (const dir of dirs.slice(0, 40)) {
+    const entries = await readdir(dir.path, { withFileTypes: true }).catch(() => []);
+    const files = entries
+      .filter((entry) => entry.isFile() && entry.name.endsWith('.jsonl'))
+      .map((entry) => join(dir.path, entry.name));
+    const records = (
+      await Promise.all(files.map((file) => buildRecentSessionRecord(file, now)))
+    ).filter((record): record is RecentSessionRecord => record !== undefined);
+    for (const record of collapseForkAncestors(records)) {
+      const cwd = resolve(record.cwd);
+      // Skip the current window's own projects (already listed) and throwaway
+      // temp-dir sessions (diagnostics, tests).
+      if (excluded.has(cwd) || tempRoots.some((root) => cwd.startsWith(root))) {
+        continue;
+      }
+      sessions.push({ ...record, workspaceLabel: projectLabelForCwd(cwd) });
+    }
+  }
+  sessions.sort(
+    (left, right) => right.modifiedAt - left.modifiedAt || left.path.localeCompare(right.path)
+  );
+  return sessions.slice(0, 200);
 }
 
 export function filterRecentSessions(

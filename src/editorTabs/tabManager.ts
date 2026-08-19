@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { basename } from 'node:path';
+import { existsSync } from 'node:fs';
 import { getSettings } from '../config/settings';
 import { ensureTrustedForMutation } from '../security/trust';
 import { SessionRegistry } from '../sessions/sessionRegistry';
@@ -1296,7 +1297,27 @@ export class ChatTabManager implements vscode.Disposable {
   private readonly trackedControllers = new Set<SessionController>();
 
   private folderForUri(uri: string): vscode.WorkspaceFolder | undefined {
-    return (vscode.workspace.workspaceFolders ?? []).find((f) => f.uri.toString() === uri);
+    const real = (vscode.workspace.workspaceFolders ?? []).find((f) => f.uri.toString() === uri);
+    if (real) {
+      return real;
+    }
+    // Foreign-project chat (opened from the sidebar's "Other projects" group):
+    // synthesize a folder handle for its cwd. Controllers/the shared host only
+    // use uri.fsPath + name, so this works without the folder being in the
+    // workspace — and survives window reloads that restore such tabs.
+    try {
+      const parsed = vscode.Uri.parse(uri, true);
+      if (parsed.scheme === 'file' && existsSync(parsed.fsPath)) {
+        return {
+          uri: parsed,
+          name: basename(parsed.fsPath) || parsed.fsPath,
+          index: vscode.workspace.workspaceFolders?.length ?? 0,
+        };
+      }
+    } catch {
+      /* not a parseable uri */
+    }
+    return undefined;
   }
 
   private ensureTracked(controller: SessionController): void {

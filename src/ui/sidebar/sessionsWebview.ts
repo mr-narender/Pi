@@ -61,9 +61,17 @@ export class SessionsWebviewProvider implements vscode.WebviewViewProvider {
             break;
           case 'open':
             if (msg.sessionPath) {
-              await vscode.commands.executeCommand('piRpc.switchSession', {
-                sessionPath: msg.sessionPath,
-              });
+              if ((msg as { other?: boolean }).other && (msg as { cwd?: string }).cwd) {
+                // A chat from ANOTHER project: open it with its own cwd.
+                await vscode.commands.executeCommand('piRpcInternal.openOtherChat', {
+                  sessionPath: msg.sessionPath,
+                  cwd: (msg as { cwd?: string }).cwd,
+                });
+              } else {
+                await vscode.commands.executeCommand('piRpc.switchSession', {
+                  sessionPath: msg.sessionPath,
+                });
+              }
             }
             break;
           case 'rename':
@@ -117,16 +125,7 @@ export class SessionsWebviewProvider implements vscode.WebviewViewProvider {
         ? active.snapshot.state.sessionFile
         : undefined;
     return buildSidebarState(
-      recent as {
-        loading: boolean;
-        error?: string;
-        items: Array<{
-          path: string;
-          displayName: string;
-          modifiedAt: number;
-          modelLabel?: string;
-        }>;
-      },
+      recent as Parameters<typeof buildSidebarState>[0],
       activePath,
       Date.now(),
       this.pinnedPaths()
@@ -196,6 +195,8 @@ export class SessionsWebviewProvider implements vscode.WebviewViewProvider {
       }
       .icon-btn:hover { background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,0.2)); }
       .muted { opacity: 0.7; font-size: 12px; padding: 6px 8px; }
+      .group-divider { margin: 10px 4px 4px; padding-top: 8px; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; opacity: 0.6; border-top: 1px solid var(--vscode-panel-border); }
+      .item.other .name { opacity: 0.92; }
     </style>
     <title>Chats</title>
   </head>
@@ -220,8 +221,13 @@ export class SessionsWebviewProvider implements vscode.WebviewViewProvider {
           listEl.innerHTML = '<div class="muted">' + (sessions.length ? 'No matching chats.' : 'No chats yet.') + '</div>';
           return;
         }
-        listEl.innerHTML = items.map((s) =>
-          '<div class="item' + (s.active ? ' active' : '') + (s.pinned ? ' pinned' : '') + '" data-path="' + esc(s.path) + '" data-name="' + esc(s.name) + '">' +
+        let dividerDone = false;
+        listEl.innerHTML = items.map((s) => {
+          const divider = s.other && !dividerDone
+            ? (dividerDone = true, '<div class="group-divider">Other projects</div>')
+            : '';
+          return divider +
+          '<div class="item' + (s.active ? ' active' : '') + (s.pinned ? ' pinned' : '') + (s.other ? ' other' : '') + '" data-path="' + esc(s.path) + '" data-name="' + esc(s.name) + '"' + (s.other ? ' data-other="1" data-cwd="' + esc(s.cwd || '') + '"' : '') + '>' +
             '<div class="body">' +
               '<div class="name">' + esc(s.name) + '</div>' +
               (s.meta ? '<div class="meta">' + esc(s.meta) + '</div>' : '') +
@@ -231,8 +237,8 @@ export class SessionsWebviewProvider implements vscode.WebviewViewProvider {
               '<button class="icon-btn" data-act="rename" title="Rename">\u270e</button>' +
               '<button class="icon-btn" data-act="delete" title="Delete">\u2715</button>' +
             '</div>' +
-          '</div>'
-        ).join('');
+          '</div>';
+        }).join('');
       }
       document.getElementById('new-btn').addEventListener('click', () => vscode.postMessage({ type: 'newChat' }));
       document.getElementById('remote-btn').addEventListener('click', () => vscode.postMessage({ type: 'remoteStart' }));
@@ -258,7 +264,7 @@ export class SessionsWebviewProvider implements vscode.WebviewViewProvider {
           el.classList.remove('active');
         });
         item.classList.add('active');
-        vscode.postMessage({ type: 'open', sessionPath });
+        vscode.postMessage({ type: 'open', sessionPath, other: item.getAttribute('data-other') === '1', cwd: item.getAttribute('data-cwd') || undefined });
       });
       window.addEventListener('message', (event) => {
         const msg = event.data;
