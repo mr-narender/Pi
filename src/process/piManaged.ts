@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
-import { existsSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync, readFileSync, renameSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 import type { DiagnosticsLogger } from '../diagnostics/logger';
@@ -54,6 +55,9 @@ async function prepareManagedPi(
   context: vscode.ExtensionContext,
   logger: DiagnosticsLogger
 ): Promise<string | undefined> {
+  // A previously staged update applies NOW (fast dir renames), before anything
+  // has imported Pi in this window — the running window is never hot-swapped.
+  applyStagedUpdate(context, logger);
   const cli = managedPiCliPath(context);
   const dir = managedDir(context);
   const installed = existsSync(cli) ? installedManagedVersion(context) : undefined;
@@ -89,33 +93,92 @@ async function prepareManagedPi(
     return existsSync(cli) ? cli : undefined;
   }
 
-  // Already installed: silently check npm for a newer release and update BEFORE
-  // the first session starts (so running chats never have Pi swapped under them).
-  const latest = await latestPiVersion(logger);
-  if (latest && latest !== installed) {
-    logger.info(`Managed Pi update available: ${installed} -> ${latest}. Updating…`);
-    try {
-      await vscode.window.withProgress(
-        {
-          location: vscode.ProgressLocation.Notification,
-          title: `Pi: updating the agent ${installed} → ${latest}…`,
-          cancellable: false,
-        },
-        () => npmInstall(dir, latest, logger)
-      );
-      logger.info(`Managed Pi updated to ${latest}`);
-    } catch (error) {
-      // Keep using the working install — never block on a failed update.
-      logger.warn(
-        `Managed Pi update failed (staying on ${installed}): ${
-          error instanceof Error ? error.message : String(error)
-        }`
-      );
-    }
-  } else {
-    logger.info(`Managed Pi ${installed} is current${latest ? '' : ' (npm check unavailable)'}`);
-  }
+  // Already installed: resolve INSTANTLY (opening a chat must never wait on the
+  // network). The latest-version check + download run in the background and are
+  // STAGED to a side directory; the staged copy is applied on the next window
+  // (re)load by applyStagedUpdate above.
+  void backgroundUpdateCheck(context, logger, installed);
   return cli;
+}
+
+function stagingDir(context: vscode.ExtensionContext): string {
+  return join(managedDir(context), 'staging');
+}
+
+function stagedCliPath(context: vscode.ExtensionContext): string {
+  return join(
+    stagingDir(context),
+    'node_modules',
+    '@earendil-works',
+    'pi-coding-agent',
+    'dist',
+    'cli.js'
+  );
+}
+
+/** Swap a fully staged update into place via dir renames (ms, no network). */
+function applyStagedUpdate(context: vscode.ExtensionContext, logger: DiagnosticsLogger): void {
+  if (!existsSync(stagedCliPath(context))) {
+    return;
+  }
+  const liveModules = join(managedDir(context), 'node_modules');
+  const stagedModules = join(stagingDir(context), 'node_modules');
+  const oldModules = join(managedDir(context), `node_modules.old-${Date.now()}`);
+  try {
+    if (existsSync(liveModules)) {
+      renameSync(liveModules, oldModules);
+    }
+    renameSync(stagedModules, liveModules);
+    logger.info(`Applied staged Pi update → ${installedManagedVersion(context) ?? 'unknown'}`);
+  } catch (error) {
+    logger.warn(
+      `Could not apply staged Pi update: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+  // Old tree + staging leftovers are big (thousands of files) — clean up async.
+  void rm(oldModules, { recursive: true, force: true }).catch(() => undefined);
+  void rm(stagingDir(context), { recursive: true, force: true }).catch(() => undefined);
+}
+
+let updateCheckStarted = false;
+async function backgroundUpdateCheck(
+  context: vscode.ExtensionContext,
+  logger: DiagnosticsLogger,
+  installed: string
+): Promise<void> {
+  if (updateCheckStarted) {
+    return;
+  }
+  updateCheckStarted = true;
+  const latest = await latestPiVersion(logger);
+  if (!latest || latest === installed) {
+    logger.info(
+      `Managed Pi ${installed} is current${latest ? '' : ' (npm check unavailable/offline)'}`
+    );
+    return;
+  }
+  if (existsSync(stagedCliPath(context))) {
+    logger.info(`Pi update already staged; applies on next reload.`);
+    return;
+  }
+  logger.info(`Managed Pi update ${installed} → ${latest}: downloading in background…`);
+  const dir = stagingDir(context);
+  try {
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, 'package.json'),
+      JSON.stringify({ name: 'pi-managed-staging', private: true, version: '0.0.0' })
+    );
+    await npmInstall(dir, latest, logger);
+    logger.info(`Pi ${latest} staged — it will activate on the next VS Code reload.`);
+  } catch (error) {
+    logger.warn(
+      `Background Pi update failed (staying on ${installed}): ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
+    void rm(dir, { recursive: true, force: true }).catch(() => undefined);
+  }
 }
 
 /** `npm view <pkg> version` with a hard timeout; undefined when offline/slow. */

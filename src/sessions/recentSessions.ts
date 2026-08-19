@@ -416,7 +416,33 @@ export async function readRecentSessionsIndex(
         left.index - right.index
     )
     .map((item) => item.session);
-  return { sessionDir, filterByWorkspaceCwd, sessions };
+  return { sessionDir, filterByWorkspaceCwd, sessions: collapseForkAncestors(sessions) };
+}
+
+// A fork copies the parent's ENTIRE history — including its `session_info` name
+// — into a new file, and every message EDIT forks. So after an edit (or rename +
+// edit) the old file lingers as a stale duplicate row with the same name ("my
+// rename spread to another chat"). Hide a session when a newer session points at
+// it via parentSession AND it has had no activity since that fork was created.
+// A deliberately cloned chat whose original keeps being used reappears on the
+// original's next activity.
+const FORK_ANCESTOR_EPSILON_MS = 2000;
+function collapseForkAncestors(sessions: RecentSessionRecord[]): RecentSessionRecord[] {
+  const byPath = new Map(sessions.map((session) => [session.path, session]));
+  const hidden = new Set<string>();
+  for (const child of sessions) {
+    if (!child.parentSessionPath) {
+      continue;
+    }
+    const parent = byPath.get(child.parentSessionPath);
+    if (!parent) {
+      continue;
+    }
+    if (parent.modifiedAt <= child.createdAt + FORK_ANCESTOR_EPSILON_MS) {
+      hidden.add(parent.path);
+    }
+  }
+  return hidden.size === 0 ? sessions : sessions.filter((session) => !hidden.has(session.path));
 }
 
 export function filterRecentSessions(

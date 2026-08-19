@@ -657,47 +657,44 @@ export class ChatTabManager implements vscode.Disposable {
     this.activeResourceByWorkspace.set(workspaceKey, resource.toString());
 
     const connectionState = context.controller.snapshot.connectionState;
-    // Loading/starting a session can fail (Pi missing, version mismatch, load
-    // error). Never let that reject out of here — the controller records a
-    // faulted state and the webview renders it; a throw would abort the caller
-    // (including resolveCustomEditor) and trigger a VS Code assertion.
-    try {
-      // Per-tab controller: it is DEDICATED to this tab's session, so we only ever
-      // START it (on its session file, or a fresh one) — never switchSession.
-      // That keeps chats independent (parallel) and, after an edit/fork moves the
-      // controller onto a new branch, never yanks it back to the old session.
-      const sessionFile =
-        context.target.kind === 'sessionFile' ? context.target.sessionFile : undefined;
-      if (connectionState === 'stopped') {
-        if (sessionFile || options?.startIfStopped) {
+    // Per-tab controller: it is DEDICATED to this tab's session, so we only ever
+    // START it (on its session file, or a fresh one) — never switchSession.
+    // Starting can take seconds (managed bootstrap, worker boot, per-session
+    // extension/MCP load), so it runs in the BACKGROUND: this method paints the
+    // loading state and returns immediately; controller state events repaint the
+    // tab as the session comes up. Callers that must talk to Pi (prompting)
+    // await controller.whenReady() themselves.
+    const sessionFile =
+      context.target.kind === 'sessionFile' ? context.target.sessionFile : undefined;
+    if (connectionState === 'stopped' && (sessionFile || options?.startIfStopped)) {
+      void (async () => {
+        try {
           await context.controller.start(sessionFile);
           await context.controller.reconcile();
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          // A readiness timeout during (rapid) switching is transient and
+          // self-heals — log it, don't nag. Only surface genuine load failures.
+          if (/Timed out waiting for Pi to be ready|Pi is not running/i.test(message)) {
+            this.logger.warn(
+              `Session load deferred (Pi busy) for ${context.target.sessionFile ?? context.target.kind}: ${message}`
+            );
+          } else {
+            this.logger.error(
+              `Failed to load session for ${context.target.sessionFile ?? context.target.kind}`,
+              error
+            );
+            void vscode.window
+              .showErrorMessage(`Pi: couldn't load this chat — ${message}`, 'Show Logs')
+              .then((choice) => {
+                if (choice === 'Show Logs') {
+                  void vscode.commands.executeCommand('piRpcInternal.showLogs');
+                }
+              });
+          }
         }
-      } else {
-        await context.controller.whenReady();
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      // A readiness timeout during (rapid) switching is transient and self-heals
-      // once the earlier operation finishes — log it, don't nag the user with a
-      // scary toast. Only surface genuine load failures.
-      if (/Timed out waiting for Pi to be ready|Pi is not running/i.test(message)) {
-        this.logger.warn(
-          `Session load deferred (Pi busy) for ${context.target.sessionFile ?? context.target.kind}: ${message}`
-        );
-      } else {
-        this.logger.error(
-          `Failed to load session for ${context.target.sessionFile ?? context.target.kind}`,
-          error
-        );
-        void vscode.window
-          .showErrorMessage(`Pi: couldn't load this chat — ${message}`, 'Show Logs')
-          .then((choice) => {
-            if (choice === 'Show Logs') {
-              void vscode.commands.executeCommand('piRpcInternal.showLogs');
-            }
-          });
-      }
+        await this.renderResource(resource);
+      })();
     }
 
     await this.renderResource(resource, { active: true });
@@ -716,7 +713,11 @@ export class ChatTabManager implements vscode.Disposable {
       return undefined;
     }
     if (current.target.kind !== 'workspaceDraft') {
-      return this.activateResource(resource, { startIfStopped: true });
+      const context = await this.activateResource(resource, { startIfStopped: true });
+      // Prompting requires a live client — activation starts Pi in the
+      // background, so wait for readiness here (with the controller's timeout).
+      await context?.controller.whenReady();
+      return context;
     }
     if (current.controller.snapshot.connectionState === 'stopped') {
       await current.controller.start();

@@ -146,7 +146,7 @@ test('default simple mode keeps the header primary controls and a grouped More m
 test('composer is disabled with a connecting spinner until Pi is ready', () => {
   const connecting = renderChatApp(snapshot({ connectionState: 'handshaking', messages: [] }));
   assert.match(connecting, /Connecting to Pi/);
-  assert.match(connecting, /class="spinner"/);
+  assert.match(connecting, /class="spinner spinner-boot"/);
   assert.match(connecting, /id="composer-field"[^>]*disabled/);
   assert.match(connecting, /id="composer-send-button"[^>]*disabled/);
 

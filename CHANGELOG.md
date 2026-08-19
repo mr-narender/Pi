@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.0.178
+
+- Sidebar: renamed chats no longer appear to "spread" their name — every message edit forks a new session file that copies the parent's history (including its name), and the stale parent file kept showing as a separate chat. The sidebar now collapses those stale fork ancestors (a session is hidden when a newer session forked from it and it has no activity since); deliberately cloned chats stay visible.
+- Opening a chat no longer freezes the UI: the tab paints instantly with a loading state and Pi starts in the background (previously the click awaited managed-update checks, worker boot, and per-session extension/MCP load — up to ~10s).
+- The managed Pi update check no longer blocks anything: updates download in the background to a staging area and apply atomically on the next reload.
+- New larger, animated chat loader with phase text (Starting Pi / Loading chat / Connecting to Pi).
+
 ## 0.0.177
 
 - TINY VSIX + LATEST-PI BOOTSTRAP: Pi is no longer vendored inside the VSIX (was 24 MB / 13,042 files; now ~1 MB). piSource now defaults to 'managed': on first run the extension bootstraps the LATEST Pi from npm into its own storage (needs npm + network once), and on later activations it silently self-updates to the latest Pi before the first session starts. The shared-runtime host loads Pi from that managed install (vendor/ remains a dev-only convenience). Existing chats/sessions are untouched; set piRpc.piSource='external' to keep using your own pi.

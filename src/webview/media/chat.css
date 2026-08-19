@@ -1293,8 +1293,72 @@ button.ghost:hover,
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 14px;
+  gap: 18px;
   text-align: center;
+}
+
+/* Boot loader: larger dual-ring spinner + pulsing phase copy + animated dots —
+   opening a chat starts Pi in the background, so this is what the user watches;
+   it must feel ALIVE, not frozen. */
+.connecting-state .spinner.spinner-boot {
+  width: 52px;
+  height: 52px;
+  border-width: 3px;
+  border-top-color: var(--vscode-charts-orange, #d2795b);
+  border-right-color: color-mix(
+    in srgb,
+    var(--vscode-charts-orange, #d2795b) 45%,
+    var(--vscode-panel-border)
+  );
+  animation: pi-spin 0.8s linear infinite;
+  position: relative;
+}
+
+.connecting-copy {
+  margin: 0;
+  font-size: 1.08em;
+  font-weight: 600;
+  color: var(--vscode-foreground);
+  animation: pi-connecting-pulse 1.6s ease-in-out infinite;
+}
+
+.connecting-hint {
+  margin: 0;
+  font-size: 0.85em;
+  opacity: 0.55;
+}
+
+.loading-dots::after {
+  display: inline-block;
+  width: 1.4em;
+  text-align: left;
+  content: '';
+  animation: pi-loading-dots 1.2s steps(4, end) infinite;
+}
+
+@keyframes pi-loading-dots {
+  0% {
+    content: '';
+  }
+  25% {
+    content: '.';
+  }
+  50% {
+    content: '..';
+  }
+  75% {
+    content: '...';
+  }
+}
+
+@keyframes pi-connecting-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 
 .spinner {
