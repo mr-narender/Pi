@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.181
+
+- FIX: "New Chat" stuck on "Connecting to Pi…" when other chats were open. The New Chat command still used the pre-parallel flow: it called newSession() on the ACTIVE chat's controller (yanking that chat onto a fresh session) and left the new draft tab's own controller orphaned. New Chat now simply opens a draft tab — the draft owns its controller (adopting the prewarmed session) and is promoted on your first message.
+
 ## 0.0.180
 
 - PERF: chats in the same project now share loaded services (extensions/skills/settings scan) inside the shared runtime — opening a 2nd+ chat went from ~2s to ~20ms. MCP servers remain per-chat (isolation preserved).

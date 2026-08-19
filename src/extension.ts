@@ -746,30 +746,33 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (!controller) {
         return undefined;
       }
-      registry.setActive(controller);
-      statusBar.bind(controller);
-      const record = asRecord(value);
-      const currentSession = asString(controller.snapshot.state.sessionFile);
-      const sourceIdentity = activeContext?.target ?? {
-        workspaceFolderUri: controller.folder.uri.toString(),
-        kind: currentSession ? ('sessionFile' as const) : ('workspaceDraft' as const),
-        sessionFile: currentSession,
-        sessionId: asString(controller.snapshot.state.sessionId),
-      };
-      await uiState.captureControllerDraftForIdentity(controller, sourceIdentity);
-      // New Chat always starts a fresh session immediately — no confirmation.
-      // (Continuing from the current session as a parent stays available via the
-      // `parentSession` argument for programmatic callers.)
-      const parentSession = asString(record?.parentSession);
+      // PER-TAB model: New Chat = just open a fresh DRAFT tab. The draft owns its
+      // own controller (it adopts the prewarmed session and starts in the
+      // background); the first message promotes it to a real session via
+      // preparePromptContext. The old flow called newSession() on the ACTIVE
+      // chat's controller — yanking that chat onto a new session and leaving the
+      // draft tab's controller orphaned ("Connecting to Pi…" forever).
       await chatTabs.openDraftForWorkspace(controller, { focusComposer: true });
-      const result = await controller.newSession(parentSession);
-      await chatTabs.nameSessionIfUnnamed(controller);
-      await recentSessions.refresh(controller.folder);
-      await uiState.restoreControllerDraft(controller);
-      await chatTabs.promoteDraftToCurrentSession(controller);
-      await chatTabs.focusComposer();
+      const parentSession = asString(asRecord(value)?.parentSession);
+      if (parentSession) {
+        // Programmatic "continue from parent": promote the DRAFT's own controller.
+        const draft = chatTabs.getActiveContext();
+        if (draft && draft.target.kind === 'workspaceDraft') {
+          if (draft.controller.snapshot.connectionState === 'stopped') {
+            await draft.controller.start();
+            await draft.controller.reconcile();
+          }
+          await draft.controller.whenReady();
+          const result = await draft.controller.newSession(parentSession);
+          await chatTabs.nameSessionIfUnnamed(draft.controller);
+          await chatTabs.promoteDraftToCurrentSession(draft.controller);
+          await recentSessions.refresh(draft.controller.folder);
+          refreshViews();
+          return result;
+        }
+      }
       refreshViews();
-      return result;
+      return { started: true };
     }
     return withController(
       async (controller) => {
