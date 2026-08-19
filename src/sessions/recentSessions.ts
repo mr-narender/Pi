@@ -518,6 +518,63 @@ export async function readAllProjectsSessions(
   return sessions.slice(0, 200);
 }
 
+async function readSessionHeader(path: string): Promise<Record<string, unknown> | undefined> {
+  return new Promise((resolvePromise) => {
+    let done = false;
+    const finish = (value: Record<string, unknown> | undefined): void => {
+      if (!done) {
+        done = true;
+        resolvePromise(value);
+      }
+    };
+    const stream = createReadStream(path, { encoding: 'utf8', end: 16_384 });
+    let buffer = '';
+    stream.on('data', (chunk: string | Buffer) => {
+      buffer += chunk.toString();
+      const newline = buffer.indexOf('\n');
+      if (newline >= 0) {
+        stream.destroy();
+        try {
+          finish(JSON.parse(buffer.slice(0, newline)) as Record<string, unknown>);
+        } catch {
+          finish(undefined);
+        }
+      }
+    });
+    stream.on('error', () => finish(undefined));
+    stream.on('close', () => finish(undefined));
+  });
+}
+
+/**
+ * Walk a session's fork lineage (each message EDIT forks a new file that points
+ * at its parent via the header's `parentSession`). Returns newest→oldest,
+ * starting with the given file. Used by the "chat versions" picker.
+ */
+export async function readSessionLineage(
+  sessionPath: string
+): Promise<Array<{ path: string; createdAt: number }>> {
+  const lineage: Array<{ path: string; createdAt: number }> = [];
+  const seen = new Set<string>();
+  let current = resolve(sessionPath);
+  for (let hop = 0; hop < 20 && current && !seen.has(current); hop += 1) {
+    seen.add(current);
+    if (!existsSync(current)) {
+      break;
+    }
+    const header = await readSessionHeader(current);
+    if (!header || header.type !== 'session') {
+      break;
+    }
+    lineage.push({
+      path: current,
+      createdAt: parseTimestamp(header.timestamp, Date.now()) ?? 0,
+    });
+    current = typeof header.parentSession === 'string' ? resolve(header.parentSession) : '';
+  }
+  return lineage;
+}
+
 export function filterRecentSessions(
   sessions: RecentSessionRecord[],
   filterText: string

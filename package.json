@@ -256,6 +256,31 @@
         "category": "Pi"
       },
       {
+        "command": "piRpc.showRunningChats",
+        "title": "Show Running Chats",
+        "category": "Pi"
+      },
+      {
+        "command": "piRpc.reviewLastTurn",
+        "title": "Review Files Changed Last Turn",
+        "category": "Pi"
+      },
+      {
+        "command": "piRpc.showChatVersions",
+        "title": "Show Chat Versions (Edit History)",
+        "category": "Pi"
+      },
+      {
+        "command": "piRpc.quickSwitchChat",
+        "title": "Switch Chat…",
+        "category": "Pi"
+      },
+      {
+        "command": "piRpc.restartSharedRuntime",
+        "title": "Restart Shared Runtime",
+        "category": "Pi"
+      },
+      {
         "command": "piRpc.switchSession",
         "title": "Resume Chat",
         "category": "Pi",
@@ -679,6 +704,11 @@
           "default": "managed",
           "description": "Where to run the Pi agent from. 'managed' (default) auto-installs the latest Pi on first use and self-updates; 'external' uses your installed `pi`. Each falls back to external `pi` if unavailable."
         },
+        "piRpc.turnReview": {
+          "type": "boolean",
+          "default": true,
+          "description": "Snapshot the git tree when a Pi turn starts and offer a consolidated review (diff/revert) of every file the turn changed."
+        },
         "piRpc.sharedRuntime": {
           "type": "boolean",
           "default": true,
@@ -980,6 +1010,11 @@
         "win": "ctrl+k",
         "linux": "ctrl+k",
         "when": "activeCustomEditorId == 'piRpc.chatEditor'"
+      },
+      {
+        "command": "piRpc.quickSwitchChat",
+        "key": "ctrl+alt+p",
+        "mac": "cmd+alt+p"
       }
     ],
     "submenus": [

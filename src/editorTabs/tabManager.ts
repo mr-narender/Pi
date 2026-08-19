@@ -7,6 +7,7 @@ import { SessionRegistry } from '../sessions/sessionRegistry';
 import type { SessionController } from '../sessions/sessionController';
 import type { DiagnosticsLogger } from '../diagnostics/logger';
 import { createWebviewSnapshot, firstPromptPreview } from '../webview/model';
+import type { TurnReview } from '../review/turnReview';
 import { parseWebviewMessage } from '../webview/messages';
 import {
   acceptedSnapshotFromPreview,
@@ -222,8 +223,15 @@ export class ChatTabManager implements vscode.Disposable {
   private readonly resourceSequence = new Map<string, number>();
   private readonly activeResourceByWorkspace = new Map<string, string>();
   // Completion-notification bookkeeping (busy->ready transition per controller).
-  private readonly lastConnState = new Map<string, string>();
-  private readonly busySince = new Map<string, number>();
+  // Keyed by CONTROLLER (not folder): with parallel per-tab controllers, several
+  // chats share a folder and folder-keyed busy tracking collides across them.
+  private readonly lastConnState = new Map<SessionController, string>();
+  private readonly busySince = new Map<SessionController, number>();
+  private turnReview: TurnReview | undefined;
+
+  public setTurnReview(review: TurnReview): void {
+    this.turnReview = review;
+  }
   // Per-resource count of trailing messages currently revealed to the webview.
   // Starts at the configured window size and grows when the webview asks for
   // older batches on scroll-up.
@@ -1372,17 +1380,22 @@ export class ChatTabManager implements vscode.Disposable {
    * the chat is the focused, active tab.
    */
   private detectTurnCompletion(controller: SessionController): void {
-    const key = controller.folder.uri.toString();
     const now = controller.snapshot.connectionState;
-    const prev = this.lastConnState.get(key);
-    this.lastConnState.set(key, now);
+    const prev = this.lastConnState.get(controller);
+    this.lastConnState.set(controller, now);
     if (prev !== 'busy' && now === 'busy') {
-      this.busySince.set(key, Date.now());
+      this.busySince.set(controller, Date.now());
+      if (getSettings().turnReview) {
+        void this.turnReview?.onTurnStart(controller);
+      }
       return;
     }
     if (prev === 'busy' && now === 'ready') {
-      const startedAt = this.busySince.get(key);
-      this.busySince.delete(key);
+      const startedAt = this.busySince.get(controller);
+      this.busySince.delete(controller);
+      if (getSettings().turnReview) {
+        void this.turnReview?.onTurnEnd(controller);
+      }
       const elapsed = startedAt ? Date.now() - startedAt : 0;
       if (!getSettings().notifyOnComplete || elapsed < 4000) {
         return;
@@ -1397,7 +1410,10 @@ export class ChatTabManager implements vscode.Disposable {
         .showInformationMessage(`Pi finished responding in ${label}.`, 'Open chat')
         .then((choice) => {
           if (choice === 'Open chat') {
-            void this.openCurrentChat({ folderUri: key, focusComposer: true });
+            void this.openCurrentChat({
+              folderUri: controller.folder.uri.toString(),
+              focusComposer: true,
+            });
           }
         });
     }

@@ -37,6 +37,9 @@ export interface PiRpcSettings {
   autoCompactResumeTask: boolean;
   codeLensEnabled: boolean;
   remoteEnabled: boolean;
+  // Snapshot the git tree when a turn starts and offer a consolidated
+  // review/revert of every file the turn changed.
+  turnReview: boolean;
 }
 
 export function getSettings(): PiRpcSettings {
@@ -59,6 +62,7 @@ export function getSettings(): PiRpcSettings {
     // Phone/remote-session feature is opt-in. When false the Connect a phone
     // button and the Start/Stop Remote Session commands are hidden.
     remoteEnabled: config.get<boolean>('remote.enabled', false),
+    turnReview: config.get<boolean>('turnReview', true),
     responseTimeoutMs: config.get<number>('responseTimeoutMs', 15000),
     longRunningTimeoutMs: config.get<number>('longRunningTimeoutMs', 120000),
     // Session replay can contain one large JSONL record (for example an

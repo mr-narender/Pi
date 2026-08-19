@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import { basename } from 'node:path';
 import { setBundledPiCliPath, setManagedPiCliPath } from './process/piLauncher';
 import { initSharedPiHost, disposeSharedPiHost } from './process/sharedPiHost';
+import { TurnReview } from './review/turnReview';
 import { ensureManagedPi, managedPiCliPath, managedPiRoot } from './process/piManaged';
 import { COMMAND_IDS, CONTRIBUTED_COMMANDS } from './config/commands';
 import { getSettings } from './config/settings';
@@ -11,7 +12,7 @@ import { DiagnosticsLogger } from './diagnostics/logger';
 import { redactJsonValue } from './diagnostics/redaction';
 import { ensureWorkspaceAvailable, ensureTrustedForMutation } from './security/trust';
 import { RecentSessionService } from './sessions/recentSessionService';
-import { formatRelativeTimestamp } from './sessions/recentSessions';
+import { formatRelativeTimestamp, readSessionLineage } from './sessions/recentSessions';
 import { SessionRegistry } from './sessions/sessionRegistry';
 import { ExtensionUiBroker } from './ui/extensionUiBroker';
 import { LocalExtensionUiContext } from './ui/localExtensionUi';
@@ -183,6 +184,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // restored, so restored tabs resolve to their session identity.
   initChatUriRegistry(context.workspaceState);
   const chatTabs = new ChatTabManager(context, registry, uiState, logger);
+  const turnReview = new TurnReview(logger);
+  chatTabs.setTurnReview(turnReview);
   const remoteHost = new RemoteHostClient(context.secrets);
   chatTabs.setRemoteSink((snapshot) => remoteHost.pushSnapshot(snapshot));
   // VS Code reload/deactivation is a transport disconnect, not an explicit
@@ -1308,6 +1311,122 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }
     return name;
   });
+  // Turn review: consolidated "files changed this turn" — diff/revert.
+  registrations.set('piRpc.reviewLastTurn', async () => {
+    const controller = chatTabs.getActiveContext()?.controller ?? registry.getActive();
+    await turnReview.review(controller);
+  });
+
+  // Chat versions: every message edit forks a file; walk the lineage and let the
+  // user open any earlier version of this chat.
+  registrations.set('piRpc.showChatVersions', async () => {
+    const controller = chatTabs.getActiveContext()?.controller ?? registry.getActive();
+    const file = controller?.snapshot.state.sessionFile;
+    if (!controller || typeof file !== 'string') {
+      void vscode.window.showInformationMessage('Open a saved Pi chat first.');
+      return;
+    }
+    const lineage = await readSessionLineage(file);
+    if (lineage.length <= 1) {
+      void vscode.window.showInformationMessage('This chat has no earlier versions.');
+      return;
+    }
+    const picked = await vscode.window.showQuickPick(
+      lineage.map((version, index) => ({
+        label: `${index === 0 ? '$(circle-filled)' : '$(history)'} v${lineage.length - index}${
+          index === 0 ? ' (current)' : ''
+        }`,
+        description: version.createdAt ? new Date(version.createdAt).toLocaleString() : '',
+        version,
+      })),
+      { title: 'Chat versions — each edit forked a version', placeHolder: 'Open a version' }
+    );
+    if (!picked || picked.version.path === file) {
+      return;
+    }
+    await vscode.commands.executeCommand('piRpcInternal.openOtherChat', {
+      sessionPath: picked.version.path,
+      cwd: controller.folder.uri.fsPath,
+    });
+  });
+
+  // Quick switcher: fuzzy-jump to ANY chat in any project.
+  registrations.set('piRpc.quickSwitchChat', async () => {
+    const folder = registry.getActive()?.folder ?? vscode.workspace.workspaceFolders?.[0];
+    if (!folder) {
+      void vscode.window.showInformationMessage('Open a folder first.');
+      return;
+    }
+    const state = recentSessions.getState(folder);
+    if (state.items.length === 0 && !state.others?.length) {
+      await recentSessions.refresh(folder);
+    }
+    const fresh = recentSessions.getState(folder);
+    type ChatPick = vscode.QuickPickItem & {
+      record?: { path: string; cwd: string };
+      foreign?: boolean;
+    };
+    const picks: ChatPick[] = [];
+    if (fresh.items.length > 0) {
+      picks.push({ label: 'This workspace', kind: vscode.QuickPickItemKind.Separator });
+      for (const record of fresh.items) {
+        picks.push({
+          label: record.displayName,
+          description: [formatRelativeTimestamp(record.modifiedAt), record.modelLabel]
+            .filter(Boolean)
+            .join(' · '),
+          record,
+        });
+      }
+    }
+    if (fresh.others && fresh.others.length > 0) {
+      picks.push({ label: 'Other projects', kind: vscode.QuickPickItemKind.Separator });
+      for (const record of fresh.others) {
+        picks.push({
+          label: record.displayName,
+          description: `${record.workspaceLabel} · ${formatRelativeTimestamp(record.modifiedAt)}`,
+          record,
+          foreign: true,
+        });
+      }
+    }
+    if (picks.length === 0) {
+      void vscode.window.showInformationMessage('No chats yet.');
+      return;
+    }
+    const picked = await vscode.window.showQuickPick(picks, {
+      title: 'Switch Pi chat',
+      placeHolder: 'Type to filter across every project…',
+      matchOnDescription: true,
+    });
+    if (!picked?.record) {
+      return;
+    }
+    if (picked.foreign) {
+      await vscode.commands.executeCommand('piRpcInternal.openOtherChat', {
+        sessionPath: picked.record.path,
+        cwd: picked.record.cwd,
+      });
+    } else {
+      await vscode.commands.executeCommand('piRpc.switchSession', {
+        sessionPath: picked.record.path,
+      });
+    }
+  });
+
+  // Shared-runtime self-heal: tear the host down; chats respawn it on next start.
+  registrations.set('piRpc.restartSharedRuntime', async () => {
+    if (!getSettings().sharedRuntime) {
+      void vscode.window.showInformationMessage('The shared Pi runtime is disabled.');
+      return;
+    }
+    disposeSharedPiHost();
+    initSharedPiHost(context.extensionPath, process.env, logger, resolvePiRoot);
+    void vscode.window.showInformationMessage(
+      'Pi shared runtime restarted. Open chats will reconnect on their next action.'
+    );
+  });
+
   // Mission Control: jump to any open chat, with live per-chat status.
   registrations.set('piRpc.showRunningChats', async () => {
     const chats = chatTabs.listOpenChats();
