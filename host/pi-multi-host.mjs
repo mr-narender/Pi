@@ -16,23 +16,38 @@
 // I/O layer changes: global stdin/stdout -> per-session {k, d} envelopes so N
 // sessions multiplex over one stdio pair. Re-sync this file when bumping Pi.
 import * as crypto from 'node:crypto';
-import {
-  flushRawStdout,
-  takeOverStdout,
-  waitForRawStdoutBackpressure,
-  writeRawStdout,
-} from '../vendor/pi/dist/core/output-guard.js';
-import { killTrackedDetachedChildren } from '../vendor/pi/dist/utils/shell.js';
-import { theme, initTheme } from '../vendor/pi/dist/modes/interactive/theme/theme.js';
-import { toJsonEvent } from '../vendor/pi/dist/modes/json-event.js';
-import { attachJsonlLineReader, serializeJsonLine } from '../vendor/pi/dist/modes/rpc/jsonl.js';
-import { ModelRuntime } from '../vendor/pi/dist/core/model-runtime.js';
-import {
-  createAgentSessionServices,
-  createAgentSessionFromServices,
-} from '../vendor/pi/dist/core/agent-session-services.js';
-import { createAgentSessionRuntime } from '../vendor/pi/dist/core/agent-session-runtime.js';
-import { SessionManager } from '../vendor/pi/dist/core/session-manager.js';
+import * as path from 'node:path';
+import { pathToFileURL, fileURLToPath } from 'node:url';
+
+// Pi package root, resolved at RUNTIME (the VSIX no longer vendors Pi):
+//   1. workerData.piRoot  — the managed install in globalStorage (production)
+//   2. PI_HOST_PI_ROOT    — override for tests
+//   3. ../vendor/pi       — dev checkout fallback
+let workerPiRoot;
+try {
+  const { workerData } = await import('node:worker_threads');
+  workerPiRoot = workerData && workerData.piRoot;
+} catch {
+  /* not in a worker */
+}
+const PI_ROOT =
+  workerPiRoot ||
+  process.env.PI_HOST_PI_ROOT ||
+  fileURLToPath(new URL('../vendor/pi', import.meta.url));
+const piImport = (rel) => import(pathToFileURL(path.join(PI_ROOT, rel)).href);
+
+const { flushRawStdout, takeOverStdout, waitForRawStdoutBackpressure, writeRawStdout } =
+  await piImport('dist/core/output-guard.js');
+const { killTrackedDetachedChildren } = await piImport('dist/utils/shell.js');
+const { theme, initTheme } = await piImport('dist/modes/interactive/theme/theme.js');
+const { toJsonEvent } = await piImport('dist/modes/json-event.js');
+const { attachJsonlLineReader, serializeJsonLine } = await piImport('dist/modes/rpc/jsonl.js');
+const { ModelRuntime } = await piImport('dist/core/model-runtime.js');
+const { createAgentSessionServices, createAgentSessionFromServices } = await piImport(
+  'dist/core/agent-session-services.js'
+);
+const { createAgentSessionRuntime } = await piImport('dist/core/agent-session-runtime.js');
+const { SessionManager } = await piImport('dist/core/session-manager.js');
 /**
  * Run in RPC mode.
  * Listens for JSON commands on stdin, outputs events and responses on stdout.

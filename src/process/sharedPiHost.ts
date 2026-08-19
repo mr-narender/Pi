@@ -31,7 +31,10 @@ export class SharedPiHost {
   public constructor(
     private readonly hostScript: string,
     private readonly baseEnv: NodeJS.ProcessEnv,
-    private readonly logger: DiagnosticsLogger
+    private readonly logger: DiagnosticsLogger,
+    // Where the Pi package lives (managed install in prod, vendor/ in dev).
+    // Async: on a fresh client the FIRST chat awaits the managed bootstrap.
+    private readonly resolvePiRoot: () => Promise<string>
   ) {}
 
   /** Absolute path to the shipped host script (host/pi-multi-host.mjs). */
@@ -39,11 +42,16 @@ export class SharedPiHost {
     return path.join(extensionPath, 'host', 'pi-multi-host.mjs');
   }
 
-  private ensureWorker(): void {
+  private async ensureWorker(): Promise<void> {
     if (this.worker) {
       return;
     }
     this.startFault = undefined;
+    const piRoot = await this.resolvePiRoot();
+    if (this.worker) {
+      return; // raced by a concurrent openSession
+    }
+    this.logger.info(`Shared Pi host starting (piRoot=${piRoot})`);
     // CJS bootstrap that dynamic-imports the ESM host (same trick as spawnWorkerPi).
     const bootstrap = `
       const { workerData } = require('node:worker_threads');
@@ -54,7 +62,7 @@ export class SharedPiHost {
     `;
     const worker = new Worker(bootstrap, {
       eval: true,
-      workerData: { hostPath: this.hostScript },
+      workerData: { hostPath: this.hostScript, piRoot },
       env: { ...this.baseEnv, PI_TELEMETRY: '0', PI_SKIP_VERSION_CHECK: '1' },
       stdin: true,
       stdout: true,
@@ -154,7 +162,7 @@ export class SharedPiHost {
     info: { cwd: string; sessionFile?: string },
     openTimeoutMs = 20_000
   ): Promise<PiProcessHandle> {
-    this.ensureWorker();
+    await this.ensureWorker();
     if (this.startFault) {
       throw this.startFault;
     }
@@ -248,10 +256,11 @@ let singleton: SharedPiHost | undefined;
 export function initSharedPiHost(
   extensionPath: string,
   env: NodeJS.ProcessEnv,
-  logger: DiagnosticsLogger
+  logger: DiagnosticsLogger,
+  resolvePiRoot: () => Promise<string>
 ): SharedPiHost {
   singleton?.dispose();
-  singleton = new SharedPiHost(SharedPiHost.scriptPath(extensionPath), env, logger);
+  singleton = new SharedPiHost(SharedPiHost.scriptPath(extensionPath), env, logger, resolvePiRoot);
   return singleton;
 }
 

@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { existsSync } from 'node:fs';
 import { setBundledPiCliPath, setManagedPiCliPath } from './process/piLauncher';
 import { initSharedPiHost, disposeSharedPiHost } from './process/sharedPiHost';
-import { ensureManagedPi, managedPiCliPath } from './process/piManaged';
+import { ensureManagedPi, managedPiCliPath, managedPiRoot } from './process/piManaged';
 import { COMMAND_IDS, CONTRIBUTED_COMMANDS } from './config/commands';
 import { getSettings } from './config/settings';
 import { createRedactedDiagnosticsExport } from './diagnostics/export';
@@ -114,21 +114,48 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   ).fsPath;
   setBundledPiCliPath(bundledCli);
   logger.info(
-    `Bundled Pi CLI: ${existsSync(bundledCli) ? bundledCli : '(not bundled — will use external pi)'}`
+    `Bundled Pi CLI: ${existsSync(bundledCli) ? bundledCli : '(not bundled — managed bootstrap provides Pi)'}`
   );
   // Shared Pi host: ONE worker hosts every chat on a single shared ModelRuntime
   // (many AgentSessions, one runtime) instead of one OS process per chat. This
   // is the parallel-sessions engine; supervisors fall back to a per-chat process
-  // if it can't open. Toggle with piRpc.sharedRuntime.
-  if (getSettings().sharedRuntime) {
-    initSharedPiHost(context.extensionPath, process.env, logger);
+  // if it can't open. Toggle with piRpc.sharedRuntime. The host imports Pi from
+  // a runtime-resolved root: vendored Pi when present (dev/bundled), else the
+  // managed install (bootstrapped to latest on demand).
+  const resolvePiRoot = async (): Promise<string> => {
+    const vendorRoot = vscode.Uri.joinPath(context.extensionUri, 'vendor', 'pi').fsPath;
+    const vendorCli = vscode.Uri.joinPath(
+      context.extensionUri,
+      'vendor',
+      'pi',
+      'dist',
+      'cli.js'
+    ).fsPath;
+    const source = getSettings().piSource;
+    if ((source === 'bundled' || source === 'inprocess') && existsSync(vendorCli)) {
+      return vendorRoot;
+    }
+    const cli = await ensureManagedPi(context, logger);
+    if (cli) {
+      setManagedPiCliPath(cli);
+      return managedPiRoot(context);
+    }
+    if (existsSync(vendorCli)) {
+      return vendorRoot;
+    }
+    throw new Error('No Pi runtime available (managed bootstrap failed and nothing bundled)');
+  };
+  if (getSettings().sharedRuntime && getSettings().piSource !== 'external') {
+    initSharedPiHost(context.extensionPath, process.env, logger, resolvePiRoot);
     context.subscriptions.push({ dispose: () => disposeSharedPiHost() });
   }
-  // #3 (managed): register an already-installed managed Pi, and if the user
-  // selected piSource='managed', install it into globalStorage on activation.
+  // #3 (managed, DEFAULT): register an already-installed managed Pi, then kick
+  // the bootstrap/update pass now (non-blocking) — first run installs the LATEST
+  // Pi from npm into globalStorage; later runs silently update to latest before
+  // the first session starts. The first chat awaits this same single-flight.
   const managedCli = managedPiCliPath(context);
   setManagedPiCliPath(existsSync(managedCli) ? managedCli : undefined);
-  if (getSettings().piSource === 'managed' && !existsSync(managedCli)) {
+  if (getSettings().piSource === 'managed') {
     void ensureManagedPi(context, logger).then((cli) => setManagedPiCliPath(cli));
   }
   // Record the loaded build in the output channel only (no user-facing toast).

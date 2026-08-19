@@ -42,9 +42,10 @@ export interface PiRpcSettings {
 export function getSettings(): PiRpcSettings {
   const config = vscode.workspace.getConfiguration('piRpc');
   return {
-    // 'bundled' runs the Pi shipped inside this extension (no external install
-    // needed); 'external' runs the `pi` on PATH / the `executable` override.
-    piSource: config.get<PiRpcSettings['piSource']>('piSource', 'bundled'),
+    // 'managed' (default) bootstraps the LATEST Pi into globalStorage on first
+    // run (tiny VSIX); 'bundled' runs a vendored Pi when present (dev builds);
+    // 'external' runs the `pi` on PATH / the `executable` override.
+    piSource: config.get<PiRpcSettings['piSource']>('piSource', 'managed'),
     sharedRuntime: config.get<boolean>('sharedRuntime', true),
     executable: config.get<string>('executable', 'pi'),
     additionalArgs: config.get<string[]>('additionalArgs', []),

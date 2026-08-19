@@ -1,9 +1,9 @@
-# The extension ships as the esbuild bundle in dist/ plus the vendored Pi agent
-# in vendor/pi/. Everything below is source/tooling excluded from the VSIX.
-#
-# NOTE: because this file exists, vsce ignores .gitignore for packaging, so the
-# git-ignored vendor/ IS included (it is not listed here). `node_modules/**` is
-# root-anchored (minimatch), so vendor/pi/node_modules is kept.
+# The extension ships as the esbuild bundle in dist/ + host/pi-multi-host.mjs.
+# Pi itself is NOT vendored in the VSIX anymore: piSource='managed' (default)
+# bootstraps the latest Pi into globalStorage on the client's first run. This
+# keeps the VSIX ~1 MB / a few hundred files instead of 24 MB / 13k files.
+# vendor/ exists only in dev checkouts (npm run vendor:pi) for F5 + tests.
+vendor/**
 .vscode/**
 .github/**
 src/**

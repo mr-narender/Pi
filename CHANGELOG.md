@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.177
+
+- TINY VSIX + LATEST-PI BOOTSTRAP: Pi is no longer vendored inside the VSIX (was 24 MB / 13,042 files; now ~1 MB). piSource now defaults to 'managed': on first run the extension bootstraps the LATEST Pi from npm into its own storage (needs npm + network once), and on later activations it silently self-updates to the latest Pi before the first session starts. The shared-runtime host loads Pi from that managed install (vendor/ remains a dev-only convenience). Existing chats/sessions are untouched; set piRpc.piSource='external' to keep using your own pi.
+
 ## 0.0.176
 
 - SHARED RUNTIME (Option D): all chats now run on ONE shared Pi ModelRuntime via a single host worker (host/pi-multi-host.mjs) that hosts many AgentSessions at once — true parallel chats WITHOUT one OS process per chat. Massive memory win vs per-tab processes. New setting piRpc.sharedRuntime (default on); supervisors fall back to a per-chat process if the host can't open.
