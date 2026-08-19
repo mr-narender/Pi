@@ -147,8 +147,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     throw new Error('No Pi runtime available (managed bootstrap failed and nothing bundled)');
   };
   if (getSettings().sharedRuntime && getSettings().piSource !== 'external') {
-    initSharedPiHost(context.extensionPath, process.env, logger, resolvePiRoot);
+    const sharedHost = initSharedPiHost(context.extensionPath, process.env, logger, resolvePiRoot);
     context.subscriptions.push({ dispose: () => disposeSharedPiHost() });
+    // Prewarm at idle: boots the host worker AND parks a ready draft session, so
+    // the first New Chat is instant and the first saved-chat open hits the warm
+    // services cache. Runs a few seconds after activation to stay out of startup.
+    const firstFolder = vscode.workspace.workspaceFolders?.[0];
+    if (firstFolder) {
+      sharedHost.schedulePrewarm(firstFolder.uri.fsPath, 3000);
+    }
   }
   // #3 (managed, DEFAULT): register an already-installed managed Pi, then kick
   // the bootstrap/update pass now (non-blocking) — first run installs the LATEST
@@ -182,8 +189,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // Stop-sharing action. Keep the broker session resumable across reloads.
   context.subscriptions.push({ dispose: () => remoteHost.disconnect() });
   const chatEditorProvider = new ChatEditorProvider(chatTabs);
-  const broker = new ExtensionUiBroker(registry, uiState, (controller) =>
-    chatTabs.hasOpenChatFor(controller)
+  const broker = new ExtensionUiBroker(
+    registry,
+    uiState,
+    (controller) => chatTabs.hasOpenChatFor(controller),
+    (controller) => chatTabs.isControllerVisible(controller),
+    (controller) => chatTabs.revealController(controller)
   );
   const localUi = new LocalExtensionUiContext();
 
@@ -239,10 +250,30 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     recentSessions.onDidChange(() => sessionsView.refresh())
   );
 
+  const chatStatus = (controller: SessionController): 'busy' | 'waiting' | 'idle' | 'faulted' => {
+    const snap = controller.snapshot;
+    if (snap.connectionState === 'faulted') {
+      return 'faulted';
+    }
+    if ((snap.pendingUi?.length ?? 0) > 0) {
+      return 'waiting';
+    }
+    if (snap.state.isStreaming === true || snap.connectionState === 'busy') {
+      return 'busy';
+    }
+    return 'idle';
+  };
+
   const refreshViews = (): void => {
     sessionsView.refresh();
     statusBar.setMode(uiState.getMode());
     statusBar.bind(registry.getActive());
+    statusBar.updateMission(
+      chatTabs.listOpenChats().map((chat) => ({
+        title: chat.title,
+        status: chatStatus(chat.controller),
+      }))
+    );
     if (editorTabsEnabled()) {
       void chatTabs.refreshVisibleTabs();
     } else {
@@ -253,6 +284,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   for (const controller of registry.list()) {
     context.subscriptions.push(controller.onDidChangeState(refreshViews));
   }
+  // Controllers created AFTER activation (each chat tab makes its own in the
+  // per-tab model) need the same cross-cutting wiring — above all the extension
+  // UI broker, or permission dialogs in those chats would go unanswered.
+  context.subscriptions.push(
+    registry.onDidCreateController((controller) => {
+      broker.track(controller);
+      chatTabs.trackController(controller);
+      context.subscriptions.push(controller.onDidChangeState(refreshViews));
+      refreshViews();
+    })
+  );
 
   // Never open JSON/Markdown editors for information. Show a notification and
   // offer to copy the raw JSON to the clipboard for anyone who wants the detail.
@@ -1266,6 +1308,35 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }
     return name;
   });
+  // Mission Control: jump to any open chat, with live per-chat status.
+  registrations.set('piRpc.showRunningChats', async () => {
+    const chats = chatTabs.listOpenChats();
+    if (chats.length === 0) {
+      void vscode.window.showInformationMessage('No Pi chats are open.');
+      return;
+    }
+    const icons = {
+      busy: '$(sync~spin)',
+      waiting: '$(bell-dot)',
+      idle: '$(check)',
+      faulted: '$(error)',
+    } as const;
+    const picked = await vscode.window.showQuickPick(
+      chats.map((chat) => {
+        const status = chatStatus(chat.controller);
+        return {
+          label: `${icons[status]} ${chat.title}`,
+          description: status === 'waiting' ? 'needs your approval' : status,
+          chat,
+        };
+      }),
+      { title: 'Pi chats', placeHolder: 'Jump to a chat' }
+    );
+    if (picked) {
+      chatTabs.revealController(picked.chat.controller);
+    }
+  });
+
   registrations.set('piRpc.showPiCommands', async () => {
     const activeContext = chatTabs.getActiveContext();
     const controller = activeContext?.controller ?? registry.getActive();

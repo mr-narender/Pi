@@ -124,12 +124,34 @@ export class SessionsWebviewProvider implements vscode.WebviewViewProvider {
       typeof active?.snapshot.state.sessionFile === 'string'
         ? active.snapshot.state.sessionFile
         : undefined;
-    return buildSidebarState(
+    const state = buildSidebarState(
       recent as Parameters<typeof buildSidebarState>[0],
       activePath,
       Date.now(),
       this.pinnedPaths()
     );
+    // Mission Control badges: mark rows whose controller is generating (busy) or
+    // blocked on an approval (waiting) so background chats are visible at a glance.
+    const statusByPath = new Map<string, 'busy' | 'waiting'>();
+    for (const controller of this.registry.list()) {
+      const file = controller.snapshot.state.sessionFile;
+      if (typeof file !== 'string') {
+        continue;
+      }
+      const snap = controller.snapshot;
+      if ((snap.pendingUi?.length ?? 0) > 0) {
+        statusByPath.set(file, 'waiting');
+      } else if (snap.state.isStreaming === true || snap.connectionState === 'busy') {
+        statusByPath.set(file, 'busy');
+      }
+    }
+    for (const session of state.sessions) {
+      const status = statusByPath.get(session.path);
+      if (status) {
+        session.status = status;
+      }
+    }
+    return state;
   }
 
   private html(): string {
@@ -196,6 +218,10 @@ export class SessionsWebviewProvider implements vscode.WebviewViewProvider {
       .icon-btn:hover { background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,0.2)); }
       .muted { opacity: 0.7; font-size: 12px; padding: 6px 8px; }
       .group-divider { margin: 10px 4px 4px; padding-top: 8px; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; opacity: 0.6; border-top: 1px solid var(--vscode-panel-border); }
+      .stat-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+      .stat-dot.busy { background: var(--vscode-charts-orange, #d2795b); animation: sb-pulse 1s ease-in-out infinite; }
+      .stat-dot.waiting { background: var(--vscode-charts-yellow, #e2b93d); animation: sb-pulse 0.7s ease-in-out infinite; }
+      @keyframes sb-pulse { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
       .item.other .name { opacity: 0.92; }
     </style>
     <title>Chats</title>
@@ -229,7 +255,7 @@ export class SessionsWebviewProvider implements vscode.WebviewViewProvider {
           return divider +
           '<div class="item' + (s.active ? ' active' : '') + (s.pinned ? ' pinned' : '') + (s.other ? ' other' : '') + '" data-path="' + esc(s.path) + '" data-name="' + esc(s.name) + '"' + (s.other ? ' data-other="1" data-cwd="' + esc(s.cwd || '') + '"' : '') + '>' +
             '<div class="body">' +
-              '<div class="name">' + esc(s.name) + '</div>' +
+              '<div class="name">' + (s.status ? '<span class="stat-dot ' + s.status + '"></span>' : '') + esc(s.name) + '</div>' +
               (s.meta ? '<div class="meta">' + esc(s.meta) + '</div>' : '') +
             '</div>' +
             '<div class="actions">' +

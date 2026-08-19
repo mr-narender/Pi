@@ -1413,6 +1413,55 @@ export class ChatTabManager implements vscode.Disposable {
     return false;
   }
 
+  /** Every open chat tab with its controller — the Mission Control roster. */
+  public listOpenChats(): Array<{
+    resource: vscode.Uri;
+    controller: SessionController;
+    title: string;
+    visible: boolean;
+  }> {
+    const chats: Array<{
+      resource: vscode.Uri;
+      controller: SessionController;
+      title: string;
+      visible: boolean;
+    }> = [];
+    for (const host of this.hosts.values()) {
+      const context = this.contextForResource(host.resource);
+      if (!context) {
+        continue;
+      }
+      const sessionName = context.controller.snapshot.state.sessionName;
+      const title =
+        (typeof sessionName === 'string' && sessionName.trim()) || host.panel.title || 'Chat';
+      chats.push({
+        resource: host.resource,
+        controller: context.controller,
+        title,
+        visible: host.panel.visible,
+      });
+    }
+    return chats;
+  }
+
+  public isControllerVisible(controller: SessionController): boolean {
+    for (const host of this.hosts.values()) {
+      if (host.panel.visible && this.contextForResource(host.resource)?.controller === controller) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  public revealController(controller: SessionController): void {
+    for (const host of this.hosts.values()) {
+      if (this.contextForResource(host.resource)?.controller === controller) {
+        host.panel.reveal(undefined, false);
+        return;
+      }
+    }
+  }
+
   private remoteSink: ((snapshot: WebviewSnapshot) => void) | undefined;
   /** Register a sink that receives the active chat's snapshots (remote mirror). */
   public setRemoteSink(sink: (snapshot: WebviewSnapshot) => void): void {

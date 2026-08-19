@@ -27,6 +27,10 @@ export class SharedPiHost {
   private buffer = '';
   private readonly channels = new Map<string, HostChannel>();
   private startFault: Error | undefined;
+  // Prewarmed draft sessions parked per cwd: "New Chat" adopts one instantly
+  // instead of paying services+MCP+session boot on the click.
+  private readonly parked = new Map<string, PiProcessHandle>();
+  private prewarmTimer: ReturnType<typeof setTimeout> | undefined;
 
   public constructor(
     private readonly hostScript: string,
@@ -147,9 +151,41 @@ export class SharedPiHost {
       channel.stdout.push(null);
     }
     this.channels.clear();
+    this.parked.clear();
     this.worker = undefined;
     this.buffer = '';
     this.startFault = error;
+  }
+
+  /** Park a ready draft session for this cwd so the next New Chat is instant. */
+  public schedulePrewarm(cwd: string, delayMs = 3000): void {
+    if (this.prewarmTimer || this.parked.has(cwd)) {
+      return;
+    }
+    this.prewarmTimer = setTimeout(() => {
+      this.prewarmTimer = undefined;
+      void this.prewarm(cwd);
+    }, delayMs);
+    this.prewarmTimer.unref?.();
+  }
+
+  private async prewarm(cwd: string): Promise<void> {
+    if (this.parked.has(cwd)) {
+      return;
+    }
+    try {
+      const handle = await this.openSessionRaw({ cwd });
+      if (this.parked.has(cwd)) {
+        await handle.stop();
+        return;
+      }
+      this.parked.set(cwd, handle);
+      this.logger.info(`Prewarmed a draft Pi session for ${cwd}`);
+    } catch (error) {
+      this.logger.warn(
+        `Prewarm failed for ${cwd}: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
   }
 
   /**
@@ -159,6 +195,24 @@ export class SharedPiHost {
    * races an unopened session).
    */
   public async openSession(
+    info: { cwd: string; sessionFile?: string },
+    openTimeoutMs = 20_000
+  ): Promise<PiProcessHandle> {
+    // Draft (no session file): adopt the prewarmed session when one is parked —
+    // New Chat becomes instant — and immediately warm the next one.
+    if (!info.sessionFile) {
+      const parked = this.parked.get(info.cwd);
+      if (parked) {
+        this.parked.delete(info.cwd);
+        this.schedulePrewarm(info.cwd);
+        this.logger.info(`Adopted prewarmed Pi session for ${info.cwd}`);
+        return parked;
+      }
+    }
+    return this.openSessionRaw(info, openTimeoutMs);
+  }
+
+  private async openSessionRaw(
     info: { cwd: string; sessionFile?: string },
     openTimeoutMs = 20_000
   ): Promise<PiProcessHandle> {
@@ -240,6 +294,11 @@ export class SharedPiHost {
   }
 
   public dispose(): void {
+    if (this.prewarmTimer) {
+      clearTimeout(this.prewarmTimer);
+      this.prewarmTimer = undefined;
+    }
+    this.parked.clear();
     const worker = this.worker;
     this.worker = undefined;
     for (const channel of this.channels.values()) {

@@ -14,6 +14,12 @@ export class SessionRegistry implements vscode.Disposable {
   private readonly controllers = new Map<string, SessionController>();
   private readonly folderByKey = new Map<string, string>();
   private activeKey: string | undefined;
+  // Fired for EVERY controller created (incl. per-tab ones made long after
+  // activation) so cross-cutting consumers — the extension-UI broker (dialogs!),
+  // sidebar refresh, status bar — can track it. Without this, chats opened
+  // after activation would never get dialog handling.
+  private readonly createEmitter = new vscode.EventEmitter<SessionController>();
+  public readonly onDidCreateController = this.createEmitter.event;
 
   public constructor(private readonly logger: DiagnosticsLogger) {}
 
@@ -34,6 +40,7 @@ export class SessionRegistry implements vscode.Disposable {
     if (!this.activeKey) {
       this.activeKey = key;
     }
+    this.createEmitter.fire(controller);
     return controller;
   }
 
@@ -173,5 +180,6 @@ export class SessionRegistry implements vscode.Disposable {
     }
     this.controllers.clear();
     this.folderByKey.clear();
+    this.createEmitter.dispose();
   }
 }

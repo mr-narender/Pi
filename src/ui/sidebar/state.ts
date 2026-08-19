@@ -10,6 +10,8 @@ export interface SidebarSessionItem {
   other?: boolean;
   cwd?: string;
   project?: string;
+  /** Live state badge: generating (busy) or blocked on an approval (waiting). */
+  status?: 'busy' | 'waiting';
 }
 
 export interface SidebarState {

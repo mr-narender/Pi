@@ -171,6 +171,13 @@ async function backgroundUpdateCheck(
     );
     await npmInstall(dir, latest, logger);
     logger.info(`Pi ${latest} staged — it will activate on the next VS Code reload.`);
+    void vscode.window
+      .showInformationMessage(`Pi agent ${latest} downloaded — reload to apply.`, 'Reload Window')
+      .then((choice) => {
+        if (choice === 'Reload Window') {
+          void vscode.commands.executeCommand('workbench.action.reloadWindow');
+        }
+      });
   } catch (error) {
     logger.warn(
       `Background Pi update failed (staying on ${installed}): ${

@@ -7,17 +7,48 @@ import type { ChatUiState } from '../webview/composerState';
 export class ExtensionUiBroker implements vscode.Disposable {
   private readonly subscriptions: vscode.Disposable[] = [];
 
+  // Rate-limit "waiting for approval" toasts per controller.
+  private readonly lastWaitingNotify = new Map<SessionController, number>();
+
   public constructor(
     private readonly registry: SessionRegistry,
     private readonly uiState?: ChatUiState,
     // When a chat editor is open for the controller, select/confirm approvals
     // are rendered inline in the chat (the webview responds) instead of a native
     // modal. Returns true to route inline.
-    private readonly isChatOpen?: (controller: SessionController) => boolean
+    private readonly isChatOpen?: (controller: SessionController) => boolean,
+    // Mission Control: a BACKGROUND chat blocking on approval is invisible —
+    // notify (rate-limited) with a jump-to-chat action.
+    private readonly isChatVisible?: (controller: SessionController) => boolean,
+    private readonly revealChat?: (controller: SessionController) => void
   ) {
     for (const controller of registry.list()) {
       this.track(controller);
     }
+  }
+
+  private notifyIfBackground(controller: SessionController): void {
+    // Only notify when we can POSITIVELY tell the chat is hidden.
+    if (this.isChatVisible?.(controller) !== false) {
+      return;
+    }
+    const last = this.lastWaitingNotify.get(controller) ?? 0;
+    if (Date.now() - last < 20_000) {
+      return;
+    }
+    this.lastWaitingNotify.set(controller, Date.now());
+    const sessionName = controller.snapshot.state.sessionName;
+    const name =
+      typeof sessionName === 'string' && sessionName.trim()
+        ? `“${sessionName}”`
+        : 'a background chat';
+    void vscode.window
+      .showWarningMessage(`Pi is waiting for your approval in ${name}`, 'Open Chat')
+      .then((choice) => {
+        if (choice === 'Open Chat') {
+          this.revealChat?.(controller);
+        }
+      });
   }
 
   public track(controller: SessionController): void {
@@ -67,6 +98,7 @@ export class ExtensionUiBroker implements vscode.Disposable {
       if (typeof request.timeout === 'number' && request.timeout > 0) {
         setTimeout(() => controller.completeExtensionUiRequest(request.id), request.timeout);
       }
+      this.notifyIfBackground(controller);
       return { inline: true };
     }
     switch (request.method) {

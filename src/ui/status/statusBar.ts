@@ -14,11 +14,40 @@ export class StatusBarController implements vscode.Disposable {
   private readonly keyed = new Map<string, vscode.StatusBarItem>();
   private controller: SessionController | undefined;
   private subscription: vscode.Disposable | undefined;
+  // Mission Control: aggregate of ALL open chats (parallel sessions) — running /
+  // waiting-for-approval counts, click to jump to any chat.
+  private readonly mission = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 99);
 
   public constructor() {
     this.connection.command = 'piRpcInternal.showHealth';
     this.connection.tooltip = 'Pi connection status — click for health details';
     this.connection.show();
+    this.mission.command = 'piRpc.showRunningChats';
+  }
+
+  public updateMission(
+    chats: Array<{ title: string; status: 'busy' | 'waiting' | 'idle' | 'faulted' }>
+  ): void {
+    if (chats.length === 0) {
+      this.mission.hide();
+      return;
+    }
+    const busy = chats.filter((chat) => chat.status === 'busy').length;
+    const waiting = chats.filter((chat) => chat.status === 'waiting').length;
+    const parts = [`$(comment-discussion) ${chats.length}`];
+    if (busy > 0) {
+      parts.push(`$(sync~spin) ${busy}`);
+    }
+    if (waiting > 0) {
+      parts.push(`$(bell-dot) ${waiting}`);
+    }
+    this.mission.text = parts.join('  ');
+    this.mission.tooltip = new vscode.MarkdownString(
+      ['**Pi chats**', ...chats.map((chat) => `- ${chat.title} — _${chat.status}_`)].join('\n')
+    );
+    this.mission.backgroundColor =
+      waiting > 0 ? new vscode.ThemeColor('statusBarItem.warningBackground') : undefined;
+    this.mission.show();
   }
 
   public setMode(mode: 'simple' | 'advanced'): void {
@@ -44,6 +73,7 @@ export class StatusBarController implements vscode.Disposable {
     this.subscription?.dispose();
     this.clearKeyed();
     this.connection.dispose();
+    this.mission.dispose();
   }
 
   private render(state: SessionController['snapshot']): void {
