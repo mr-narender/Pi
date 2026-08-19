@@ -96,12 +96,32 @@ function currentTargetForController(controller: SessionController): ChatTabTarge
   };
 }
 
-function workspaceFolders(registry: SessionRegistry) {
-  return registry.list().map((item) => ({
-    name: item.folder.name,
-    uri: item.folder.uri.toString(),
-    active: item.folder.uri.toString() === registry.getActive()?.folder.uri.toString(),
+// The chat-header workspace dropdown must list REAL workspace folders (its
+// purpose is multi-root switching), not registry controllers — the per-tab model
+// has one controller per OPEN CHAT, which produced N duplicate entries and made
+// the dropdown appear in single-folder windows. The webview hides it unless
+// there is more than one entry.
+function workspaceFolders(chatFolderUri?: string) {
+  const folders = (vscode.workspace.workspaceFolders ?? []).map((folder) => ({
+    name: folder.name,
+    uri: folder.uri.toString(),
+    active: folder.uri.toString() === chatFolderUri,
   }));
+  // A foreign-project chat ("Other projects") runs outside the workspace — show
+  // its real folder as the active entry so the header stays truthful.
+  if (chatFolderUri && !folders.some((folder) => folder.uri === chatFolderUri)) {
+    try {
+      const parsed = vscode.Uri.parse(chatFolderUri, true);
+      folders.push({
+        name: basename(parsed.fsPath) || parsed.fsPath,
+        uri: chatFolderUri,
+        active: true,
+      });
+    } catch {
+      /* unparseable — skip */
+    }
+  }
+  return folders;
 }
 
 function relativeWorkspacePath(
@@ -732,13 +752,22 @@ export class ChatTabManager implements vscode.Disposable {
       await current.controller.start();
       await current.controller.reconcile();
     }
+    await current.controller.whenReady();
     const draftState = await this.uiState.getComposerStateForIdentity(
       current.controller,
       current.target
     );
-    const result = await current.controller.newSession();
-    if (result?.cancelled === true) {
-      return undefined;
+    // A draft controller that adopted the prewarmed session already sits on a
+    // FRESH empty session — reuse it instead of creating yet another one (which
+    // also churns extension/MCP rebinds).
+    const messageCount = Number(current.controller.snapshot.state.messageCount ?? 0);
+    const alreadyFresh =
+      messageCount === 0 && typeof current.controller.snapshot.state.sessionFile === 'string';
+    if (!alreadyFresh) {
+      const result = await current.controller.newSession();
+      if (result?.cancelled === true) {
+        return undefined;
+      }
     }
     await this.nameSessionIfUnnamed(current.controller);
     const nextTarget = currentTargetForController(current.controller);
@@ -1659,13 +1688,22 @@ export class ChatTabManager implements vscode.Disposable {
 
   private async buildSnapshot(context: ChatTabContext, active: boolean): Promise<WebviewSnapshot> {
     const sequence = this.nextSequence(context.resource);
-    const folders = workspaceFolders(this.registry);
+    const folders = workspaceFolders(context.controller.folder.uri.toString());
     const composer = await this.uiState.getComposerStateForIdentity(
       context.controller,
       context.target
     );
     const currentTarget = currentTargetForController(context.controller);
-    const isCurrent = sameTarget(currentTarget, context.target);
+    // Per-tab controllers are DEDICATED to their tab, so the owning tab must
+    // always render the controller's LIVE state — even while the tab's identity
+    // (workspaceDraft / old session) drifts from the controller's current session
+    // (prewarm-adopted drafts arrive with a sessionFile; edits fork to a new
+    // file). The old sameTarget-only check dropped such tabs onto a cached
+    // placeholder — a New Chat that adopted the prewarmed session showed
+    // "Connecting to Pi…" forever while its controller was READY.
+    const isCurrent =
+      sameTarget(currentTarget, context.target) ||
+      this.controllerResource.get(context.controller)?.toString() === context.resource.toString();
 
     if (isCurrent) {
       const settings = getSettings();

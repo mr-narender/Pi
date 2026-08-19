@@ -719,33 +719,24 @@ async function getSharedRuntime() {
   return sharedModelRuntime;
 }
 
-// Services (settings + resource loader: extensions/skills/templates scan) are
-// EXPENSIVE to build (~0.5-2s of disk walking) but read-mostly — share ONE per
-// project cwd across every session in it. Sessions still get their own
-// AgentSession + extension instances (MCP isolation preserved); only the
-// loading work is deduped. Failures are not cached so a later open can retry.
-const servicesPromiseByCwd = new Map();
-function servicesForCwd(cwd, agentDir, modelRuntime) {
-  const key = `${cwd}\u0000${agentDir ?? ''}`;
-  let promise = servicesPromiseByCwd.get(key);
-  if (!promise) {
-    promise = createAgentSessionServices({ cwd, agentDir, modelRuntime }).catch((error) => {
-      servicesPromiseByCwd.delete(key);
-      throw error;
-    });
-    servicesPromiseByCwd.set(key, promise);
-  }
-  return promise;
-}
-
 async function buildRuntimeHost({ cwd, sessionFile }) {
   const modelRuntime = await getSharedRuntime();
   const sessionManager = sessionFile
     ? SessionManager.open(sessionFile, undefined, cwd)
     : SessionManager.create(cwd);
   // Factory reused by the runtimeHost for /new, /fork, /switch, /resume.
+  // NOTE: services (resource loader / extension runtime) are built PER SESSION
+  // on purpose. A per-cwd services cache was tried — it made 2nd+ opens ~21ms,
+  // but Pi's extension runtime (MCP) holds per-creation state and every later
+  // session failed with "MCP initialization failed: stale ctx". Only the
+  // ModelRuntime is shared; the prewarmed draft session hides the boot cost
+  // where it matters (New Chat).
   const createRuntime = async (opts) => {
-    const services = await servicesForCwd(opts.cwd, opts.agentDir, modelRuntime);
+    const services = await createAgentSessionServices({
+      cwd: opts.cwd,
+      agentDir: opts.agentDir,
+      modelRuntime,
+    });
     const created = await createAgentSessionFromServices({
       services,
       sessionManager: opts.sessionManager,

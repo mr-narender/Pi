@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.0.182
+
+- FIX (the real one): New Chat stuck on "Connecting to Pi…". Logs showed the draft's Pi was READY in ~120ms — but the tab kept rendering a placeholder: the prewarm-adopted session already has a sessionFile, so the draft tab's identity no longer "matched" its controller and the renderer fell back to a cached/connecting view. A tab now always renders its OWN controller's live state.
+- FIX: sending the first message in a New Chat reuses the adopted fresh session instead of creating a second one.
+- FIX: MCP tools failed to initialize ("stale ctx") in every chat after the first in a project — reverted the per-project services cache introduced in 0.0.180; each session builds its own extension runtime again (the prewarmed draft still makes New Chat instant; ModelRuntime stays shared).
+- FIX: the workspace dropdown that appeared in the chat header (single-folder windows) — it listed one entry per open chat instead of real workspace folders. It now only shows for true multi-root windows.
+
 ## 0.0.181
 
 - FIX: "New Chat" stuck on "Connecting to Pi…" when other chats were open. The New Chat command still used the pre-parallel flow: it called newSession() on the ACTIVE chat's controller (yanking that chat onto a fresh session) and left the new draft tab's own controller orphaned. New Chat now simply opens a draft tab — the draft owns its controller (adopting the prewarmed session) and is promoted on your first message.
