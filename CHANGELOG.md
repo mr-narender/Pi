@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.184
+
+- Chat tabs now show the Pi icon (custom editor tabs previously had no icon).
+
 ## 0.0.183
 
 - FIX: sent text no longer reappears in the composer. Two causes: (1) a trailing debounced draft-update (typed just before Enter) arrived after the send cleared the draft and re-persisted the sent text — draft updates now carry the composer reset sequence they were typed under and stale ones are dropped; (2) draft capture/restore used the controller's current-session identity, which drifts from the tab after forks/prewarm-adoption and could resurrect stale text — both now use the owning tab's identity.
