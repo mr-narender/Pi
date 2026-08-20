@@ -666,7 +666,7 @@ function renderNow(snapshot: WebviewSnapshot): void {
   // Preserve open dropdown menus across re-render so passive snapshots
   // (streaming, status) don't close the More/Attach menu mid-interaction.
   const openMenus = new Set<string>();
-  for (const id of ['more-menu', 'attach-menu']) {
+  for (const id of ['attach-menu']) {
     const el = document.getElementById(id) as HTMLDetailsElement | null;
     if (el?.open) {
       openMenus.add(id);

@@ -2,7 +2,7 @@
   "name": "pi",
   "displayName": "Pi – this one is (y)ours",
   "description": "An unofficial, personal VS Code chat UI for the Pi coding agent (pi.dev). Not affiliated with pi.dev — shared for anyone who wants it.",
-  "version": "0.0.186",
+  "version": "0.0.187",
   "publisher": "mr-narender",
   "license": "MIT",
   "private": true,
@@ -258,6 +258,11 @@
       {
         "command": "piRpc.showRunningChats",
         "title": "Show Running Chats",
+        "category": "Pi"
+      },
+      {
+        "command": "piRpcInternal.retryWithModel",
+        "title": "Retry with Model…",
         "category": "Pi"
       },
       {
@@ -961,6 +966,65 @@
           "command": "piRpc.newSession",
           "when": "resourceScheme == file || resourceScheme == untitled || resourceScheme == pi-chat",
           "group": "navigation@2"
+        },
+        {
+          "submenu": "piRpc.chatActions",
+          "when": "activeCustomEditorId == 'piRpc.chatEditor'",
+          "group": "navigation@3"
+        }
+      ],
+      "piRpc.chatActions": [
+        {
+          "command": "piRpc.renameSession",
+          "group": "1_session@1"
+        },
+        {
+          "command": "piRpcInternal.retryLast",
+          "group": "1_session@2"
+        },
+        {
+          "command": "piRpcInternal.retryWithModel",
+          "group": "1_session@3"
+        },
+        {
+          "command": "piRpc.showChatVersions",
+          "group": "1_session@4"
+        },
+        {
+          "command": "piRpcInternal.copyConversationMarkdown",
+          "group": "2_export@1"
+        },
+        {
+          "command": "piRpc.exportHtml",
+          "group": "2_export@2"
+        },
+        {
+          "command": "piRpc.setThinkingLevel",
+          "group": "3_model@1"
+        },
+        {
+          "command": "piRpc.compact",
+          "group": "3_model@2"
+        },
+        {
+          "command": "piRpc.reviewLastTurn",
+          "group": "4_review@1"
+        },
+        {
+          "command": "piRpcInternal.restart",
+          "group": "5_system@1"
+        },
+        {
+          "command": "piRpcInternal.showHealth",
+          "group": "5_system@2"
+        },
+        {
+          "command": "piRpcInternal.showLogs",
+          "group": "5_system@3"
+        },
+        {
+          "command": "piRpcInternal.showHelp",
+          "group": "5_system@4"
         }
       ],
       "commandPalette": [
@@ -1027,6 +1091,11 @@
         "id": "piRpc.ask",
         "label": "Ask Pi",
         "icon": "$(sparkle)"
+      },
+      {
+        "id": "piRpc.chatActions",
+        "label": "Chat Actions",
+        "icon": "$(kebab-vertical)"
       }
     ]
   },

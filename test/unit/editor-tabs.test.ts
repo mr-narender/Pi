@@ -154,7 +154,8 @@ test('editorTabs.render.headerHasModelChipAndMore', () => {
   const html = renderChatApp(snapshot());
   assert.match(html, /class="model-label"/);
   assert.match(html, /mock\/model/);
-  assert.match(html, /aria-label="Chat actions"/);
+  // Chat actions moved to the native editor title bar (piRpc.chatActions).
+  assert.doesNotMatch(html, /aria-label="Chat actions"/);
   assert.doesNotMatch(html, />New</);
   assert.doesNotMatch(html, />History</);
   assert.match(html, /Current · workspace · Demo Session · Ready/);

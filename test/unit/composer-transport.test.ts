@@ -124,21 +124,21 @@ test('buildSendPreview appends deterministic envelope and exact rpc images', () 
   assert.deepEqual(preview.rpcImages, [{ type: 'image', data: 'AAAA', mimeType: 'image/png' }]);
 });
 
-test('default simple mode keeps the header primary controls and a grouped More menu', () => {
+test('default simple mode keeps the composer primary controls; chat actions are native', () => {
   const html = renderChatApp(snapshot());
-  // Header keeps the model chip + More only (New/History live in the sidebar).
+  // Composer keeps the model chip (New/History live in the sidebar; the ⋯ chat
+  // actions moved to the native editor title bar — piRpc.chatActions submenu).
   assert.match(html, /class="model-label"/);
-  assert.match(html, /aria-label="Chat actions"/);
+  assert.doesNotMatch(html, /aria-label="Chat actions"/);
   assert.doesNotMatch(html, /data-command="piRpc\.newSession"/);
   assert.doesNotMatch(html, /data-command="piRpc\.switchSession"/);
   // The composer exposes attach, send, and slash commands.
   assert.match(html, /id="attach-trigger"/);
   assert.match(html, /id="composer-send-button"/);
   assert.match(html, /data-command="piRpc\.showPiCommands"/);
-  // The More menu is a grouped, color-tagged dropdown.
-  assert.match(html, /class="menu-group">Model</);
-  assert.match(html, /class="menu-item cat-model"/);
-  assert.match(html, /class="menu-item cat-system"/);
+  // The in-webview grouped More menu is gone.
+  assert.doesNotMatch(html, /class="menu-item cat-model"/);
+  assert.doesNotMatch(html, /class="menu-item cat-system"/);
   // No stop button while idle.
   assert.equal((html.match(/data-action="abort"/g) ?? []).length, 0);
 });

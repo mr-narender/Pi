@@ -54,14 +54,17 @@ test('renderChatApp renders a minimal composer + chat header (clean layout)', ()
   assert.doesNotMatch(html, /class="brand-bar"/);
   // Settings moved to the sidebar; no settings menu inside the composer.
   assert.doesNotMatch(html, /id="settings-menu"/);
-  assert.match(html, /class="chat-header"/);
+  // The in-webview chat header was removed: the editor tab shows the name+icon
+  // and chat actions live in the native editor title bar (piRpc.chatActions).
+  assert.doesNotMatch(html, /class="chat-header"/);
   assert.match(html, /Skip to composer/);
   assert.match(html, /class="composer-dock"/);
   assert.match(html, /class="composer-card"/);
   assert.match(html, /placeholder="Ask Pi to edit/);
-  // Model is a borderless clickable label inside the composer; More is "⋯".
+  // Model is a borderless clickable label inside the composer; chat actions
+  // moved to the NATIVE editor title bar (piRpc.chatActions submenu).
   assert.match(html, /class="model-label"/);
-  assert.match(html, /aria-label="Chat actions"/);
+  assert.doesNotMatch(html, /aria-label="Chat actions"/);
   assert.doesNotMatch(html, /data-command="piRpc\.newSession"/);
   assert.doesNotMatch(html, /data-command="piRpc\.switchSession"/);
   assert.match(html, /aria-label="Add a file"/);
@@ -314,9 +317,11 @@ test('long tool result is clamped with a Show more toggle; short is not', () => 
   assert.doesNotMatch(shortHtml, /clampable/);
 });
 
-test('More menu offers Copy as Markdown; layout has a jump-to-latest button', () => {
+test('chat actions moved to the native title bar; layout has a jump-to-latest button', () => {
   const html = renderChatApp(snapshot());
-  assert.match(html, /data-command="piRpcInternal.copyConversationMarkdown"/);
+  // Copy-as-Markdown & friends live in the piRpc.chatActions editor/title
+  // submenu now — not in the webview HTML.
+  assert.doesNotMatch(html, /data-command="piRpcInternal.copyConversationMarkdown"/);
   assert.match(html, /id="jump-latest"/);
 });
 
@@ -388,7 +393,8 @@ test('user messages get an edit button; retry is in the menu; assistant has no e
     })
   );
   assert.equal((html.match(/class="msg-edit"/g) ?? []).length, 1); // only the user message
-  assert.match(html, /data-command="piRpcInternal.retryLast"/);
+  // Retry moved to the native chat-actions menu (editor title bar).
+  assert.doesNotMatch(html, /data-command="piRpcInternal.retryLast"/);
 });
 
 test('working animation shows while busy with the chosen style; font overrides apply', () => {

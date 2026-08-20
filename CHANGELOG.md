@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.187
+
+- Chat actions (rename, retry, retry-with-model, chat versions, copy as Markdown, export HTML, thinking level, compact, review last turn, restart, health, logs, help) moved from the in-chat ⋯ menu to a native ⋮ submenu in the editor title bar, next to other extensions' icons. The in-webview header strip is gone entirely — the transcript starts at the top of the tab. The multi-root workspace picker moved into the composer toolbar.
+
 ## 0.0.186
 
 - Chat tab icon is now the brand orange Pi mark (the previous currentColor SVG rendered black and was invisible on dark themes).

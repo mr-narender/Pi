@@ -802,14 +802,9 @@ function renderModelControl(snapshot: WebviewSnapshot): string {
 }
 
 // Chat header ("sidecar" top bar): per-chat overflow actions live here.
-function renderChatHeader(snapshot: WebviewSnapshot, folderSelect: string): string {
-  // No title text here — the editor TAB already shows the chat name (with the Pi
-  // icon); repeating it inside the webview read as a double title. The header
-  // keeps only the actions (workspace picker in multi-root, More menu).
-  return `<div class="chat-header">
-    <div class="chat-header-actions">${folderSelect}${renderMoreMenu(snapshot)}</div>
-  </div>`;
-}
+// (chat header removed — the editor TAB shows the chat name + icon, and chat
+// actions live in the NATIVE editor title bar via the piRpc.chatActions submenu.
+// The multi-root workspace picker moved into the composer toolbar.)
 
 function modelLabel(snapshot: WebviewSnapshot): string {
   return snapshot.model?.provider && snapshot.model?.id
@@ -1129,30 +1124,6 @@ function renderQueueTray(snapshot: WebviewSnapshot): string {
   return `<div class="queue-tray"><div class="section-label">Queued for Pi</div>${rows}</div>`;
 }
 
-function renderMoreMenu(_snapshot: WebviewSnapshot): string {
-  return `
-    <details class="menu-details more-menu" id="more-menu">
-      <summary aria-label="Chat actions" title="Chat actions">⋯</summary>
-      <div class="menu-panel" role="menu">
-        <div class="menu-group">Session</div>
-        <button type="button" class="menu-item cat-session" data-command="piRpc.renameSession"><span class="dot"></span>Rename chat</button>
-        <button type="button" class="menu-item cat-session" data-command="piRpcInternal.retryLast"><span class="dot"></span>Retry last message</button>
-        <button type="button" class="menu-item cat-session" data-command="piRpcInternal.retryWithModel"><span class="dot"></span>Retry with model\u2026</button>
-        <button type="button" class="menu-item cat-session" data-command="piRpcInternal.copyConversationMarkdown"><span class="dot"></span>Copy as Markdown</button>
-        <button type="button" class="menu-item cat-session" data-command="piRpc.exportHtml"><span class="dot"></span>Export as HTML</button>
-        <div class="menu-group">Model</div>
-        <button type="button" class="menu-item cat-model" data-command="piRpc.setThinkingLevel"><span class="dot"></span>Thinking level</button>
-        <div class="menu-group">Context</div>
-        <button type="button" class="menu-item cat-context" data-command="piRpc.compact"><span class="dot"></span>Compact conversation</button>
-        <div class="menu-group">System</div>
-        <button type="button" class="menu-item cat-system" data-command="piRpcInternal.restart"><span class="dot"></span>Restart Pi</button>
-        <button type="button" class="menu-item cat-system" data-command="piRpcInternal.showHealth"><span class="dot"></span>Connection health</button>
-        <button type="button" class="menu-item cat-system" data-command="piRpcInternal.showLogs"><span class="dot"></span>Show logs</button>
-        <button type="button" class="menu-item cat-system" data-command="piRpcInternal.showHelp"><span class="dot"></span>Help</button>
-      </div>
-    </details>`;
-}
-
 export function renderChatApp(snapshot: WebviewSnapshot): string {
   const busy = snapshot.isStreaming || snapshot.connectionState === 'busy';
   const interactive = snapshot.connectionState === 'ready' || snapshot.connectionState === 'busy';
@@ -1193,7 +1164,6 @@ export function renderChatApp(snapshot: WebviewSnapshot): string {
       <div class="header-summary visually-hidden" aria-label="Current chat summary">${escapeHtml(summaryLine)}</div>
       <div id="a11y-status" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></div>
 
-      ${renderChatHeader(snapshot, folderSelect)}
       ${restrictedBanner}
       ${renderShareBar(snapshot)}
       ${renderRecovery(snapshot)}
@@ -1235,6 +1205,7 @@ export function renderChatApp(snapshot: WebviewSnapshot): string {
               <button type="button" class="icon-button" data-command="piRpc.showPiCommands" title="Commands" aria-label="Commands" ${disabledAttr}>/</button>
             </div>
             <div class="composer-actions-right">
+              ${connecting ? '' : folderSelect}
               ${connecting ? '' : renderModelControl(snapshot)}
               ${connecting ? '' : renderCostLabel(snapshot)}
               ${busy ? '<button type="button" class="ghost" data-action="abort">Stop</button>' : ''}
