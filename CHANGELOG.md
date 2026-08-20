@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.186
+
+- Chat tab icon is now the brand orange Pi mark (the previous currentColor SVG rendered black and was invisible on dark themes).
+
 ## 0.0.185
 
 - Removed the duplicate chat title inside the webview — the editor tab (now with the Pi icon) already shows it; the header keeps only the actions.

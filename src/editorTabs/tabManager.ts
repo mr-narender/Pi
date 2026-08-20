@@ -170,7 +170,10 @@ class ChatEditorHost implements vscode.Disposable {
     private readonly manager: ChatTabManager
   ) {
     // Chat tabs get the Pi icon (custom editors have no file-icon-theme icon).
-    this.panel.iconPath = vscode.Uri.joinPath(extensionUri, 'media', 'icon.svg');
+    // tab-icon.svg is the brand-orange variant — panel.iconPath renders SVGs
+    // as-is (no theme masking), so the currentColor activity-bar mark was
+    // near-invisible on dark themes.
+    this.panel.iconPath = vscode.Uri.joinPath(extensionUri, 'media', 'tab-icon.svg');
     this.panel.webview.options = {
       enableScripts: true,
       localResourceRoots: [extensionUri, vscode.Uri.joinPath(extensionUri, 'dist')],
