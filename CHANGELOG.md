@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.190
+
+- Boot loader refined: a squiggly (wavy) spinner ring rotates around the glowing, swaying Pi mark — replacing the outward ripples.
+
 ## 0.0.189
 
 - The Pi chat-actions button is now the FIRST icon in the editor title bar.
