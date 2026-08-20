@@ -803,8 +803,10 @@ function renderModelControl(snapshot: WebviewSnapshot): string {
 
 // Chat header ("sidecar" top bar): per-chat overflow actions live here.
 function renderChatHeader(snapshot: WebviewSnapshot, folderSelect: string): string {
+  // No title text here — the editor TAB already shows the chat name (with the Pi
+  // icon); repeating it inside the webview read as a double title. The header
+  // keeps only the actions (workspace picker in multi-root, More menu).
   return `<div class="chat-header">
-    <span class="chat-header-title" title="${escapeHtml(sessionLabel(snapshot))}">${escapeHtml(sessionLabel(snapshot))}</span>
     <div class="chat-header-actions">${folderSelect}${renderMoreMenu(snapshot)}</div>
   </div>`;
 }

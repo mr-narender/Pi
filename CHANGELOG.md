@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.185
+
+- Removed the duplicate chat title inside the webview — the editor tab (now with the Pi icon) already shows it; the header keeps only the actions.
+- README/marketplace description refreshed to match the current architecture: managed auto-install (no manual Pi setup), shared runtime with parallel per-tab sessions, Mission Control, turn review, chat versions, all-projects sidebar + full-text search, quick switcher.
+
 ## 0.0.184
 
 - Chat tabs now show the Pi icon (custom editor tabs previously had no icon).

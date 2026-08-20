@@ -622,6 +622,10 @@ p {
   gap: 12px;
 }
 
+.chat-header-actions {
+  margin-left: auto;
+}
+
 .chat-header {
   display: grid;
   gap: 12px;
