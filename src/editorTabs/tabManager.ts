@@ -991,6 +991,16 @@ export class ChatTabManager implements vscode.Disposable {
           context.controller,
           context.target
         );
+        // Drop STALE updates: each update carries the composerResetSeq it was
+        // typed under. A send bumps the seq while clearing the draft — a trailing
+        // debounced update from before the send would otherwise re-persist the
+        // just-sent text, which then popped back into the input on re-render.
+        if (
+          typeof parsed.resetSeq === 'number' &&
+          parsed.resetSeq !== (state.composerResetSeq ?? 0)
+        ) {
+          return;
+        }
         state.draft = parsed.text;
         // Persist the draft SILENTLY: no controller fire, no UI-state fire, so a
         // keystroke never re-renders the tab (which flickered the scrollbar).
@@ -1391,9 +1401,23 @@ export class ChatTabManager implements vscode.Disposable {
     return next;
   }
 
+  /** The tab identity OWNED by this controller (per-tab model), if any. */
+  public identityForController(controller: SessionController): ChatTabTarget | undefined {
+    const owner = this.controllerResource.get(controller);
+    return owner ? (parseChatUri(owner) ?? undefined) : undefined;
+  }
+
   private async onControllerChanged(controller: SessionController): Promise<void> {
     this.detectTurnCompletion(controller);
-    await this.uiState.restoreControllerDraft(controller);
+    // Restore the draft under the OWNING TAB's identity — not the controller's
+    // current-session identity, which drifts after forks/prewarm-adoption and
+    // could resurrect stale text captured under the other identity.
+    const ownerIdentity = this.identityForController(controller);
+    if (ownerIdentity) {
+      await this.uiState.restoreControllerDraftForIdentity(controller, ownerIdentity);
+    } else {
+      await this.uiState.restoreControllerDraft(controller);
+    }
     // Repaint the tab that OWNS this controller — by its resource, NOT by the
     // controller's current session. After an edit/fork the controller's session
     // changes, but the SAME tab must keep showing it (no new chat).

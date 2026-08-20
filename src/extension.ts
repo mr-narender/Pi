@@ -186,6 +186,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const chatTabs = new ChatTabManager(context, registry, uiState, logger);
   const turnReview = new TurnReview(logger);
   chatTabs.setTurnReview(turnReview);
+  // Draft capture/restore must use the OWNING TAB's identity (per-tab model) —
+  // the controller's current-session identity drifts after forks/prewarm and
+  // resurrected stale composer text.
+  const captureDraft = async (controller: SessionController): Promise<void> => {
+    const identity = chatTabs.identityForController(controller);
+    if (identity) {
+      await uiState.captureControllerDraftForIdentity(controller, identity);
+    } else {
+      await uiState.captureControllerDraft(controller);
+    }
+  };
+  const restoreDraft = async (controller: SessionController): Promise<void> => {
+    const identity = chatTabs.identityForController(controller);
+    if (identity) {
+      await uiState.restoreControllerDraftForIdentity(controller, identity);
+    } else {
+      await uiState.restoreControllerDraft(controller);
+    }
+  };
   const remoteHost = new RemoteHostClient(context.secrets);
   chatTabs.setRemoteSink((snapshot) => remoteHost.pushSnapshot(snapshot));
   // VS Code reload/deactivation is a transport disconnect, not an explicit
@@ -407,7 +426,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     if (selected) {
       statusBar.bind(selected);
       await recentSessions.refresh(selected.folder);
-      await uiState.restoreControllerDraft(selected);
+      await restoreDraft(selected);
       if (editorTabsEnabled()) {
         await chatTabs.openCurrentChat({ folderUri: selected.folder.uri.toString() });
       } else {
@@ -561,7 +580,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (activeContext) {
         await chatTabs.startResource(activeContext.resource);
         await recentSessions.refresh(activeContext.controller.folder);
-        await uiState.restoreControllerDraft(activeContext.controller);
+        await restoreDraft(activeContext.controller);
         refreshViews();
         return activeContext.controller.folder.uri.toString();
       }
@@ -571,7 +590,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         await controller.start();
         await controller.reconcile();
         await recentSessions.refresh(controller.folder);
-        await uiState.restoreControllerDraft(controller);
+        await restoreDraft(controller);
       },
       { autoStart: false, forcePicker: true }
     );
@@ -779,7 +798,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         const record = asRecord(value);
         const currentSession = asString(controller.snapshot.state.sessionFile);
         const composer = await uiState.getComposerState(controller);
-        await uiState.captureControllerDraft(controller);
+        await captureDraft(controller);
         let parentSession = asString(record?.parentSession);
         if (currentSession && !parentSession) {
           const warning =
@@ -803,7 +822,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         }
         const result = await controller.newSession(parentSession);
         await recentSessions.refresh(controller.folder);
-        await uiState.restoreControllerDraft(controller);
+        await restoreDraft(controller);
         await chat.focusComposer();
         return result;
       },
@@ -1134,7 +1153,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           void vscode.window.showInformationMessage(`${picked.label} is already open.`);
           return { cancelled: true, alreadyCurrent: true };
         }
-        await uiState.captureControllerDraft(controller);
+        await captureDraft(controller);
         if (currentSession) {
           const confirm = await vscode.window.showWarningMessage(
             `Resume ${picked.label}? Your current chat stays saved and you can come back from Resume Chat.`,
@@ -1148,7 +1167,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         }
         const result = await controller.switchSession(picked.sessionPath);
         await recentSessions.refresh(controller.folder);
-        await uiState.restoreControllerDraft(controller);
+        await restoreDraft(controller);
         await chat.focusComposer();
         return result;
       },
@@ -1190,7 +1209,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         await uiState.captureControllerDraftForIdentity(live.controller, live.target);
         const result = await live.controller.fork(chosenEntryId);
         await recentSessions.refresh(live.controller.folder);
-        await uiState.captureControllerDraft(live.controller);
+        await captureDraft(live.controller);
         const resource = await chatTabs.openCurrentChat({ focusComposer: true });
         refreshViews();
         return resource ? result : { cancelled: true };
@@ -1200,10 +1219,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       async (controller) => {
         const entryId = asString(asRecord(value)?.entryId);
         if (entryId) {
-          await uiState.captureControllerDraft(controller);
+          await captureDraft(controller);
           const result = await controller.fork(entryId);
           await recentSessions.refresh(controller.folder);
-          await uiState.captureControllerDraft(controller);
+          await captureDraft(controller);
           await chat.focusComposer();
           return result;
         }
@@ -1218,10 +1237,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           { title: 'Start Branch from User Message', matchOnDescription: true }
         );
         if (picked && typeof picked.entry.entryId === 'string') {
-          await uiState.captureControllerDraft(controller);
+          await captureDraft(controller);
           const result = await controller.fork(picked.entry.entryId);
           await recentSessions.refresh(controller.folder);
-          await uiState.captureControllerDraft(controller);
+          await captureDraft(controller);
           await chat.focusComposer();
           return result;
         }
@@ -1244,7 +1263,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         await uiState.captureControllerDraftForIdentity(live.controller, live.target);
         const result = await live.controller.clone();
         await recentSessions.refresh(live.controller.folder);
-        await uiState.captureControllerDraft(live.controller);
+        await captureDraft(live.controller);
         await chatTabs.openCurrentChat({ focusComposer: true });
         refreshViews();
         return result;
@@ -1252,10 +1271,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }
     return withController(
       async (controller) => {
-        await uiState.captureControllerDraft(controller);
+        await captureDraft(controller);
         const result = await controller.clone();
         await recentSessions.refresh(controller.folder);
-        await uiState.captureControllerDraft(controller);
+        await captureDraft(controller);
         await chat.focusComposer();
         return result;
       },

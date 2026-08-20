@@ -5,7 +5,7 @@ export type WebviewInboundMessage =
   | { type: 'copyAcceptedSnapshot' }
   | { type: 'sendAcceptedSnapshotAgain' }
   | { type: 'abort' }
-  | { type: 'setDraft'; text: string }
+  | { type: 'setDraft'; text: string; resetSeq?: number }
   | {
       type: 'setFocus';
       focus: 'composer' | 'attach' | 'contextChip' | 'imageChip' | 'preview' | 'none';
@@ -70,7 +70,13 @@ export function parseWebviewMessage(value: unknown): WebviewInboundMessage | und
     case 'loadOlder':
       return { type: record.type };
     case 'setDraft':
-      return typeof record.text === 'string' ? { type: 'setDraft', text: record.text } : undefined;
+      return typeof record.text === 'string'
+        ? {
+            type: 'setDraft',
+            text: record.text,
+            resetSeq: typeof record.resetSeq === 'number' ? record.resetSeq : undefined,
+          }
+        : undefined;
     case 'setFocus':
       return record.focus === 'composer' ||
         record.focus === 'attach' ||

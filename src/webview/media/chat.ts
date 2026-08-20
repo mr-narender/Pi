@@ -104,7 +104,7 @@ function navigateHistory(ta: HTMLTextAreaElement, direction: 'older' | 'newer'):
       const end = ta.value.length;
       ta.setSelectionRange(end, end);
       autosizeComposer(ta);
-      vscode.postMessage({ type: 'setDraft', text: ta.value });
+      vscode.postMessage({ type: 'setDraft', text: ta.value, resetSeq: lastComposerResetSeq });
       return true;
     }
   }
@@ -112,7 +112,7 @@ function navigateHistory(ta: HTMLTextAreaElement, direction: 'older' | 'newer'):
   const end = ta.value.length;
   ta.setSelectionRange(end, end);
   autosizeComposer(ta);
-  vscode.postMessage({ type: 'setDraft', text: ta.value });
+  vscode.postMessage({ type: 'setDraft', text: ta.value, resetSeq: lastComposerResetSeq });
   return true;
 }
 
@@ -742,7 +742,11 @@ function renderNow(snapshot: WebviewSnapshot): void {
       exitHistory(); // typing leaves history-navigation mode
       lastSubmittedText = undefined; // fresh text — stop guarding
       autosizeComposer(textarea);
-      vscode.postMessage({ type: 'setDraft', text: textarea.value });
+      vscode.postMessage({
+        type: 'setDraft',
+        text: textarea.value,
+        resetSeq: lastComposerResetSeq,
+      });
     });
     bindOnce(textarea, 'focus', () => {
       vscode.postMessage({ type: 'setFocus', focus: 'composer' });
