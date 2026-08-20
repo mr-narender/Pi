@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.191
+
+- Loader: the squiggly ring is now a complete circle (no spinner gap); its rotation carries the wave around the glowing Pi.
+
 ## 0.0.190
 
 - Boot loader refined: a squiggly (wavy) spinner ring rotates around the glowing, swaying Pi mark — replacing the outward ripples.
