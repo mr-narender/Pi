@@ -1170,7 +1170,7 @@ export function renderChatApp(snapshot: WebviewSnapshot): string {
 
       <main class="conversation" id="messages" role="log" aria-live="off" aria-relevant="additions text">${
         connecting && snapshot.messages.length === 0
-          ? `<div class="connecting-state" role="status" aria-live="polite"><span class="spinner spinner-boot" aria-hidden="true"></span><p class="connecting-copy">${
+          ? `<div class="connecting-state" role="status" aria-live="polite"><div class="boot-loader" aria-hidden="true"><span class="boot-ripple r1"></span><span class="boot-ripple r2"></span><span class="boot-ripple r3"></span><svg class="boot-pi" viewBox="0 0 24 24" role="img"><g fill="#ff8c42"><path d="M3.2 5.4 L20 5.4 L18.4 8 L4.8 8 Z"/><rect x="6.1" y="8" width="2.7" height="10.6" rx="1.1"/><path d="M14.4 8 h2.7 v8.4 l-2.7 2.2 Z"/><path d="M9.8 19.2 l2.1 -1.6 l-2.1 -1.6 v3.2 Z" opacity="0.9"/></g></svg></div><p class="connecting-copy">${
               snapshot.sessionFile
                 ? 'Loading chat'
                 : snapshot.connectionState === 'starting'

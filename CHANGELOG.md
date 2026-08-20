@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.189
+
+- The Pi chat-actions button is now the FIRST icon in the editor title bar.
+- New boot loader: the orange Pi mark sways and glows at the center while sonar waves ripple outward (respects reduced-motion).
+
 ## 0.0.188
 
 - The chat-actions button in the editor title bar now uses the orange Pi icon instead of a kebab menu (which duplicated VS Code's own overflow dots).

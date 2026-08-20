@@ -1301,21 +1301,78 @@ button.ghost:hover,
   text-align: center;
 }
 
-/* Boot loader: larger dual-ring spinner + pulsing phase copy + animated dots —
-   opening a chat starts Pi in the background, so this is what the user watches;
-   it must feel ALIVE, not frozen. */
-.connecting-state .spinner.spinner-boot {
-  width: 52px;
-  height: 52px;
-  border-width: 3px;
-  border-top-color: var(--vscode-charts-orange, #d2795b);
-  border-right-color: color-mix(
-    in srgb,
-    var(--vscode-charts-orange, #d2795b) 45%,
-    var(--vscode-panel-border)
-  );
-  animation: pi-spin 0.8s linear infinite;
+/* Boot loader: the orange π sways and glows at the center while sonar-style
+   waves ripple outward — opening a chat starts Pi in the background, so this is
+   what the user watches; it must feel ALIVE, not frozen. */
+.boot-loader {
   position: relative;
+  width: 104px;
+  height: 104px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.boot-pi {
+  width: 42px;
+  height: 42px;
+  z-index: 1;
+  animation: pi-boot-wave 2.2s ease-in-out infinite;
+}
+
+.boot-ripple {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid var(--vscode-charts-orange, #ff8c42);
+  opacity: 0;
+  animation: pi-boot-ripple 2.4s cubic-bezier(0.2, 0.6, 0.35, 1) infinite;
+}
+
+.boot-ripple.r2 {
+  animation-delay: 0.8s;
+}
+
+.boot-ripple.r3 {
+  animation-delay: 1.6s;
+}
+
+@keyframes pi-boot-wave {
+  0%,
+  100% {
+    transform: rotate(-8deg) translateY(1px);
+    filter: drop-shadow(0 0 4px rgba(255, 140, 66, 0.35));
+  }
+  50% {
+    transform: rotate(8deg) translateY(-1px);
+    filter: drop-shadow(0 0 16px rgba(255, 140, 66, 0.9));
+  }
+}
+
+@keyframes pi-boot-ripple {
+  0% {
+    transform: scale(0.32);
+    opacity: 0.75;
+  }
+  80% {
+    opacity: 0.12;
+  }
+  100% {
+    transform: scale(1.04);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .boot-pi {
+    animation: none;
+    filter: drop-shadow(0 0 8px rgba(255, 140, 66, 0.6));
+  }
+  .boot-ripple {
+    animation: none;
+    opacity: 0.25;
+    transform: scale(0.7);
+  }
 }
 
 .connecting-copy {
