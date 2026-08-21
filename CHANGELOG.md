@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.198
+
+- Pasted images now send immediately with the message — the confirmation preview popup is gone. That popup path also bypassed the composer clear guards, which is why image sends left your text in the input; the input now clears instantly on submit, images included.
+
 ## 0.0.197
 
 - The agent is now consistently the π symbol across the chat: message author label, timeline answers, status (π is replying), loader phases, composer placeholder, queue tray, and approval prompts.

@@ -458,15 +458,12 @@ function submitComposer(command: string): void {
   // Optimistically clear the input immediately on submit (native chat feel),
   // unless there are pending attachments — those open a preview instead of
   // sending. If the send fails, the extension restores the draft via recovery.
-  const hasPending =
-    !!currentSnapshot &&
-    (currentSnapshot.pendingContextItems.length > 0 || currentSnapshot.pendingImages.length > 0);
-  if (!hasPending) {
-    const textarea = document.getElementById(COMPOSER_FIELD_ID) as HTMLTextAreaElement | null;
-    if (textarea) {
-      lastSubmittedText = textarea.value; // remember it so no later render restores it
-      textarea.value = '';
-    }
+  // Always clear optimistically — image/context sends included (they submit
+  // immediately now, no preview popup).
+  const textarea = document.getElementById(COMPOSER_FIELD_ID) as HTMLTextAreaElement | null;
+  if (textarea) {
+    lastSubmittedText = textarea.value; // remember it so no later render restores it
+    textarea.value = '';
   }
   vscode.postMessage({ type: 'requestSend', command });
 }

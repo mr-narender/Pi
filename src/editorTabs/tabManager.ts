@@ -1207,13 +1207,9 @@ export class ChatTabManager implements vscode.Disposable {
     state.preview = undefined;
     try {
       const preview = buildSendPreview(command, state);
-      if (state.pendingContextItems.length > 0 || state.pendingImages.length > 0) {
-        state.preview = preview;
-        state.focus = 'preview';
-        await this.uiState.setComposerStateForIdentity(context.controller, context.target, state);
-        await this.renderResource(resource);
-        return;
-      }
+      // Images/context items send IMMEDIATELY with the message — no confirmation
+      // popup. (The old preview step also skipped the optimistic clear + reset-seq
+      // bump, which is why pasted-image sends left the text in the input.)
       // Clear the draft NOW (before preparePromptContext, which renders): the
       // preview already captured the text, so no intermediate render should ever
       // show the sent text again. sendPreview() clears again defensively.
