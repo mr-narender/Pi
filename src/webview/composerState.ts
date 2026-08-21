@@ -120,6 +120,17 @@ export class ChatUiState implements vscode.Disposable {
     await this.setComposerStateForIdentity(controller, currentIdentity(controller), state);
   }
 
+  /**
+   * LIVE composer reset seq (synchronous, straight from the in-memory map).
+   * Used as a same-microtask gate right before a draft write: the async read→
+   * write path can be overtaken by a send's clear+seq-bump when the draft is
+   * large (slow restore/validate), and a stale write would resurrect sent text.
+   */
+  public peekComposerResetSeq(identity: ChatTabTarget): number {
+    const state = this.composerStates.get(sessionStateKeyForIdentity(identity));
+    return state?.composerResetSeq ?? 0;
+  }
+
   public async setComposerStateForIdentity(
     controller: SessionController,
     identity: ChatTabTarget,

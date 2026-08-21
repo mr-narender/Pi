@@ -1007,6 +1007,17 @@ export class ChatTabManager implements vscode.Disposable {
           return;
         }
         state.draft = parsed.text;
+        // FINAL gate in the same microtask as the memory write: the async read
+        // above can be overtaken by a send's clear+seq-bump when the draft is
+        // LARGE (slow restore/validate) — writing the stale snapshot would
+        // resurrect the just-sent text AND roll the seq back. peek() reads the
+        // live map synchronously, so nothing can interleave before the write.
+        if (
+          typeof parsed.resetSeq === 'number' &&
+          this.uiState.peekComposerResetSeq(context.target) !== parsed.resetSeq
+        ) {
+          return;
+        }
         // Persist the draft SILENTLY: no controller fire, no UI-state fire, so a
         // keystroke never re-renders the tab (which flickered the scrollbar).
         await this.uiState.setComposerStateForIdentity(context.controller, context.target, state, {

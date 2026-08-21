@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.192
+
+- FIX: very long messages reappeared in the input after Enter. With a large draft, the (slow) async draft-persist could be overtaken by the send's clear — the stale write then restored the sent text and rolled back the reset sequence. Draft writes now re-check the LIVE reset sequence in the same microtask as the write, so a send can never be undone by an in-flight draft update.
+
 ## 0.0.191
 
 - Loader: the squiggly ring is now a complete circle (no spinner gap); its rotation carries the wave around the glowing Pi.
