@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.193
+
+- FIX (final): sent text reappearing in the input. On top of the persist-layer gates (0.0.183/0.0.192), the webview now sanitizes at its single render entry point: any snapshot whose draft equals the just-submitted text renders as empty AND triggers a corrective scrub of the persisted draft — covering unfocused renders and fresh webviews (draft-tab promotion) that earlier guards missed.
+
 ## 0.0.192
 
 - FIX: very long messages reappeared in the input after Enter. With a large draft, the (slow) async draft-persist could be overtaken by the send's clear — the stale write then restored the sent text and rolled back the reset sequence. Draft writes now re-check the LIVE reset sequence in the same microtask as the write, so a send can never be undone by an in-flight draft update.

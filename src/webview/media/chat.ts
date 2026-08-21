@@ -627,7 +627,25 @@ function render(snapshot: WebviewSnapshot): void {
   renderNow(snapshot);
 }
 
+// One corrective scrub per reset-seq: when a snapshot arrives whose draft is
+// EXACTLY the text we just submitted, we render it as empty AND tell the
+// extension to clear the persisted draft (stamped with the snapshot's own seq
+// so it passes the stale-update gates). This heals every resurrection path —
+// including fresh webviews after a draft-tab promote — at the single entry point.
+let scrubbedForSeq: number | undefined;
+
 function renderNow(snapshot: WebviewSnapshot): void {
+  if (
+    lastSubmittedText !== undefined &&
+    lastSubmittedText.length > 0 &&
+    snapshot.draft === lastSubmittedText
+  ) {
+    snapshot = { ...snapshot, draft: '' };
+    if (scrubbedForSeq !== (snapshot.composerResetSeq ?? 0)) {
+      scrubbedForSeq = snapshot.composerResetSeq ?? 0;
+      vscode.postMessage({ type: 'setDraft', text: '', resetSeq: snapshot.composerResetSeq });
+    }
+  }
   currentSnapshot = snapshot;
   if (!root) {
     return;
