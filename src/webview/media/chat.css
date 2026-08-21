@@ -1606,7 +1606,8 @@ button.ghost:hover,
    from hairline row separators + a brand-orange header (text + underline);
    rows glow faintly orange on hover. */
 #messages .md-table-wrap {
-  margin: 10px 0;
+  /* Clear air above/below so the table never runs into surrounding prose. */
+  margin: 20px 0;
   overflow-x: auto;
 }
 #messages .md-table {
@@ -1619,7 +1620,7 @@ button.ghost:hover,
 #messages .md-table td {
   border: 0;
   border-bottom: 1px solid var(--vscode-widget-border, rgba(140, 140, 140, 0.25));
-  padding: 6px 12px;
+  padding: 8px 14px;
   text-align: left;
   vertical-align: top;
   overflow-wrap: anywhere;
@@ -1629,6 +1630,10 @@ button.ghost:hover,
   font-weight: 650;
   background: transparent;
   border-bottom: 2px solid rgba(255, 140, 66, 0.55);
+  /* Roomy header — taller than body rows so it reads as a clean band. */
+  padding-top: 12px;
+  padding-bottom: 12px;
+  white-space: nowrap;
 }
 #messages .md-table tbody tr:last-child td {
   border-bottom: 0;

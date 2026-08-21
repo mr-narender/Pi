@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.196
+
+- Tables: roomier header band (taller, no wrapping) and more air above/below the table so it separates cleanly from surrounding text.
+- Branding: the activity bar and chat editor now use the π symbol instead of the word Pi.
+
 ## 0.0.195
 
 - Markdown tables redesigned (orange accent): no outer frame or cell grid inside the message card (the box-in-box is gone) — hairline row separators, brand-orange header text + underline, soft orange row hover.

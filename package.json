@@ -2,7 +2,7 @@
   "name": "pi",
   "displayName": "Pi – this one is (y)ours",
   "description": "An unofficial, personal VS Code chat UI for the Pi coding agent (pi.dev). Not affiliated with pi.dev — shared for anyone who wants it.",
-  "version": "0.0.195",
+  "version": "0.0.196",
   "publisher": "mr-narender",
   "license": "MIT",
   "private": true,
@@ -77,7 +77,7 @@
       "activitybar": [
         {
           "id": "piRpc",
-          "title": "Pi",
+          "title": "π",
           "icon": "media/icon.svg"
         }
       ]
@@ -94,7 +94,7 @@
     "customEditors": [
       {
         "viewType": "piRpc.chatEditor",
-        "displayName": "Pi Chat",
+        "displayName": "π Chat",
         "selector": [
           {
             "filenamePattern": "*.chat"

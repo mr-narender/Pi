@@ -78,7 +78,7 @@ test('editorTabs.api.customReadonlyDecision', () => {
   const customEditors = packageJson.contributes.customEditors ?? [];
   const contribution = customEditors.find((item) => item.viewType === 'piRpc.chatEditor');
   assert.ok(contribution);
-  assert.equal(contribution.displayName, 'Pi Chat');
+  assert.equal(contribution.displayName, 'π Chat');
 });
 
 test('editorTabs.uri.parseRoundTrip', () => {
