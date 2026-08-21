@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.194
+
+- Pi on your PATH is now detected and used AS-IS (its npm package root powers the shared runtime) — no duplicate copy, no self-updates of it.
+- New setting piRpc.autoInstall (default FALSE): the extension never downloads Pi from npm without consent. With no PATH pi, no managed copy, and the flag off, chats stay offline and the Pi logs + an actionable notification explain exactly what to do (install manually or enable the flag). Flip it on and the extension installs/updates the latest Pi automatically as before.
+
 ## 0.0.193
 
 - FIX (final): sent text reappearing in the input. On top of the persist-layer gates (0.0.183/0.0.192), the webview now sanitizes at its single render entry point: any snapshot whose draft equals the just-submitted text renders as empty AND triggers a corrective scrub of the persisted draft — covering unfocused renders and fresh webviews (draft-tab promotion) that earlier guards missed.

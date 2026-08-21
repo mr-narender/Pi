@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { existsSync } from 'node:fs';
 import { basename } from 'node:path';
-import { setBundledPiCliPath, setManagedPiCliPath } from './process/piLauncher';
+import { setBundledPiCliPath, setManagedPiCliPath, detectPathPi } from './process/piLauncher';
 import { initSharedPiHost, disposeSharedPiHost } from './process/sharedPiHost';
 import { TurnReview } from './review/turnReview';
 import { ensureManagedPi, managedPiCliPath, managedPiRoot } from './process/piManaged';
@@ -118,12 +118,39 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   logger.info(
     `Bundled Pi CLI: ${existsSync(bundledCli) ? bundledCli : '(not bundled — managed bootstrap provides Pi)'}`
   );
+  // Pi resolution order (managed default): an EXISTING `pi` on PATH always wins
+  // — no duplicate npm copy, no self-updates (the user owns that install). The
+  // managed npm bootstrap only ever runs behind explicit consent
+  // (piRpc.autoInstall, default OFF).
+  const pathPi = detectPathPi();
+  if (pathPi) {
+    logger.info(
+      `Found Pi on PATH: ${pathPi.binPath}${pathPi.version ? ` (v${pathPi.version})` : ''}` +
+        (pathPi.packageRoot
+          ? ` — using it for the shared runtime (no npm install needed)`
+          : ` — package root not resolvable; chats will run it as per-chat processes`)
+    );
+  } else {
+    logger.info('No `pi` found on PATH.');
+  }
+  const managedCli = managedPiCliPath(context);
+  setManagedPiCliPath(existsSync(managedCli) ? managedCli : undefined);
+  if (getSettings().piSource === 'managed' && !pathPi?.packageRoot) {
+    if (existsSync(managedCli) || getSettings().autoInstall) {
+      void ensureManagedPi(context, logger).then((cli) => setManagedPiCliPath(cli));
+    } else if (!pathPi) {
+      logger.warn(
+        'Pi is not installed: no `pi` on PATH, no managed copy, and piRpc.autoInstall is false. ' +
+          'Install it yourself (npm install -g @earendil-works/pi-coding-agent) or set "piRpc.autoInstall": true.'
+      );
+    }
+  }
   // Shared Pi host: ONE worker hosts every chat on a single shared ModelRuntime
   // (many AgentSessions, one runtime) instead of one OS process per chat. This
   // is the parallel-sessions engine; supervisors fall back to a per-chat process
   // if it can't open. Toggle with piRpc.sharedRuntime. The host imports Pi from
-  // a runtime-resolved root: vendored Pi when present (dev/bundled), else the
-  // managed install (bootstrapped to latest on demand).
+  // a runtime-resolved root: PATH pi > managed install > vendored (dev).
+  let piMissingNotified = false;
   const resolvePiRoot = async (): Promise<string> => {
     const vendorRoot = vscode.Uri.joinPath(context.extensionUri, 'vendor', 'pi').fsPath;
     const vendorCli = vscode.Uri.joinPath(
@@ -137,6 +164,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     if ((source === 'bundled' || source === 'inprocess') && existsSync(vendorCli)) {
       return vendorRoot;
     }
+    // 1. An existing PATH install always wins — never duplicate it via npm.
+    const detected = detectPathPi();
+    if (detected?.packageRoot) {
+      return detected.packageRoot;
+    }
+    // 2. Managed copy (existing, or installable when piRpc.autoInstall allows).
     const cli = await ensureManagedPi(context, logger);
     if (cli) {
       setManagedPiCliPath(cli);
@@ -145,7 +178,31 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     if (existsSync(vendorCli)) {
       return vendorRoot;
     }
-    throw new Error('No Pi runtime available (managed bootstrap failed and nothing bundled)');
+    // 3. Nothing available — tell the user exactly what to do (once per window).
+    if (!piMissingNotified) {
+      piMissingNotified = true;
+      void vscode.window
+        .showErrorMessage(
+          "Pi isn't installed — no `pi` on PATH and auto-install is off.",
+          'Enable auto-install',
+          'Show Logs'
+        )
+        .then(async (choice) => {
+          if (choice === 'Enable auto-install') {
+            await vscode.workspace
+              .getConfiguration('piRpc')
+              .update('autoInstall', true, vscode.ConfigurationTarget.Global);
+            void vscode.window.showInformationMessage(
+              'piRpc.autoInstall enabled — open a chat and Pi will install automatically.'
+            );
+          } else if (choice === 'Show Logs') {
+            void vscode.commands.executeCommand('piRpcInternal.showLogs');
+          }
+        });
+    }
+    throw new Error(
+      'Pi is not installed: install it (npm install -g @earendil-works/pi-coding-agent) or enable piRpc.autoInstall'
+    );
   };
   if (getSettings().sharedRuntime && getSettings().piSource !== 'external') {
     const sharedHost = initSharedPiHost(context.extensionPath, process.env, logger, resolvePiRoot);
@@ -154,18 +211,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // the first New Chat is instant and the first saved-chat open hits the warm
     // services cache. Runs a few seconds after activation to stay out of startup.
     const firstFolder = vscode.workspace.workspaceFolders?.[0];
-    if (firstFolder) {
+    const piAvailable =
+      pathPi?.packageRoot !== undefined ||
+      existsSync(managedCli) ||
+      getSettings().autoInstall ||
+      existsSync(bundledCli);
+    if (firstFolder && piAvailable) {
       sharedHost.schedulePrewarm(firstFolder.uri.fsPath, 3000);
     }
-  }
-  // #3 (managed, DEFAULT): register an already-installed managed Pi, then kick
-  // the bootstrap/update pass now (non-blocking) — first run installs the LATEST
-  // Pi from npm into globalStorage; later runs silently update to latest before
-  // the first session starts. The first chat awaits this same single-flight.
-  const managedCli = managedPiCliPath(context);
-  setManagedPiCliPath(existsSync(managedCli) ? managedCli : undefined);
-  if (getSettings().piSource === 'managed') {
-    void ensureManagedPi(context, logger).then((cli) => setManagedPiCliPath(cli));
   }
   // Record the loaded build in the output channel only (no user-facing toast).
   logger.info(

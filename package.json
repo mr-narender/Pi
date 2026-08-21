@@ -2,7 +2,7 @@
   "name": "pi",
   "displayName": "Pi – this one is (y)ours",
   "description": "An unofficial, personal VS Code chat UI for the Pi coding agent (pi.dev). Not affiliated with pi.dev — shared for anyone who wants it.",
-  "version": "0.0.193",
+  "version": "0.0.194",
   "publisher": "mr-narender",
   "license": "MIT",
   "private": true,
@@ -713,6 +713,11 @@
           ],
           "default": "managed",
           "description": "Where to run the Pi agent from. 'managed' (default) auto-installs the latest Pi on first use and self-updates; 'external' uses your installed `pi`. Each falls back to external `pi` if unavailable."
+        },
+        "piRpc.autoInstall": {
+          "type": "boolean",
+          "default": false,
+          "description": "Allow the extension to install (and self-update) Pi from npm when no `pi` is found on PATH. Off by default: an existing `pi` installation is always used as-is; without one, chats stay offline until you install Pi yourself or enable this."
         },
         "piRpc.turnReview": {
           "type": "boolean",

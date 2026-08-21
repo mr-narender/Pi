@@ -1,5 +1,72 @@
-import { existsSync } from 'node:fs';
+import { existsSync, realpathSync, readFileSync } from 'node:fs';
+import { delimiter, dirname, join } from 'node:path';
 import type { PiRpcSettings } from '../config/settings';
+
+export interface PathPiInfo {
+  binPath: string;
+  /** npm package root (importable by the shared runtime); undefined when the
+   * binary can't be traced to @earendil-works/pi-coding-agent (e.g. wrappers). */
+  packageRoot?: string;
+  version?: string;
+}
+
+let cachedPathPi: PathPiInfo | null | undefined;
+
+/** Find an EXISTING `pi` on PATH and resolve its npm package root. Cached. */
+export function detectPathPi(): PathPiInfo | undefined {
+  if (cachedPathPi !== undefined) {
+    return cachedPathPi ?? undefined;
+  }
+  const names = process.platform === 'win32' ? ['pi.cmd', 'pi.exe', 'pi'] : ['pi'];
+  let bin: string | undefined;
+  for (const dir of (process.env.PATH ?? '').split(delimiter)) {
+    if (!dir) {
+      continue;
+    }
+    for (const name of names) {
+      const candidate = join(dir, name);
+      if (existsSync(candidate)) {
+        bin = candidate;
+        break;
+      }
+    }
+    if (bin) {
+      break;
+    }
+  }
+  if (!bin) {
+    cachedPathPi = null;
+    return undefined;
+  }
+  let packageRoot: string | undefined;
+  let version: string | undefined;
+  try {
+    let dir = dirname(realpathSync(bin));
+    for (let hop = 0; hop < 6 && dir !== dirname(dir); hop += 1) {
+      const pkgPath = join(dir, 'package.json');
+      if (existsSync(pkgPath)) {
+        try {
+          const pkg = JSON.parse(readFileSync(pkgPath, 'utf8')) as {
+            name?: string;
+            version?: string;
+          };
+          if (pkg.name === '@earendil-works/pi-coding-agent') {
+            packageRoot = dir;
+            version = pkg.version;
+            break;
+          }
+        } catch {
+          /* unreadable package.json — keep walking */
+        }
+      }
+      dir = dirname(dir);
+    }
+  } catch {
+    /* realpath failed — binary still usable as an external subprocess */
+  }
+  cachedPathPi = { binPath: bin, packageRoot, version };
+  return cachedPathPi;
+}
 
 // cli.js locations, set at activation. `bundled` = vendored in the VSIX;
 // `managed` = auto-installed into the extension's globalStorage (#3).

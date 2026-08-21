@@ -42,15 +42,18 @@ sessions, skills, prompts, and extensions all work unchanged.
 
 ## Prerequisites
 
-**No manual Pi install needed.** By default (`piRpc.piSource: managed`) the extension
-bootstraps the **latest Pi** from npm into its own storage on first use and silently
-keeps it updated (staged downloads apply on reload). You only need:
+**Have `pi` installed already? It's used as-is** — the extension detects `pi` on your
+PATH and runs on it directly (no duplicate copy, no surprise npm installs; you manage
+updates). **No `pi` yet?** Either install it yourself (`npm install -g
+@earendil-works/pi-coding-agent`) or set **`piRpc.autoInstall`: `true`** and the
+extension installs the latest Pi into its own storage and keeps it updated (staged
+downloads, applied on reload). Auto-install is **off by default** — nothing is ever
+downloaded without your consent. You also need:
 
-1. **npm on your PATH + network once** (for the first-run bootstrap and updates).
-2. **Authenticate Pi** once (either is fine):
+1. **Authenticate Pi** once (either is fine):
    - Subscription / OAuth: run `pi` in a terminal and use `/login`, **or**
    - API key: export your provider key, e.g. `export ANTHROPIC_API_KEY=…`
-3. **Open a folder** in VS Code.
+2. **Open a folder** in VS Code.
 
 > Prefer your own install? Set `piRpc.piSource` to `external` and (optionally)
 > **Settings → Pi RPC → Pi Executable Path**.
@@ -76,7 +79,8 @@ shared Pi runtime host     ONE worker hosts every session (per-session extension
 
 ## Getting started
 
-1. Install this extension and open a project folder (Pi auto-installs on first use).
+1. Install this extension and open a project folder (your PATH `pi` is auto-detected;
+   otherwise install Pi or enable `piRpc.autoInstall`).
 2. Log in once if you haven't (see **Prerequisites**).
 3. Click the **Pi** icon in the Activity Bar → **New Chat**.
 4. Type your message and press **Enter** to send (**Shift+Enter** for a newline).

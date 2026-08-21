@@ -40,6 +40,10 @@ export interface PiRpcSettings {
   // Snapshot the git tree when a turn starts and offer a consolidated
   // review/revert of every file the turn changed.
   turnReview: boolean;
+  // Allow the extension to npm-install (and self-update) Pi when none is found.
+  // Default FALSE: an existing `pi` on PATH is used as-is; without one, the
+  // user is told how to install (or to enable this flag).
+  autoInstall: boolean;
 }
 
 export function getSettings(): PiRpcSettings {
@@ -63,6 +67,7 @@ export function getSettings(): PiRpcSettings {
     // button and the Start/Stop Remote Session commands are hidden.
     remoteEnabled: config.get<boolean>('remote.enabled', false),
     turnReview: config.get<boolean>('turnReview', true),
+    autoInstall: config.get<boolean>('autoInstall', false),
     responseTimeoutMs: config.get<number>('responseTimeoutMs', 15000),
     longRunningTimeoutMs: config.get<number>('longRunningTimeoutMs', 120000),
     // Session replay can contain one large JSONL record (for example an

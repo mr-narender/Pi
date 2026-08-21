@@ -4,6 +4,7 @@ import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 import type { DiagnosticsLogger } from '../diagnostics/logger';
+import { getSettings } from '../config/settings';
 
 const PI_PACKAGE = '@earendil-works/pi-coding-agent';
 
@@ -63,6 +64,16 @@ async function prepareManagedPi(
   const installed = existsSync(cli) ? installedManagedVersion(context) : undefined;
 
   if (!installed) {
+    if (!getSettings().autoInstall) {
+      // Explicit user consent required for any npm activity (piRpc.autoInstall).
+      logger.warn(
+        'Pi is NOT installed and piRpc.autoInstall is disabled — nothing was downloaded. ' +
+          'To use Pi either: (1) install it yourself: npm install -g @earendil-works/pi-coding-agent, ' +
+          'or (2) set "piRpc.autoInstall": true to let this extension install and update it for you.'
+      );
+      preparePromise = undefined; // re-evaluate on the next attempt (flag may change)
+      return undefined;
+    }
     logger.info(`Bootstrapping managed Pi (latest) into ${dir}…`);
     try {
       mkdirSync(dir, { recursive: true });
@@ -96,8 +107,15 @@ async function prepareManagedPi(
   // Already installed: resolve INSTANTLY (opening a chat must never wait on the
   // network). The latest-version check + download run in the background and are
   // STAGED to a side directory; the staged copy is applied on the next window
-  // (re)load by applyStagedUpdate above.
-  void backgroundUpdateCheck(context, logger, installed);
+  // (re)load by applyStagedUpdate above. Both are gated on piRpc.autoInstall —
+  // when it's off, NO npm activity happens at all.
+  if (getSettings().autoInstall) {
+    void backgroundUpdateCheck(context, logger, installed);
+  } else {
+    logger.info(
+      `Managed Pi ${installed} in use; automatic updates are off (piRpc.autoInstall=false).`
+    );
+  }
   return cli;
 }
 
