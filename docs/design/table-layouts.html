@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Pi — table layout options</title>
+<style>
+  :root {
+    --bg: #1e1e1e; --card-bg: #252526; --card-border: #3c3c3c;
+    --fg: #cccccc; --muted: #9d9d9d; --line: rgba(140,140,140,0.35);
+    --line-soft: rgba(140,140,140,0.18); --header-bg: rgba(127,127,127,0.12);
+    --zebra: rgba(127,127,127,0.07); --orange: #ff8c42;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--fg); font: 13px/1.6 -apple-system, "SF Pro Text", "Segoe UI", sans-serif; margin: 0; padding: 32px; }
+  h1 { font-size: 20px; font-weight: 650; }
+  h1 span { color: var(--orange); }
+  p.lead { color: var(--muted); max-width: 720px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(460px, 1fr)); gap: 28px; margin-top: 24px; }
+  section { min-width: 0; }
+  .opt-title { font-size: 14px; font-weight: 650; margin: 0 0 2px; }
+  .opt-title b { color: var(--orange); font-weight: 750; margin-right: 6px; }
+  .opt-desc { color: var(--muted); font-size: 12px; margin: 0 0 10px; }
+  /* mock assistant message card (matches the extension) */
+  .message-card { border: 1px solid var(--card-border); background: var(--card-bg); border-radius: 10px; padding: 14px 16px; }
+  .msg-text p { margin: 0 0 8px; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.95em; line-height: 1.5; }
+  th, td { padding: 6px 12px; text-align: left; vertical-align: top; }
+  th { font-weight: 600; }
+
+  /* ── 1. CURRENT ─────────────────────────────── */
+  .v1 .md-table-wrap { margin: 10px 0; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+  .v1 th, .v1 td { border: 1px solid var(--line-soft); }
+  .v1 tr th:first-child, .v1 tr td:first-child { border-left: none; }
+  .v1 tr th:last-child, .v1 tr td:last-child { border-right: none; }
+  .v1 thead th { border-top: none; background: var(--header-bg); border-bottom: 2px solid var(--line); }
+  .v1 tbody tr:last-child td { border-bottom: none; }
+  .v1 tbody tr:nth-child(even) td { background: rgba(127,127,127,0.06); }
+
+  /* ── 2. MINIMAL LINES ───────────────────────── */
+  .v2 .md-table-wrap { margin: 10px 0; overflow-x: auto; }
+  .v2 th, .v2 td { border: 0; border-bottom: 1px solid var(--line-soft); }
+  .v2 thead th { border-bottom: 2px solid var(--line); background: transparent; }
+  .v2 tbody tr:last-child td { border-bottom: 0; }
+
+  /* ── 3. ZEBRA, FRAMELESS ────────────────────── */
+  .v3 .md-table-wrap { margin: 10px 0; overflow-x: auto; }
+  .v3 th, .v3 td { border: 0; }
+  .v3 thead th { border-bottom: 2px solid var(--line); }
+  .v3 tbody tr:nth-child(odd) td { background: var(--zebra); }
+  .v3 tbody tr td:first-child { border-radius: 6px 0 0 6px; }
+  .v3 tbody tr td:last-child { border-radius: 0 6px 6px 0; }
+
+  /* ── 4. SOFT PANEL ──────────────────────────── */
+  .v4 .md-table-wrap { margin: 10px 0; overflow-x: auto; background: rgba(0,0,0,0.18); border-radius: 8px; padding: 2px 0; }
+  .v4 th, .v4 td { border: 0; border-bottom: 1px solid var(--line-soft); }
+  .v4 thead th { background: transparent; border-bottom: 1px solid var(--line); }
+  .v4 tbody tr:last-child td { border-bottom: 0; }
+
+  /* ── 5. FULL-BLEED FUSED ────────────────────── */
+  .v5 .md-table-wrap { margin: 10px -16px; overflow-x: auto; border-top: 1px solid var(--line-soft); border-bottom: 1px solid var(--line-soft); }
+  .v5 th, .v5 td { border: 0; border-bottom: 1px solid var(--line-soft); padding-left: 16px; padding-right: 16px; }
+  .v5 thead th { background: var(--header-bg); border-bottom: 1px solid var(--line); }
+  .v5 tbody tr:last-child td { border-bottom: 0; }
+
+  /* ── 6. ORANGE ACCENT ───────────────────────── */
+  .v6 .md-table-wrap { margin: 10px 0; overflow-x: auto; }
+  .v6 th, .v6 td { border: 0; border-bottom: 1px solid var(--line-soft); }
+  .v6 thead th { color: var(--orange); font-weight: 650; background: transparent; border-bottom: 2px solid rgba(255,140,66,0.55); }
+  .v6 tbody tr:last-child td { border-bottom: 0; }
+  .v6 tbody tr:hover td { background: rgba(255,140,66,0.06); }
+</style>
+</head>
+<body>
+<h1><span>π</span> Table layout options — pick one</h1>
+<p class="lead">Each mock shows the same assistant message (bordered chat card) containing a markdown table. Option 1 is today's rendering — the framed grid inside the bordered card is the "box within a box" feel.</p>
+<div class="grid">
+<script>
+const rows = `
+<thead><tr><th>Model</th><th>Tokens</th><th>Cost</th><th>Notes</th></tr></thead>
+<tbody>
+<tr><td>claude-opus-4</td><td>128,400</td><td>$1.84</td><td>long-context refactor</td></tr>
+<tr><td>gpt-5.2</td><td>64,020</td><td>$0.62</td><td>test generation</td></tr>
+<tr><td>gemini-3-pro</td><td>212,133</td><td>$0.97</td><td>repo-wide analysis</td></tr>
+<tr><td>qwen-max</td><td>18,551</td><td>$0.08</td><td>quick lookups</td></tr>
+</tbody>`;
+const options = [
+  ['1','Current (reference)','Framed wrap + full cell grid + tinted header — the box-in-box.'],
+  ['2','Minimal lines','No frame, no verticals. Hairline row separators, strong header underline. GitHub/Notion feel.'],
+  ['3','Zebra, frameless','No lines except the header underline; alternating rows carry the structure. Rounded row tint.'],
+  ['4','Soft panel','One soft darker panel behind the table (no cell grid) — a single quiet box instead of two.'],
+  ['5','Full-bleed fused','Table stretches edge-to-edge of the card — it becomes part of the card. Zero nesting.'],
+  ['6','Orange accent','Frameless + brand-orange header text and underline, orange row hover. Matches the π branding.'],
+];
+document.currentScript.outerHTML = options.map(([n, name, desc]) => `
+  <section class="v${n}">
+    <p class="opt-title"><b>Option ${n}</b> ${name}</p>
+    <p class="opt-desc">${desc}</p>
+    <div class="message-card"><div class="msg-text">
+      <p>Here's the usage breakdown you asked for:</p>
+      <div class="md-table-wrap"><table class="md-table">${rows}</table></div>
+      <p>Totals include cache reads. Want a per-day rollup too?</p>
+    </div></div>
+  </section>`).join('');
+</script>
+</div>
+</body>
+</html>

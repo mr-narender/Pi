@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.195
+
+- Markdown tables redesigned (orange accent): no outer frame or cell grid inside the message card (the box-in-box is gone) — hairline row separators, brand-orange header text + underline, soft orange row hover.
+
 ## 0.0.194
 
 - Pi on your PATH is now detected and used AS-IS (its npm package root powers the shared runtime) — no duplicate copy, no self-updates of it.
