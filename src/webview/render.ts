@@ -387,7 +387,7 @@ function renderTimelineNode(node: TimelineNode, streamingAnswer = false): string
     case 'response': {
       const streamClass = streamingAnswer ? ' js-stream-text' : '';
       const streamData = streamingAnswer ? ` data-raw="${escapeHtml(node.text)}"` : '';
-      return `<div class="tl-node tl-response">${marker}<div class="tl-card tl-answer"><div class="tl-head tl-answer-head">${META_ICONS.response}<span class="tl-label">Pi</span></div><div class="tl-body${streamClass}"${streamData}>${renderRichText(node.text)}</div></div></div>`;
+      return `<div class="tl-node tl-response">${marker}<div class="tl-card tl-answer"><div class="tl-head tl-answer-head">${META_ICONS.response}<span class="tl-label">π</span></div><div class="tl-body${streamClass}"${streamData}>${renderRichText(node.text)}</div></div></div>`;
     }
     default:
       return '';
@@ -764,7 +764,7 @@ function renderApprovals(snapshot: WebviewSnapshot): string {
   }
   return approvals
     .map((approval) => {
-      const heading = escapeHtml(approval.title ?? 'Pi needs your approval');
+      const heading = escapeHtml(approval.title ?? 'π needs your approval');
       const body = approval.message
         ? `<p class="approval-msg">${escapeHtml(approval.message)}</p>`
         : '';
@@ -814,7 +814,7 @@ function modelLabel(snapshot: WebviewSnapshot): string {
 
 function statusLabel(snapshot: WebviewSnapshot): string {
   if (snapshot.isStreaming) {
-    return 'Pi is replying';
+    return 'π is replying';
   }
   if (snapshot.isCompacting) {
     return 'Compacting';
@@ -863,7 +863,7 @@ function renderMessages(snapshot: WebviewSnapshot): string {
   if (snapshot.messages.length === 0) {
     return `
       <div class="empty-state" data-testid="empty-state">
-        <svg class="empty-mascot" width="64" height="48" viewBox="0 0 8 6" role="img" aria-label="Pi" shape-rendering="crispEdges">
+        <svg class="empty-mascot" width="64" height="48" viewBox="0 0 8 6" role="img" aria-label="π" shape-rendering="crispEdges">
           <rect x="1" y="1" width="6" height="4" fill="currentColor" />
           <rect x="2" y="2" width="1" height="1" fill="var(--vscode-editor-background)" />
           <rect x="5" y="2" width="1" height="1" fill="var(--vscode-editor-background)" />
@@ -923,7 +923,7 @@ function renderMessageArticle(
   modelName = ''
 ): string {
   const role = message.role;
-  const roleLabel = role === 'assistant' ? 'Pi' : role === 'user' ? 'You' : '';
+  const roleLabel = role === 'assistant' ? 'π' : role === 'user' ? 'You' : '';
   const showCopy = role === 'assistant' || role === 'user';
   // (content-visibility virtualization removed — see chat.css note; it caused
   // scrollbar jumpiness. `isLast` retained for future use.)
@@ -1088,7 +1088,7 @@ function chatFontStyle(snapshot: WebviewSnapshot): string {
 // A "working" animation shown while Pi generates (like the TUI spinner).
 function renderWorking(snapshot: WebviewSnapshot): string {
   const anim = snapshot.workingAnimation || 'braille';
-  return `<span class="working" data-anim="${escapeHtml(anim)}" role="status" aria-label="Pi is working"><span class="working-glyph"></span></span>`;
+  return `<span class="working" data-anim="${escapeHtml(anim)}" role="status" aria-label="π is working"><span class="working-glyph"></span></span>`;
 }
 
 // The working indicator sits as a banner at the top of the composer so it is
@@ -1121,7 +1121,7 @@ function renderQueueTray(snapshot: WebviewSnapshot): string {
         `<div class="queue-item"><span class="queue-kind">${item.kind}</span><span class="queue-text">${escapeHtml(item.text)}</span></div>`
     )
     .join('');
-  return `<div class="queue-tray"><div class="section-label">Queued for Pi</div>${rows}</div>`;
+  return `<div class="queue-tray"><div class="section-label">Queued for π</div>${rows}</div>`;
 }
 
 export function renderChatApp(snapshot: WebviewSnapshot): string {
@@ -1174,8 +1174,8 @@ export function renderChatApp(snapshot: WebviewSnapshot): string {
               snapshot.sessionFile
                 ? 'Loading chat'
                 : snapshot.connectionState === 'starting'
-                  ? 'Starting Pi'
-                  : 'Connecting to Pi'
+                  ? 'Starting π'
+                  : 'Connecting to π'
             }<span class="loading-dots" aria-hidden="true"></span></p><p class="connecting-hint">First chat can take a few seconds while the agent warms up</p></div>`
           : faulted && snapshot.messages.length === 0
             ? `<div class="empty-state"><p class="empty-copy">Couldn’t start Pi for this workspace.</p><div class="button-row compact"><button type="button" data-command="piRpcInternal.restart">Try again</button><button type="button" data-command="piRpcInternal.showLogs">Show logs</button></div></div>`
@@ -1185,7 +1185,7 @@ export function renderChatApp(snapshot: WebviewSnapshot): string {
       ${renderApprovals(snapshot)}
       <section class="composer-dock" aria-labelledby="composer-heading">
         <h2 id="composer-heading" class="visually-hidden">Message Pi</h2>
-        <label class="visually-hidden" for="${COMPOSER_FIELD_ID}">Message Pi</label>
+        <label class="visually-hidden" for="${COMPOSER_FIELD_ID}">Message π</label>
         ${
           attachmentsVisible
             ? `<div class="attachment-tray"><div class="section-label">Attachments for next message</div><div class="chip-list" role="list" aria-label="Attachments for next message">${snapshot.pendingContextItems
@@ -1198,7 +1198,7 @@ export function renderChatApp(snapshot: WebviewSnapshot): string {
         ${renderQueueTray(snapshot)}
         ${busy ? renderWorkingBanner(snapshot) : ''}
         <div class="composer-card${connecting ? ' is-connecting' : ''}" aria-busy="${connecting ? 'true' : 'false'}">
-          <textarea id="${COMPOSER_FIELD_ID}" rows="3" placeholder="${connecting ? 'Connecting to Pi…' : 'Ask Pi to edit…'}" ${disabledAttr}>${escapeHtml(snapshot.draft)}</textarea>
+          <textarea id="${COMPOSER_FIELD_ID}" rows="3" placeholder="${connecting ? 'Connecting to π…' : 'Ask π to edit…'}" ${disabledAttr}>${escapeHtml(snapshot.draft)}</textarea>
           <div class="composer-actions" aria-label="Composer actions">
             <div class="composer-actions-left">
               <button type="button" id="${ATTACH_TRIGGER_ID}" class="icon-button" data-action="appendPickedFile" title="Add a file" aria-label="Add a file" ${disabledAttr}>+</button>

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.197
+
+- The agent is now consistently the π symbol across the chat: message author label, timeline answers, status (π is replying), loader phases, composer placeholder, queue tray, and approval prompts.
+
 ## 0.0.196
 
 - Tables: roomier header band (taller, no wrapping) and more air above/below the table so it separates cleanly from surrounding text.

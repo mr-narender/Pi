@@ -145,7 +145,7 @@ test('default simple mode keeps the composer primary controls; chat actions are 
 
 test('composer is disabled with a connecting spinner until Pi is ready', () => {
   const connecting = renderChatApp(snapshot({ connectionState: 'handshaking', messages: [] }));
-  assert.match(connecting, /Connecting to Pi/);
+  assert.match(connecting, /Connecting to π/);
   assert.match(connecting, /class="boot-loader"/);
   assert.match(connecting, /class="boot-pi"/);
   assert.match(connecting, /id="composer-field"[^>]*disabled/);

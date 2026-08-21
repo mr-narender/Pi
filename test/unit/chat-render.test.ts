@@ -60,7 +60,7 @@ test('renderChatApp renders a minimal composer + chat header (clean layout)', ()
   assert.match(html, /Skip to composer/);
   assert.match(html, /class="composer-dock"/);
   assert.match(html, /class="composer-card"/);
-  assert.match(html, /placeholder="Ask Pi to edit/);
+  assert.match(html, /placeholder="Ask π to edit/);
   // Model is a borderless clickable label inside the composer; chat actions
   // moved to the NATIVE editor title bar (piRpc.chatActions submenu).
   assert.match(html, /class="model-label"/);
@@ -250,7 +250,7 @@ test('thinking/tool render as separate light meta cards; text stays in the chat 
   assert.match(html, /class="tl-node tl-tool"/);
   assert.match(html, /class="tl-node tl-response"/);
   // The answer sits in a response card with a "Pi" header, then the body text.
-  assert.match(html, /class="tl-head tl-answer-head">.*<span class="tl-label">Pi</);
+  assert.match(html, /class="tl-head tl-answer-head">.*<span class="tl-label">π</);
   assert.match(html, /<div class="tl-body"><p class="msg-para">the answer<\/p>/);
 });
 
@@ -607,7 +607,7 @@ test('accessibility: live status region, transcript live=off, author labels', ()
   assert.match(html, /id="messages"[^>]*aria-live="off"/);
   assert.match(html, /class="model-label"[^>]*aria-label="Choose model"/);
   assert.match(html, /aria-label="You said"/);
-  assert.match(html, /aria-label="Pi said"/);
+  assert.match(html, /aria-label="π said"/);
 });
 
 test('renderRichText renders a GFM table as an HTML table with alignment', () => {
