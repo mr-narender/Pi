@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.199
+
+- Chat typography matched to the Claude Code look: prose now uses the native UI sans (SF Pro / Segoe UI) instead of the editor font, with antialiased smoothing and a 1.55 line rhythm. Code spans/blocks keep the editor monospace. piRpc.chatFontFamily still overrides.
+
 ## 0.0.198
 
 - Pasted images now send immediately with the message — the confirmation preview popup is gone. That popup path also bypassed the composer clear guards, which is why image sends left your text in the input; the input now clears instantly on submit, images included.

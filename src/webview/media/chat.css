@@ -2,7 +2,13 @@ body {
   margin: 0;
   color: var(--vscode-foreground);
   background: var(--vscode-editor-background);
-  font-family: var(--vscode-font-family);
+  /* Claude-style rendering: explicit native sans stack (SF Pro on macOS,
+     Segoe UI on Windows) + antialiased smoothing — light-on-dark text renders
+     crisp and light instead of heavy subpixel strokes. */
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans', 'Helvetica Neue', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 * {
@@ -1034,11 +1040,18 @@ button.ghost:hover,
   scrollbar-gutter: stable;
   display: block;
   padding: 16px;
-  /* Everything in the transcript follows the EDITOR font (respecting an
-     explicit piRpc.chatFontFamily override), so all chat text is consistent. */
+  line-height: 1.55;
+  /* Everything in the transcript follows the UI sans (respecting an
+     explicit piRpc.chatFontFamily override); code keeps the editor font. */
   font-family: var(
     --pi-chat-font-family,
-    var(--vscode-editor-font-family, var(--vscode-font-family, monospace))
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    'Noto Sans',
+    'Helvetica Neue',
+    sans-serif
   );
 }
 
@@ -1145,7 +1158,13 @@ button.ghost:hover,
   /* Match the transcript: the input uses the EDITOR font, not the UI font. */
   font-family: var(
     --pi-chat-font-family,
-    var(--vscode-editor-font-family, var(--vscode-font-family, monospace))
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    'Noto Sans',
+    'Helvetica Neue',
+    sans-serif
   );
   font-size: var(--pi-chat-font-size, var(--vscode-font-size, 13px));
   /* Auto-grows via JS up to ~10 lines, then scrolls. Reserve the scrollbar
@@ -1737,7 +1756,13 @@ button.ghost:hover,
   /* Same font family + size as thinking / Pi response for a uniform card look. */
   font-family: var(
     --pi-chat-font-family,
-    var(--vscode-editor-font-family, var(--vscode-font-family))
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    'Noto Sans',
+    'Helvetica Neue',
+    sans-serif
   );
   font-size: var(--pi-chat-font-size, var(--vscode-font-size, 13px));
 }
@@ -1840,7 +1865,13 @@ button.ghost:hover,
 #messages .message-user .message-body {
   font-family: var(
     --pi-chat-font-family,
-    var(--vscode-editor-font-family, var(--vscode-font-family))
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    'Noto Sans',
+    'Helvetica Neue',
+    sans-serif
   );
   font-size: var(--pi-chat-font-size, var(--vscode-font-size, 13px));
 }
@@ -2195,7 +2226,13 @@ button.ghost:hover,
   /* Same font family + size as thinking / Pi response so cards are uniform. */
   font-family: var(
     --pi-chat-font-family,
-    var(--vscode-editor-font-family, var(--vscode-font-family))
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    'Noto Sans',
+    'Helvetica Neue',
+    sans-serif
   );
   font-size: var(--pi-chat-font-size, var(--vscode-font-size, 13px));
   white-space: pre-wrap;
