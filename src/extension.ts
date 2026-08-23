@@ -4,6 +4,7 @@ import { basename } from 'node:path';
 import { setBundledPiCliPath, setManagedPiCliPath, detectPathPi } from './process/piLauncher';
 import { initSharedPiHost, disposeSharedPiHost } from './process/sharedPiHost';
 import { TurnReview } from './review/turnReview';
+import { SessionIndexService } from './sessions/sessionIndexService';
 import { ensureManagedPi, managedPiCliPath, managedPiRoot } from './process/piManaged';
 import { COMMAND_IDS, CONTRIBUTED_COMMANDS } from './config/commands';
 import { getSettings } from './config/settings';
@@ -205,7 +206,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     );
   };
   if (getSettings().sharedRuntime && getSettings().piSource !== 'external') {
-    const sharedHost = initSharedPiHost(context.extensionPath, process.env, logger, resolvePiRoot);
+    const workers = getSettings().runtimeWorkers;
+    const sharedHost = initSharedPiHost(
+      context.extensionPath,
+      process.env,
+      logger,
+      resolvePiRoot,
+      workers === 'auto' ? undefined : workers
+    );
     context.subscriptions.push({ dispose: () => disposeSharedPiHost() });
     // Prewarm at idle: boots the host worker AND parks a ready draft session, so
     // the first New Chat is instant and the first saved-chat open hits the warm
@@ -230,7 +238,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const settings = getSettings();
   const editorTabsEnabled = () => getSettings().editorTabsEnabled;
   const statusBar = new StatusBarController();
-  const recentSessions = new RecentSessionService();
+  const sessionIndex = new SessionIndexService(context.extensionPath, logger);
+  context.subscriptions.push({ dispose: () => sessionIndex.dispose() });
+  const recentSessions = new RecentSessionService(sessionIndex);
   const uiState = new ChatUiState(context);
   const chat = new ChatPanelProvider(context, registry, uiState);
   // Rehydrate the chat URI short-id map before any custom-editor tab is
@@ -309,7 +319,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     context.extensionUri,
     registry,
     recentSessions,
-    context.workspaceState
+    context.workspaceState,
+    sessionIndex
   );
 
   // Keep the chat list in sync with the terminal (TUI): watch the on-disk
@@ -1527,7 +1538,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       return;
     }
     disposeSharedPiHost();
-    initSharedPiHost(context.extensionPath, process.env, logger, resolvePiRoot);
+    const restartWorkers = getSettings().runtimeWorkers;
+    initSharedPiHost(
+      context.extensionPath,
+      process.env,
+      logger,
+      resolvePiRoot,
+      restartWorkers === 'auto' ? undefined : restartWorkers
+    );
     void vscode.window.showInformationMessage(
       'Pi shared runtime restarted. Open chats will reconnect on their next action.'
     );

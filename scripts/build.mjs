@@ -20,6 +20,19 @@ await build({
   legalComments: 'none',
 });
 
+// Off-main-thread session index/search worker (worker_threads, no vscode dep).
+await build({
+  entryPoints: ['src/workers/sessionIndexWorker.ts'],
+  outfile: 'dist/sessionIndexWorker.js',
+  bundle: true,
+  platform: 'node',
+  format: 'cjs',
+  target: 'node18',
+  define,
+  sourcemap: false,
+  legalComments: 'none',
+});
+
 await build({
   entryPoints: ['src/webview/media/chat.ts'],
   outfile: 'dist/chat.js',

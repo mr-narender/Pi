@@ -21,6 +21,13 @@ export class RecentSessionService implements vscode.Disposable {
   private readonly emitter = new vscode.EventEmitter<void>();
   private readonly state = new Map<string, RecentSessionsState>();
 
+  public constructor(
+    // Optional off-thread accelerator; every use falls back to the inline scan.
+    private readonly indexService?: {
+      scanAll(excludeCwds: string[]): Promise<RecentSessionRecord[]>;
+    }
+  ) {}
+
   public get onDidChange(): vscode.Event<void> {
     return this.emitter.event;
   }
@@ -74,8 +81,14 @@ export class RecentSessionService implements vscode.Disposable {
           workspacePath: folder.uri.fsPath,
           additionalArgs: settings.additionalArgs,
         }),
-        // All-projects list — never fail the main list because of it.
-        readAllProjectsSessions(workspaceCwds).catch(() => []),
+        // All-projects list — off-thread when the index worker is up, inline
+        // fallback otherwise; never fail the main list because of it.
+        (this.indexService
+          ? this.indexService
+              .scanAll(workspaceCwds)
+              .catch(() => readAllProjectsSessions(workspaceCwds))
+          : readAllProjectsSessions(workspaceCwds)
+        ).catch(() => []),
       ]);
       this.state.set(key, {
         loading: false,

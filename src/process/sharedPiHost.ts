@@ -2,11 +2,12 @@ import { Worker } from 'node:worker_threads';
 import { PassThrough, Writable } from 'node:stream';
 import { randomUUID } from 'node:crypto';
 import * as path from 'node:path';
+import { cpus } from 'node:os';
 import type { Readable } from 'node:stream';
-import { DiagnosticsLogger } from '../diagnostics/logger';
+import type { DiagnosticsLogger } from '../diagnostics/logger';
 import type { PiProcessHandle } from './piProcess';
 
-// One channel = one open chat session multiplexed over the shared host's stdio.
+// One channel = one open chat session multiplexed over its worker's stdio.
 interface HostChannel {
   stdout: PassThrough; // host -> session (JSONL, exactly what RpcTransport expects)
   onExit?: (code: number | null, signal: string | null) => void;
@@ -14,48 +15,37 @@ interface HostChannel {
   opened: boolean;
 }
 
+interface LoggerLike {
+  info(message: string): void;
+  warn(message: string): void;
+  error(message: string, error?: unknown): void;
+}
+
 /**
- * SharedPiHost runs ONE worker (host/pi-multi-host.mjs) that hosts MANY Pi
- * `AgentSession`s on a SINGLE shared `ModelRuntime`. Each open chat gets a
- * virtual stdio pair wired to that worker via `{k, d}` envelopes, so the rest of
- * the stack (RpcTransport/RpcClient/reducer) is unchanged — it just talks to a
- * PiProcessHandle whose streams happen to be multiplexed. This replaces the old
- * one-OS-process-per-chat model: N chats now cost ~1 runtime instead of N.
+ * One pool member: a worker thread running host/pi-multi-host.mjs with its own
+ * ModelRuntime, hosting the sessions ASSIGNED to it (sticky). A crash faults
+ * only this member's sessions — the pool spawns a replacement on the next open.
  */
-export class SharedPiHost {
+class HostWorkerConn {
   private worker: Worker | undefined;
   private buffer = '';
-  private readonly channels = new Map<string, HostChannel>();
-  private startFault: Error | undefined;
-  // Prewarmed draft sessions parked per cwd: "New Chat" adopts one instantly
-  // instead of paying services+MCP+session boot on the click.
-  private readonly parked = new Map<string, PiProcessHandle>();
-  private prewarmTimer: ReturnType<typeof setTimeout> | undefined;
+  public readonly channels = new Map<string, HostChannel>();
+  public fault: Error | undefined;
 
   public constructor(
+    public readonly id: number,
     private readonly hostScript: string,
     private readonly baseEnv: NodeJS.ProcessEnv,
-    private readonly logger: DiagnosticsLogger,
-    // Where the Pi package lives (managed install in prod, vendor/ in dev).
-    // Async: on a fresh client the FIRST chat awaits the managed bootstrap.
-    private readonly resolvePiRoot: () => Promise<string>
+    private readonly piRoot: string,
+    private readonly logger: LoggerLike,
+    private readonly onDead: (conn: HostWorkerConn) => void
   ) {}
 
-  /** Absolute path to the shipped host script (host/pi-multi-host.mjs). */
-  public static scriptPath(extensionPath: string): string {
-    return path.join(extensionPath, 'host', 'pi-multi-host.mjs');
+  public get sessionCount(): number {
+    return this.channels.size;
   }
 
-  private async ensureWorker(): Promise<void> {
-    if (this.worker) {
-      return;
-    }
-    this.startFault = undefined;
-    const piRoot = await this.resolvePiRoot();
-    if (this.worker) {
-      return; // raced by a concurrent openSession
-    }
-    this.logger.info(`Shared Pi host starting (piRoot=${piRoot})`);
+  public start(): void {
     // CJS bootstrap that dynamic-imports the ESM host (same trick as spawnWorkerPi).
     const bootstrap = `
       const { workerData } = require('node:worker_threads');
@@ -66,31 +56,33 @@ export class SharedPiHost {
     `;
     const worker = new Worker(bootstrap, {
       eval: true,
-      workerData: { hostPath: this.hostScript, piRoot },
+      workerData: { hostPath: this.hostScript, piRoot: this.piRoot },
       env: { ...this.baseEnv, PI_TELEMETRY: '0', PI_SKIP_VERSION_CHECK: '1' },
       stdin: true,
       stdout: true,
       stderr: true,
     });
     worker.on('error', (error) => {
-      this.logger.error('Shared Pi host worker error', error);
-      this.failAll(error);
+      this.logger.error(`Pi runtime worker #${this.id} error`, error);
+      this.failAll(error instanceof Error ? error : new Error(String(error)));
     });
     worker.on('exit', (code) => {
-      this.logger.warn(`Shared Pi host worker exited code=${String(code)}`);
-      this.failAll(new Error(`Shared Pi host exited code=${String(code)}`), code);
+      if (!this.fault) {
+        this.logger.warn(`Pi runtime worker #${this.id} exited code=${String(code)}`);
+        this.failAll(new Error(`Pi runtime worker exited code=${String(code)}`), code);
+      }
     });
     (worker.stderr as Readable).on('data', (chunk: Buffer) => {
       const text = chunk.toString('utf8').trimEnd();
       if (text) {
-        this.logger.warn(`[pi-host] ${text}`);
+        this.logger.warn(`[pi-host#${this.id}] ${text}`);
       }
     });
-    (worker.stdout as Readable).on('data', (chunk: Buffer) => this.onHostStdout(chunk));
+    (worker.stdout as Readable).on('data', (chunk: Buffer) => this.onStdout(chunk));
     this.worker = worker;
   }
 
-  private onHostStdout(chunk: Buffer): void {
+  private onStdout(chunk: Buffer): void {
     this.buffer += chunk.toString('utf8');
     let newline = this.buffer.indexOf('\n');
     while (newline >= 0) {
@@ -130,12 +122,10 @@ export class SharedPiHost {
       channel.onExit?.(0, null);
       return;
     }
-    // Everything else is normal Pi protocol (responses w/ id + events): hand it
-    // to this session's virtual stdout as one JSONL record.
     channel.stdout.push(`${JSON.stringify(payload)}\n`);
   }
 
-  private writeEnvelope(key: string, payload: Record<string, unknown>): void {
+  public writeEnvelope(key: string, payload: Record<string, unknown>): void {
     const worker = this.worker;
     if (!worker) {
       return;
@@ -144,6 +134,7 @@ export class SharedPiHost {
   }
 
   private failAll(error: Error, code: number | null = null): void {
+    this.fault = error;
     for (const channel of this.channels.values()) {
       channel.onOpen?.(false, error.message);
       channel.onOpen = undefined;
@@ -151,10 +142,104 @@ export class SharedPiHost {
       channel.stdout.push(null);
     }
     this.channels.clear();
-    this.parked.clear();
     this.worker = undefined;
     this.buffer = '';
-    this.startFault = error;
+    this.onDead(this);
+  }
+
+  public terminate(): void {
+    const worker = this.worker;
+    this.worker = undefined;
+    this.fault = this.fault ?? new Error('terminated');
+    for (const channel of this.channels.values()) {
+      channel.stdout.push(null);
+    }
+    this.channels.clear();
+    void worker?.terminate();
+    this.onDead(this);
+  }
+}
+
+/**
+ * SharedPiHost runs a CPU-sized POOL of runtime workers (host/pi-multi-host.mjs
+ * each, with their own ModelRuntime). Sessions are assigned sticky to the
+ * least-loaded worker, so several busy chats execute on different cores instead
+ * of contending on one thread. The per-session protocol and PiProcessHandle
+ * contract are identical to the single-worker design.
+ */
+export class SharedPiHost {
+  private readonly conns: HostWorkerConn[] = [];
+  private nextConnId = 1;
+  private piRootPromise: Promise<string> | undefined;
+  private readonly maxWorkers: number;
+  // Prewarmed draft sessions parked per cwd: "New Chat" adopts one instantly.
+  private readonly parked = new Map<string, { handle: PiProcessHandle; conn: HostWorkerConn }>();
+  private prewarmTimer: ReturnType<typeof setTimeout> | undefined;
+
+  public constructor(
+    private readonly hostScript: string,
+    private readonly baseEnv: NodeJS.ProcessEnv,
+    private readonly logger: LoggerLike,
+    // Where the Pi package lives (PATH install / managed / vendor). Async: on a
+    // fresh client the FIRST chat awaits the managed bootstrap.
+    private readonly resolvePiRoot: () => Promise<string>,
+    maxWorkers?: number
+  ) {
+    this.maxWorkers = Math.min(8, Math.max(1, maxWorkers ?? SharedPiHost.autoWorkerCount()));
+  }
+
+  /** Conservative CPU sizing: floor(cores/4) clamped to 1..4 (14 cores -> 3). */
+  public static autoWorkerCount(): number {
+    return Math.min(4, Math.max(1, Math.floor(cpus().length / 4)));
+  }
+
+  /** Absolute path to the shipped host script (host/pi-multi-host.mjs). */
+  public static scriptPath(extensionPath: string): string {
+    return path.join(extensionPath, 'host', 'pi-multi-host.mjs');
+  }
+
+  /** Live pool snapshot (for health/logs). */
+  public poolStatus(): Array<{ id: number; sessions: number }> {
+    return this.conns.map((conn) => ({ id: conn.id, sessions: conn.sessionCount }));
+  }
+
+  private async pickConn(): Promise<HostWorkerConn> {
+    this.piRootPromise ??= this.resolvePiRoot().catch((error: unknown) => {
+      this.piRootPromise = undefined;
+      throw error;
+    });
+    const piRoot = await this.piRootPromise;
+    const live = this.conns.filter((conn) => !conn.fault);
+    const least = [...live].sort((a, b) => a.sessionCount - b.sessionCount)[0];
+    // Reuse an EMPTY worker when one exists; otherwise grow until the cap, then
+    // least-loaded. (Growth before packing = real parallelism per busy chat.)
+    if (least && (least.sessionCount === 0 || live.length >= this.maxWorkers)) {
+      return least;
+    }
+    const conn = new HostWorkerConn(
+      this.nextConnId++,
+      this.hostScript,
+      this.baseEnv,
+      piRoot,
+      this.logger,
+      (dead) => {
+        const index = this.conns.indexOf(dead);
+        if (index >= 0) {
+          this.conns.splice(index, 1);
+        }
+        for (const [cwd, parked] of this.parked) {
+          if (parked.conn === dead) {
+            this.parked.delete(cwd);
+          }
+        }
+      }
+    );
+    conn.start();
+    this.conns.push(conn);
+    this.logger.info(
+      `Pi runtime worker #${conn.id} started (pool ${this.conns.length}/${this.maxWorkers})`
+    );
+    return conn;
   }
 
   /** Park a ready draft session for this cwd so the next New Chat is instant. */
@@ -174,13 +259,13 @@ export class SharedPiHost {
       return;
     }
     try {
-      const handle = await this.openSessionRaw({ cwd });
+      const opened = await this.openSessionRaw({ cwd });
       if (this.parked.has(cwd)) {
-        await handle.stop();
+        await opened.handle.stop();
         return;
       }
-      this.parked.set(cwd, handle);
-      this.logger.info(`Prewarmed a draft Pi session for ${cwd}`);
+      this.parked.set(cwd, opened);
+      this.logger.info(`Prewarmed a draft Pi session for ${cwd} (worker #${opened.conn.id})`);
     } catch (error) {
       this.logger.warn(
         `Prewarm failed for ${cwd}: ${error instanceof Error ? error.message : String(error)}`
@@ -191,43 +276,38 @@ export class SharedPiHost {
   /**
    * Open a new multiplexed session and return a PiProcessHandle whose virtual
    * streams the supervisor wires into RpcTransport exactly like a real process.
-   * Resolves only once the host has created the AgentSession (so no command
-   * races an unopened session).
+   * Resolves only once the host has created the AgentSession.
    */
   public async openSession(
     info: { cwd: string; sessionFile?: string },
     openTimeoutMs = 20_000
   ): Promise<PiProcessHandle> {
-    // Draft (no session file): adopt the prewarmed session when one is parked —
-    // New Chat becomes instant — and immediately warm the next one.
     if (!info.sessionFile) {
       const parked = this.parked.get(info.cwd);
-      if (parked) {
+      if (parked && !parked.conn.fault) {
         this.parked.delete(info.cwd);
         this.schedulePrewarm(info.cwd);
         this.logger.info(`Adopted prewarmed Pi session for ${info.cwd}`);
-        return parked;
+        return parked.handle;
       }
     }
-    return this.openSessionRaw(info, openTimeoutMs);
+    return (await this.openSessionRaw(info, openTimeoutMs)).handle;
   }
 
   private async openSessionRaw(
     info: { cwd: string; sessionFile?: string },
     openTimeoutMs = 20_000
-  ): Promise<PiProcessHandle> {
-    await this.ensureWorker();
-    if (this.startFault) {
-      throw this.startFault;
+  ): Promise<{ handle: PiProcessHandle; conn: HostWorkerConn }> {
+    const conn = await this.pickConn();
+    if (conn.fault) {
+      throw conn.fault;
     }
     const key = randomUUID();
     const stdout = new PassThrough();
     const stderr = new PassThrough();
     const channel: HostChannel = { stdout, opened: false };
-    this.channels.set(key, channel);
+    conn.channels.set(key, channel);
 
-    // Virtual stdin: unwrap each JSONL command the transport writes, tag with the
-    // session key, forward to the shared worker.
     const stdin = new Writable({
       write: (chunk: Buffer | string, _enc, cb) => {
         const text = typeof chunk === 'string' ? chunk : chunk.toString('utf8');
@@ -237,7 +317,7 @@ export class SharedPiHost {
             continue;
           }
           try {
-            this.writeEnvelope(key, JSON.parse(trimmed) as Record<string, unknown>);
+            conn.writeEnvelope(key, JSON.parse(trimmed) as Record<string, unknown>);
           } catch {
             /* skip malformed line */
           }
@@ -260,7 +340,7 @@ export class SharedPiHost {
       };
     });
 
-    this.writeEnvelope(key, {
+    conn.writeEnvelope(key, {
       type: 'open',
       cwd: info.cwd,
       sessionFile: info.sessionFile,
@@ -269,7 +349,7 @@ export class SharedPiHost {
     try {
       await opened;
     } catch (error) {
-      this.channels.delete(key);
+      conn.channels.delete(key);
       stdout.push(null);
       throw error;
     }
@@ -285,12 +365,12 @@ export class SharedPiHost {
         channel.onExit = cb;
       },
       stop: async () => {
-        this.writeEnvelope(key, { type: 'close' });
-        this.channels.delete(key);
+        conn.writeEnvelope(key, { type: 'close' });
+        conn.channels.delete(key);
         stdout.push(null);
       },
     };
-    return handle;
+    return { handle, conn };
   }
 
   public dispose(): void {
@@ -299,27 +379,31 @@ export class SharedPiHost {
       this.prewarmTimer = undefined;
     }
     this.parked.clear();
-    const worker = this.worker;
-    this.worker = undefined;
-    for (const channel of this.channels.values()) {
-      channel.stdout.push(null);
+    for (const conn of [...this.conns]) {
+      conn.terminate();
     }
-    this.channels.clear();
-    void worker?.terminate();
+    this.conns.length = 0;
   }
 }
 
-// Module singleton: one host per extension host process.
+// Module singleton: one pool per extension host process.
 let singleton: SharedPiHost | undefined;
 
 export function initSharedPiHost(
   extensionPath: string,
   env: NodeJS.ProcessEnv,
   logger: DiagnosticsLogger,
-  resolvePiRoot: () => Promise<string>
+  resolvePiRoot: () => Promise<string>,
+  maxWorkers?: number
 ): SharedPiHost {
   singleton?.dispose();
-  singleton = new SharedPiHost(SharedPiHost.scriptPath(extensionPath), env, logger, resolvePiRoot);
+  singleton = new SharedPiHost(
+    SharedPiHost.scriptPath(extensionPath),
+    env,
+    logger,
+    resolvePiRoot,
+    maxWorkers
+  );
   return singleton;
 }
 

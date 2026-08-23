@@ -2,7 +2,7 @@
   "name": "pi",
   "displayName": "Pi – this one is (y)ours",
   "description": "An unofficial, personal VS Code chat UI for the Pi coding agent (pi.dev). Not affiliated with pi.dev — shared for anyone who wants it.",
-  "version": "0.0.199",
+  "version": "0.0.200",
   "publisher": "mr-narender",
   "license": "MIT",
   "private": true,
@@ -718,6 +718,19 @@
           "type": "boolean",
           "default": false,
           "description": "Allow the extension to install (and self-update) Pi from npm when no `pi` is found on PATH. Off by default: an existing `pi` installation is always used as-is; without one, chats stay offline until you install Pi yourself or enable this."
+        },
+        "piRpc.runtimeWorkers": {
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": "auto",
+          "description": "Size of the Pi runtime worker pool hosting parallel chats. 'auto' scales with your CPU (cores/4, capped at 4 — e.g. 3 workers on 14 cores); a number (1–8) pins it. More workers = more chats generating truly in parallel, at ~150MB memory each."
+        },
+        "piRpc.idleSessionMinutes": {
+          "type": "number",
+          "default": 15,
+          "description": "Free a hidden chat's session after this many idle minutes (0 = never). The tab and transcript stay; the session restarts instantly when you focus the tab. Busy chats and chats waiting for approval are never touched."
         },
         "piRpc.turnReview": {
           "type": "boolean",

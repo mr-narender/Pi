@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.200
+
+- CPU-aware runtime pool: parallel chats now run across a pool of runtime workers sized to your CPU ('auto' = cores/4 capped at 4; piRpc.runtimeWorkers pins 1-8). Sessions stick to their worker; a worker crash faults only its own sessions and the pool self-replaces. On a 14-core machine, 3 chats generate truly in parallel instead of sharing one thread.
+- Off-main-thread indexing & search: the all-projects sidebar scan and full-text chat search now run in a dedicated worker with an mtime-validated cache — zero extension-host jank, instant repeat searches, automatic inline fallback if the worker is unavailable.
+- Idle session reaper (piRpc.idleSessionMinutes, default 15): hidden idle chats release their runtime session after N minutes; the tab and transcript stay put and the session restarts instantly on focus. Busy chats, approval-waiting chats, and drafts are never touched.
+
 ## 0.0.199
 
 - Chat typography matched to the Claude Code look: prose now uses the native UI sans (SF Pro / Segoe UI) instead of the editor font, with antialiased smoothing and a 1.55 line rhythm. Code spans/blocks keep the editor monospace. piRpc.chatFontFamily still overrides.

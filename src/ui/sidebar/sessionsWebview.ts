@@ -17,7 +17,16 @@ export class SessionsWebviewProvider implements vscode.WebviewViewProvider {
     private readonly extensionUri: vscode.Uri,
     private readonly registry: SessionRegistry,
     private readonly recentSessions: RecentSessionService,
-    private readonly memento?: vscode.Memento
+    private readonly memento?: vscode.Memento,
+    // Optional off-thread search accelerator; failures fall back inline.
+    private readonly indexService?: {
+      search(
+        query: string,
+        candidates: Array<{ path: string; name: string; cwd: string; other: boolean }>
+      ): Promise<
+        Array<{ path: string; name: string; preview: string; cwd: string; other: boolean }>
+      >;
+    }
   ) {}
 
   // Full-text search across chat CONTENT (titles are matched client-side).
@@ -49,13 +58,25 @@ export class SessionsWebviewProvider implements vscode.WebviewViewProvider {
         other: true,
       })),
     ].slice(0, 60);
-    const matches: Array<{
+    let matches: Array<{
       path: string;
       name: string;
       preview: string;
       cwd: string;
       other: boolean;
     }> = [];
+    if (this.indexService) {
+      try {
+        matches = await this.indexService.search(needle, candidates);
+        if (seq !== this.searchSeq) {
+          return;
+        }
+        void this.view?.webview.postMessage({ type: 'contentMatches', query, matches });
+        return;
+      } catch {
+        matches = []; // worker unavailable — fall through to the inline scan
+      }
+    }
     for (const candidate of candidates) {
       if (matches.length >= 20 || seq !== this.searchSeq) {
         break;

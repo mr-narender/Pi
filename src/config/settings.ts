@@ -44,6 +44,11 @@ export interface PiRpcSettings {
   // Default FALSE: an existing `pi` on PATH is used as-is; without one, the
   // user is told how to install (or to enable this flag).
   autoInstall: boolean;
+  // Runtime worker pool size: 'auto' = clamp(floor(cores/4), 1..4); number = 1..8.
+  runtimeWorkers: number | 'auto';
+  // Close a hidden idle chat's session after N minutes (0 = never). The tab and
+  // transcript stay; the session restarts instantly on focus.
+  idleSessionMinutes: number;
 }
 
 export function getSettings(): PiRpcSettings {
@@ -68,6 +73,13 @@ export function getSettings(): PiRpcSettings {
     remoteEnabled: config.get<boolean>('remote.enabled', false),
     turnReview: config.get<boolean>('turnReview', true),
     autoInstall: config.get<boolean>('autoInstall', false),
+    runtimeWorkers: ((): number | 'auto' => {
+      const raw = config.get<unknown>('runtimeWorkers', 'auto');
+      return typeof raw === 'number' && Number.isFinite(raw)
+        ? Math.min(8, Math.max(1, Math.round(raw)))
+        : 'auto';
+    })(),
+    idleSessionMinutes: Math.max(0, config.get<number>('idleSessionMinutes', 15)),
     responseTimeoutMs: config.get<number>('responseTimeoutMs', 15000),
     longRunningTimeoutMs: config.get<number>('longRunningTimeoutMs', 120000),
     // Session replay can contain one large JSONL record (for example an

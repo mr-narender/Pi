@@ -284,6 +284,57 @@ export class ChatTabManager implements vscode.Disposable {
         }
       })
     );
+    // Idle session reaper: hidden, idle chats release their runtime session after
+    // piRpc.idleSessionMinutes (tab + transcript stay; focus restarts instantly).
+    this.reapTimer = setInterval(() => void this.reapIdleSessions(), 5 * 60_000);
+    this.reapTimer.unref?.();
+  }
+
+  private readonly lastActivityAt = new Map<SessionController, number>();
+  private reapTimer: ReturnType<typeof setInterval> | undefined;
+
+  private async reapIdleSessions(): Promise<void> {
+    const minutes = getSettings().idleSessionMinutes;
+    if (minutes <= 0) {
+      return;
+    }
+    const cutoff = Date.now() - minutes * 60_000;
+    for (const host of this.hosts.values()) {
+      if (host.panel.visible) {
+        continue;
+      }
+      const context = this.contextForResource(host.resource);
+      if (!context || context.target.kind === 'workspaceDraft') {
+        continue; // drafts may hold unsent work and don't auto-restart — never reap
+      }
+      const snap = context.controller.snapshot;
+      if (snap.connectionState !== 'ready') {
+        continue; // only reap settled sessions — never starting/busy/faulted
+      }
+      if (snap.state.isStreaming === true || (snap.pendingUi?.length ?? 0) > 0) {
+        continue; // never touch generating chats or chats awaiting approval
+      }
+      const last = this.lastActivityAt.get(context.controller);
+      if (last === undefined) {
+        // First sighting: start the idle clock now instead of guessing.
+        this.lastActivityAt.set(context.controller, Date.now());
+        continue;
+      }
+      if (last > cutoff) {
+        continue;
+      }
+      try {
+        await context.controller.stop();
+        this.logger.info(
+          `Reaped idle session for hidden chat (idle ${Math.round((Date.now() - last) / 60_000)}m) — restarts on focus`
+        );
+        await this.renderResource(host.resource);
+      } catch (error) {
+        this.logger.warn(
+          `Idle reap failed: ${error instanceof Error ? error.message : String(error)}`
+        );
+      }
+    }
   }
 
   private lastTextEditor: vscode.TextEditor | undefined;
@@ -321,6 +372,10 @@ export class ChatTabManager implements vscode.Disposable {
   }
 
   public dispose(): void {
+    if (this.reapTimer) {
+      clearInterval(this.reapTimer);
+      this.reapTimer = undefined;
+    }
     for (const disposable of this.controllerSubscriptions) {
       disposable.dispose();
     }
@@ -686,6 +741,7 @@ export class ChatTabManager implements vscode.Disposable {
       return undefined;
     }
     this.registry.setActive(context.controller);
+    this.lastActivityAt.set(context.controller, Date.now());
     const workspaceKey = context.target.workspaceFolderUri;
     const previousResource = this.activeResourceByWorkspace.get(workspaceKey);
     this.activeResourceByWorkspace.set(workspaceKey, resource.toString());
@@ -1420,6 +1476,7 @@ export class ChatTabManager implements vscode.Disposable {
   }
 
   private async onControllerChanged(controller: SessionController): Promise<void> {
+    this.lastActivityAt.set(controller, Date.now());
     this.detectTurnCompletion(controller);
     // Restore the draft under the OWNING TAB's identity — not the controller's
     // current-session identity, which drifts after forks/prewarm-adoption and
