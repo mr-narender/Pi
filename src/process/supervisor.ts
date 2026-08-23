@@ -89,7 +89,6 @@ export class PiProcessSupervisor extends TypedEmitter implements vscode.Disposab
         );
       }
     }
-    await this.assertVersion();
     this.generation += 1;
     const offline = options?.offline ?? this.settings.offline;
     const args = this.buildArgs(existingSessionPath, {
@@ -97,6 +96,12 @@ export class PiProcessSupervisor extends TypedEmitter implements vscode.Disposab
       offline,
     });
     const launch = resolvePiLaunch(this.settings);
+    // The version probe spawns `pi --version` (up to ~10s under startup load).
+    // Our OWN installs (bundled/managed cli.js) have a known-good version —
+    // probe only external binaries the user pointed us at.
+    if (!launch.usingBundled) {
+      await this.assertVersion();
+    }
     const useShell = launch.usingBundled ? false : SPAWN_WITH_SHELL;
     // Pi's shell-inheritance extension needs a known launch shell. When Pi is
     // spawned non-interactively (here) it can't determine one on Windows and

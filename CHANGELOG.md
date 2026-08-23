@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.201
+
+- FIX: 0.0.200's pool could make startup SLOWER — at activation two workers cold-booted simultaneously, contended on CPU, blew the 20s open timeout, and chats fell back to per-chat processes with a ~10s version probe (~45s total). Now: never boot a second worker while one is cold (queued opens ride the booting worker), cold boots get 60s headroom, abandoned opens are closed (no orphan sessions), the version probe is skipped for our own bundled/managed installs, and the prewarm waits out the activation storm. Measured: two cold opens now ready in ~5s on one worker; the pool grows only once warm.
+
 ## 0.0.200
 
 - CPU-aware runtime pool: parallel chats now run across a pool of runtime workers sized to your CPU ('auto' = cores/4 capped at 4; piRpc.runtimeWorkers pins 1-8). Sessions stick to their worker; a worker crash faults only its own sessions and the pool self-replaces. On a 14-core machine, 3 chats generate truly in parallel instead of sharing one thread.

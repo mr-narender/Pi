@@ -225,7 +225,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       getSettings().autoInstall ||
       existsSync(bundledCli);
     if (firstFolder && piAvailable) {
-      sharedHost.schedulePrewarm(firstFolder.uri.fsPath, 3000);
+      sharedHost.schedulePrewarm(firstFolder.uri.fsPath, 8000);
     }
   }
   // Record the loaded build in the output channel only (no user-facing toast).

@@ -31,6 +31,11 @@ class HostWorkerConn {
   private buffer = '';
   public readonly channels = new Map<string, HostChannel>();
   public fault: Error | undefined;
+  /** True once the worker has ANSWERED its first open — i.e. Pi's module graph
+   * is imported and the runtime is live. Cold boots are expensive (seconds);
+   * the pool must never boot a second worker while one is still cold. */
+  public warm = false;
+  private startedAt = 0;
 
   public constructor(
     public readonly id: number,
@@ -80,6 +85,7 @@ class HostWorkerConn {
     });
     (worker.stdout as Readable).on('data', (chunk: Buffer) => this.onStdout(chunk));
     this.worker = worker;
+    this.startedAt = Date.now();
   }
 
   private onStdout(chunk: Buffer): void {
@@ -113,6 +119,12 @@ class HostWorkerConn {
     }
     // The host's open/close acks are for US, not the RpcClient — intercept them.
     if (payload.command === 'open' && payload.type === 'response') {
+      if (payload.success === true && !this.warm) {
+        this.warm = true;
+        this.logger.info(
+          `Pi runtime worker #${this.id} warm in ${((Date.now() - this.startedAt) / 1000).toFixed(1)}s`
+        );
+      }
       channel.opened = payload.success === true;
       channel.onOpen?.(payload.success === true, payload.error as string | undefined);
       channel.onOpen = undefined;
@@ -210,10 +222,22 @@ export class SharedPiHost {
     });
     const piRoot = await this.piRootPromise;
     const live = this.conns.filter((conn) => !conn.fault);
+    // NEVER boot a second worker while one is still cold: parallel cold boots
+    // contend on CPU (both importing Pi's whole module graph) and can push past
+    // the open timeout — exactly the activation stampede that made 0.0.200 feel
+    // slow. Pile onto the booting worker; its queued opens are fast once warm.
+    const cold = live
+      .filter((conn) => !conn.warm)
+      .sort((a, b) => a.sessionCount - b.sessionCount)[0];
+    if (cold) {
+      return cold;
+    }
+    const empty = live.find((conn) => conn.sessionCount === 0);
+    if (empty) {
+      return empty;
+    }
     const least = [...live].sort((a, b) => a.sessionCount - b.sessionCount)[0];
-    // Reuse an EMPTY worker when one exists; otherwise grow until the cap, then
-    // least-loaded. (Growth before packing = real parallelism per busy chat.)
-    if (least && (least.sessionCount === 0 || live.length >= this.maxWorkers)) {
+    if (least && live.length >= this.maxWorkers) {
       return least;
     }
     const conn = new HostWorkerConn(
@@ -302,6 +326,9 @@ export class SharedPiHost {
     if (conn.fault) {
       throw conn.fault;
     }
+    // A COLD worker is importing Pi's module graph — give its first opens real
+    // headroom instead of tripping into the (much slower) per-chat fallback.
+    const effectiveTimeoutMs = conn.warm ? openTimeoutMs : Math.max(openTimeoutMs, 60_000);
     const key = randomUUID();
     const stdout = new PassThrough();
     const stderr = new PassThrough();
@@ -329,7 +356,7 @@ export class SharedPiHost {
     const opened = new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => {
         reject(new Error('Timed out opening shared Pi session'));
-      }, openTimeoutMs);
+      }, effectiveTimeoutMs);
       channel.onOpen = (ok, error) => {
         clearTimeout(timer);
         if (ok) {
@@ -350,6 +377,9 @@ export class SharedPiHost {
       await opened;
     } catch (error) {
       conn.channels.delete(key);
+      // The worker may still complete this open later — tell it to tear the
+      // orphan session down instead of leaking it.
+      conn.writeEnvelope(key, { type: 'close' });
       stdout.push(null);
       throw error;
     }
