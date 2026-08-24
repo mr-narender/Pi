@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.209
+
+- The Pi output channel now strips terminal escape sequences (ANSI colors, OSC ]777 notifications, carriage returns) that Pi and its extensions emit — logs are clean, readable text.
+
 ## 0.0.208
 
 - FIX: after 0.0.207's in-place draft binding, bound chats stopped updating live (responses only appeared after reopening the tab). The webview host registry was keyed by session key, which the binding changes for the same URI — hosts are now keyed by the stable resource URI, so live repaints always find their tab.
