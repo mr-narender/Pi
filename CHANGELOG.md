@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.202
+
+- The runtime pool now warms at VS Code startup: all workers boot serially in the background (ping-verified), then a draft session is parked — measured 3 workers ready in ~2s, New Chat adoption ~0ms. Nothing waits for your first click anymore. Trade-off: idle workers hold memory (~150MB each); tune with piRpc.runtimeWorkers.
+
 ## 0.0.201
 
 - FIX: 0.0.200's pool could make startup SLOWER — at activation two workers cold-booted simultaneously, contended on CPU, blew the 20s open timeout, and chats fell back to per-chat processes with a ~10s version probe (~45s total). Now: never boot a second worker while one is cold (queued opens ride the booting worker), cold boots get 60s headroom, abandoned opens are closed (no orphan sessions), the version probe is skipped for our own bundled/managed installs, and the prewarm waits out the activation storm. Measured: two cold opens now ready in ~5s on one worker; the pool grows only once warm.

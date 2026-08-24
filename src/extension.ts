@@ -215,17 +215,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       workers === 'auto' ? undefined : workers
     );
     context.subscriptions.push({ dispose: () => disposeSharedPiHost() });
-    // Prewarm at idle: boots the host worker AND parks a ready draft session, so
-    // the first New Chat is instant and the first saved-chat open hits the warm
-    // services cache. Runs a few seconds after activation to stay out of startup.
+    // Warm the WHOLE pool at activation — workers boot serially in the
+    // background so the runtime is standing before the first click, then a
+    // draft session is parked for instant New Chat. User opens arriving
+    // mid-warmup ride the booting worker (never a second cold boot).
     const firstFolder = vscode.workspace.workspaceFolders?.[0];
     const piAvailable =
       pathPi?.packageRoot !== undefined ||
       existsSync(managedCli) ||
       getSettings().autoInstall ||
       existsSync(bundledCli);
-    if (firstFolder && piAvailable) {
-      sharedHost.schedulePrewarm(firstFolder.uri.fsPath, 8000);
+    if (piAvailable) {
+      sharedHost.warmPool(firstFolder?.uri.fsPath);
     }
   }
   // Record the loaded build in the output channel only (no user-facing toast).

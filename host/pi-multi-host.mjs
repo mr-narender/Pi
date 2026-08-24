@@ -789,6 +789,12 @@ attachJsonlLineReader(process.stdin, (line) => {
   const k = env && env.k;
   const d = env && env.d;
   if (!k || !d) return;
+  if (d.type === 'ping') {
+    // Warmth probe: answering proves the module graph is imported and the
+    // stdin reader is live (this line only runs after all top-level awaits).
+    hostEmit(k, { type: 'response', command: 'ping', success: true });
+    return;
+  }
   if (d.type === 'open') {
     void openSession(k, { cwd: d.cwd, sessionFile: d.sessionFile });
     return;

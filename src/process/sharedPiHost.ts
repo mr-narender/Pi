@@ -36,6 +36,8 @@ class HostWorkerConn {
    * the pool must never boot a second worker while one is still cold. */
   public warm = false;
   private startedAt = 0;
+  private pingSeq = 0;
+  private readonly pendingPings = new Map<string, () => void>();
 
   public constructor(
     public readonly id: number,
@@ -113,17 +115,24 @@ class HostWorkerConn {
     if (!key || !payload) {
       return;
     }
+    // Ping acks use throwaway keys (no channel) — intercept before the lookup.
+    if (payload.command === 'ping' && payload.type === 'response') {
+      this.markWarm();
+      const resolve = this.pendingPings.get(key);
+      if (resolve) {
+        this.pendingPings.delete(key);
+        resolve();
+      }
+      return;
+    }
     const channel = this.channels.get(key);
     if (!channel) {
       return;
     }
     // The host's open/close acks are for US, not the RpcClient — intercept them.
     if (payload.command === 'open' && payload.type === 'response') {
-      if (payload.success === true && !this.warm) {
-        this.warm = true;
-        this.logger.info(
-          `Pi runtime worker #${this.id} warm in ${((Date.now() - this.startedAt) / 1000).toFixed(1)}s`
-        );
+      if (payload.success === true) {
+        this.markWarm();
       }
       channel.opened = payload.success === true;
       channel.onOpen?.(payload.success === true, payload.error as string | undefined);
@@ -135,6 +144,31 @@ class HostWorkerConn {
       return;
     }
     channel.stdout.push(`${JSON.stringify(payload)}\n`);
+  }
+
+  private markWarm(): void {
+    if (!this.warm) {
+      this.warm = true;
+      this.logger.info(
+        `Pi runtime worker #${this.id} warm in ${((Date.now() - this.startedAt) / 1000).toFixed(1)}s`
+      );
+    }
+  }
+
+  /** Resolves once the worker answers — i.e. Pi's module graph is imported. */
+  public ping(timeoutMs = 90_000): Promise<void> {
+    const key = `__ping_${++this.pingSeq}`;
+    return new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pendingPings.delete(key);
+        reject(new Error(`worker #${this.id} ping timed out`));
+      }, timeoutMs);
+      this.pendingPings.set(key, () => {
+        clearTimeout(timer);
+        resolve();
+      });
+      this.writeEnvelope(key, { type: 'ping' });
+    });
   }
 
   public writeEnvelope(key: string, payload: Record<string, unknown>): void {
@@ -240,6 +274,10 @@ export class SharedPiHost {
     if (least && live.length >= this.maxWorkers) {
       return least;
     }
+    return this.spawnConn(piRoot);
+  }
+
+  private spawnConn(piRoot: string): HostWorkerConn {
     const conn = new HostWorkerConn(
       this.nextConnId++,
       this.hostScript,
@@ -264,6 +302,53 @@ export class SharedPiHost {
       `Pi runtime worker #${conn.id} started (pool ${this.conns.length}/${this.maxWorkers})`
     );
     return conn;
+  }
+
+  private warmingPool = false;
+
+  /**
+   * Boot the WHOLE pool at startup — serially (parallel cold boots contend on
+   * CPU), each worker confirmed warm via ping before the next starts. Ends by
+   * parking the prewarmed draft session, so the first New Chat AND the first
+   * parallel burst are both instant. Safe to call once per activation; user
+   * opens arriving mid-warmup simply ride the currently-booting worker.
+   */
+  public warmPool(prewarmCwd?: string): void {
+    if (this.warmingPool) {
+      return;
+    }
+    this.warmingPool = true;
+    void (async () => {
+      try {
+        this.piRootPromise ??= this.resolvePiRoot().catch((error: unknown) => {
+          this.piRootPromise = undefined;
+          throw error;
+        });
+        const piRoot = await this.piRootPromise;
+        for (;;) {
+          const live = this.conns.filter((conn) => !conn.fault);
+          const cold = live.find((conn) => !conn.warm);
+          if (cold) {
+            await cold.ping();
+            continue;
+          }
+          if (live.length >= this.maxWorkers) {
+            break;
+          }
+          await this.spawnConn(piRoot).ping();
+        }
+        this.logger.info(`Pi runtime pool warm (${this.maxWorkers} workers ready)`);
+        if (prewarmCwd) {
+          this.schedulePrewarm(prewarmCwd, 500);
+        }
+      } catch (error) {
+        this.logger.warn(
+          `Pool warmup stopped: ${error instanceof Error ? error.message : String(error)}`
+        );
+      } finally {
+        this.warmingPool = false;
+      }
+    })();
   }
 
   /** Park a ready draft session for this cwd so the next New Chat is instant. */
