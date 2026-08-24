@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { readFile, stat } from 'node:fs/promises';
 import type { RecentSessionService } from '../../sessions/recentSessionService';
+import type { SessionController } from '../../sessions/sessionController';
 import type { SessionRegistry } from '../../sessions/sessionRegistry';
 import { getSettings } from '../../config/settings';
 import { buildSidebarState, type SidebarSessionItem, type SidebarState } from './state';
@@ -18,6 +19,7 @@ export class SessionsWebviewProvider implements vscode.WebviewViewProvider {
     private readonly registry: SessionRegistry,
     private readonly recentSessions: RecentSessionService,
     private readonly memento?: vscode.Memento,
+    private readonly contextPercentOf?: (controller: SessionController) => number | undefined,
     // Optional off-thread search accelerator; failures fall back inline.
     private readonly indexService?: {
       search(
@@ -231,6 +233,7 @@ export class SessionsWebviewProvider implements vscode.WebviewViewProvider {
     // Mission Control badges: mark rows whose controller is generating (busy) or
     // blocked on an approval (waiting) so background chats are visible at a glance.
     const statusByPath = new Map<string, 'busy' | 'waiting'>();
+    const pctByPath = new Map<string, number>();
     for (const controller of this.registry.list()) {
       const file = controller.snapshot.state.sessionFile;
       if (typeof file !== 'string') {
@@ -242,11 +245,19 @@ export class SessionsWebviewProvider implements vscode.WebviewViewProvider {
       } else if (snap.state.isStreaming === true || snap.connectionState === 'busy') {
         statusByPath.set(file, 'busy');
       }
+      const percent = this.contextPercentOf?.(controller);
+      if (typeof percent === 'number' && percent >= 60) {
+        pctByPath.set(file, Math.round(percent));
+      }
     }
     for (const session of state.sessions) {
       const status = statusByPath.get(session.path);
       if (status) {
         session.status = status;
+      }
+      const pct = pctByPath.get(session.path);
+      if (pct !== undefined) {
+        session.contextPct = pct;
       }
     }
     return state;
@@ -319,6 +330,8 @@ export class SessionsWebviewProvider implements vscode.WebviewViewProvider {
       .stat-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
       .stat-dot.busy { background: var(--vscode-charts-orange, #d2795b); animation: sb-pulse 1s ease-in-out infinite; }
       .stat-dot.waiting { background: var(--vscode-charts-yellow, #e2b93d); animation: sb-pulse 0.7s ease-in-out infinite; }
+      .ctx-pct { margin-left: 6px; font-size: 10px; opacity: 0.6; }
+      .ctx-pct.hot { color: var(--vscode-charts-orange, #ff8c42); opacity: 1; font-weight: 600; }
       @keyframes sb-pulse { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
       .item.other .name { opacity: 0.92; }
     </style>
@@ -351,7 +364,7 @@ export class SessionsWebviewProvider implements vscode.WebviewViewProvider {
           return divider +
           '<div class="item' + (s.active ? ' active' : '') + (s.pinned ? ' pinned' : '') + (s.other ? ' other' : '') + '" data-path="' + esc(s.path) + '" data-name="' + esc(s.name) + '"' + (s.other ? ' data-other="1" data-cwd="' + esc(s.cwd || '') + '"' : '') + '>' +
             '<div class="body">' +
-              '<div class="name">' + (s.status ? '<span class="stat-dot ' + s.status + '"></span>' : '') + esc(s.name) + '</div>' +
+              '<div class="name">' + (s.status ? '<span class="stat-dot ' + s.status + '"></span>' : '') + esc(s.name) + (s.contextPct ? '<span class="ctx-pct' + (s.contextPct >= 85 ? ' hot' : '') + '">' + s.contextPct + '%</span>' : '') + '</div>' +
               (s.meta ? '<div class="meta">' + esc(s.meta) + '</div>' : '') +
             '</div>' +
             '<div class="actions">' +

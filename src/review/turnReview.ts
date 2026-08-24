@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { writeFile, mkdtemp } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { tmpdir, homedir } from 'node:os';
 import { join, basename } from 'node:path';
 import * as vscode from 'vscode';
 import type { SessionController } from '../sessions/sessionController';
@@ -38,11 +38,39 @@ interface TurnRecord {
 export class TurnReview {
   private readonly snapshots = new Map<SessionController, TurnSnapshot>();
   private readonly lastTurn = new Map<SessionController, TurnRecord>();
+  // cwd -> is a safe repo to snapshot. Guards macOS TCC: git in a HOME-rooted
+  // repo walks ~/Library, ~/Documents, ~/Desktop and triggers "VS Code wants to
+  // access data from other apps" prompts on every turn.
+  private readonly repoAllowed = new Map<string, boolean>();
+
+  private async allowedRepo(cwd: string): Promise<boolean> {
+    const cached = this.repoAllowed.get(cwd);
+    if (cached !== undefined) {
+      return cached;
+    }
+    let allowed = false;
+    try {
+      const top = (await this.git(cwd, ['rev-parse', '--show-toplevel'])).trim();
+      allowed = top.length > 0 && join(top) !== join(homedir());
+      if (!allowed) {
+        this.logger.warn(
+          `Turn review disabled for ${cwd}: repository root is the home directory (macOS privacy prompts)`
+        );
+      }
+    } catch {
+      allowed = false; // not a git repo
+    }
+    this.repoAllowed.set(cwd, allowed);
+    return allowed;
+  }
 
   public constructor(private readonly logger: DiagnosticsLogger) {}
 
   public async onTurnStart(controller: SessionController): Promise<void> {
     const cwd = controller.folder.uri.fsPath;
+    if (!(await this.allowedRepo(cwd))) {
+      return;
+    }
     try {
       const stashSha = (await this.git(cwd, ['stash', 'create'])).trim();
       const sha = stashSha || (await this.git(cwd, ['rev-parse', 'HEAD'])).trim();

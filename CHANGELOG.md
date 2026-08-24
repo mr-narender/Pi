@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.0.205
+
+- Failed turns now show the PROVIDER'S real error in the chat (same text as the TUI) with a Retry button — no more generic "empty response" guessing.
+- macOS privacy fix: turn review skips repositories rooted at your home directory (git walking ~/Library//Documents triggered "access data from other apps" prompts).
+- Context meter: sidebar shows a chat's context fill from 60% (orange at 85%+) and a warning fires before auto-compaction can surprise you.
+- π Swarm: "Pi: Fan Out to Parallel Chats…" runs one prompt template across up to 6 parallel chats with a consolidated completion notification.
+- Attach Git Diff / Staged Diff / Terminal Selection to the chat from the π title-bar menu.
+- Connection health now shows the runtime pool (workers + session counts).
+
 ## 0.0.204
 
 - Runtime workers moved out of the extension host into separate OS processes on your system Node. Worker threads inside the extension host crawled during window startup (the process is saturated by extensions activating — 13-16s boots regardless of caches) and Electron's Node silently lacks the compile-cache API. Separate processes schedule independently and system Node >=22 enables the V8 bytecode cache for real: measured cold boot 1.5s, cached boots 0.7s, New Chat adoption 1ms. Falls back to Electron-as-Node when no system Node exists.

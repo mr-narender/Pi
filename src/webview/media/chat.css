@@ -1309,6 +1309,10 @@ button.ghost:hover,
 }
 
 /* ---- Connecting state (LOCAL-004) ---- */
+.assistant-error .error-text {
+  color: var(--vscode-errorForeground, #f48771);
+}
+
 .connecting-state {
   height: 100%;
   min-height: 240px;

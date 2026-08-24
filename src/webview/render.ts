@@ -174,6 +174,10 @@ function renderAssistantBody(
   );
   if (!hasAnyContent && !streamingAnswer) {
     const who = modelName ? `<strong>${escapeHtml(modelName)}</strong>` : 'The model';
+    if (message.errorMessage) {
+      // Show the provider's REAL error (same text the TUI shows) — never guess.
+      return `<div class="assistant-empty assistant-error">${who} failed: <span class="error-text">${escapeHtml(message.errorMessage)}</span> <button type="button" class="link-button" data-command="piRpcInternal.retryLast">Retry</button> · <button type="button" class="link-button" data-command="piRpcInternal.showLogs">Logs</button></div>`;
+    }
     return `<div class="assistant-empty">${who} returned an empty response — it may be rate-limited or erroring. <button type="button" class="link-button" data-command="piRpcInternal.showLogs">Open Pi logs</button> or switch models.</div>`;
   }
   const hasProcess = blocks.some((block) => block.kind !== 'text');

@@ -292,6 +292,41 @@ export class ChatTabManager implements vscode.Disposable {
 
   private readonly lastActivityAt = new Map<SessionController, number>();
   private reapTimer: ReturnType<typeof setInterval> | undefined;
+  public readonly contextPercent = new Map<SessionController, number>();
+  private readonly contextWarnedAt = new Map<SessionController, number>();
+
+  // After each turn, record context usage; warn once per 10min above 85% so a
+  // chat never gets surprise-compacted mid-task.
+  private async checkContextPressure(controller: SessionController): Promise<void> {
+    try {
+      const stats = await controller.showSessionStats();
+      const usage = stats?.contextUsage as { percent?: number | null } | undefined;
+      const percent = typeof usage?.percent === 'number' ? usage.percent : undefined;
+      if (percent === undefined) {
+        return;
+      }
+      this.contextPercent.set(controller, percent);
+      if (percent >= 85) {
+        const last = this.contextWarnedAt.get(controller) ?? 0;
+        if (Date.now() - last > 10 * 60_000) {
+          this.contextWarnedAt.set(controller, Date.now());
+          const name = controller.snapshot.state.sessionName;
+          void vscode.window
+            .showWarningMessage(
+              `π chat ${typeof name === 'string' && name ? `“${name}” ` : ''}is at ${Math.round(percent)}% context — compact soon to avoid losing thread.`,
+              'Open Chat'
+            )
+            .then((choice) => {
+              if (choice === 'Open Chat') {
+                this.revealController(controller);
+              }
+            });
+        }
+      }
+    } catch {
+      /* stats unavailable — skip */
+    }
+  }
 
   private async reapIdleSessions(): Promise<void> {
     const minutes = getSettings().idleSessionMinutes;
@@ -1518,6 +1553,7 @@ export class ChatTabManager implements vscode.Disposable {
       if (getSettings().turnReview) {
         void this.turnReview?.onTurnEnd(controller);
       }
+      void this.checkContextPressure(controller);
       const elapsed = startedAt ? Date.now() - startedAt : 0;
       if (!getSettings().notifyOnComplete || elapsed < 4000) {
         return;
@@ -1549,6 +1585,22 @@ export class ChatTabManager implements vscode.Disposable {
       }
     }
     return false;
+  }
+
+  /** Append text to the ACTIVE chat's draft (composer) and repaint it. */
+  public async appendToActiveDraft(text: string): Promise<void> {
+    const context = this.getActiveContext();
+    if (!context) {
+      void vscode.window.showInformationMessage('Open a Pi chat first.');
+      return;
+    }
+    const state = await this.uiState.getComposerStateForIdentity(
+      context.controller,
+      context.target
+    );
+    state.draft = `${state.draft ?? ''}${text}`;
+    await this.uiState.setComposerStateForIdentity(context.controller, context.target, state);
+    await this.renderResource(context.resource, { active: true });
   }
 
   /** Every open chat tab with its controller — the Mission Control roster. */

@@ -12,6 +12,8 @@ export interface SidebarSessionItem {
   project?: string;
   /** Live state badge: generating (busy) or blocked on an approval (waiting). */
   status?: 'busy' | 'waiting';
+  /** Context window fill (%) when the chat is running hot (>=60). */
+  contextPct?: number;
 }
 
 export interface SidebarState {

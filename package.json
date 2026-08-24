@@ -2,7 +2,7 @@
   "name": "pi",
   "displayName": "Pi – this one is (y)ours",
   "description": "An unofficial, personal VS Code chat UI for the Pi coding agent (pi.dev). Not affiliated with pi.dev — shared for anyone who wants it.",
-  "version": "0.0.204",
+  "version": "0.0.205",
   "publisher": "mr-narender",
   "license": "MIT",
   "private": true,
@@ -288,6 +288,26 @@
       {
         "command": "piRpc.showAllChatsUsage",
         "title": "Show Usage for All Open Chats",
+        "category": "Pi"
+      },
+      {
+        "command": "piRpc.fanOut",
+        "title": "Fan Out to Parallel Chats…",
+        "category": "Pi"
+      },
+      {
+        "command": "piRpcInternal.attachGitDiff",
+        "title": "Attach Git Diff to Chat",
+        "category": "Pi"
+      },
+      {
+        "command": "piRpcInternal.attachStagedDiff",
+        "title": "Attach Staged Diff to Chat",
+        "category": "Pi"
+      },
+      {
+        "command": "piRpcInternal.attachTerminalSelection",
+        "title": "Attach Terminal Selection to Chat",
         "category": "Pi"
       },
       {
@@ -1027,6 +1047,18 @@
         {
           "command": "piRpc.reviewLastTurn",
           "group": "4_review@1"
+        },
+        {
+          "command": "piRpcInternal.attachGitDiff",
+          "group": "4b_attach@1"
+        },
+        {
+          "command": "piRpcInternal.attachStagedDiff",
+          "group": "4b_attach@2"
+        },
+        {
+          "command": "piRpcInternal.attachTerminalSelection",
+          "group": "4b_attach@3"
         },
         {
           "command": "piRpcInternal.restart",

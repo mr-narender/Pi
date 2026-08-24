@@ -171,6 +171,9 @@ export interface WebviewMessageItem {
   // with persisted snapshots; the webview falls back to `text`.
   blocks?: WebviewMessageBlock[];
   attachments: WebviewAttachmentItem[];
+  // The PROVIDER'S actual error for failed turns (stopReason 'error') — the
+  // webview shows this instead of a generic "empty response" guess.
+  errorMessage?: string;
 }
 
 export interface WebviewPendingImageItem {

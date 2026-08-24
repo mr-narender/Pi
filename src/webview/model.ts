@@ -281,6 +281,10 @@ function toItem(message: JsonObject, index: number, cwd: string): WebviewMessage
     text: messageText(message),
     blocks: toBlocks(message),
     attachments: normalizeAttachments(message.attachments, cwd),
+    errorMessage:
+      typeof message.errorMessage === 'string' && message.errorMessage.trim()
+        ? sanitizeDisplayText(message.errorMessage, 600)
+        : undefined,
   };
 }
 

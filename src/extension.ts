@@ -1,8 +1,17 @@
 import * as vscode from 'vscode';
 import { existsSync } from 'node:fs';
 import { basename } from 'node:path';
+import { execFile } from 'node:child_process';
+
+function runGit(cwd: string, args: string[]): Promise<string> {
+  return new Promise((resolve) => {
+    execFile('git', args, { cwd, maxBuffer: 8 * 1024 * 1024 }, (error, stdout) => {
+      resolve(error ? '' : stdout);
+    });
+  });
+}
 import { setBundledPiCliPath, setManagedPiCliPath, detectPathPi } from './process/piLauncher';
-import { initSharedPiHost, disposeSharedPiHost } from './process/sharedPiHost';
+import { initSharedPiHost, disposeSharedPiHost, getSharedPiHost } from './process/sharedPiHost';
 import { TurnReview } from './review/turnReview';
 import { SessionIndexService } from './sessions/sessionIndexService';
 import { ensureManagedPi, managedPiCliPath, managedPiRoot } from './process/piManaged';
@@ -322,6 +331,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     registry,
     recentSessions,
     context.workspaceState,
+    (controller) => chatTabs.contextPercent.get(controller),
     sessionIndex
   );
 
@@ -1399,6 +1409,132 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }
     return name;
   });
+  // π Swarm: fan one prompt template across N parallel chats on the pool.
+  registrations.set('piRpc.fanOut', async () => {
+    ensureWorkspaceAvailable();
+    ensureTrustedForMutation();
+    const template = await vscode.window.showInputBox({
+      title: 'π Swarm — prompt template',
+      prompt: 'Use {item} where each item should be substituted',
+      placeHolder: 'e.g. Run the tests in {item} and fix any failures',
+    });
+    if (!template || !template.trim()) {
+      return;
+    }
+    const itemsRaw = await vscode.window.showInputBox({
+      title: 'π Swarm — items (comma or ; separated)',
+      prompt: 'One chat per item, e.g. packages/api, packages/web, packages/cli',
+    });
+    if (!itemsRaw || !itemsRaw.trim()) {
+      return;
+    }
+    const items = itemsRaw
+      .split(/[,;\n]/)
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .slice(0, 6);
+    if (items.length === 0) {
+      return;
+    }
+    const base = chatTabs.getActiveContext()?.controller ?? registry.getActive();
+    if (!base) {
+      return;
+    }
+    const swarm: SessionController[] = [];
+    for (const item of items) {
+      const message = template.replaceAll('{item}', item);
+      try {
+        const draftResource = await chatTabs.openDraftForWorkspace(base, {
+          focusComposer: false,
+        });
+        const ctx = await chatTabs.preparePromptContext(draftResource);
+        if (!ctx) {
+          continue;
+        }
+        await ctx.controller.prompt(message, 'prompt', undefined);
+        swarm.push(ctx.controller);
+      } catch (error) {
+        logger.warn(
+          `Swarm chat for “${item}” failed: ${error instanceof Error ? error.message : String(error)}`
+        );
+      }
+    }
+    if (swarm.length === 0) {
+      void vscode.window.showWarningMessage('π Swarm: no chats could be started.');
+      return;
+    }
+    void vscode.window.showInformationMessage(
+      `π Swarm: ${swarm.length} chat${swarm.length === 1 ? '' : 's'} running in parallel.`
+    );
+    // Consolidated completion: notify once when EVERY swarm chat settles.
+    const seenBusy = new Set<SessionController>();
+    const done = new Set<SessionController>();
+    const subs: vscode.Disposable[] = [];
+    const finish = (): void => {
+      for (const sub of subs) {
+        sub.dispose();
+      }
+      void vscode.window
+        .showInformationMessage(
+          `π Swarm complete — all ${swarm.length} chats finished.`,
+          'Show Chats'
+        )
+        .then((choice) => {
+          if (choice === 'Show Chats') {
+            void vscode.commands.executeCommand('piRpc.showRunningChats');
+          }
+        });
+    };
+    for (const controller of swarm) {
+      subs.push(
+        controller.onDidChangeState(() => {
+          const conn = controller.snapshot.connectionState;
+          if (conn === 'busy') {
+            seenBusy.add(controller);
+          } else if (conn === 'ready' && seenBusy.has(controller) && !done.has(controller)) {
+            done.add(controller);
+            if (done.size === swarm.length) {
+              finish();
+            }
+          }
+        })
+      );
+    }
+    context.subscriptions.push(...subs);
+  });
+
+  // Composer context: attach git/terminal state into the draft.
+  const appendDraftBlock = async (label: string, body: string): Promise<void> => {
+    if (!body.trim()) {
+      void vscode.window.showInformationMessage(`${label}: nothing to attach.`);
+      return;
+    }
+    const capped = body.length > 60_000 ? `${body.slice(0, 60_000)}\n… (truncated)` : body;
+    const fence = '```';
+    await chatTabs.appendToActiveDraft(`\n\n${label}:\n${fence}\n${capped}\n${fence}\n`);
+  };
+  registrations.set('piRpcInternal.attachGitDiff', async () => {
+    const folder = chatTabs.getActiveContext()?.controller.folder ?? registry.getActive()?.folder;
+    if (!folder) {
+      return;
+    }
+    const diff = await runGit(folder.uri.fsPath, ['diff']);
+    await appendDraftBlock('Working tree diff', diff);
+  });
+  registrations.set('piRpcInternal.attachStagedDiff', async () => {
+    const folder = chatTabs.getActiveContext()?.controller.folder ?? registry.getActive()?.folder;
+    if (!folder) {
+      return;
+    }
+    const diff = await runGit(folder.uri.fsPath, ['diff', '--staged']);
+    await appendDraftBlock('Staged diff', diff);
+  });
+  registrations.set('piRpcInternal.attachTerminalSelection', async () => {
+    await vscode.commands.executeCommand('workbench.action.terminal.copySelection');
+    const text = await vscode.env.clipboard.readText();
+    await appendDraftBlock('Terminal selection', text);
+  });
+
   // Aggregate usage/cost across every OPEN chat (parallel sessions).
   registrations.set('piRpc.showAllChatsUsage', async () => {
     const chats = chatTabs.listOpenChats();
@@ -2040,6 +2176,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       `Thinking: ${asString(state?.state.thinkingLevel) ?? '—'}`,
       `Messages: ${state?.messages.length ?? 0}`,
       `Pi path: ${getSettings().executable}`,
+      `Runtime pool: ${
+        getSharedPiHost()
+          ?.poolStatus()
+          .map(
+            (worker) =>
+              `#${worker.id}:${worker.sessions} session${worker.sessions === 1 ? '' : 's'}`
+          )
+          .join('  ') || '(not running)'
+      }`,
     ];
     const choice = await vscode.window.showInformationMessage(
       'Pi connection health',
