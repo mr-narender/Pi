@@ -871,7 +871,8 @@ export class ChatTabManager implements vscode.Disposable {
     await this.uiState.clearComposerStateForIdentity(current.controller, current.target);
     const nextResource = buildChatUri(nextTarget);
     await this.promoteResource(resource, nextResource, current.controller);
-    return this.activateResource(nextResource, { startIfStopped: false });
+    // The tab keeps the DRAFT uri (now bound to the session) — no tab swap.
+    return this.activateResource(resource, { startIfStopped: false });
   }
 
   private findTabUriForSessionFile(sessionFile: string): vscode.Uri | undefined {
@@ -883,7 +884,7 @@ export class ChatTabManager implements vscode.Disposable {
         if (input?.viewType !== CHAT_EDITOR_VIEW_TYPE || !input.uri) {
           continue;
         }
-        const target = parseChatUri(input.uri);
+        const target = this.resolveTarget(input.uri);
         if (
           target?.kind === 'sessionFile' &&
           target.sessionFile &&
@@ -930,6 +931,9 @@ export class ChatTabManager implements vscode.Disposable {
       {
         workspaceFolderUri: controller.folder.uri.toString(),
         kind: 'workspaceDraft',
+        // Unique per click: every New Chat is a FRESH draft tab, and a draft
+        // that became a session keeps living in its own tab (bound in place).
+        draftId: `d${this.nextSessionNumber()}`,
       },
       options
     );
@@ -947,11 +951,14 @@ export class ChatTabManager implements vscode.Disposable {
     await this.uiState.setComposerStateForIdentity(controller, nextTarget, draftState);
     await this.uiState.clearComposerStateForIdentity(controller, draftTarget);
     await this.promoteResource(draftResource, nextResource, controller);
-    return nextResource;
+    return draftResource;
   }
 
   public async onHostDisposed(host: ChatEditorHost): Promise<void> {
     const key = this.keyFor(host.resource);
+    if (this.draftBindings.delete(host.resource.toString())) {
+      this.persistBindings();
+    }
     if (this.hosts.get(key) === host) {
       this.hosts.delete(key);
     }
@@ -1435,8 +1442,51 @@ export class ChatTabManager implements vscode.Disposable {
       : undefined;
   }
 
+  // Draft URI -> bound session target (set on first message; the draft tab
+  // keeps its URI forever instead of the flickery open-new/close-old tab swap).
+  private draftBindings = new Map<string, ChatTabTarget>();
+  private bindingsLoaded = false;
+
+  private loadBindings(): void {
+    if (this.bindingsLoaded) {
+      return;
+    }
+    this.bindingsLoaded = true;
+    const raw = this.context.workspaceState.get<Record<string, ChatTabTarget>>(
+      'piRpc.draftBindings',
+      {}
+    );
+    for (const [uri, target] of Object.entries(raw)) {
+      this.draftBindings.set(uri, target);
+    }
+  }
+
+  private persistBindings(): void {
+    const raw: Record<string, ChatTabTarget> = {};
+    for (const [uri, target] of this.draftBindings) {
+      raw[uri] = target;
+    }
+    void this.context.workspaceState.update('piRpc.draftBindings', raw);
+  }
+
+  /** The EFFECTIVE target for a resource: a bound draft resolves to its session. */
+  private resolveTarget(resource: vscode.Uri): ChatTabTarget | undefined {
+    const parsed = parseChatUri(resource);
+    if (!parsed) {
+      return undefined;
+    }
+    if (parsed.kind === 'workspaceDraft') {
+      this.loadBindings();
+      const bound = this.draftBindings.get(resource.toString());
+      if (bound) {
+        return bound;
+      }
+    }
+    return parsed;
+  }
+
   private keyFor(resource: vscode.Uri): string {
-    const target = parseChatUri(resource);
+    const target = this.resolveTarget(resource);
     return target ? chatTargetSessionKey(target) : resource.toString();
   }
 
@@ -1481,7 +1531,7 @@ export class ChatTabManager implements vscode.Disposable {
   }
 
   private contextForResource(resource: vscode.Uri): ChatTabContext | undefined {
-    const target = parseChatUri(resource);
+    const target = this.resolveTarget(resource);
     if (!target) {
       return undefined;
     }
@@ -1954,26 +2004,26 @@ export class ChatTabManager implements vscode.Disposable {
     to: vscode.Uri,
     controller: SessionController
   ): Promise<void> {
-    // The draft's dedicated controller now owns a real session: move it to the
-    // session key so the promoted tab reuses the SAME controller/Pi (not a new
-    // one), and repaint it under the new resource.
-    this.registry.rekey(this.keyFor(from), this.keyFor(to));
-    this.controllerResource.set(controller, to);
+    // BIND the draft tab to its new session IN PLACE. The old flow opened a new
+    // tab for the session URI and closed the draft — a visible open/close
+    // flicker on every first message. The tab now keeps its draft URI forever;
+    // resolveTarget() maps it to the session (persisted across reloads).
+    const oldKey = this.keyFor(from);
+    const nextTarget = parseChatUri(to) ?? currentTargetForController(controller);
+    this.loadBindings();
+    this.draftBindings.set(from.toString(), nextTarget);
+    this.persistBindings();
+    this.registry.rekey(oldKey, this.keyFor(from));
+    this.controllerResource.set(controller, from);
     const fromState = this.cache.get(from);
     if (fromState) {
       await this.cache.set({
         ...fromState,
-        resource: to.toString(),
-        target: currentTargetForController(controller),
+        target: nextTarget,
         lastViewedAt: Date.now(),
       });
-      await this.cache.delete(from);
     }
-    await this.openResource(to);
-    const tab = this.findTab(from);
-    if (tab) {
-      await vscode.window.tabGroups.close(tab, true);
-    }
+    await this.renderResource(from, { active: true });
   }
 
   private findTab(resource: vscode.Uri): vscode.Tab | undefined {

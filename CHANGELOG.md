@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.207
+
+- FIX: sending the first message in a New Chat no longer flickers (a session tab visibly opened while the draft tab closed). The draft tab now keeps its URI forever and is BOUND to its session in place — bindings persist across reloads. Bonus: every New Chat click now opens its own fresh draft (drafts have unique identities).
+
 ## 0.0.206
 
 - Code blocks in responses now offer Copy only — Insert/New-file buttons were noise; file changes go through the agent's edit-tool cards (Open file / Open changes).

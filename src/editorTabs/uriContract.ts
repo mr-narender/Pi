@@ -22,6 +22,10 @@ export interface ChatTabTarget {
   kind: 'workspaceDraft' | 'sessionFile' | 'sessionId';
   sessionFile?: string;
   sessionId?: string;
+  /** Unique per New Chat click: lets several drafts coexist and lets a draft
+   * tab keep its URI forever (it gets BOUND to its session in place — no
+   * open/close tab swap on the first message). */
+  draftId?: string;
 }
 
 function encodeSegment(value: string): string {
@@ -50,16 +54,20 @@ export function canonicalChatTarget(target: ChatTabTarget): ChatTabTarget {
   return {
     workspaceFolderUri: target.workspaceFolderUri,
     kind: 'workspaceDraft',
+    ...(target.draftId ? { draftId: target.draftId } : {}),
   };
 }
 
 export function chatTargetSessionKey(target: ChatTabTarget): string {
   const canonical = canonicalChatTarget(target);
-  return canonicalSessionKey(
+  const base = canonicalSessionKey(
     canonical.workspaceFolderUri,
     canonical.sessionFile ? normalizeSessionFilePath(canonical.sessionFile) : undefined,
     canonical.sessionId
   );
+  return canonical.kind === 'workspaceDraft' && canonical.draftId
+    ? `${base}#d:${canonical.draftId}`
+    : base;
 }
 
 export function buildChatPath(target: ChatTabTarget): string {
@@ -70,6 +78,9 @@ export function buildChatPath(target: ChatTabTarget): string {
   }
   if (canonical.kind === 'sessionId' && canonical.sessionId) {
     return `/${workspaceKey}/session-id/${encodeSegment(canonical.sessionId)}.chat`;
+  }
+  if (canonical.draftId) {
+    return `/${workspaceKey}/draft-${encodeSegment(canonical.draftId)}.chat`;
   }
   return `/${workspaceKey}/draft.chat`;
 }
@@ -83,6 +94,14 @@ export function parseChatPath(path: string): ChatTabTarget | undefined {
   const workspaceFolderUri = decodeSegment(workspaceKey);
   if (parts.length === 2 && parts[1] === 'draft.chat') {
     return { workspaceFolderUri, kind: 'workspaceDraft' };
+  }
+  if (parts.length === 2 && parts[1]?.startsWith('draft-') && parts[1].endsWith('.chat')) {
+    const encoded = parts[1].slice('draft-'.length, -'.chat'.length);
+    try {
+      return { workspaceFolderUri, kind: 'workspaceDraft', draftId: decodeSegment(encoded) };
+    } catch {
+      return { workspaceFolderUri, kind: 'workspaceDraft' };
+    }
   }
   if (parts.length !== 3) {
     return undefined;
