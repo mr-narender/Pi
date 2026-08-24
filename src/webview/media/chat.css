@@ -1383,7 +1383,15 @@ button.ghost:hover,
 .connecting-hint {
   margin: 0;
   font-size: 0.85em;
-  opacity: 0.55;
+  opacity: 0;
+  /* Only long boots earn the hint — momentary ones never show it. */
+  animation: pi-hint-in 0.4s ease 4s forwards;
+}
+
+@keyframes pi-hint-in {
+  to {
+    opacity: 0.55;
+  }
 }
 
 .loading-dots::after {

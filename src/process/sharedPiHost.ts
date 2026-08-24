@@ -45,6 +45,7 @@ class HostWorkerConn {
     private readonly baseEnv: NodeJS.ProcessEnv,
     private readonly piRoot: string,
     private readonly logger: LoggerLike,
+    private readonly cacheDir: string | undefined,
     private readonly onDead: (conn: HostWorkerConn) => void
   ) {}
 
@@ -54,8 +55,16 @@ class HostWorkerConn {
 
   public start(): void {
     // CJS bootstrap that dynamic-imports the ESM host (same trick as spawnWorkerPi).
+    // The V8 compile cache turns Pi's ~13k-module import from parse+compile into
+    // a bytecode load — the difference between a 10-15s first-of-the-day boot
+    // under VS Code startup load and a momentary one on every later boot.
     const bootstrap = `
       const { workerData } = require('node:worker_threads');
+      try {
+        if (workerData.cacheDir) {
+          require('node:module').enableCompileCache(workerData.cacheDir);
+        }
+      } catch { /* older Node — cache is a best-effort accelerator */ }
       import(require('node:url').pathToFileURL(workerData.hostPath).href).catch((err) => {
         console.error('pi shared host failed to load: ' + (err && err.stack ? err.stack : err));
         process.exit(1);
@@ -63,7 +72,7 @@ class HostWorkerConn {
     `;
     const worker = new Worker(bootstrap, {
       eval: true,
-      workerData: { hostPath: this.hostScript, piRoot: this.piRoot },
+      workerData: { hostPath: this.hostScript, piRoot: this.piRoot, cacheDir: this.cacheDir },
       env: { ...this.baseEnv, PI_TELEMETRY: '0', PI_SKIP_VERSION_CHECK: '1' },
       stdin: true,
       stdout: true,
@@ -229,7 +238,8 @@ export class SharedPiHost {
     // Where the Pi package lives (PATH install / managed / vendor). Async: on a
     // fresh client the FIRST chat awaits the managed bootstrap.
     private readonly resolvePiRoot: () => Promise<string>,
-    maxWorkers?: number
+    maxWorkers?: number,
+    private readonly cacheDir?: string
   ) {
     this.maxWorkers = Math.min(8, Math.max(1, maxWorkers ?? SharedPiHost.autoWorkerCount()));
   }
@@ -284,6 +294,7 @@ export class SharedPiHost {
       this.baseEnv,
       piRoot,
       this.logger,
+      this.cacheDir,
       (dead) => {
         const index = this.conns.indexOf(dead);
         if (index >= 0) {
@@ -325,20 +336,26 @@ export class SharedPiHost {
           throw error;
         });
         const piRoot = await this.piRootPromise;
+        let firstWarm = false;
         for (;;) {
           const live = this.conns.filter((conn) => !conn.fault);
           const cold = live.find((conn) => !conn.warm);
           if (cold) {
             await cold.ping();
-            continue;
-          }
-          if (live.length >= this.maxWorkers) {
+          } else if (live.length < this.maxWorkers) {
+            await this.spawnConn(piRoot).ping();
+          } else {
             break;
           }
-          await this.spawnConn(piRoot).ping();
+          // Park the New-Chat draft as soon as the FIRST worker is warm — the
+          // most user-visible readiness — then keep booting the rest.
+          if (!firstWarm && prewarmCwd) {
+            firstWarm = true;
+            this.schedulePrewarm(prewarmCwd, 0);
+          }
         }
         this.logger.info(`Pi runtime pool warm (${this.maxWorkers} workers ready)`);
-        if (prewarmCwd) {
+        if (prewarmCwd && !firstWarm) {
           this.schedulePrewarm(prewarmCwd, 500);
         }
       } catch (error) {
@@ -509,7 +526,8 @@ export function initSharedPiHost(
   env: NodeJS.ProcessEnv,
   logger: DiagnosticsLogger,
   resolvePiRoot: () => Promise<string>,
-  maxWorkers?: number
+  maxWorkers?: number,
+  cacheDir?: string
 ): SharedPiHost {
   singleton?.dispose();
   singleton = new SharedPiHost(
@@ -517,7 +535,8 @@ export function initSharedPiHost(
     env,
     logger,
     resolvePiRoot,
-    maxWorkers
+    maxWorkers,
+    cacheDir
   );
   return singleton;
 }

@@ -1176,7 +1176,7 @@ export function renderChatApp(snapshot: WebviewSnapshot): string {
                 : snapshot.connectionState === 'starting'
                   ? 'Starting π'
                   : 'Connecting to π'
-            }<span class="loading-dots" aria-hidden="true"></span></p><p class="connecting-hint">First chat can take a few seconds while the agent warms up</p></div>`
+            }<span class="loading-dots" aria-hidden="true"></span></p><p class="connecting-hint">Warming up the runtime…</p></div>`
           : faulted && snapshot.messages.length === 0
             ? `<div class="empty-state"><p class="empty-copy">Couldn’t start Pi for this workspace.</p><div class="button-row compact"><button type="button" data-command="piRpcInternal.restart">Try again</button><button type="button" data-command="piRpcInternal.showLogs">Show logs</button></div></div>`
             : renderMessages(snapshot)

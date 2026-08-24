@@ -212,7 +212,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       process.env,
       logger,
       resolvePiRoot,
-      workers === 'auto' ? undefined : workers
+      workers === 'auto' ? undefined : workers,
+      vscode.Uri.joinPath(context.globalStorageUri, 'v8-cache').fsPath
     );
     context.subscriptions.push({ dispose: () => disposeSharedPiHost() });
     // Warm the WHOLE pool at activation — workers boot serially in the
@@ -1545,7 +1546,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       process.env,
       logger,
       resolvePiRoot,
-      restartWorkers === 'auto' ? undefined : restartWorkers
+      restartWorkers === 'auto' ? undefined : restartWorkers,
+      vscode.Uri.joinPath(context.globalStorageUri, 'v8-cache').fsPath
     );
     void vscode.window.showInformationMessage(
       'Pi shared runtime restarted. Open chats will reconnect on their next action.'

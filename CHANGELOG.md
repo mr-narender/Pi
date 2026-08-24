@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.203
+
+- Runtime boots are now momentary after the first one: workers enable a V8 compile cache (globalStorage/v8-cache), so Pi's ~13k-module import loads from bytecode on every later boot (measured 3.0s → 1.0s per worker; the very first boot after an install/update still compiles once).
+- Warmup order: the New-Chat draft parks as soon as worker #1 is warm (was: after the whole pool).
+- The "warming up" hint in the loader only fades in when a boot exceeds 4s — quick boots show just the spinner.
+
 ## 0.0.202
 
 - The runtime pool now warms at VS Code startup: all workers boot serially in the background (ping-verified), then a draft session is parked — measured 3 workers ready in ~2s, New Chat adoption ~0ms. Nothing waits for your first click anymore. Trade-off: idle workers hold memory (~150MB each); tune with piRpc.runtimeWorkers.
