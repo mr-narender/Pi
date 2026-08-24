@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.206
+
+- Code blocks in responses now offer Copy only — Insert/New-file buttons were noise; file changes go through the agent's edit-tool cards (Open file / Open changes).
+
 ## 0.0.205
 
 - Failed turns now show the PROVIDER'S real error in the chat (same text as the TUI) with a Retry button — no more generic "empty response" guessing.

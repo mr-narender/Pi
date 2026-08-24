@@ -299,8 +299,9 @@ test('code blocks include Insert / New file / Copy actions and a data-lang', () 
     })
   );
   assert.match(html, /class="code-wrap" data-lang="ts"/);
-  assert.match(html, /class="code-btn code-insert"/);
-  assert.match(html, /class="code-btn code-newfile"/);
+  // Code blocks are COPY-only: file changes go through the edit tool's cards.
+  assert.doesNotMatch(html, /class="code-btn code-insert"/);
+  assert.doesNotMatch(html, /class="code-btn code-newfile"/);
   assert.match(html, /class="code-btn code-copy"/);
 });
 
