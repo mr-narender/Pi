@@ -1,9 +1,10 @@
-import { Worker } from 'node:worker_threads';
+import { spawn, type ChildProcess } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { PassThrough, Writable } from 'node:stream';
 import { randomUUID } from 'node:crypto';
 import * as path from 'node:path';
 import { cpus } from 'node:os';
-import type { Readable } from 'node:stream';
+import { delimiter } from 'node:path';
 import type { DiagnosticsLogger } from '../diagnostics/logger';
 import type { PiProcessHandle } from './piProcess';
 
@@ -21,13 +22,41 @@ interface LoggerLike {
   error(message: string, error?: unknown): void;
 }
 
+// Runtime workers run as SEPARATE OS PROCESSES on the system Node when one
+// exists (worker_threads inside the extension host crawled during window
+// startup — the whole process is saturated by extensions activating — and
+// Electron's Node lacks module.enableCompileCache, so boots stayed 13s+).
+// A separate process schedules independently, and system Node ≥22 gives us the
+// V8 compile cache that turns later boots into bytecode loads.
+let cachedNodeBin: string | null | undefined;
+function findSystemNode(): string | undefined {
+  if (cachedNodeBin !== undefined) {
+    return cachedNodeBin ?? undefined;
+  }
+  const names = process.platform === 'win32' ? ['node.exe', 'node.cmd'] : ['node'];
+  for (const dir of (process.env.PATH ?? '').split(delimiter)) {
+    if (!dir) {
+      continue;
+    }
+    for (const name of names) {
+      const candidate = path.join(dir, name);
+      if (existsSync(candidate)) {
+        cachedNodeBin = candidate;
+        return candidate;
+      }
+    }
+  }
+  cachedNodeBin = null;
+  return undefined;
+}
+
 /**
  * One pool member: a worker thread running host/pi-multi-host.mjs with its own
  * ModelRuntime, hosting the sessions ASSIGNED to it (sticky). A crash faults
  * only this member's sessions — the pool spawns a replacement on the next open.
  */
 class HostWorkerConn {
-  private worker: Worker | undefined;
+  private child: ChildProcess | undefined;
   private buffer = '';
   public readonly channels = new Map<string, HostChannel>();
   public fault: Error | undefined;
@@ -54,48 +83,39 @@ class HostWorkerConn {
   }
 
   public start(): void {
-    // CJS bootstrap that dynamic-imports the ESM host (same trick as spawnWorkerPi).
-    // The V8 compile cache turns Pi's ~13k-module import from parse+compile into
-    // a bytecode load — the difference between a 10-15s first-of-the-day boot
-    // under VS Code startup load and a momentary one on every later boot.
-    const bootstrap = `
-      const { workerData } = require('node:worker_threads');
-      try {
-        if (workerData.cacheDir) {
-          require('node:module').enableCompileCache(workerData.cacheDir);
-        }
-      } catch { /* older Node — cache is a best-effort accelerator */ }
-      import(require('node:url').pathToFileURL(workerData.hostPath).href).catch((err) => {
-        console.error('pi shared host failed to load: ' + (err && err.stack ? err.stack : err));
-        process.exit(1);
-      });
-    `;
-    const worker = new Worker(bootstrap, {
-      eval: true,
-      workerData: { hostPath: this.hostScript, piRoot: this.piRoot, cacheDir: this.cacheDir },
-      env: { ...this.baseEnv, PI_TELEMETRY: '0', PI_SKIP_VERSION_CHECK: '1' },
-      stdin: true,
-      stdout: true,
-      stderr: true,
+    const nodeBin = findSystemNode() ?? process.execPath;
+    const usingElectron = nodeBin === process.execPath;
+    const child = spawn(nodeBin, [this.hostScript], {
+      env: {
+        ...this.baseEnv,
+        PI_TELEMETRY: '0',
+        PI_SKIP_VERSION_CHECK: '1',
+        PI_HOST_PI_ROOT: this.piRoot,
+        // Node ≥22 loads the module graph from bytecode on repeat boots.
+        ...(this.cacheDir ? { NODE_COMPILE_CACHE: this.cacheDir } : {}),
+        ...(usingElectron ? { ELECTRON_RUN_AS_NODE: '1' } : {}),
+      },
+      stdio: ['pipe', 'pipe', 'pipe'],
+      windowsHide: true,
     });
-    worker.on('error', (error) => {
+    child.on('error', (error) => {
       this.logger.error(`Pi runtime worker #${this.id} error`, error);
       this.failAll(error instanceof Error ? error : new Error(String(error)));
     });
-    worker.on('exit', (code) => {
+    child.on('exit', (code) => {
       if (!this.fault) {
         this.logger.warn(`Pi runtime worker #${this.id} exited code=${String(code)}`);
         this.failAll(new Error(`Pi runtime worker exited code=${String(code)}`), code);
       }
     });
-    (worker.stderr as Readable).on('data', (chunk: Buffer) => {
+    child.stderr?.on('data', (chunk: Buffer) => {
       const text = chunk.toString('utf8').trimEnd();
       if (text) {
         this.logger.warn(`[pi-host#${this.id}] ${text}`);
       }
     });
-    (worker.stdout as Readable).on('data', (chunk: Buffer) => this.onStdout(chunk));
-    this.worker = worker;
+    child.stdout?.on('data', (chunk: Buffer) => this.onStdout(chunk));
+    this.child = child;
     this.startedAt = Date.now();
   }
 
@@ -181,11 +201,7 @@ class HostWorkerConn {
   }
 
   public writeEnvelope(key: string, payload: Record<string, unknown>): void {
-    const worker = this.worker;
-    if (!worker) {
-      return;
-    }
-    (worker.stdin as Writable).write(`${JSON.stringify({ k: key, d: payload })}\n`);
+    this.child?.stdin?.write(`${JSON.stringify({ k: key, d: payload })}\n`);
   }
 
   private failAll(error: Error, code: number | null = null): void {
@@ -197,20 +213,25 @@ class HostWorkerConn {
       channel.stdout.push(null);
     }
     this.channels.clear();
-    this.worker = undefined;
+    this.child = undefined;
     this.buffer = '';
     this.onDead(this);
   }
 
   public terminate(): void {
-    const worker = this.worker;
-    this.worker = undefined;
+    const child = this.child;
+    this.child = undefined;
     this.fault = this.fault ?? new Error('terminated');
     for (const channel of this.channels.values()) {
       channel.stdout.push(null);
     }
     this.channels.clear();
-    void worker?.terminate();
+    try {
+      child?.stdin?.end();
+    } catch {
+      /* ignore */
+    }
+    child?.kill('SIGTERM');
     this.onDead(this);
   }
 }

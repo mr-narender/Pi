@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.204
+
+- Runtime workers moved out of the extension host into separate OS processes on your system Node. Worker threads inside the extension host crawled during window startup (the process is saturated by extensions activating — 13-16s boots regardless of caches) and Electron's Node silently lacks the compile-cache API. Separate processes schedule independently and system Node >=22 enables the V8 bytecode cache for real: measured cold boot 1.5s, cached boots 0.7s, New Chat adoption 1ms. Falls back to Electron-as-Node when no system Node exists.
+
 ## 0.0.203
 
 - Runtime boots are now momentary after the first one: workers enable a V8 compile cache (globalStorage/v8-cache), so Pi's ~13k-module import loads from bytecode on every later boot (measured 3.0s → 1.0s per worker; the very first boot after an install/update still compiles once).
