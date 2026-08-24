@@ -429,7 +429,10 @@ export class ChatTabManager implements vscode.Disposable {
     document: ChatEditorDocument,
     panel: vscode.WebviewPanel
   ): Promise<void> {
-    const key = this.keyFor(document.uri);
+    // Hosts are keyed by RESOURCE URI (stable) — NOT by session key: binding a
+    // draft to its session changes keyFor()'s answer for the same URI, which
+    // orphaned the host entry and silently dropped every live repaint.
+    const key = document.uri.toString();
     this.hosts.get(key)?.dispose();
     const host = new ChatEditorHost(this.context.extensionUri, document, panel, this);
     this.hosts.set(key, host);
@@ -955,18 +958,24 @@ export class ChatTabManager implements vscode.Disposable {
   }
 
   public async onHostDisposed(host: ChatEditorHost): Promise<void> {
-    const key = this.keyFor(host.resource);
-    if (this.draftBindings.delete(host.resource.toString())) {
+    // Controller key BEFORE dropping the binding (afterwards keyFor would
+    // resolve back to the raw draft key and miss the registry entry).
+    const controllerKey = this.keyFor(host.resource);
+    const resourceKey = host.resource.toString();
+    if (this.draftBindings.delete(resourceKey)) {
       this.persistBindings();
     }
-    if (this.hosts.get(key) === host) {
-      this.hosts.delete(key);
+    if (this.hosts.get(resourceKey) === host) {
+      this.hosts.delete(resourceKey);
     }
     await this.cache.markClosed(host.resource);
-    // Closing the tab tears down its dedicated Pi process (parallel-session
-    // model), unless another open tab still references the same session key.
-    if (!this.hosts.has(key)) {
-      this.registry.remove(key);
+    // Closing the tab tears down its dedicated Pi session (parallel-session
+    // model), unless another open tab still resolves to the same session key.
+    const stillOpen = [...this.hosts.values()].some(
+      (other) => this.keyFor(other.resource) === controllerKey
+    );
+    if (!stillOpen) {
+      this.registry.remove(controllerKey);
     }
   }
 
@@ -1820,7 +1829,7 @@ export class ChatTabManager implements vscode.Disposable {
       snapshot.sharing = { active: true, label: this.sharing.label };
     }
     const title = this.titleForContext(context, snapshot);
-    const host = this.hosts.get(this.keyFor(resource));
+    const host = this.hosts.get(resource.toString());
     if (host) {
       await host.postSnapshot(snapshot, title);
       // Mirror the active chat to a remote session, if one is running.

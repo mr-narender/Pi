@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.208
+
+- FIX: after 0.0.207's in-place draft binding, bound chats stopped updating live (responses only appeared after reopening the tab). The webview host registry was keyed by session key, which the binding changes for the same URI — hosts are now keyed by the stable resource URI, so live repaints always find their tab.
+
 ## 0.0.207
 
 - FIX: sending the first message in a New Chat no longer flickers (a session tab visibly opened while the draft tab closed). The draft tab now keeps its URI forever and is BOUND to its session in place — bindings persist across reloads. Bonus: every New Chat click now opens its own fresh draft (drafts have unique identities).
