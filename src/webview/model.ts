@@ -360,6 +360,14 @@ export function createWebviewSnapshot(
     queue: state.queue,
     draft: extra.composer.draft,
     composerResetSeq: extra.composer.composerResetSeq ?? 0,
+    retry: state.retry
+      ? {
+          attempt: state.retry.attempt,
+          errorMessage: state.retry.errorMessage
+            ? sanitizeDisplayText(state.retry.errorMessage, 300)
+            : undefined,
+        }
+      : undefined,
     statuses: state.statuses,
     widgets: state.widgets,
     model: state.state.model,

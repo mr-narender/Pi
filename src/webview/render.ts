@@ -147,7 +147,14 @@ const META_ICONS = {
 const CARET_ICON =
   '<svg class="tl-caret" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4l4 4-4 4"/></svg>';
 
-type TimelineNode = MessageBlock | { kind: 'response'; text: string };
+type TimelineNode =
+  | MessageBlock
+  | { kind: 'response'; text: string }
+  | {
+      kind: 'toolPair';
+      call: Extract<MessageBlock, { kind: 'tool' }>;
+      result: Extract<MessageBlock, { kind: 'toolResult' }>;
+    };
 
 /**
  * Assistant turns render as a TIMELINE of rounded, hairline-bordered cards
@@ -178,7 +185,7 @@ function renderAssistantBody(
       // Show the provider's REAL error (same text the TUI shows) — never guess.
       return `<div class="assistant-empty assistant-error">${who} failed: <span class="error-text">${escapeHtml(message.errorMessage)}</span> <button type="button" class="link-button" data-command="piRpcInternal.retryLast">Retry</button> · <button type="button" class="link-button" data-command="piRpcInternal.showLogs">Logs</button></div>`;
     }
-    return `<div class="assistant-empty">${who} returned an empty response — it may be rate-limited or erroring. <button type="button" class="link-button" data-command="piRpcInternal.showLogs">Open Pi logs</button> or switch models.</div>`;
+    return `<div class="assistant-empty">${who} returned an empty response and the provider reported no error details. <button type="button" class="link-button" data-command="piRpcInternal.retryLast">Retry</button> · <button type="button" class="link-button" data-command="piRpcInternal.showLogs">Logs</button></div>`;
   }
   const hasProcess = blocks.some((block) => block.kind !== 'text');
   if (!hasProcess) {
@@ -192,13 +199,22 @@ function renderAssistantBody(
       textRun = [];
     }
   };
-  for (const block of blocks) {
+  for (let index = 0; index < blocks.length; index += 1) {
+    const block = blocks[index]!;
     if (block.kind === 'text') {
       textRun.push(block.text);
-    } else {
-      flush();
-      nodes.push(block);
+      continue;
     }
+    flush();
+    // FUSE a tool call with its adjacent result into ONE card, so it is always
+    // obvious which result belongs to which call.
+    const next = blocks[index + 1];
+    if (block.kind === 'tool' && next?.kind === 'toolResult') {
+      nodes.push({ kind: 'toolPair', call: block, result: next });
+      index += 1;
+      continue;
+    }
+    nodes.push(block);
   }
   flush();
   return `<div class="timeline">${nodes
@@ -386,12 +402,35 @@ function renderTimelineNode(node: TimelineNode, streamingAnswer = false): string
       // Results collapse by default (they're often long/noisy); errors stay open.
       return `<div class="tl-node tl-result${err ? ' is-error' : ''}">${marker}<details class="tl-card"${err ? ' open' : ''}><summary class="tl-head">${err ? META_ICONS.error : META_ICONS.result}<span class="tl-label">${err ? 'Error' : 'Result'}</span>${node.name ? `<code class="tool-name">${escapeHtml(node.name)}</code>` : ''}${CARET_ICON}</summary>${renderToolContent(node.text)}</details></div>`;
     }
+    case 'toolPair': {
+      const call = node.call;
+      const result = node.result;
+      const err = result.isError === true;
+      const editPath = editToolFilePath(call.name, call.args);
+      const replacements = editReplacements(call.name, call.args);
+      const callBody =
+        replacements.length > 0
+          ? renderEditDiff(replacements)
+          : call.args
+            ? renderToolContent(call.args)
+            : '';
+      const fileActions = editPath
+        ? `<div class="tl-file-actions"><span class="tl-file-path">${escapeHtml(editPath)}</span><button type="button" class="tl-file-btn" data-file-open="${escapeHtml(editPath)}">Open file</button><button type="button" class="tl-file-btn" data-file-diff="${escapeHtml(editPath)}">Open changes</button></div>`
+        : '';
+      const lineCount = result.text ? result.text.split('\n').length : 0;
+      const shortResult = !err && lineCount <= 12 && (result.text?.length ?? 0) <= 1400;
+      const open = err || shortResult ? ' open' : '';
+      const summaryLabel = err
+        ? 'Error'
+        : `Result · ${lineCount} line${lineCount === 1 ? '' : 's'}`;
+      return `<div class="tl-node tl-tool${err ? ' is-error' : ''}">${marker}<div class="tl-card"><div class="tl-head">${META_ICONS.tool}<span class="tl-label">Tool</span><code class="tool-name">${escapeHtml(call.name)}</code>${err ? '<span class="tl-flag-error">failed</span>' : ''}</div>${callBody}${fileActions}<details class="tl-result-inline${err ? ' is-error' : ''}"${open}><summary class="tl-result-head">${err ? META_ICONS.error : META_ICONS.result}<span class="tl-label">${summaryLabel}</span>${CARET_ICON}</summary>${renderToolContent(result.text)}</details></div></div>`;
+    }
     case 'image':
       return `<div class="tl-node tl-tool">${marker}<div class="tl-card"><div class="tl-head">${META_ICONS.image}<span class="tl-label">Image</span><span class="tool-name">${escapeHtml(node.mimeType)}</span></div></div></div>`;
     case 'response': {
       const streamClass = streamingAnswer ? ' js-stream-text' : '';
       const streamData = streamingAnswer ? ` data-raw="${escapeHtml(node.text)}"` : '';
-      return `<div class="tl-node tl-response">${marker}<div class="tl-card tl-answer"><div class="tl-head tl-answer-head">${META_ICONS.response}<span class="tl-label">π</span></div><div class="tl-body${streamClass}"${streamData}>${renderRichText(node.text)}</div></div></div>`;
+      return `<div class="tl-node tl-response">${marker}<div class="tl-card tl-answer"><div class="tl-head tl-answer-head">${META_ICONS.response}<span class="tl-label">π Response</span></div><div class="tl-body${streamClass}"${streamData}>${renderRichText(node.text)}</div></div></div>`;
     }
     default:
       return '';
@@ -1176,6 +1215,18 @@ export function renderChatApp(snapshot: WebviewSnapshot): string {
       ${renderRecovery(snapshot)}
 
       <main class="conversation" id="messages" role="log" aria-live="off" aria-relevant="additions text">${
+        snapshot.retry
+          ? `<div class="retry-banner" role="status">⟳ π is retrying${
+              typeof snapshot.retry.attempt === 'number'
+                ? ` (attempt ${snapshot.retry.attempt})`
+                : ''
+            }${
+              snapshot.retry.errorMessage
+                ? ` — <span class="error-text">${escapeHtml(snapshot.retry.errorMessage)}</span>`
+                : ''
+            }</div>`
+          : ''
+      }${
         connecting && snapshot.messages.length === 0
           ? `<div class="connecting-state" role="status" aria-live="polite"><div class="boot-loader" aria-hidden="true"><svg class="boot-squiggle" viewBox="0 0 104 104" role="img"><path d="M 96.0 52.0 L 97.3 54.0 L 98.2 56.0 L 98.7 58.2 L 98.7 60.2 L 98.0 62.2 L 96.8 64.0 L 95.2 65.6 L 93.3 67.0 L 91.4 68.3 L 89.7 69.6 L 88.2 70.9 L 87.2 72.3 L 86.5 74.0 L 86.1 75.9 L 85.9 78.0 L 85.7 80.3 L 85.4 82.6 L 84.8 84.8 L 83.8 86.8 L 82.5 88.3 L 80.7 89.4 L 78.6 90.0 L 76.3 90.2 L 74.0 90.1 L 71.7 89.9 L 69.6 89.7 L 67.6 89.7 L 65.9 90.2 L 64.3 91.0 L 62.8 92.2 L 61.2 93.7 L 59.6 95.3 L 57.9 96.9 L 56.0 98.2 L 54.1 99.1 L 52.0 99.4 L 49.9 99.1 L 48.0 98.2 L 46.1 96.9 L 44.4 95.3 L 42.8 93.7 L 41.2 92.2 L 39.7 91.0 L 38.1 90.2 L 36.4 89.7 L 34.4 89.7 L 32.3 89.9 L 30.0 90.1 L 27.7 90.2 L 25.4 90.0 L 23.3 89.4 L 21.5 88.3 L 20.2 86.8 L 19.2 84.8 L 18.6 82.6 L 18.3 80.3 L 18.1 78.0 L 17.9 75.9 L 17.5 74.0 L 16.8 72.3 L 15.8 70.9 L 14.3 69.6 L 12.6 68.3 L 10.7 67.0 L 8.8 65.6 L 7.2 64.0 L 6.0 62.2 L 5.3 60.2 L 5.3 58.2 L 5.8 56.0 L 6.7 54.0 L 8.0 52.0 L 9.3 50.1 L 10.6 48.4 L 11.5 46.7 L 12.0 44.9 L 12.1 43.2 L 11.8 41.2 L 11.3 39.2 L 10.7 37.0 L 10.1 34.7 L 9.9 32.4 L 10.2 30.2 L 11.0 28.3 L 12.2 26.7 L 14.0 25.4 L 16.1 24.4 L 18.3 23.7 L 20.5 23.2 L 22.6 22.6 L 24.4 21.9 L 25.9 20.9 L 27.1 19.6 L 28.1 17.9 L 29.1 16.0 L 30.0 13.9 L 31.1 11.8 L 32.4 9.9 L 34.0 8.4 L 35.8 7.5 L 37.8 7.0 L 40.0 7.2 L 42.2 7.8 L 44.4 8.7 L 46.4 9.7 L 48.4 10.6 L 50.2 11.2 L 52.0 11.4 L 53.8 11.2 L 55.6 10.6 L 57.6 9.7 L 59.6 8.7 L 61.8 7.8 L 64.0 7.2 L 66.2 7.0 L 68.2 7.5 L 70.0 8.4 L 71.6 9.9 L 72.9 11.8 L 74.0 13.9 L 74.9 16.0 L 75.9 17.9 L 76.9 19.6 L 78.1 20.9 L 79.6 21.9 L 81.4 22.6 L 83.5 23.2 L 85.7 23.7 L 87.9 24.4 L 90.0 25.4 L 91.8 26.7 L 93.0 28.3 L 93.8 30.2 L 94.1 32.4 L 93.9 34.7 L 93.3 37.0 L 92.7 39.2 L 92.2 41.2 L 91.9 43.2 L 92.0 44.9 L 92.5 46.7 L 93.4 48.4 L 94.7 50.1 L 96.0 52.0 Z" fill="none" stroke="#ff8c42" stroke-width="2.5" stroke-linecap="round"/></svg><svg class="boot-pi" viewBox="0 0 24 24" role="img"><g fill="#ff8c42"><path d="M3.2 5.4 L20 5.4 L18.4 8 L4.8 8 Z"/><rect x="6.1" y="8" width="2.7" height="10.6" rx="1.1"/><path d="M14.4 8 h2.7 v8.4 l-2.7 2.2 Z"/><path d="M9.8 19.2 l2.1 -1.6 l-2.1 -1.6 v3.2 Z" opacity="0.9"/></g></svg></div><p class="connecting-copy">${
               snapshot.sessionFile

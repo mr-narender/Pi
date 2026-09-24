@@ -450,10 +450,23 @@ export function reduceEvent(state: ControllerState, event: RpcEvent): Controller
       };
       break;
     case 'auto_retry_start':
-      next = { ...next, connectionState: 'busy' };
+      next = {
+        ...next,
+        connectionState: 'busy',
+        // Pi tells us EXACTLY why it is retrying — surface it, never guess.
+        retry: {
+          attempt: typeof event.attempt === 'number' ? event.attempt : undefined,
+          delayMs: typeof event.delayMs === 'number' ? event.delayMs : undefined,
+          errorMessage: typeof event.errorMessage === 'string' ? event.errorMessage : undefined,
+        },
+      };
       break;
     case 'auto_retry_end':
-      next = { ...next, connectionState: next.state.isStreaming ? 'busy' : 'ready' };
+      next = {
+        ...next,
+        connectionState: next.state.isStreaming ? 'busy' : 'ready',
+        retry: undefined,
+      };
       break;
     case 'entry_appended': {
       const entry = asObject(event.entry);

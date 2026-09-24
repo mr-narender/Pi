@@ -82,6 +82,8 @@ export interface ControllerState {
   title: string;
   draft: string;
   pendingUi: ExtensionUiRequest[];
+  /** Live auto-retry info from Pi (attempt + the provider's actual error). */
+  retry?: { attempt?: number; delayMs?: number; errorMessage?: string };
   uiHistory: ExtensionUiRecord[];
   eventHistory: EventRecord[];
   lastEventType?: string;
@@ -188,6 +190,7 @@ export interface WebviewPendingImageItem {
 }
 
 export interface WebviewSnapshot {
+  retry?: { attempt?: number; errorMessage?: string };
   sequence: number;
   title: string;
   bindingState?: 'current' | 'cached' | 'draft';

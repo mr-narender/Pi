@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.0.210
+
+- Tool calls and their results are now ONE fused card: the result nests inside its call (collapsed with a line count when long, open when short or failed, with a red failed flag). No more guessing which result belongs to which call; JSON results keep the structured table view.
+- Honest error UX: a live retry banner shows Pi's ACTUAL retry reason and attempt number (from the auto-retry events); the empty-response fallback no longer speculates about rate limits; failed turns already show the provider's verbatim error.
+- The answer card is labeled "π Response" (a lone π read oddly).
+- Housekeeping: morphdom is now a declared dependency (was a stray transitive install that got pruned).
+
 ## 0.0.209
 
 - The Pi output channel now strips terminal escape sequences (ANSI colors, OSC ]777 notifications, carriage returns) that Pi and its extensions emit — logs are clean, readable text.

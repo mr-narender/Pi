@@ -215,11 +215,14 @@ test('renderChatApp renders thinking, tool, and code blocks distinctly', () => {
   assert.match(html, /class="timeline"/);
   assert.match(html, /class="tl-node tl-thinking"/);
   assert.match(html, /class="tl-node tl-tool"/);
-  assert.match(html, /class="tl-node tl-result"/);
+  // Call + result are FUSED into one card: the result nests inside tl-tool.
+  assert.match(html, /class="tl-node tl-tool"/);
+  assert.match(html, /class="tl-result-inline"/);
+  assert.match(html, /Result · 1 line/);
   assert.match(html, /class="tl-node tl-response"/);
   assert.match(html, /class="tl-label">Thinking</);
   assert.match(html, /class="tl-label">Tool</);
-  assert.match(html, /class="tl-label">Result</);
+  assert.match(html, /class="tl-label">Result · 1 line</);
   assert.match(html, /tool-name">bash/);
   assert.match(html, /class="tl-dot"/);
   assert.match(html, /class="meta-icon"/); // inline SVG icon, not an emoji
@@ -250,7 +253,7 @@ test('thinking/tool render as separate light meta cards; text stays in the chat 
   assert.match(html, /class="tl-node tl-tool"/);
   assert.match(html, /class="tl-node tl-response"/);
   // The answer sits in a response card with a "Pi" header, then the body text.
-  assert.match(html, /class="tl-head tl-answer-head">.*<span class="tl-label">π</);
+  assert.match(html, /class="tl-head tl-answer-head">.*<span class="tl-label">π Response</);
   assert.match(html, /<div class="tl-body"><p class="msg-para">the answer<\/p>/);
 });
 

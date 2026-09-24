@@ -1309,6 +1309,49 @@ button.ghost:hover,
 }
 
 /* ---- Connecting state (LOCAL-004) ---- */
+/* Fused tool card: the result nests INSIDE its call's card. */
+.tl-result-inline {
+  margin-top: 8px;
+  border-top: 1px solid var(--vscode-panel-border);
+  padding-top: 6px;
+}
+
+.tl-result-inline > summary.tl-result-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  list-style: none;
+  font-size: 0.9em;
+  opacity: 0.85;
+}
+
+.tl-result-inline > summary.tl-result-head::-webkit-details-marker {
+  display: none;
+}
+
+.tl-result-inline.is-error > summary.tl-result-head {
+  color: var(--vscode-errorForeground, #f48771);
+  opacity: 1;
+}
+
+.tl-flag-error {
+  margin-left: 6px;
+  font-size: 0.8em;
+  font-weight: 600;
+  color: var(--vscode-errorForeground, #f48771);
+}
+
+/* Honest live retry banner: shows Pi's actual reason, never a guess. */
+.retry-banner {
+  margin: 4px 16px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 0.9em;
+  border: 1px solid rgba(255, 140, 66, 0.45);
+  background: rgba(255, 140, 66, 0.08);
+}
+
 .assistant-error .error-text {
   color: var(--vscode-errorForeground, #f48771);
 }
