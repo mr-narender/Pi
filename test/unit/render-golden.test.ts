@@ -101,3 +101,55 @@ test('golden: failed turn with provider error + retry banner', () => {
   );
   checkGolden('error-turn', html);
 });
+
+test('golden: draft connecting loader', () => {
+  const html = renderChatApp(
+    base({
+      connectionState: 'starting',
+      sessionFile: undefined,
+      sessionName: undefined,
+      bindingState: 'draft',
+      messages: [],
+    })
+  );
+  checkGolden('connecting-loader', html);
+});
+
+test('golden: faulted empty state', () => {
+  const html = renderChatApp(base({ connectionState: 'faulted', messages: [] }));
+  checkGolden('faulted-empty', html);
+});
+
+test('golden: long tool result stays collapsed with line count', () => {
+  const longText = Array.from({ length: 30 }, (_, index) => `line ${index + 1}`).join('\n');
+  const html = renderChatApp(
+    base({
+      messages: [
+        {
+          id: 'a1',
+          role: 'assistant',
+          text: '',
+          attachments: [],
+          blocks: [
+            { kind: 'tool', name: 'bash', args: '{"cmd":"find ."}', callId: 'c1' },
+            { kind: 'toolResult', name: 'bash', text: longText, callId: 'c1' },
+            { kind: 'text', text: 'Done.' },
+          ],
+        },
+      ],
+    })
+  );
+  checkGolden('long-result-clamp', html);
+});
+
+test('golden: queue tray with steering entries', () => {
+  const html = renderChatApp(
+    base({
+      isStreaming: true,
+      connectionState: 'busy',
+      queue: { steering: ['also check the tests', 'and update docs'], followUp: [] },
+      messages: [{ id: 'u1', role: 'user', text: 'refactor this', attachments: [] }],
+    })
+  );
+  checkGolden('queue-tray', html);
+});

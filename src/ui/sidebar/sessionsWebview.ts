@@ -326,6 +326,8 @@ export class SessionsWebviewProvider implements vscode.WebviewViewProvider {
       }
       .icon-btn:hover { background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,0.2)); }
       .muted { opacity: 0.7; font-size: 12px; padding: 6px 8px; }
+      .other-group > summary.group-divider { cursor: pointer; list-style: none; }
+      .other-group > summary.group-divider::-webkit-details-marker { display: none; }
       .group-divider { margin: 10px 4px 4px; padding-top: 8px; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; opacity: 0.6; border-top: 1px solid var(--vscode-panel-border); }
       .stat-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
       .stat-dot.busy { background: var(--vscode-charts-orange, #d2795b); animation: sb-pulse 1s ease-in-out infinite; }
@@ -350,18 +352,17 @@ export class SessionsWebviewProvider implements vscode.WebviewViewProvider {
       let filter = '';
       let contentMatches = null;
       let searchTimer;
+      let otherOpen = (vscode.getState() || {}).otherOpen === true;
       const listEl = document.getElementById('list');
       const searchEl = document.getElementById('search');
       function esc(s) { return String(s).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
       function render() {
         const f = filter.trim().toLowerCase();
         const items = sessions.filter((s) => !f || (s.name + ' ' + s.meta).toLowerCase().includes(f));
-        let dividerDone = false;
-        let html = items.map((s) => {
-          const divider = s.other && !dividerDone
-            ? (dividerDone = true, '<div class="group-divider">Other projects</div>')
-            : '';
-          return divider +
+        const current = items.filter((s) => !s.other);
+        const others = items.filter((s) => s.other);
+        const row = (s) => {
+          return ('' ) +
           '<div class="item' + (s.active ? ' active' : '') + (s.pinned ? ' pinned' : '') + (s.other ? ' other' : '') + '" data-path="' + esc(s.path) + '" data-name="' + esc(s.name) + '"' + (s.other ? ' data-other="1" data-cwd="' + esc(s.cwd || '') + '"' : '') + '>' +
             '<div class="body">' +
               '<div class="name">' + (s.status ? '<span class="stat-dot ' + s.status + '"></span>' : '') + esc(s.name) + (s.contextPct ? '<span class="ctx-pct' + (s.contextPct >= 85 ? ' hot' : '') + '">' + s.contextPct + '%</span>' : '') + '</div>' +
@@ -373,7 +374,13 @@ export class SessionsWebviewProvider implements vscode.WebviewViewProvider {
               '<button class="icon-btn" data-act="delete" title="Delete">\u2715</button>' +
             '</div>' +
           '</div>';
-        }).join('');
+        };
+        let html = current.map(row).join('');
+        if (others.length) {
+          // Collapsed by default — a second project list doubled every window's
+          // sidebar. State is remembered per workspace (webview state).
+          html += '<details class="other-group"' + (otherOpen ? ' open' : '') + '><summary class="group-divider">Other projects (' + others.length + ')</summary>' + others.map(row).join('') + '</details>';
+        }
         if (f.length >= 3 && contentMatches && String(contentMatches.query || '').trim().toLowerCase() === f) {
           const rows = (contentMatches.matches || []).filter((m) => !items.some((s) => s.path === m.path));
           if (rows.length) {
@@ -385,6 +392,13 @@ export class SessionsWebviewProvider implements vscode.WebviewViewProvider {
         }
         if (!html) { listEl.innerHTML = '<div class="muted">' + (sessions.length ? 'No matching chats.' : 'No chats yet.') + '</div>'; return; }
         listEl.innerHTML = html;
+        const otherGroup = listEl.querySelector('.other-group');
+        if (otherGroup) {
+          otherGroup.addEventListener('toggle', () => {
+            otherOpen = otherGroup.open;
+            vscode.setState(Object.assign({}, vscode.getState() || {}, { otherOpen: otherOpen }));
+          });
+        }
       }
       document.getElementById('new-btn').addEventListener('click', () => vscode.postMessage({ type: 'newChat' }));
       document.getElementById('remote-btn').addEventListener('click', () => vscode.postMessage({ type: 'remoteStart' }));

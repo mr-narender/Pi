@@ -17,7 +17,8 @@ import { VersionedStore } from '../state/store';
  *   setOwner/ownerOf    — which tab a controller repaints
  */
 export class SessionIndex {
-  private readonly owners = new Map<SessionController, vscode.Uri>();
+  // WeakMap: a disposed controller must not be pinned by its owner entry.
+  private readonly owners = new WeakMap<SessionController, vscode.Uri>();
   private readonly bindings = new Map<string, ChatTabTarget>();
   private loaded = false;
   private readonly store: VersionedStore;

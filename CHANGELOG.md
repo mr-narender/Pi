@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.0.213
+
+- CALM TIMELINE: settled turns collapse their thinking/tool runs into one "N steps · M files" chip (live turn stays expanded; failed phases stay open with an error tint; open state survives re-renders).
+- Find in chat (Cmd/Ctrl+F, π menu, or "Pi: Find in Chat"): jump-to-reference search with highlighted matches, Enter/Shift+Enter stepping, auto-opens collapsed phases containing hits, and continues INTO older history when matches run out in the loaded window.
+- One composer status chip (model · cost · thinking) with a detail popover — replaces the chip strip.
+- Notification digest: parallel-chat toasts (finished / needs approval / context) coalesce into one message.
+- Retry banner moved next to the composer (it rendered off-screen at the transcript top).
+- Sidebar: "Other projects" is collapsed by default (state remembered) and rows show recency only.
+- Hygiene: controller-keyed maps are WeakMaps (closed chats no longer pin memory); allowlist⇄renderer sync test; 6 golden-HTML contract tests.
+
 ## 0.0.212
 
 - Hardening release (architecture review items, in order):

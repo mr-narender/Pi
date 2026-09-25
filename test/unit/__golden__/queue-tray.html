@@ -1,7 +1,7 @@
 
     <a class="skip-link" href="#composer-field">Skip to composer</a>
     <div class="layout" data-testid="chat-app" data-ui-mode="simple">
-      <div class="header-summary visually-hidden" aria-label="Current chat summary">Current · workspace · Demo Session · Ready</div>
+      <div class="header-summary visually-hidden" aria-label="Current chat summary">Current · workspace · Demo Session · π is replying</div>
       <div id="a11y-status" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></div>
 
       
@@ -11,25 +11,19 @@
       <main class="conversation" id="messages" role="log" aria-live="off" aria-relevant="additions text">
         <article class="message-card message-user" data-mid="u1" aria-label="You said">
           <div class="message-role">You</div>
-          <div class="message-body"><p class="msg-para">hello</p></div>
+          <div class="message-body"><p class="msg-para">refactor this</p></div>
           
           <div class="msg-actions"><button type="button" class="msg-edit" title="Edit &amp; restart from here" aria-label="Edit and restart the chat from this message"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.5 3.5l2 2L6 12l-2.5.5L4 10z"/></svg></button><button type="button" class="msg-copy" title="Copy message" aria-label="Copy message"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="8" height="8" rx="1.5"/><path d="M3 10.5V4a1.5 1.5 0 0 1 1.5-1.5H10"/></svg></button></div>
-        </article>
-        <article class="message-card message-assistant" data-mid="a1" aria-label="π said">
-          <div class="message-role">π</div>
-          <div class="assistant-empty assistant-error"><strong>mock/model</strong> failed: <span class="error-text">upstream 429: rate limit exceeded</span> <button type="button" class="link-button" data-command="piRpcInternal.retryLast">Retry</button> · <button type="button" class="link-button" data-command="piRpcInternal.showLogs">Logs</button></div>
-          
-          <div class="msg-actions"><button type="button" class="msg-copy" title="Copy message" aria-label="Copy message"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="8" height="8" rx="1.5"/><path d="M3 10.5V4a1.5 1.5 0 0 1 1.5-1.5H10"/></svg></button></div>
         </article><button type="button" id="jump-latest" class="jump-latest" title="Scroll to latest" aria-label="Scroll to latest message" hidden><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9.5l6 6 6-6"/></svg></button></main>
 
       
-      <div class="retry-banner" role="status">⟳ π is retrying (attempt 2) — <span class="error-text">upstream 429: rate limit exceeded</span></div>
+      
       <section class="composer-dock" aria-labelledby="composer-heading">
         <h2 id="composer-heading" class="visually-hidden">Message Pi</h2>
         <label class="visually-hidden" for="composer-field">Message π</label>
         
-        
-        
+        <div class="queue-tray"><div class="section-label">Queued for π</div><div class="queue-item"><span class="queue-kind">Steering</span><span class="queue-text">also check the tests</span></div><div class="queue-item"><span class="queue-kind">Steering</span><span class="queue-text">and update docs</span></div></div>
+        <div class="working-banner"><span class="working" data-anim="braille" role="status" aria-label="π is working"><span class="working-glyph"></span></span><span class="working-label">Working…</span></div>
         <div class="composer-card" aria-busy="false">
           <textarea id="composer-field" rows="3" placeholder="Ask π to edit…" ></textarea>
           <div class="composer-actions" aria-label="Composer actions">
@@ -40,8 +34,8 @@
             <div class="composer-actions-right">
               
               <details class="menu-details composer-status" id="status-chip"><summary title="Model · cost · thinking" aria-label="Chat status and settings"><span class="model-dot"></span>model · medium</summary><div class="menu-panel" role="menu"><button type="button" class="menu-item" data-command="piRpc.showModels"><span class="dot"></span>Model: mock/model</button><button type="button" class="menu-item" data-command="piRpc.setThinkingLevel"><span class="dot"></span>Thinking level: medium</button><button type="button" class="menu-item" data-command="piRpc.showSessionStats"><span class="dot"></span>Usage &amp; cost</button></div></details>
-              
-              <button type="button" id="composer-send-button" class="send-button" data-send-command="prompt" title="Send (Enter · Shift+Enter for newline)" aria-label="Send (Enter · Shift+Enter for newline)" ><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12.5 4v3a1.5 1.5 0 0 1-1.5 1.5H4.5"/><path d="M7 6L4.3 8.5 7 11"/></svg></button>
+              <button type="button" class="ghost" data-action="abort">Stop</button>
+              <button type="button" id="composer-send-button" class="send-button" data-send-command="follow_up" title="Send next (Enter)" aria-label="Send next (Enter)" ><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12.5 4v3a1.5 1.5 0 0 1-1.5 1.5H4.5"/><path d="M7 6L4.3 8.5 7 11"/></svg></button>
             </div>
           </div>
         </div>

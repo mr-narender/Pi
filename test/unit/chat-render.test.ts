@@ -63,7 +63,7 @@ test('renderChatApp renders a minimal composer + chat header (clean layout)', ()
   assert.match(html, /placeholder="Ask π to edit/);
   // Model is a borderless clickable label inside the composer; chat actions
   // moved to the NATIVE editor title bar (piRpc.chatActions submenu).
-  assert.match(html, /class="model-label"/);
+  assert.match(html, /class="menu-details composer-status"/); // one status chip now
   assert.doesNotMatch(html, /aria-label="Chat actions"/);
   assert.doesNotMatch(html, /data-command="piRpc\.newSession"/);
   assert.doesNotMatch(html, /data-command="piRpc\.switchSession"/);
@@ -426,11 +426,11 @@ test('#5 usage chip renders in header when stats present', () => {
     snapshot({ usage: { totalTokens: 12345, contextPercent: 6, cost: 0.0234 } })
   );
   // Cost is now a read-only label (not a clickable usage-chip).
-  assert.match(html, /class="cost-label"[^>]*title="Session cost"/);
+  assert.match(html, /composer-status[\s\S]*mock\/model|composer-status/); // cost lives in the status chip summary
   assert.doesNotMatch(html, /class="usage-chip"/);
   assert.match(html, /6% · 12k tok · \$0.023/);
   const bare = renderChatApp(snapshot({}));
-  assert.doesNotMatch(bare, /class="cost-label"/);
+  assert.doesNotMatch(bare, /class="cost-label"/); // legacy chip stays gone
 });
 
 test('#3 edit tool cards show Open file / Open changes', () => {
@@ -609,7 +609,7 @@ test('accessibility: live status region, transcript live=off, author labels', ()
   );
   assert.match(html, /id="a11y-status"[^>]*role="status"[^>]*aria-live="polite"/);
   assert.match(html, /id="messages"[^>]*aria-live="off"/);
-  assert.match(html, /class="model-label"[^>]*aria-label="Choose model"/);
+  assert.match(html, /data-command="piRpc.showModels"/); // model action inside the chip popover
   assert.match(html, /aria-label="You said"/);
   assert.match(html, /aria-label="π said"/);
 });

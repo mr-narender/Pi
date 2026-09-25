@@ -48,9 +48,9 @@ export function buildSidebarState(
   const items: SidebarSessionItem[] = (recent.items ?? []).slice(0, 300).map((item) => ({
     path: item.path,
     name: item.displayName,
-    meta: [formatRelativeTimestamp(item.modifiedAt, now), item.modelLabel]
-      .filter(Boolean)
-      .join(' \u00b7 '),
+    // One signal per row: recency. (Model badges made every row read like a
+    // spec sheet — the model is visible in the chat's status chip anyway.)
+    meta: formatRelativeTimestamp(item.modifiedAt, now),
     active: item.path === activePath,
     pinned: pinnedPaths.has(item.path),
   }));
@@ -62,7 +62,7 @@ export function buildSidebarState(
     sessions.push({
       path: item.path,
       name: item.displayName,
-      meta: [item.workspaceLabel, formatRelativeTimestamp(item.modifiedAt, now), item.modelLabel]
+      meta: [item.workspaceLabel, formatRelativeTimestamp(item.modifiedAt, now)]
         .filter(Boolean)
         .join(' \u00b7 '),
       active: item.path === activePath,

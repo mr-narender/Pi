@@ -303,6 +303,11 @@ export function registerChatOps(deps: ChatOpsDeps): void {
     }
   });
 
+  // Find in chat: jump-to-reference search inside the active transcript.
+  registrations.set('piRpc.findInChat', async () => {
+    chatTabs.openFindInActiveChat();
+  });
+
   // Mission Control: jump to any open chat, with live per-chat status.
   registrations.set('piRpc.showRunningChats', async () => {
     const chats = chatTabs.listOpenChats();

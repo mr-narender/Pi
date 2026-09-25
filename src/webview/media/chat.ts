@@ -681,6 +681,15 @@ function renderNow(snapshot: WebviewSnapshot): void {
   // Preserve open dropdown menus across re-render so passive snapshots
   // (streaming, status) don't close the More/Attach menu mid-interaction.
   const openMenus = new Set<string>();
+  // Work phases (and any details marked preserve-open) keep their state across
+  // re-renders — morphdom rebuilds can otherwise snap them shut mid-reading.
+  for (const el of Array.from(
+    document.querySelectorAll<HTMLDetailsElement>('details[data-preserve-open][open]')
+  )) {
+    if (el.id) {
+      openMenus.add(el.id);
+    }
+  }
   for (const id of ['attach-menu']) {
     const el = document.getElementById(id) as HTMLDetailsElement | null;
     if (el?.open) {
@@ -1236,7 +1245,29 @@ function renderNow(snapshot: WebviewSnapshot): void {
   applyScrollAndPaging(snapshot, scrollMetrics);
   applyFocus();
   if (findOpen) {
+    const anchor = findRanges[findIndex];
     runFind(findQuery, false);
+    if (findAwaitingOlder) {
+      findAwaitingOlder = false;
+      const gained = findRanges.length - findCountBeforeOlder;
+      if (gained > 0) {
+        // Older content prepended `gained` matches — continue on the newest one.
+        findIndex = gained - 1;
+        updateFindCurrent(true);
+      } else if (hasOlderHistory() && findQuery.trim()) {
+        requestOlderForFind(); // keep walking further back
+      }
+    } else if (anchor) {
+      // Keep the active hit stable across streaming re-renders.
+      const index = findRanges.findIndex(
+        (range) =>
+          range.startContainer === anchor.startContainer && range.startOffset === anchor.startOffset
+      );
+      if (index >= 0) {
+        findIndex = index;
+        updateFindCurrent(false);
+      }
+    }
   }
 }
 
@@ -1370,14 +1401,53 @@ function updateFindCurrent(scroll: boolean): void {
     api.set('pi-find-current', new HighlightImpl(current));
   }
   if (scroll && current) {
+    // A hit inside a collapsed work phase / result must become visible: open
+    // every enclosing <details> before scrolling to it.
+    let container = current.startContainer.parentElement;
+    while (container) {
+      const details = container.closest('details');
+      if (!details) {
+        break;
+      }
+      details.open = true;
+      container = details.parentElement;
+    }
     (current.startContainer.parentElement ?? null)?.scrollIntoView({ block: 'center' });
   }
 }
+let findAwaitingOlder = false;
+let findCountBeforeOlder = 0;
+
+function hasOlderHistory(): boolean {
+  return currentSnapshot?.messageWindow?.hasOlder === true;
+}
+
+function requestOlderForFind(): void {
+  findAwaitingOlder = true;
+  findCountBeforeOlder = findRanges.length;
+  const count = document.getElementById('pi-find-count');
+  if (count) {
+    count.textContent = 'searching history…';
+  }
+  vscode.postMessage({ type: 'loadOlder' });
+}
+
 function stepFind(direction: number): void {
   if (findRanges.length === 0) {
+    // Nothing in the loaded window — keep pulling history until a match loads.
+    if (hasOlderHistory()) {
+      requestOlderForFind();
+    }
     return;
   }
-  findIndex = (findIndex + direction + findRanges.length) % findRanges.length;
+  const next = findIndex + direction;
+  if (next < 0 && hasOlderHistory()) {
+    // Ran past the oldest loaded match — continue INTO history (older messages
+    // prepend; the continuation lands on the newest of the new matches).
+    requestOlderForFind();
+    return;
+  }
+  findIndex = (next + findRanges.length) % findRanges.length;
   updateFindCurrent(true);
 }
 window.addEventListener('keydown', (event) => {
@@ -1687,6 +1757,10 @@ window.addEventListener('keydown', (event) => {
 window.addEventListener(
   'message',
   (event: MessageEvent<{ type: string; snapshot: WebviewSnapshot }>) => {
+    if (event.data?.type === 'find') {
+      openFind();
+      return;
+    }
     if (event.data?.type === 'snapshot') {
       render(event.data.snapshot);
       // Re-evaluate the menus after a re-render (composer text is preserved).

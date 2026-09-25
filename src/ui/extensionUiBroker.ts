@@ -3,6 +3,7 @@ import type { ExtensionUiRequest } from '../rpc/protocol';
 import { SessionRegistry } from '../sessions/sessionRegistry';
 import type { SessionController } from '../sessions/sessionController';
 import type { ChatUiState } from '../webview/composerState';
+import { notifier } from './notifier';
 
 export class ExtensionUiBroker implements vscode.Disposable {
   private readonly subscriptions: vscode.Disposable[] = [];
@@ -42,13 +43,11 @@ export class ExtensionUiBroker implements vscode.Disposable {
       typeof sessionName === 'string' && sessionName.trim()
         ? `“${sessionName}”`
         : 'a background chat';
-    void vscode.window
-      .showWarningMessage(`Pi is waiting for your approval in ${name}`, 'Open Chat')
-      .then((choice) => {
-        if (choice === 'Open Chat') {
-          this.revealChat?.(controller);
-        }
-      });
+    notifier.notify({
+      kind: 'approval',
+      title: name,
+      open: () => this.revealChat?.(controller),
+    });
   }
 
   public track(controller: SessionController): void {

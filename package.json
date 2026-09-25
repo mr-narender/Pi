@@ -2,7 +2,7 @@
   "name": "pi",
   "displayName": "Pi – this one is (y)ours",
   "description": "An unofficial, personal VS Code chat UI for the Pi coding agent (pi.dev). Not affiliated with pi.dev — shared for anyone who wants it.",
-  "version": "0.0.212",
+  "version": "0.0.213",
   "publisher": "mr-narender",
   "license": "MIT",
   "private": true,
@@ -290,6 +290,11 @@
       {
         "command": "piRpc.showAllChatsUsage",
         "title": "Show Usage for All Open Chats",
+        "category": "Pi"
+      },
+      {
+        "command": "piRpc.findInChat",
+        "title": "Find in Chat",
         "category": "Pi"
       },
       {
@@ -1031,6 +1036,10 @@
           "group": "1_session@4"
         },
         {
+          "command": "piRpc.findInChat",
+          "group": "1_session@5"
+        },
+        {
           "command": "piRpcInternal.copyConversationMarkdown",
           "group": "2_export@1"
         },
@@ -1136,6 +1145,12 @@
         "command": "piRpc.quickSwitchChat",
         "key": "ctrl+alt+p",
         "mac": "cmd+alt+p"
+      },
+      {
+        "command": "piRpc.findInChat",
+        "key": "ctrl+f",
+        "mac": "cmd+f",
+        "when": "activeCustomEditorId == 'piRpc.chatEditor' && !editorTextFocus"
       }
     ],
     "submenus": [

@@ -9,6 +9,7 @@ import type { DiagnosticsLogger } from '../diagnostics/logger';
 import { createWebviewSnapshot, firstPromptPreview } from '../webview/model';
 import type { TurnReview } from '../review/turnReview';
 import { SessionIndex } from './sessionIndex';
+import { notifier } from '../ui/notifier';
 import { parseWebviewMessage } from '../webview/messages';
 import {
   acceptedSnapshotFromPreview,
@@ -168,6 +169,8 @@ const WEBVIEW_COMMAND_ALLOWLIST = new Set<string>([
   'piRpc.remote.stop',
   'piRpc.showModels',
   'piRpc.showPiCommands',
+  'piRpc.showSessionStats',
+  'piRpc.setThinkingLevel',
   'piRpc.switchSession',
   'piRpcInternal.restart',
   'piRpcInternal.retryLast',
@@ -266,8 +269,8 @@ export class ChatTabManager implements vscode.Disposable {
   // Completion-notification bookkeeping (busy->ready transition per controller).
   // Keyed by CONTROLLER (not folder): with parallel per-tab controllers, several
   // chats share a folder and folder-keyed busy tracking collides across them.
-  private readonly lastConnState = new Map<SessionController, string>();
-  private readonly busySince = new Map<SessionController, number>();
+  private readonly lastConnState = new WeakMap<SessionController, string>();
+  private readonly busySince = new WeakMap<SessionController, number>();
   private turnReview: TurnReview | undefined;
 
   public setTurnReview(review: TurnReview): void {
@@ -307,10 +310,12 @@ export class ChatTabManager implements vscode.Disposable {
     this.reapTimer.unref?.();
   }
 
-  private readonly lastActivityAt = new Map<SessionController, number>();
+  // WeakMaps: closed chats must not pin their dead controllers (and their full
+  // message state) in memory for the window's lifetime (#1, review round 2).
+  private readonly lastActivityAt = new WeakMap<SessionController, number>();
   private reapTimer: ReturnType<typeof setInterval> | undefined;
-  public readonly contextPercent = new Map<SessionController, number>();
-  private readonly contextWarnedAt = new Map<SessionController, number>();
+  public readonly contextPercent = new WeakMap<SessionController, number>();
+  private readonly contextWarnedAt = new WeakMap<SessionController, number>();
 
   // After each turn, record context usage; warn once per 10min above 85% so a
   // chat never gets surprise-compacted mid-task.
@@ -328,16 +333,12 @@ export class ChatTabManager implements vscode.Disposable {
         if (Date.now() - last > 10 * 60_000) {
           this.contextWarnedAt.set(controller, Date.now());
           const name = controller.snapshot.state.sessionName;
-          void vscode.window
-            .showWarningMessage(
-              `π chat ${typeof name === 'string' && name ? `“${name}” ` : ''}is at ${Math.round(percent)}% context — compact soon to avoid losing thread.`,
-              'Open Chat'
-            )
-            .then((choice) => {
-              if (choice === 'Open Chat') {
-                this.revealController(controller);
-              }
-            });
+          notifier.notify({
+            kind: 'context',
+            title: typeof name === 'string' && name ? `“${name}”` : 'a background chat',
+            detail: `${Math.round(percent)}%`,
+            open: () => this.revealController(controller),
+          });
         }
       }
     } catch {
@@ -1608,16 +1609,15 @@ export class ChatTabManager implements vscode.Disposable {
         return;
       }
       const label = basename(controller.folder.uri.fsPath) || 'workspace';
-      void vscode.window
-        .showInformationMessage(`Pi finished responding in ${label}.`, 'Open chat')
-        .then((choice) => {
-          if (choice === 'Open chat') {
-            void this.openCurrentChat({
-              folderUri: controller.folder.uri.toString(),
-              focusComposer: true,
-            });
-          }
-        });
+      notifier.notify({
+        kind: 'completed',
+        title: `'${label}'`,
+        open: () =>
+          void this.openCurrentChat({
+            folderUri: controller.folder.uri.toString(),
+            focusComposer: true,
+          }),
+      });
     }
   }
 
@@ -1645,6 +1645,17 @@ export class ChatTabManager implements vscode.Disposable {
     state.draft = `${state.draft ?? ''}${text}`;
     await this.uiState.setComposerStateForIdentity(context.controller, context.target, state);
     await this.renderResource(context.resource, { active: true });
+  }
+
+  /** Open the find bar in the ACTIVE chat tab (jump-to-reference search). */
+  public openFindInActiveChat(): void {
+    for (const host of this.hosts.values()) {
+      if (host.panel.active) {
+        void host.panel.webview.postMessage({ type: 'find' });
+        return;
+      }
+    }
+    void vscode.window.showInformationMessage('Open a Pi chat first.');
   }
 
   /** Every open chat tab with its controller — the Mission Control roster. */

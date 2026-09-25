@@ -1310,6 +1310,136 @@ button.ghost:hover,
 
 /* ---- Connecting state (LOCAL-004) ---- */
 /* Fused tool card: the result nests INSIDE its call's card. */
+/* Find-in-chat bar (lives outside #app; morphdom never touches it). */
+#find-bar {
+  position: fixed;
+  top: 10px;
+  right: 14px;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 8px;
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+
+#find-bar input {
+  width: 200px;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--vscode-foreground);
+  font: inherit;
+}
+
+#find-bar button {
+  border: none;
+  background: transparent;
+  color: var(--vscode-foreground);
+  opacity: 0.75;
+  cursor: pointer;
+  padding: 2px 5px;
+  border-radius: 4px;
+}
+
+#find-bar button:hover {
+  opacity: 1;
+  background: rgba(127, 127, 127, 0.15);
+}
+
+.find-count {
+  font-size: 0.85em;
+  opacity: 0.65;
+  min-width: 42px;
+  text-align: center;
+}
+
+::highlight(pi-find) {
+  background: rgba(255, 140, 66, 0.3);
+}
+
+::highlight(pi-find-active) {
+  background: var(--vscode-editor-findMatchBackground, #ff8c42);
+  color: #1e1e1e;
+}
+
+.find-flash {
+  animation: pi-find-flash 0.7s ease;
+}
+
+@keyframes pi-find-flash {
+  0% {
+    outline: 2px solid rgba(255, 140, 66, 0.9);
+    outline-offset: 2px;
+  }
+  100% {
+    outline: 2px solid transparent;
+  }
+}
+
+/* Collapsed work phase: a settled turn's thinking/tool run as one quiet chip. */
+/* One-status-chip composer: model · cost · thinking with a popover. */
+.composer-status > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  list-style: none;
+  font-size: 0.85em;
+  opacity: 0.85;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+}
+
+.composer-status > summary::-webkit-details-marker {
+  display: none;
+}
+
+.composer-status > summary:hover {
+  border-color: var(--vscode-panel-border);
+  opacity: 1;
+}
+
+.composer-status[open] > summary {
+  border-color: var(--vscode-panel-border);
+}
+
+.work-phase {
+  margin: 6px 0;
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 8px;
+  padding: 4px 8px;
+  background: color-mix(in srgb, var(--vscode-editor-background) 88%, transparent);
+}
+
+.work-phase > summary.work-phase-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  list-style: none;
+  font-size: 0.88em;
+  opacity: 0.8;
+  padding: 2px 0;
+}
+
+.work-phase > summary.work-phase-head::-webkit-details-marker {
+  display: none;
+}
+
+.work-phase[open] > summary.work-phase-head {
+  opacity: 1;
+  margin-bottom: 4px;
+}
+
+.work-phase.is-error {
+  border-color: color-mix(in srgb, var(--vscode-errorForeground, #f48771) 45%, transparent);
+}
+
 .tl-result-inline {
   margin-top: 8px;
   border-top: 1px solid var(--vscode-panel-border);

@@ -9,21 +9,44 @@
       
 
       <main class="conversation" id="messages" role="log" aria-live="off" aria-relevant="additions text">
-        <article class="message-card message-user" data-mid="u1" aria-label="You said">
-          <div class="message-role">You</div>
-          <div class="message-body"><p class="msg-para">hello</p></div>
-          
-          <div class="msg-actions"><button type="button" class="msg-edit" title="Edit &amp; restart from here" aria-label="Edit and restart the chat from this message"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.5 3.5l2 2L6 12l-2.5.5L4 10z"/></svg></button><button type="button" class="msg-copy" title="Copy message" aria-label="Copy message"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="8" height="8" rx="1.5"/><path d="M3 10.5V4a1.5 1.5 0 0 1 1.5-1.5H10"/></svg></button></div>
-        </article>
         <article class="message-card message-assistant" data-mid="a1" aria-label="π said">
           <div class="message-role">π</div>
-          <div class="assistant-empty assistant-error"><strong>mock/model</strong> failed: <span class="error-text">upstream 429: rate limit exceeded</span> <button type="button" class="link-button" data-command="piRpcInternal.retryLast">Retry</button> · <button type="button" class="link-button" data-command="piRpcInternal.showLogs">Logs</button></div>
+          <div class="timeline"><div class="tl-node tl-tool"><span class="tl-dot"></span><div class="tl-card"><div class="tl-head"><svg class="meta-icon" viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 4.5L6.5 8l-3 3.5"/><path d="M8.5 11.5h4"/></svg><span class="tl-label">Tool</span><code class="tool-name">bash</code></div><div class="json-view"><div class="md-table-wrap json-table-wrap"><table class="md-table json-table"><tbody><tr><td class="json-key">cmd</td><td><span class="json-str">find .</span></td></tr></tbody></table></div></div><details class="tl-result-inline"><summary class="tl-result-head"><svg class="meta-icon" viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.4l3 3 7-7.4"/></svg><span class="tl-label">Result · 30 lines</span><svg class="tl-caret" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4l4 4-4 4"/></svg></summary><div class="clampable"><div class="clamp-body"><pre class="code-block"><code>line 1
+line 2
+line 3
+line 4
+line 5
+line 6
+line 7
+line 8
+line 9
+line 10
+line 11
+line 12
+line 13
+line 14
+line 15
+line 16
+line 17
+line 18
+line 19
+line 20
+line 21
+line 22
+line 23
+line 24
+line 25
+line 26
+line 27
+line 28
+line 29
+line 30</code></pre></div><button type="button" class="code-showmore">Show more</button></div></details></div></div><div class="tl-node tl-response"><span class="tl-dot"></span><div class="tl-card tl-answer"><div class="tl-head tl-answer-head"><svg class="meta-icon" viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="8" r="2.4"/></svg><span class="tl-label">π Response</span></div><div class="tl-body"><p class="msg-para">Done.</p></div></div></div></div>
           
           <div class="msg-actions"><button type="button" class="msg-copy" title="Copy message" aria-label="Copy message"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="8" height="8" rx="1.5"/><path d="M3 10.5V4a1.5 1.5 0 0 1 1.5-1.5H10"/></svg></button></div>
         </article><button type="button" id="jump-latest" class="jump-latest" title="Scroll to latest" aria-label="Scroll to latest message" hidden><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9.5l6 6 6-6"/></svg></button></main>
 
       
-      <div class="retry-banner" role="status">⟳ π is retrying (attempt 2) — <span class="error-text">upstream 429: rate limit exceeded</span></div>
+      
       <section class="composer-dock" aria-labelledby="composer-heading">
         <h2 id="composer-heading" class="visually-hidden">Message Pi</h2>
         <label class="visually-hidden" for="composer-field">Message π</label>
