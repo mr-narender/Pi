@@ -63,7 +63,7 @@ test('renderChatApp renders a minimal composer + chat header (clean layout)', ()
   assert.match(html, /placeholder="Ask π to edit/);
   // Model is a borderless clickable label inside the composer; chat actions
   // moved to the NATIVE editor title bar (piRpc.chatActions submenu).
-  assert.match(html, /class="composer-status" id="status-chip" data-command="piRpc.showModels"/); // one-click model picker
+  assert.match(html, /class="composer-status" id="status-chip" data-command="piRpc.chatSettings"/); // one-click model picker
   assert.doesNotMatch(html, /aria-label="Chat actions"/);
   assert.doesNotMatch(html, /data-command="piRpc\.newSession"/);
   assert.doesNotMatch(html, /data-command="piRpc\.switchSession"/);
@@ -609,7 +609,7 @@ test('accessibility: live status region, transcript live=off, author labels', ()
   );
   assert.match(html, /id="a11y-status"[^>]*role="status"[^>]*aria-live="polite"/);
   assert.match(html, /id="messages"[^>]*aria-live="off"/);
-  assert.match(html, /data-command="piRpc.showModels"/); // model action inside the chip popover
+  assert.match(html, /data-command="piRpc.chatSettings"/); // model action inside the chip popover
   assert.match(html, /aria-label="You said"/);
   assert.match(html, /aria-label="π said"/);
 });

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.225
+
+- ONE settings box: clicking the composer chip opens a single centered picker with models (grouped by provider) and thinking sizes (off→max) under them — choose either from the same window. Palette: “Pi: Chat Settings (Model & Thinking)”.
+
 ## 0.0.224
 
 - Transcript now ends ABOVE the composer — messages never slide underneath the input; the scroll floor tracks the dock’s live height (auto-grow included).

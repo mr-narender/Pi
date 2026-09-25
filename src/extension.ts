@@ -1012,6 +1012,73 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }
   });
   registrations.set('piRpc.selectModel', registrations.get('piRpc.showModels')!);
+  // ONE centered box for chat settings: models (grouped by provider) with the
+  // thinking sizes under them — pick either, same window. (Chip click target.)
+  registrations.set('piRpc.chatSettings', async () => {
+    const controller = activeController();
+    if (!controller) {
+      void vscode.window.showInformationMessage('Open a Pi chat first.');
+      return;
+    }
+    const models = await controller.getAvailableModels();
+    const current = asRecord(controller.snapshot.state.model);
+    const currentKey = current
+      ? `${asString(current.provider)}/${asString(current.id)}`
+      : undefined;
+    const currentLevel = asString(controller.snapshot.state.thinkingLevel);
+
+    type SettingsItem = vscode.QuickPickItem & {
+      model?: JsonObject;
+      level?: string;
+    };
+    const items: SettingsItem[] = [];
+    const byProvider = new Map<string, JsonObject[]>();
+    for (const model of models) {
+      const provider = String(model.provider ?? 'provider');
+      (byProvider.get(provider) ?? byProvider.set(provider, []).get(provider)!).push(model);
+    }
+    for (const provider of Array.from(byProvider.keys()).sort()) {
+      items.push({ label: provider, kind: vscode.QuickPickItemKind.Separator });
+      for (const model of byProvider
+        .get(provider)!
+        .slice()
+        .sort((a, b) => String(a.id ?? '').localeCompare(String(b.id ?? '')))) {
+        const key = `${provider}/${String(model.id ?? '')}`;
+        items.push({
+          label: `${key === currentKey ? '$(check) ' : ''}${String(model.id ?? 'model')}`,
+          description: String(model.name ?? ''),
+          model,
+        });
+      }
+    }
+    items.push({ label: 'Thinking level', kind: vscode.QuickPickItemKind.Separator });
+    for (const level of ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']) {
+      items.push({
+        label: `${level === currentLevel ? '$(check) ' : ''}$(lightbulb) ${level}`,
+        description: level === currentLevel ? 'current thinking level' : 'thinking level',
+        level,
+      });
+    }
+    const picked = await vscode.window.showQuickPick(items, {
+      title: 'π Chat Settings — model & thinking',
+      placeHolder: 'Pick a model or a thinking level',
+      matchOnDescription: true,
+    });
+    if (!picked) {
+      return;
+    }
+    if (picked.model) {
+      await controller.selectModel(
+        String(picked.model.provider ?? ''),
+        String(picked.model.id ?? '')
+      );
+    } else if (picked.level) {
+      await controller.setThinkingLevel(picked.level);
+    }
+    await controller.refreshState();
+    refreshViews();
+  });
+
   registrations.set('piRpc.setThinkingLevel', async () => {
     const controller = activeController();
     if (!controller) {

@@ -935,21 +935,13 @@ function renderApprovals(snapshot: WebviewSnapshot): string {
 // #6 (review round 2): ONE composer status chip — model · cost · thinking —
 // with the detail actions in a popover, instead of a strip of separate chips.
 function renderStatusChip(snapshot: WebviewSnapshot): string {
-  // Two pills, both one click to a CENTERED picker: [model · cost] and
-  // [thinking level]. No popovers between the user and the choice.
+  // One chip → ONE centered settings box (models + thinking sizes together).
   const model = snapshot.model?.id ? snapshot.model.id : 'model';
   const usage = snapshot.usage ? formatUsageChip(snapshot.usage) : '';
   const thinking = typeof snapshot.thinkingLevel === 'string' ? snapshot.thinkingLevel : '';
-  const modelParts = [model, usage].filter(Boolean);
-  const modelBtn = `<button type="button" class="composer-status" id="status-chip" data-command="piRpc.showModels" title="Model: ${escapeHtml(modelLabel(snapshot))} — click to change" aria-label="Choose model"><span class="model-dot"></span>${escapeHtml(modelParts.join(' · '))}</button>`;
-  const thinkingBtn = thinking
-    ? `<button type="button" class="composer-status composer-thinking" data-command="piRpc.setThinkingLevel" title="Thinking level: ${escapeHtml(thinking)} — click to change" aria-label="Choose thinking level">${THINKING_GLYPH}${escapeHtml(thinking)}</button>`
-    : '';
-  return modelBtn + thinkingBtn;
+  const summaryParts = [model, usage, thinking].filter(Boolean);
+  return `<button type="button" class="composer-status" id="status-chip" data-command="piRpc.chatSettings" title="Model: ${escapeHtml(modelLabel(snapshot))} · thinking: ${escapeHtml(thinking || 'default')} — click to change either" aria-label="Chat settings: model and thinking level"><span class="model-dot"></span>${escapeHtml(summaryParts.join(' · '))}</button>`;
 }
-
-const THINKING_GLYPH =
-  '<svg viewBox="0 0 16 16" width="11" height="11" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M8 2a4.2 4.2 0 0 1 4.2 4.2c0 1.6-.8 2.5-1.6 3.3-.5.6-.8 1-.8 1.7H6.2c0-.7-.3-1.1-.8-1.7-.8-.8-1.6-1.7-1.6-3.3A4.2 4.2 0 0 1 8 2Z"/><path d="M6.4 13.2h3.2M7 14.8h2"/></svg>';
 
 // Chat header ("sidecar" top bar): per-chat overflow actions live here.
 // (chat header removed — the editor TAB shows the chat name + icon, and chat
