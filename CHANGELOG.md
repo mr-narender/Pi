@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.236
+
+- Follow pane is now geometrically RIGHT of the chat, always: π creates its own right split (newGroupRight) and hands focus straight back — no more bottom-split placement when workbench.editor.openSideBySideDirection is “down”; the group is remembered and recreated if closed.
+
 ## 0.0.235
 
 - Plan strip: when π writes a task list, it pins above the chat as live progress — ember bar, n/total, expandable checklist (collapses out of the way; open state survives re-renders).

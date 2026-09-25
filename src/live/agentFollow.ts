@@ -30,6 +30,8 @@ export class AgentFollowService implements vscode.Disposable {
       }
     | undefined;
   private lastReveal = 0;
+  /** Our dedicated right-of-chat group (recreated if the user closes it). */
+  private followColumn: vscode.ViewColumn | undefined;
   private readonly status: vscode.StatusBarItem;
   private readonly decoration: vscode.TextEditorDecorationType;
   private statusTimer: ReturnType<typeof setTimeout> | undefined;
@@ -197,6 +199,40 @@ export class AgentFollowService implements vscode.Disposable {
     return undefined;
   }
 
+  /** π's screen must sit geometrically RIGHT of the chat. ViewColumn math
+   * can't guarantee that (numbers are creation order, and Beside honors
+   * workbench.editor.openSideBySideDirection — 'down' opens at the bottom),
+   * so we create our own right split once and reuse it. */
+  private async followGroup(
+    chatColumn: number | undefined
+  ): Promise<vscode.ViewColumn | undefined> {
+    const groups = vscode.window.tabGroups.all;
+    if (
+      this.followColumn !== undefined &&
+      groups.some((group) => group.viewColumn === this.followColumn)
+    ) {
+      return this.followColumn;
+    }
+    if (chatColumn === undefined) {
+      return undefined;
+    }
+    const active = vscode.window.tabGroups.activeTabGroup;
+    if (active.viewColumn === chatColumn) {
+      // Chat group is active: split RIGHT deterministically, hand focus back.
+      await vscode.commands.executeCommand('workbench.action.newGroupRight');
+      await vscode.commands.executeCommand('workbench.action.focusPreviousGroup');
+      this.followColumn = (chatColumn + 1) as vscode.ViewColumn;
+      this.logger?.info(`[follow] created right split at column ${String(this.followColumn)}`);
+      return this.followColumn;
+    }
+    const existing = groups.find((group) => group.viewColumn === chatColumn + 1);
+    if (existing) {
+      this.followColumn = existing.viewColumn;
+      return this.followColumn;
+    }
+    return undefined;
+  }
+
   private async showInSidePane(
     kind: 'editing' | 'reading',
     absolute: string,
@@ -215,12 +251,13 @@ export class AgentFollowService implements vscode.Disposable {
     try {
       // One container feel: chat on the left, π's files in the split to its
       // RIGHT — each file gets its own persistent tab there.
+      const column = (await this.followGroup(chatColumn)) ?? vscode.ViewColumn.Beside;
       const editor = await vscode.window.showTextDocument(doc, {
-        viewColumn: chatColumn && chatColumn >= 1 ? chatColumn + 1 : vscode.ViewColumn.Beside,
+        viewColumn: column,
         preview: false,
         preserveFocus: true, // NEVER steal the user's cursor
       });
-      void editor;
+      this.followColumn = editor.viewColumn ?? this.followColumn;
       if (kind === 'reading') {
         const line = Math.max(0, (readStartLine(args) ?? 1) - 1);
         const range = doc.lineAt(Math.min(line, doc.lineCount - 1)).range;
