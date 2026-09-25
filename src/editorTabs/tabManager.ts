@@ -1117,7 +1117,14 @@ export class ChatTabManager implements vscode.Disposable {
         await config.update('followAgent', next, vscode.ConfigurationTarget.Global);
         await this.renderResource(host.resource);
         if (next === 'open') {
-          this.follow.replayLast(); // jump straight to the file π is on
+          const replayed = this.follow.replayLast(); // jump to the file π is on
+          void vscode.window.showInformationMessage(
+            replayed
+              ? 'Following π — opened the file the agent is on.'
+              : 'Following π — files the agent reads or edits will open in the split to the right.'
+          );
+        } else {
+          void vscode.window.showInformationMessage('π follow off.');
         }
         return;
       }
@@ -1842,6 +1849,7 @@ export class ChatTabManager implements vscode.Disposable {
     const title = this.titleForContext(context, snapshot);
     const host = this.hosts.get(resource.toString());
     if (host) {
+      this.follow.logger = this.logger;
       this.follow.handleSnapshot(
         this.keyFor(resource),
         title,

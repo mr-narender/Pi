@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.233
+
+- Follow-agent verified end-to-end with a harness (opens right-of-chat, separate tab, focus preserved) — the reported “nothing opens” traced to piRpc.followAgent persisted as off plus a bash-only test (pwd touches no file, by design).
+- The crosshair always answers now: toggling ON confirms with a toast (and opens the current file if π is on one); toggling OFF says so; every follow decision (act/skip/open/give-up + reason) is logged to the Pi output channel.
+
 ## 0.0.232
 
 - No more gray slabs: thinking/tool/result cards, work phases and code blocks are now truly translucent (foreground whisper over the ambient glass, hairline borders) and card text is back to full contrast — labels at 85%, thinking prose at 82%, bodies at 100%.

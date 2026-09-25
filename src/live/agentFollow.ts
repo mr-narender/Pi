@@ -7,6 +7,8 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { readStartLine, revealNeedle, toolActivity } from './toolActivity';
 
+type FollowLogger = { info(message: string): void } | undefined;
+
 interface SnapshotLike {
   messages: Array<{
     blocks?: Array<{ kind: string; name?: string; args?: string; callId?: string }>;
@@ -14,6 +16,7 @@ interface SnapshotLike {
 }
 
 export class AgentFollowService implements vscode.Disposable {
+  public logger: FollowLogger;
   /** callId → last seen args length: streaming args re-reveal as they grow. */
   private readonly seen = new Map<string, Map<string, number>>();
   private lastEditCall: string | undefined;
@@ -143,6 +146,9 @@ export class AgentFollowService implements vscode.Disposable {
     chatColumn?: number
   ): void {
     const absolute = this.resolve(filePath, workspaceRoot);
+    this.logger?.info(
+      `[follow] ${kind} ${absolute} (chat "${chatTitle.trim()}", visible=${isActiveChat}, mode=${this.mode()}, column=${String(chatColumn)})`
+    );
     if (isActiveChat) {
       // Remembered even while off/status: toggling follow ON jumps straight
       // to the file π is currently on.
@@ -169,6 +175,9 @@ export class AgentFollowService implements vscode.Disposable {
     // The side pane follows READS and EDITS — but only for the chat you're
     // looking at; parallel background chats narrate in the status bar only.
     if (this.mode() !== 'open' || !isActiveChat) {
+      this.logger?.info(
+        `[follow] pane skipped: ${this.mode() !== 'open' ? `mode=${this.mode()}` : 'chat not visible'}`
+      );
       return;
     }
     void this.showInSidePane(kind, absolute, chatTitle, args, chatColumn);
@@ -199,8 +208,10 @@ export class AgentFollowService implements vscode.Disposable {
     // retry a few times instead of giving up on ENOENT.
     const doc = await this.openWithRetry(absolute);
     if (!doc) {
+      this.logger?.info(`[follow] gave up opening ${absolute} (not on disk after retries)`);
       return;
     }
+    this.logger?.info(`[follow] opening ${absolute} in column ${String((chatColumn ?? 0) + 1)}`);
     try {
       // One container feel: chat on the left, π's files in the split to its
       // RIGHT — each file gets its own persistent tab there.
@@ -264,13 +275,15 @@ export class AgentFollowService implements vscode.Disposable {
     }
   }
 
-  /** Toggle-ON affordance: immediately show the file π was last on. */
-  public replayLast(): void {
+  /** Toggle-ON affordance: immediately show the file π was last on.
+   * Returns false when there is no remembered activity yet. */
+  public replayLast(): boolean {
     if (this.mode() !== 'open' || !this.lastActivity) {
-      return;
+      return false;
     }
     const { kind, absolute, chatTitle, args, chatColumn } = this.lastActivity;
     void this.showInSidePane(kind, absolute, chatTitle, args, chatColumn);
+    return true;
   }
 
   public dispose(): void {
