@@ -407,6 +407,12 @@ export function createWebviewSnapshot(
       ? extra.messageLimit
       : DEFAULT_MESSAGE_WINDOW;
   const windowOffset = Math.max(0, totalMessages - limit);
+  const foldedMessages = foldToolResults(
+    state.messages
+      .slice(windowOffset)
+      .map((message, index) => toItem(message, windowOffset + index, state.cwd)),
+    state.messages.slice(windowOffset)
+  );
   return {
     sequence,
     title: state.title,
@@ -425,12 +431,7 @@ export function createWebviewSnapshot(
       typeof state.state.pendingMessageCount === 'number'
         ? state.state.pendingMessageCount
         : undefined,
-    messages: foldToolResults(
-      state.messages
-        .slice(windowOffset)
-        .map((message, index) => toItem(message, windowOffset + index, state.cwd)),
-      state.messages.slice(windowOffset)
-    ),
+    messages: foldedMessages,
     messageWindow: {
       total: totalMessages,
       offset: windowOffset,
@@ -452,6 +453,7 @@ export function createWebviewSnapshot(
     model: state.state.model,
     thinkingLevel:
       typeof state.state.thinkingLevel === 'string' ? state.state.thinkingLevel : undefined,
+    plan: derivePlan(foldedMessages),
     usage: summarizeUsage(state.lastSessionStats),
     approvals: state.pendingUi
       .filter((request) => request.method === 'select' || request.method === 'confirm')
@@ -478,4 +480,29 @@ export function createWebviewSnapshot(
         : undefined,
     typewriterSpeed: extra.presentation?.typewriterSpeed,
   };
+}
+
+/** Newest assistant markdown task list → plan strip ("- [ ] step" lines). */
+function derivePlan(
+  messages: Array<{ role: string; blocks?: WebviewMessageBlock[] }>
+): { items: Array<{ text: string; done: boolean }>; done: number } | undefined {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]!;
+    if (message.role !== 'assistant') {
+      continue;
+    }
+    const text = (message.blocks ?? [])
+      .filter((block) => block.kind === 'text')
+      .map((block) => ('text' in block ? (block.text ?? '') : ''))
+      .join('\n');
+    const matches = Array.from(text.matchAll(/^[-*] \[([ xX])\] +(.+)$/gm));
+    if (matches.length >= 2) {
+      const items = matches.slice(0, 12).map((match) => ({
+        text: match[2]!.trim().slice(0, 120),
+        done: match[1] !== ' ',
+      }));
+      return { items, done: items.filter((item) => item.done).length };
+    }
+  }
+  return undefined;
 }

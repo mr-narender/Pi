@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.235
+
+- Plan strip: when π writes a task list, it pins above the chat as live progress — ember bar, n/total, expandable checklist (collapses out of the way; open state survives re-renders).
+- Turn navigator: j / k (or Alt+↓ / Alt+↑) jump between your prompts with a flash — skipped while typing.
+- Swarm v2: a live progress notification counts workers as they finish (“2/4 — auth finished”), cancellable, with the completion digest at the end.
+
 ## 0.0.234
 
 - π REVIEW PANEL (flagship): a persistent Review tree in the π sidebar — the last 10 agent turns, each expandable into every file it touched with +/− line counts; click a file for the before↔after diff, inline ↩ reverts a file or a whole turn. The trust loop for agentic edits.

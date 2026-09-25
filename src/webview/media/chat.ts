@@ -1483,6 +1483,58 @@ function ensureDockObserved(): void {
 }
 ensureDockObserved();
 
+// Turn navigator: j / k (or Alt+Down / Alt+Up) jump between YOUR prompts —
+// each user message is a turn boundary. Skipped while typing or finding.
+function turnAnchors(): HTMLElement[] {
+  return Array.from(document.querySelectorAll<HTMLElement>('article.message-card.message-user'));
+}
+
+function jumpTurn(direction: 1 | -1): void {
+  const anchors = turnAnchors();
+  if (anchors.length === 0) {
+    return;
+  }
+  const viewportAnchor = window.innerHeight * 0.25;
+  let currentIndex = -1;
+  for (let index = 0; index < anchors.length; index += 1) {
+    if (anchors[index]!.getBoundingClientRect().top <= viewportAnchor + 2) {
+      currentIndex = index;
+    }
+  }
+  const next = Math.max(0, Math.min(anchors.length - 1, currentIndex + direction));
+  const target = anchors[next];
+  if (!target) {
+    return;
+  }
+  target.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  target.classList.add('find-flash');
+  setTimeout(() => target.classList.remove('find-flash'), 700);
+}
+
+window.addEventListener('keydown', (event) => {
+  const target = event.target as HTMLElement | null;
+  const typing =
+    target &&
+    (target.tagName === 'TEXTAREA' || target.tagName === 'INPUT' || target.isContentEditable);
+  if (typing) {
+    return;
+  }
+  if (event.altKey && !event.metaKey && !event.ctrlKey) {
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      jumpTurn(event.key === 'ArrowDown' ? 1 : -1);
+    }
+    return;
+  }
+  if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) {
+    return;
+  }
+  if (event.key === 'j' || event.key === 'k') {
+    event.preventDefault();
+    jumpTurn(event.key === 'j' ? 1 : -1);
+  }
+});
+
 // Approvals answer to the keyboard: Y = Allow, N = Deny (skipped while
 // typing). The highest-friction agentic moment shouldn't need the mouse.
 window.addEventListener('keydown', (event) => {

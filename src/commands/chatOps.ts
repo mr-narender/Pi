@@ -97,48 +97,65 @@ export function registerChatOps(deps: ChatOpsDeps): void {
       void vscode.window.showWarningMessage('π Swarm: no chats could be started.');
       return;
     }
-    void vscode.window.showInformationMessage(
-      `π Swarm: ${swarm.length} chat${swarm.length === 1 ? '' : 's'} running in parallel.`
-    );
-    // Consolidated completion: notify once when EVERY swarm chat settles.
+    // Swarm v2: LIVE progress — one notification counts workers as they land.
     const seenBusy = new Set<SessionController>();
     const done = new Set<SessionController>();
+    const labels = new Map<SessionController, string>();
+    swarm.forEach((controller, index) => labels.set(controller, items[index] ?? `#${index + 1}`));
     const subs: vscode.Disposable[] = [];
-    const finish = (): void => {
-      for (const sub of subs) {
-        sub.dispose();
-      }
-      void vscode.window
-        .showInformationMessage(
-          `π Swarm complete — all ${swarm.length} chats finished.`,
-          'Show Chats'
-        )
-        .then((choice) => {
-          if (choice === 'Show Chats') {
-            void vscode.commands.executeCommand('piRpc.showRunningChats');
-          }
-        });
-    };
-    for (const controller of swarm) {
-      subs.push(
-        controller.onDidChangeState(() => {
-          const conn = controller.snapshot.connectionState;
-          if (conn === 'busy') {
-            seenBusy.add(controller);
-          } else if (conn === 'ready' && seenBusy.has(controller) && !done.has(controller)) {
-            done.add(controller);
-            if (done.size === swarm.length) {
-              finish();
+    void vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: `π Swarm (${swarm.length} chats)`,
+        cancellable: true,
+      },
+      (progress, token) =>
+        new Promise<void>((resolve) => {
+          const finish = (): void => {
+            for (const sub of subs) {
+              sub.dispose();
             }
+            resolve();
+            if (done.size > 0) {
+              void vscode.window
+                .showInformationMessage(
+                  `π Swarm complete — ${done.size}/${swarm.length} finished.`,
+                  'Show Chats'
+                )
+                .then((choice) => {
+                  if (choice === 'Show Chats') {
+                    void vscode.commands.executeCommand('piRpc.showRunningChats');
+                  }
+                });
+            }
+          };
+          token.onCancellationRequested(() => finish());
+          progress.report({ message: `0/${swarm.length} — working…` });
+          for (const controller of swarm) {
+            subs.push(
+              controller.onDidChangeState(() => {
+                const conn = controller.snapshot.connectionState;
+                if (conn === 'busy') {
+                  seenBusy.add(controller);
+                } else if (conn === 'ready' && seenBusy.has(controller) && !done.has(controller)) {
+                  done.add(controller);
+                  progress.report({
+                    increment: 100 / swarm.length,
+                    message: `${done.size}/${swarm.length} — “${labels.get(controller) ?? 'chat'}” finished`,
+                  });
+                  if (done.size === swarm.length) {
+                    finish();
+                  }
+                }
+              })
+            );
           }
+          // Never-settling swarms must not hold the notification forever.
+          const failsafe = setTimeout(() => finish(), 30 * 60_000);
+          subs.push({ dispose: () => clearTimeout(failsafe) });
+          subscriptions.push(...subs);
         })
-      );
-    }
-    subscriptions.push(...subs);
-    // A swarm that never settles must not leak its listeners until reload —
-    // give the watch a hard ceiling (finish() disposes on normal completion).
-    const failsafe = setTimeout(() => finish(), 30 * 60_000);
-    subs.push({ dispose: () => clearTimeout(failsafe) });
+    );
   });
 
   // Composer context: attach git/terminal state into the draft.

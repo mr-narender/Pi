@@ -3530,3 +3530,90 @@ body.vscode-high-contrast .code-wrap {
   background: var(--vscode-editor-background);
   border: 1px solid var(--vscode-panel-border);
 }
+
+/* Plan strip: π's task list as live progress above the chat. */
+.plan-strip {
+  margin: 0 4px;
+  background: var(--glass-1);
+  border: 1px solid var(--glass-line);
+  border-radius: 10px;
+  padding: 0;
+  flex: 0 0 auto;
+}
+
+.plan-strip > summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 12px;
+  cursor: pointer;
+  list-style: none;
+  font-size: 11.5px;
+}
+
+.plan-strip > summary::-webkit-details-marker {
+  display: none;
+}
+
+.plan-badge {
+  font-weight: 650;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  font-size: 10px;
+  color: var(--ember);
+}
+
+.plan-progress {
+  flex: 1 1 auto;
+  height: 4px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--vscode-foreground) 10%, transparent);
+  overflow: hidden;
+}
+
+.plan-progress-fill {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--ember), var(--ember-deep));
+  transition: width 300ms ease;
+}
+
+.plan-count {
+  opacity: 0.75;
+  font-variant-numeric: tabular-nums;
+}
+
+.plan-list {
+  list-style: none;
+  margin: 0;
+  padding: 2px 12px 10px;
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.plan-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.plan-item.is-done {
+  opacity: 0.55;
+  text-decoration: line-through;
+}
+
+.plan-check {
+  color: var(--ember);
+  font-weight: 700;
+}
+
+.plan-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  border: 1px solid color-mix(in srgb, var(--vscode-foreground) 40%, transparent);
+  flex: 0 0 auto;
+  align-self: center;
+}
