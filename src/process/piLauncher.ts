@@ -10,6 +10,47 @@ export interface PathPiInfo {
   version?: string;
 }
 
+// #5 (hardening review): the shared-runtime host is a fork of Pi's rpc-mode,
+// tested against THIS Pi line. A PATH install with a different MAJOR version
+// may have moved internals — don't feed it to the host fork (chats still work
+// via managed/per-chat paths). A newer MINOR is allowed with a warning.
+export const TESTED_PI_VERSION = { major: 0, minor: 84 };
+
+function parsePiVersion(version?: string): { major: number; minor: number } | undefined {
+  const match = /^(\d+)\.(\d+)/.exec(version ?? '');
+  return match ? { major: Number(match[1]), minor: Number(match[2]) } : undefined;
+}
+
+let compatLogged = false;
+
+/** PATH pi's package root, gated on host-fork compatibility. */
+export function usablePathPiRoot(logger?: {
+  warn(message: string): void;
+  info(message: string): void;
+}): string | undefined {
+  const info = detectPathPi();
+  if (!info?.packageRoot) {
+    return undefined;
+  }
+  const parsed = parsePiVersion(info.version);
+  if (parsed && parsed.major !== TESTED_PI_VERSION.major) {
+    if (!compatLogged) {
+      compatLogged = true;
+      logger?.warn(
+        `PATH pi v${info.version} is a different MAJOR than the tested v${TESTED_PI_VERSION.major}.${TESTED_PI_VERSION.minor} — not using it for the shared runtime (falling back to managed/per-chat).`
+      );
+    }
+    return undefined;
+  }
+  if (parsed && parsed.minor > TESTED_PI_VERSION.minor && !compatLogged) {
+    compatLogged = true;
+    logger?.info(
+      `PATH pi v${info.version} is newer than the tested v${TESTED_PI_VERSION.major}.${TESTED_PI_VERSION.minor} — using it; if chats misbehave, set piRpc.piSource='external'.`
+    );
+  }
+  return info.packageRoot;
+}
+
 let cachedPathPi: PathPiInfo | null | undefined;
 
 /** Find an EXISTING `pi` on PATH and resolve its npm package root. Cached. */

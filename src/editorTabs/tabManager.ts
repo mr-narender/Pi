@@ -8,6 +8,7 @@ import type { SessionController } from '../sessions/sessionController';
 import type { DiagnosticsLogger } from '../diagnostics/logger';
 import { createWebviewSnapshot, firstPromptPreview } from '../webview/model';
 import type { TurnReview } from '../review/turnReview';
+import { SessionIndex } from './sessionIndex';
 import { parseWebviewMessage } from '../webview/messages';
 import {
   acceptedSnapshotFromPreview,
@@ -159,6 +160,21 @@ function diagnosticSeverity(
   return 'hint';
 }
 
+// Commands the chat webview may invoke via the generic executeCommand message.
+// Keep in sync with data-command usages in render.ts / chat.ts — nothing else.
+const WEBVIEW_COMMAND_ALLOWLIST = new Set<string>([
+  'piRpc.abort',
+  'piRpc.commandPalette',
+  'piRpc.remote.stop',
+  'piRpc.showModels',
+  'piRpc.showPiCommands',
+  'piRpc.switchSession',
+  'piRpcInternal.restart',
+  'piRpcInternal.retryLast',
+  'piRpcInternal.showLogs',
+  'piRpcInternal.start',
+]);
+
 class ChatEditorHost implements vscode.Disposable {
   private readonly disposables: vscode.Disposable[] = [];
   private attachmentFileUris = new Set<string>();
@@ -270,6 +286,7 @@ export class ChatTabManager implements vscode.Disposable {
     private readonly logger: DiagnosticsLogger
   ) {
     this.cache = new ChatTabStateCache(context);
+    this.sessions = new SessionIndex(context.workspaceState);
     for (const controller of registry.list()) {
       this.trackController(controller);
     }
@@ -962,9 +979,7 @@ export class ChatTabManager implements vscode.Disposable {
     // resolve back to the raw draft key and miss the registry entry).
     const controllerKey = this.keyFor(host.resource);
     const resourceKey = host.resource.toString();
-    if (this.draftBindings.delete(resourceKey)) {
-      this.persistBindings();
-    }
+    this.sessions.unbind(resourceKey);
     if (this.hosts.get(resourceKey) === host) {
       this.hosts.delete(resourceKey);
     }
@@ -1136,6 +1151,13 @@ export class ChatTabManager implements vscode.Disposable {
         await this.uiState.setFocusForIdentity(context.controller, context.target, parsed.focus);
         return;
       case 'executeCommand':
+        // SECURITY: the webview may only invoke this fixed allowlist. Without it,
+        // any HTML-escaping slip in the renderer would escalate to arbitrary
+        // VS Code command execution (terminal writes, file ops, …).
+        if (!WEBVIEW_COMMAND_ALLOWLIST.has(parsed.command)) {
+          this.logger.warn(`Blocked non-allowlisted webview command: ${parsed.command}`);
+          return;
+        }
         try {
           await vscode.commands.executeCommand(parsed.command, parsed.argument);
         } catch (error) {
@@ -1451,58 +1473,21 @@ export class ChatTabManager implements vscode.Disposable {
       : undefined;
   }
 
-  // Draft URI -> bound session target (set on first message; the draft tab
-  // keeps its URI forever instead of the flickery open-new/close-old tab swap).
-  private draftBindings = new Map<string, ChatTabTarget>();
-  private bindingsLoaded = false;
+  // ALL tab↔session identity questions route through SessionIndex (#2 of the
+  // hardening review) — bindings, owners, effective targets, registry keys.
+  private readonly sessions: SessionIndex;
 
-  private loadBindings(): void {
-    if (this.bindingsLoaded) {
-      return;
-    }
-    this.bindingsLoaded = true;
-    const raw = this.context.workspaceState.get<Record<string, ChatTabTarget>>(
-      'piRpc.draftBindings',
-      {}
-    );
-    for (const [uri, target] of Object.entries(raw)) {
-      this.draftBindings.set(uri, target);
-    }
-  }
-
-  private persistBindings(): void {
-    const raw: Record<string, ChatTabTarget> = {};
-    for (const [uri, target] of this.draftBindings) {
-      raw[uri] = target;
-    }
-    void this.context.workspaceState.update('piRpc.draftBindings', raw);
-  }
-
-  /** The EFFECTIVE target for a resource: a bound draft resolves to its session. */
   private resolveTarget(resource: vscode.Uri): ChatTabTarget | undefined {
-    const parsed = parseChatUri(resource);
-    if (!parsed) {
-      return undefined;
-    }
-    if (parsed.kind === 'workspaceDraft') {
-      this.loadBindings();
-      const bound = this.draftBindings.get(resource.toString());
-      if (bound) {
-        return bound;
-      }
-    }
-    return parsed;
+    return this.sessions.resolveTarget(resource);
   }
 
   private keyFor(resource: vscode.Uri): string {
-    const target = this.resolveTarget(resource);
-    return target ? chatTargetSessionKey(target) : resource.toString();
+    return this.sessions.keyFor(resource);
   }
 
   // Each chat tab (session) owns its OWN controller + Pi process, keyed by the
   // session, so multiple chats run IN PARALLEL. (Previously every tab in a folder
   // shared one controller, so opening a 2nd chat yanked the 1st.)
-  private readonly controllerResource = new Map<SessionController, vscode.Uri>();
   private readonly trackedControllers = new Set<SessionController>();
 
   private folderForUri(uri: string): vscode.WorkspaceFolder | undefined {
@@ -1552,7 +1537,7 @@ export class ChatTabManager implements vscode.Disposable {
     this.ensureTracked(controller);
     // Remember which tab to repaint when THIS controller changes (its session may
     // move under it after an edit/fork, but it still belongs to this tab).
-    this.controllerResource.set(controller, resource);
+    this.sessions.setOwner(controller, resource);
     return { controller, resource, target };
   }
 
@@ -1565,7 +1550,7 @@ export class ChatTabManager implements vscode.Disposable {
 
   /** The tab identity OWNED by this controller (per-tab model), if any. */
   public identityForController(controller: SessionController): ChatTabTarget | undefined {
-    const owner = this.controllerResource.get(controller);
+    const owner = this.sessions.ownerOf(controller);
     return owner ? (parseChatUri(owner) ?? undefined) : undefined;
   }
 
@@ -1584,7 +1569,7 @@ export class ChatTabManager implements vscode.Disposable {
     // Repaint the tab that OWNS this controller — by its resource, NOT by the
     // controller's current session. After an edit/fork the controller's session
     // changes, but the SAME tab must keep showing it (no new chat).
-    const owner = this.controllerResource.get(controller);
+    const owner = this.sessions.ownerOf(controller);
     if (owner) {
       await this.renderResource(owner);
     }
@@ -1907,7 +1892,7 @@ export class ChatTabManager implements vscode.Disposable {
     // "Connecting to Pi…" forever while its controller was READY.
     const isCurrent =
       sameTarget(currentTarget, context.target) ||
-      this.controllerResource.get(context.controller)?.toString() === context.resource.toString();
+      this.sessions.ownerOf(context.controller)?.toString() === context.resource.toString();
 
     if (isCurrent) {
       const settings = getSettings();
@@ -2019,11 +2004,9 @@ export class ChatTabManager implements vscode.Disposable {
     // resolveTarget() maps it to the session (persisted across reloads).
     const oldKey = this.keyFor(from);
     const nextTarget = parseChatUri(to) ?? currentTargetForController(controller);
-    this.loadBindings();
-    this.draftBindings.set(from.toString(), nextTarget);
-    this.persistBindings();
+    this.sessions.bind(from, nextTarget);
     this.registry.rekey(oldKey, this.keyFor(from));
-    this.controllerResource.set(controller, from);
+    this.sessions.setOwner(controller, from);
     const fromState = this.cache.get(from);
     if (fromState) {
       await this.cache.set({

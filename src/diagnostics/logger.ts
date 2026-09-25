@@ -10,7 +10,6 @@ export { formatError };
 // garbage — so every log line is stripped to plain text.
 // Covers: CSI (colors/cursor), OSC … BEL/ST (incl. 777), single-char escapes,
 // stray BEL and carriage returns.
-// eslint-disable-next-line no-control-regex
 const TERMINAL_ESCAPES =
   /\u001b\[[0-9;?]*[ -/]*[@-~]|\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)?|\u001b[@-Z\\-_]|\u0007|\r/g;
 

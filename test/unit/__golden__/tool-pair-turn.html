@@ -1,0 +1,52 @@
+
+    <a class="skip-link" href="#composer-field">Skip to composer</a>
+    <div class="layout" data-testid="chat-app" data-ui-mode="simple">
+      <div class="header-summary visually-hidden" aria-label="Current chat summary">Current · workspace · Demo Session · Ready</div>
+      <div id="a11y-status" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></div>
+
+      
+      
+      
+
+      <main class="conversation" id="messages" role="log" aria-live="off" aria-relevant="additions text">
+        <article class="message-card message-user" aria-label="You said">
+          <div class="message-role">You</div>
+          <div class="message-body"><p class="msg-para">run ls</p></div>
+          
+          <div class="msg-actions"><button type="button" class="msg-edit" title="Edit &amp; restart from here" aria-label="Edit and restart the chat from this message"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.5 3.5l2 2L6 12l-2.5.5L4 10z"/></svg></button><button type="button" class="msg-copy" title="Copy message" aria-label="Copy message"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="8" height="8" rx="1.5"/><path d="M3 10.5V4a1.5 1.5 0 0 1 1.5-1.5H10"/></svg></button></div>
+        </article>
+        <article class="message-card message-assistant" aria-label="π said">
+          <div class="message-role">π</div>
+          <div class="timeline"><div class="tl-node tl-thinking"><span class="tl-dot"></span><details class="tl-card" open><summary class="tl-head"><svg class="meta-icon" viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M8 2.4l1.5 3.3 3.6.4-2.7 2.4.8 3.5L8 10.7 4.8 12.4l.8-3.5L2.9 6.5l3.6-.4z" fill="currentColor" stroke="none"/></svg><span class="tl-label">Thinking</span><svg class="tl-caret" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4l4 4-4 4"/></svg></summary><div class="tl-body tl-think"><p class="msg-para">checking the directory</p></div></details></div><div class="tl-node tl-tool"><span class="tl-dot"></span><div class="tl-card"><div class="tl-head"><svg class="meta-icon" viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 4.5L6.5 8l-3 3.5"/><path d="M8.5 11.5h4"/></svg><span class="tl-label">Tool</span><code class="tool-name">bash</code></div><div class="json-view"><div class="md-table-wrap json-table-wrap"><table class="md-table json-table"><tbody><tr><td class="json-key">cmd</td><td><span class="json-str">ls</span></td></tr></tbody></table></div></div><details class="tl-result-inline" open><summary class="tl-result-head"><svg class="meta-icon" viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.4l3 3 7-7.4"/></svg><span class="tl-label">Result · 2 lines</span><svg class="tl-caret" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4l4 4-4 4"/></svg></summary><pre class="code-block"><code>file.txt
+notes.md</code></pre></details></div></div><div class="tl-node tl-response"><span class="tl-dot"></span><div class="tl-card tl-answer"><div class="tl-head tl-answer-head"><svg class="meta-icon" viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="8" r="2.4"/></svg><span class="tl-label">π Response</span></div><div class="tl-body"><p class="msg-para">Two files: <code class="inline-code">file.txt</code> and <code class="inline-code">notes.md</code>.</p></div></div></div></div>
+          
+          <div class="msg-actions"><button type="button" class="msg-copy" title="Copy message" aria-label="Copy message"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="8" height="8" rx="1.5"/><path d="M3 10.5V4a1.5 1.5 0 0 1 1.5-1.5H10"/></svg></button></div>
+        </article><button type="button" id="jump-latest" class="jump-latest" title="Scroll to latest" aria-label="Scroll to latest message" hidden><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9.5l6 6 6-6"/></svg></button></main>
+
+      
+      <section class="composer-dock" aria-labelledby="composer-heading">
+        <h2 id="composer-heading" class="visually-hidden">Message Pi</h2>
+        <label class="visually-hidden" for="composer-field">Message π</label>
+        
+        
+        
+        <div class="composer-card" aria-busy="false">
+          <textarea id="composer-field" rows="3" placeholder="Ask π to edit…" ></textarea>
+          <div class="composer-actions" aria-label="Composer actions">
+            <div class="composer-actions-left">
+              <button type="button" id="attach-trigger" class="icon-button" data-action="appendPickedFile" title="Add a file" aria-label="Add a file" >+</button>
+              <button type="button" class="icon-button" data-command="piRpc.showPiCommands" title="Commands" aria-label="Commands" >/</button>
+            </div>
+            <div class="composer-actions-right">
+              
+              <button type="button" class="model-label" data-command="piRpc.showModels" title="Choose model" aria-label="Choose model"><span class="model-dot"></span><span class="model-name">mock/model</span></button>
+              
+              
+              <button type="button" id="composer-send-button" class="send-button" data-send-command="prompt" title="Send (Enter · Shift+Enter for newline)" aria-label="Send (Enter · Shift+Enter for newline)" ><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12.5 4v3a1.5 1.5 0 0 1-1.5 1.5H4.5"/><path d="M7 6L4.3 8.5 7 11"/></svg></button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      
+    </div>

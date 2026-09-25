@@ -2,7 +2,7 @@
   "name": "pi",
   "displayName": "Pi – this one is (y)ours",
   "description": "An unofficial, personal VS Code chat UI for the Pi coding agent (pi.dev). Not affiliated with pi.dev — shared for anyone who wants it.",
-  "version": "0.0.211",
+  "version": "0.0.212",
   "publisher": "mr-narender",
   "license": "MIT",
   "private": true,
@@ -49,7 +49,8 @@
     "smoke:real-pi": "node --import tsx --test test/integration/real-pi-smoke.test.ts",
     "vendor:pi": "node ./scripts/vendor-pi.mjs",
     "package:vsix": "npm run build && npm run vendor:pi && npx @vscode/vsce package --no-dependencies --allow-missing-repository",
-    "audit:prod": "npm audit --omit=dev"
+    "audit:prod": "npm audit --omit=dev",
+    "gate": "npm run typecheck && npm run lint && npm run test:unit && npm run test:integration"
   },
   "dependencies": {
     "highlight.js": "^11.11.1",

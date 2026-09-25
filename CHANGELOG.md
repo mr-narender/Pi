@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.0.212
+
+- Hardening release (architecture review items, in order):
+  1. SECURITY: the chat webview can now only invoke a fixed allowlist of commands — an HTML-escaping bug can no longer escalate to arbitrary VS Code command execution.
+  2. Tab/session identity unified into one SessionIndex module (bindings, owners, keys) — deletes the drift-bug class behind this week's draft/live-update issues.
+  3. Chat-operations commands extracted from the extension entrypoint (2,611 → 2,321 lines) into src/commands/chatOps.ts.
+  4. The full test gate (typecheck + lint + 259 unit + 23 integration) is now one npm script and ran green; an environment-coupled legacy test self-skips instead of failing.
+  5. PATH-pi compatibility gate: a different-MAJOR pi is never fed to the shared-runtime host fork (falls back safely); newer minors warn once.
+  6. Versioned persistence store (piRpc.storeVersion) — one namespaced accessor with a migration hook.
+  7. Golden-HTML contract tests pin the full renderer output for canonical turns (fused tool card, error turn with retry banner).
+
 ## 0.0.211
 
 - Tool call + result fusion now works for the REAL streaming shape: results that arrive as separate messages are folded into the assistant turn that made the call (matched by toolCallId, else the nearest owning turn) and rendered inside the SAME card as the call. Results with no owning call remain standalone.
