@@ -249,12 +249,15 @@ export class AgentFollowService implements vscode.Disposable {
     }
     this.logger?.info(`[follow] opening ${absolute} in column ${String((chatColumn ?? 0) + 1)}`);
     try {
-      // One container feel: chat on the left, π's files in the split to its
-      // RIGHT — each file gets its own persistent tab there.
+      // Chrome-split-view feel: ONE container, two panes — chat left, a single
+      // live file slot right. preview:true makes the right group REUSE one tab
+      // as π moves file-to-file (no 10-tab pileup; the Review panel is the
+      // history). If the user edits a followed file, VS Code pins it — π's
+      // slot simply continues beside it, which is the right ownership handoff.
       const column = (await this.followGroup(chatColumn)) ?? vscode.ViewColumn.Beside;
       const editor = await vscode.window.showTextDocument(doc, {
         viewColumn: column,
-        preview: false,
+        preview: true,
         preserveFocus: true, // NEVER steal the user's cursor
       });
       this.followColumn = editor.viewColumn ?? this.followColumn;

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.237
+
+- Follow pane is one live slot (Chrome split-view style): the right split reuses a single preview tab as π moves file-to-file — chat left, current file right, never a tab pileup. Edit a followed file yourself and it pins; π keeps cycling beside it. Turn history lives in the Review panel.
+
 ## 0.0.236
 
 - Follow pane is now geometrically RIGHT of the chat, always: π creates its own right split (newGroupRight) and hands focus straight back — no more bottom-split placement when workbench.editor.openSideBySideDirection is “down”; the group is remembered and recreated if closed.
