@@ -2999,3 +2999,148 @@ body.vscode-high-contrast .send-button {
   color: var(--vscode-button-foreground);
   box-shadow: none;
 }
+
+/* ═══ Refined Glass — pass 2: full component coverage ═══ */
+
+/* Approval cards: the most-seen agentic moment gets the full treatment. */
+.approval-card {
+  background: color-mix(in srgb, var(--vscode-editor-background) 72%, transparent);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--ember-line);
+  border-radius: 12px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.3);
+}
+
+.approval-btn {
+  background: var(--glass-2);
+  border: 1px solid var(--glass-line-strong);
+  border-radius: 7px;
+  transition: border-color 120ms ease;
+}
+
+.approval-btn:hover {
+  border-color: var(--ember-glow);
+  background: var(--glass-2);
+}
+
+.approval-allow {
+  background: linear-gradient(135deg, var(--ember), var(--ember-deep));
+  border: none;
+  color: #1a1a1a;
+  font-weight: 600;
+  box-shadow: 0 0 10px rgba(255, 140, 66, 0.25);
+}
+
+.approval-allow:hover {
+  box-shadow: 0 0 16px var(--ember-glow);
+  background: linear-gradient(135deg, var(--ember), var(--ember-deep));
+}
+
+/* Recovery / restricted-mode banners. */
+.banner {
+  background: color-mix(in srgb, var(--vscode-editor-background) 78%, transparent);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--glass-line-strong);
+  border-radius: 10px;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.3);
+}
+
+/* Composer status chip (model · cost · thinking). */
+.composer-status > summary {
+  background: var(--glass-1);
+  border: 1px solid var(--glass-line);
+  border-radius: 999px;
+  transition: border-color 120ms ease;
+}
+
+.composer-status > summary:hover {
+  border-color: var(--ember-glow);
+  background: var(--glass-2);
+}
+
+/* Attachment tray chips. */
+.attachment-tray {
+  background: var(--glass-1);
+  border: 1px solid var(--glass-line);
+  border-radius: 10px;
+}
+
+/* Code blocks: layered, header as its own glass strip, ember copy hover. */
+.code-wrap {
+  background: color-mix(in srgb, var(--vscode-editor-background) 60%, transparent);
+  border: 1px solid var(--glass-line);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.code-lang {
+  background: var(--glass-1);
+  border-bottom: 1px solid var(--glass-line);
+}
+
+.code-btn {
+  border-radius: 6px;
+  transition: color 120ms ease;
+}
+
+.code-btn:hover {
+  color: var(--ember);
+}
+
+/* Floating message actions (copy / edit-restart). */
+.msg-actions {
+  background: color-mix(in srgb, var(--vscode-editor-background) 70%, transparent);
+  backdrop-filter: blur(6px);
+  border: 1px solid var(--glass-line);
+  border-radius: 8px;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.3);
+}
+
+.msg-actions button:hover {
+  color: var(--ember);
+}
+
+/* Boot state: soft ember ambiance behind the squiggle. */
+.connecting-state {
+  background: radial-gradient(420px 260px at 50% 38%, rgba(255, 140, 66, 0.05), transparent);
+}
+
+/* Thin modern scrollbars everywhere in the chat. */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--vscode-foreground) 16%, transparent);
+  border-radius: 5px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--vscode-foreground) 28%, transparent);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+/* High-contrast: pass-2 surfaces drop glass too. */
+body.vscode-high-contrast .approval-card,
+body.vscode-high-contrast .banner,
+body.vscode-high-contrast .msg-actions,
+body.vscode-high-contrast .code-wrap,
+body.vscode-high-contrast .composer-status > summary {
+  backdrop-filter: none;
+  background: var(--vscode-editor-background);
+  box-shadow: none;
+}
+
+body.vscode-high-contrast .approval-allow {
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  box-shadow: none;
+}

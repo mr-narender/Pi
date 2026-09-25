@@ -333,6 +333,27 @@ export class SessionsWebviewProvider implements vscode.WebviewViewProvider {
       .stat-dot.busy { background: var(--vscode-charts-orange, #d2795b); animation: sb-pulse 1s ease-in-out infinite; }
       .stat-dot.waiting { background: var(--vscode-charts-yellow, #e2b93d); animation: sb-pulse 0.7s ease-in-out infinite; }
       .ctx-pct { margin-left: 6px; font-size: 10px; opacity: 0.6; }
+      /* ═══ Refined Glass (matches the chat) ═══ */
+      :root {
+        --glass-1: color-mix(in srgb, var(--vscode-foreground) 3%, transparent);
+        --glass-2: color-mix(in srgb, var(--vscode-foreground) 6%, transparent);
+        --glass-line: color-mix(in srgb, var(--vscode-foreground) 9%, transparent);
+        --ember: #ff8c42;
+        --ember-glow: rgba(255, 140, 66, 0.35);
+      }
+      .search { background: var(--glass-1); border: 1px solid var(--glass-line); border-radius: 8px; transition: border-color 120ms ease; }
+      .search:focus { outline: none; border-color: var(--ember-glow); }
+      .item { transition: background 100ms ease; }
+      .item:hover { background: var(--glass-2); }
+      .item.active { background: var(--glass-2); box-shadow: inset 2px 0 0 var(--ember); color: inherit; }
+      .icon-btn:hover { background: var(--glass-2); color: var(--ember); }
+      .remote-btn { background: var(--glass-1); border-color: var(--glass-line); border-radius: 9px; }
+      .remote-btn:hover { border-color: var(--ember-glow); background: var(--glass-2); }
+      .group-divider { border-top-color: var(--glass-line); }
+      ::-webkit-scrollbar { width: 8px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--vscode-foreground) 16%, transparent); border-radius: 4px; }
+      body.vscode-high-contrast .search, body.vscode-high-contrast .item.active, body.vscode-high-contrast .remote-btn { background: var(--vscode-editor-background); }
       .ctx-pct.hot { color: var(--vscode-charts-orange, #ff8c42); opacity: 1; font-weight: 600; }
       @keyframes sb-pulse { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
       .item.other .name { opacity: 0.92; }

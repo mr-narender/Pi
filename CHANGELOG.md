@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.217
+
+- Refined Glass pass 2 — FULL coverage: approval cards (glass + ember Allow), recovery/restricted banners, composer status chip, attachment tray, code blocks with glass headers and ember copy hover, floating message actions, boot ambiance, thin modern scrollbars, and the entire sidebar (search, rows, active ember edge, dividers, buttons). High-contrast resets included.
+
 ## 0.0.216
 
 - REFINED GLASS: new visual language — layered translucent surfaces (theme-adaptive via color-mix), real glass (blur + elevation) on the composer, menus, find bar and retry banner, ember-gradient send button with glow, messages rise in, and the streaming answer breathes with a soft ember pulse. High-contrast themes keep honest borders; reduced-motion respected.
