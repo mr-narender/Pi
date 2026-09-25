@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.232
+
+- No more gray slabs: thinking/tool/result cards, work phases and code blocks are now truly translucent (foreground whisper over the ambient glass, hairline borders) and card text is back to full contrast — labels at 85%, thinking prose at 82%, bodies at 100%.
+
 ## 0.0.231
 
 - Input overlap fixed: the transcript-clearance observer re-attaches after every render (morphdom could swap the dock node — e.g. when the Working banner mounts — freezing the spacing), plus a larger breathing buffer.

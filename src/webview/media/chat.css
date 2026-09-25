@@ -3478,3 +3478,55 @@ body {
 .follow-toggle:hover {
   color: var(--ember);
 }
+
+/* ═══ Pass 9: kill the gray slabs — cards go truly translucent ═══
+   The editor-background mixes read as OPAQUE gray boxes against the ambient
+   glass (and muddied the label text sitting on them). Cards are now a
+   foreground whisper — the ambience shows through, text contrast returns. */
+#messages .tl-card {
+  background: color-mix(in srgb, var(--vscode-foreground) 2.5%, transparent);
+  border: 1px solid var(--glass-line);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+#messages .tl-result-inline {
+  background: transparent;
+}
+
+.work-phase {
+  background: color-mix(in srgb, var(--vscode-foreground) 2%, transparent);
+}
+
+/* Code blocks: same whisper, header is just a hairline — no second slab. */
+.code-wrap {
+  background: color-mix(in srgb, var(--vscode-foreground) 3%, transparent);
+}
+
+.code-lang {
+  background: transparent;
+  border-bottom: 1px solid var(--glass-line);
+}
+
+/* Card text: full-contrast body, labels legible instead of muddy. */
+#messages .tl-head {
+  color: var(--vscode-foreground);
+}
+
+#messages .tl-label {
+  opacity: 0.85;
+}
+
+#messages .tl-think {
+  color: color-mix(in srgb, var(--vscode-foreground) 82%, transparent);
+}
+
+#messages .tl-body {
+  color: var(--vscode-foreground);
+}
+
+/* High contrast: solid surfaces stay solid. */
+body.vscode-high-contrast #messages .tl-card,
+body.vscode-high-contrast .code-wrap {
+  background: var(--vscode-editor-background);
+  border: 1px solid var(--vscode-panel-border);
+}
