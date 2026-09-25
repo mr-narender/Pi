@@ -6,6 +6,7 @@
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { readStartLine, revealNeedle, toolActivity } from './toolActivity';
+import { PiScreen } from './screenDocument';
 
 type FollowLogger = { info(message: string): void } | undefined;
 
@@ -17,6 +18,7 @@ interface SnapshotLike {
 
 export class AgentFollowService implements vscode.Disposable {
   public logger: FollowLogger;
+  private readonly screen = new PiScreen();
   /** callId → last seen args length: streaming args re-reveal as they grow. */
   private readonly seen = new Map<string, Map<string, number>>();
   private lastEditCall: string | undefined;
@@ -33,22 +35,14 @@ export class AgentFollowService implements vscode.Disposable {
   /** Our dedicated right-of-chat group (recreated if the user closes it). */
   private followColumn: vscode.ViewColumn | undefined;
   private readonly status: vscode.StatusBarItem;
-  private readonly decoration: vscode.TextEditorDecorationType;
   private statusTimer: ReturnType<typeof setTimeout> | undefined;
-  private decorationTimer: ReturnType<typeof setTimeout> | undefined;
-  private decoratedEditor: vscode.TextEditor | undefined;
 
   public constructor() {
     this.status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 96);
-    this.decoration = vscode.window.createTextEditorDecorationType({
-      isWholeLine: true,
-      backgroundColor: 'rgba(255, 140, 66, 0.10)',
-      borderColor: 'rgba(255, 140, 66, 0.85)',
-      borderStyle: 'solid',
-      borderWidth: '0 0 0 2px',
-      overviewRulerColor: 'rgba(255, 140, 66, 0.8)',
-      overviewRulerLane: vscode.OverviewRulerLane.Full,
-    });
+  }
+
+  private syncLogger(): void {
+    this.screen.logger = this.logger;
   }
 
   private mode(): 'open' | 'status' | 'off' {
@@ -185,20 +179,6 @@ export class AgentFollowService implements vscode.Disposable {
     void this.showInSidePane(kind, absolute, chatTitle, args, chatColumn);
   }
 
-  private async openWithRetry(absolute: string): Promise<vscode.TextDocument | undefined> {
-    for (const delay of [0, 800, 2200]) {
-      if (delay > 0) {
-        await new Promise((resolve) => setTimeout(resolve, delay));
-      }
-      try {
-        return await vscode.workspace.openTextDocument(vscode.Uri.file(absolute));
-      } catch {
-        /* not on disk yet — try again */
-      }
-    }
-    return undefined;
-  }
-
   /** π's screen must sit geometrically RIGHT of the chat. ViewColumn math
    * can't guarantee that (numbers are creation order, and Beside honors
    * workbench.editor.openSideBySideDirection — 'down' opens at the bottom),
@@ -240,79 +220,16 @@ export class AgentFollowService implements vscode.Disposable {
     args: string | undefined,
     chatColumn?: number
   ): Promise<void> {
-    // Fresh writes: the tool call streams BEFORE the file exists on disk —
-    // retry a few times instead of giving up on ENOENT.
-    const doc = await this.openWithRetry(absolute);
-    if (!doc) {
-      this.logger?.info(`[follow] gave up opening ${absolute} (not on disk after retries)`);
-      return;
-    }
-    this.logger?.info(`[follow] opening ${absolute} in column ${String((chatColumn ?? 0) + 1)}`);
-    try {
-      // Chrome-split-view feel: ONE container, two panes — chat left, a single
-      // live file slot right. preview:true makes the right group REUSE one tab
-      // as π moves file-to-file (no 10-tab pileup; the Review panel is the
-      // history). If the user edits a followed file, VS Code pins it — π's
-      // slot simply continues beside it, which is the right ownership handoff.
-      const column = (await this.followGroup(chatColumn)) ?? vscode.ViewColumn.Beside;
-      const editor = await vscode.window.showTextDocument(doc, {
-        viewColumn: column,
-        preview: true,
-        preserveFocus: true, // NEVER steal the user's cursor
-      });
-      this.followColumn = editor.viewColumn ?? this.followColumn;
-      if (kind === 'reading') {
-        const line = Math.max(0, (readStartLine(args) ?? 1) - 1);
-        const range = doc.lineAt(Math.min(line, doc.lineCount - 1)).range;
-        editor.revealRange(range, vscode.TextEditorRevealType.AtTop);
-        return;
-      }
-      // Edits: the tool call streams BEFORE the write lands — two chances to
-      // find the changed region, then glow it with chat attribution.
-      const needle = revealNeedle(args);
-      const attempt = (delay: number) =>
-        setTimeout(() => void this.revealEdit(absolute, needle, chatTitle), delay);
-      attempt(500);
-      attempt(1800);
-    } catch {
-      /* file may not exist yet (fresh write) — status bar already points at it */
-    }
-  }
-
-  private async revealEdit(
-    absolute: string,
-    needle: string | undefined,
-    chatTitle: string
-  ): Promise<void> {
-    try {
-      const fresh = await vscode.workspace.openTextDocument(vscode.Uri.file(absolute));
-      const target = vscode.window.visibleTextEditors.find(
-        (candidate) => candidate.document.uri.fsPath === absolute
-      );
-      if (!target || !needle) {
-        return;
-      }
-      const at = fresh.getText().indexOf(needle);
-      if (at < 0) {
-        return;
-      }
-      const range = new vscode.Range(fresh.positionAt(at), fresh.positionAt(at + needle.length));
-      target.revealRange(range, vscode.TextEditorRevealType.InCenterIfOutsideViewport);
-      this.decoratedEditor?.setDecorations(this.decoration, []);
-      target.setDecorations(this.decoration, [
-        {
-          range,
-          hoverMessage: new vscode.MarkdownString(`$(edit) edited by **π — ${chatTitle.trim()}**`),
-        },
-      ]);
-      this.decoratedEditor = target;
-      clearTimeout(this.decorationTimer);
-      this.decorationTimer = setTimeout(() => {
-        this.decoratedEditor?.setDecorations(this.decoration, []);
-      }, 7000);
-    } catch {
-      /* editor closed between attempts — fine */
-    }
+    this.syncLogger();
+    const column = (await this.followGroup(chatColumn)) ?? vscode.ViewColumn.Beside;
+    await this.screen.show({
+      kind,
+      absolute,
+      chatTitle,
+      column,
+      needle: kind === 'editing' ? revealNeedle(args) : undefined,
+      revealLine: kind === 'reading' ? (readStartLine(args) ?? 1) : undefined,
+    });
   }
 
   /** Toggle-ON affordance: immediately show the file π was last on.
@@ -328,9 +245,7 @@ export class AgentFollowService implements vscode.Disposable {
 
   public dispose(): void {
     clearTimeout(this.statusTimer);
-    clearTimeout(this.decorationTimer);
-    this.decoratedEditor?.setDecorations(this.decoration, []);
-    this.decoration.dispose();
+    this.screen.dispose();
     this.status.dispose();
     this.seen.clear();
   }

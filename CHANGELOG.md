@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.238
+
+- π SCREEN (clean architecture, no more tab pileups — ever): the follow pane is now ONE virtual document (pi-screen://) in the right split. It MIRRORS whatever file π reads or edits, swapping content in place — real syntax highlighting per file, ember glow on edited regions, reads jump to their offset, huge files auto-window. The header line names the file and chat and is a LINK to the real file for hand-editing. Two tabs total: your chat, π’s screen. Harness-proven single-tab invariant.
+
 ## 0.0.237
 
 - Follow pane is one live slot (Chrome split-view style): the right split reuses a single preview tab as π moves file-to-file — chat left, current file right, never a tab pileup. Edit a followed file yourself and it pins; π keeps cycling beside it. Turn history lives in the Review panel.
