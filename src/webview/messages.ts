@@ -5,6 +5,7 @@ export type WebviewInboundMessage =
   | { type: 'copyAcceptedSnapshot' }
   | { type: 'sendAcceptedSnapshotAgain' }
   | { type: 'abort' }
+  | { type: 'toggleFollow' }
   | { type: 'setDraft'; text: string; resetSeq?: number }
   | {
       type: 'setFocus';
@@ -60,6 +61,7 @@ export function parseWebviewMessage(value: unknown): WebviewInboundMessage | und
     case 'cancelPreview':
     case 'copyAcceptedSnapshot':
     case 'sendAcceptedSnapshotAgain':
+    case 'toggleFollow':
     case 'abort':
     case 'pickImages':
     case 'clearAttachments':

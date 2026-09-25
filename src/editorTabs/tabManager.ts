@@ -1111,6 +1111,13 @@ export class ChatTabManager implements vscode.Disposable {
         }
         return;
       }
+      case 'toggleFollow': {
+        const config = vscode.workspace.getConfiguration('piRpc');
+        const next = config.get<string>('followAgent', 'open') === 'open' ? 'off' : 'open';
+        await config.update('followAgent', next, vscode.ConfigurationTarget.Global);
+        await this.renderResource(host.resource);
+        return;
+      }
       case 'abort': {
         const live = await this.activateResource(host.resource, { startIfStopped: false });
         await live?.controller.abort();
@@ -1826,6 +1833,9 @@ export class ChatTabManager implements vscode.Disposable {
     if (this.sharing && this.sharing.key === this.keyFor(resource)) {
       snapshot.sharing = { active: true, label: this.sharing.label };
     }
+    snapshot.followMode = vscode.workspace
+      .getConfiguration('piRpc')
+      .get<'open' | 'status' | 'off'>('followAgent', 'open');
     const title = this.titleForContext(context, snapshot);
     const host = this.hosts.get(resource.toString());
     if (host) {

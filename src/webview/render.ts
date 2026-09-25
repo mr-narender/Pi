@@ -934,6 +934,14 @@ function renderApprovals(snapshot: WebviewSnapshot): string {
 // Cost is a read-only, non-interactive label (not a button).
 // #6 (review round 2): ONE composer status chip — model · cost · thinking —
 // with the detail actions in a popover, instead of a strip of separate chips.
+
+// Zed's crosshair: toggle "follow π" — the side editor tracks every file and
+// line the agent opens, reads, or edits, live.
+function renderFollowToggle(snapshot: WebviewSnapshot): string {
+  const on = (snapshot.followMode ?? 'open') === 'open';
+  return `<button type="button" class="icon-button follow-toggle${on ? ' is-on' : ''}" data-action="toggleFollow" title="${on ? 'Following π — the side editor tracks every file and line the agent touches (click to stop)' : 'Follow π: open the file the agent is reading or editing, live (click to start)'}" aria-label="Toggle follow agent" aria-pressed="${on ? 'true' : 'false'}"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="8" cy="8" r="4.4"/><circle cx="8" cy="8" r="1" fill="currentColor" stroke="none"/><path d="M8 1v2.2M8 12.8V15M1 8h2.2M12.8 8H15"/></svg></button>`;
+}
+
 function renderStatusChip(snapshot: WebviewSnapshot): string {
   // One chip → ONE centered settings box (models + thinking sizes together).
   const model = snapshot.model?.id ? snapshot.model.id : 'model';
@@ -1361,6 +1369,7 @@ export function renderChatApp(snapshot: WebviewSnapshot): string {
               <button type="button" class="icon-button" data-command="piRpc.showPiCommands" title="Commands" aria-label="Commands" ${disabledAttr}>/</button>
             </div>
             <div class="composer-actions-right">
+              ${connecting ? '' : renderFollowToggle(snapshot)}
               ${connecting ? '' : folderSelect}
               ${busy ? '<button type="button" class="ghost" data-action="abort">Stop</button>' : ''}
               <button type="button" id="${SEND_BUTTON_ID}" class="send-button" data-send-command="${sendCommand}" title="${sendLabel}" aria-label="${sendLabel}" ${disabledAttr}><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12.5 4v3a1.5 1.5 0 0 1-1.5 1.5H4.5"/><path d="M7 6L4.3 8.5 7 11"/></svg></button>

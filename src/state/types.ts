@@ -190,6 +190,8 @@ export interface WebviewPendingImageItem {
 }
 
 export interface WebviewSnapshot {
+  /** Zed-style follow toggle state (crosshair button). */
+  followMode?: 'open' | 'status' | 'off';
   retry?: { attempt?: number; errorMessage?: string };
   sequence: number;
   title: string;

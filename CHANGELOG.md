@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.230
+
+- Zed’s crosshair, for real: a follow toggle lives in the composer (crosshair icon, ember when active, aria-pressed). While on, the side editor tracks EVERY move — files π opens/reads/edits, the offset it reads from, and the LINE it is writing while edit args stream in (throttled live reveal, Zed-cursor style). Click to stop/start; state syncs with piRpc.followAgent.
+
 ## 0.0.229
 
 - Follow pane actually opens now: it keys off the chat panel’s real visibility (live updates carried active:false, so it never fired), and brand-new files retry opening until the write lands on disk (0.8s/2.2s backoff).

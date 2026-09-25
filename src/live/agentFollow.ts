@@ -14,7 +14,10 @@ interface SnapshotLike {
 }
 
 export class AgentFollowService implements vscode.Disposable {
-  private readonly seen = new Map<string, Set<string>>();
+  /** callId → last seen args length: streaming args re-reveal as they grow. */
+  private readonly seen = new Map<string, Map<string, number>>();
+  private lastEditCall: string | undefined;
+  private lastReveal = 0;
   private readonly status: vscode.StatusBarItem;
   private readonly decoration: vscode.TextEditorDecorationType;
   private statusTimer: ReturnType<typeof setTimeout> | undefined;
@@ -54,13 +57,13 @@ export class AgentFollowService implements vscode.Disposable {
     }
     let seen = this.seen.get(key);
     if (!seen) {
-      seen = new Set();
+      seen = new Map();
       this.seen.set(key, seen);
       // First snapshot of a chat = history, not live activity. Mark, don't act.
       for (const message of snapshot.messages) {
         for (const block of message.blocks ?? []) {
           if (block.kind === 'tool' && block.callId) {
-            seen.add(block.callId);
+            seen.set(block.callId, (block.args ?? '').length);
           }
         }
       }
@@ -68,26 +71,59 @@ export class AgentFollowService implements vscode.Disposable {
     }
     for (const message of snapshot.messages) {
       for (const block of message.blocks ?? []) {
-        if (block.kind !== 'tool' || !block.callId || seen.has(block.callId)) {
+        if (block.kind !== 'tool' || !block.callId) {
           continue;
         }
-        seen.add(block.callId);
-        const activity = toolActivity(block.name, block.args);
-        if (activity) {
-          this.act(
-            activity.kind,
-            activity.path,
-            chatTitle,
-            isActiveChat,
-            workspaceRoot,
-            block.args
-          );
+        const argsLen = (block.args ?? '').length;
+        const prior = seen.get(block.callId);
+        if (prior === undefined) {
+          seen.set(block.callId, argsLen);
+          const activity = toolActivity(block.name, block.args);
+          if (activity) {
+            if (activity.kind === 'editing') {
+              this.lastEditCall = block.callId;
+            }
+            this.act(
+              activity.kind,
+              activity.path,
+              chatTitle,
+              isActiveChat,
+              workspaceRoot,
+              block.args
+            );
+          }
+        } else if (
+          argsLen > prior &&
+          block.callId === this.lastEditCall &&
+          isActiveChat &&
+          this.mode() === 'open'
+        ) {
+          // The followed edit's args are still streaming — keep tracking the
+          // line the agent is writing, Zed-cursor style (throttled).
+          seen.set(block.callId, argsLen);
+          const now = Date.now();
+          if (now - this.lastReveal > 450) {
+            this.lastReveal = now;
+            const activity = toolActivity(block.name, block.args);
+            if (activity?.kind === 'editing') {
+              void this.showInSidePane(
+                'editing',
+                this.resolve(activity.path, workspaceRoot),
+                chatTitle,
+                block.args
+              );
+            }
+          }
         }
       }
     }
     if (seen.size > 2000) {
-      this.seen.set(key, new Set(Array.from(seen).slice(-500)));
+      this.seen.set(key, new Map(Array.from(seen.entries()).slice(-500)));
     }
+  }
+
+  private resolve(filePath: string, workspaceRoot: string | undefined): string {
+    return path.isAbsolute(filePath) ? filePath : path.join(workspaceRoot ?? '', filePath);
   }
 
   private act(
@@ -98,9 +134,7 @@ export class AgentFollowService implements vscode.Disposable {
     workspaceRoot: string | undefined,
     args: string | undefined
   ): void {
-    const absolute = path.isAbsolute(filePath)
-      ? filePath
-      : path.join(workspaceRoot ?? '', filePath);
+    const absolute = this.resolve(filePath, workspaceRoot);
     const base = path.basename(filePath);
     const shortTitle = chatTitle.replace(/\u2007+$/g, '').trim();
     this.status.text = `${kind === 'editing' ? '$(edit)' : '$(eye)'} π · ${kind} ${base}`;

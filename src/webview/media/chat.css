@@ -3460,3 +3460,21 @@ body {
   /* pass-3 clearance padding no longer needed: the column floor handles it */
   padding-bottom: 20px;
 }
+
+/* Crosshair follow toggle: ember when π is being followed. */
+.follow-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.follow-toggle.is-on {
+  color: var(--ember);
+  background: var(--ember-soft);
+  border-radius: 6px;
+  box-shadow: 0 0 8px rgba(255, 140, 66, 0.25);
+}
+
+.follow-toggle:hover {
+  color: var(--ember);
+}
