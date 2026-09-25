@@ -6,6 +6,8 @@ export type WebviewInboundMessage =
   | { type: 'sendAcceptedSnapshotAgain' }
   | { type: 'abort' }
   | { type: 'toggleFollow' }
+  | { type: 'screenOpenFile'; path: string; needle?: string }
+  | { type: 'screenRevert'; path: string; oldText?: string; newText?: string }
   | { type: 'setDraft'; text: string; resetSeq?: number }
   | {
       type: 'setFocus';
@@ -71,6 +73,23 @@ export function parseWebviewMessage(value: unknown): WebviewInboundMessage | und
     case 'appendPickedFile':
     case 'loadOlder':
       return { type: record.type };
+    case 'screenOpenFile':
+      return typeof record.path === 'string'
+        ? {
+            type: 'screenOpenFile',
+            path: record.path,
+            needle: typeof record.needle === 'string' ? record.needle : undefined,
+          }
+        : undefined;
+    case 'screenRevert':
+      return typeof record.path === 'string'
+        ? {
+            type: 'screenRevert',
+            path: record.path,
+            oldText: typeof record.oldText === 'string' ? record.oldText : undefined,
+            newText: typeof record.newText === 'string' ? record.newText : undefined,
+          }
+        : undefined;
     case 'setDraft':
       return typeof record.text === 'string'
         ? {

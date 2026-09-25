@@ -1111,6 +1111,59 @@ export class ChatTabManager implements vscode.Disposable {
         }
         return;
       }
+      case 'screenOpenFile': {
+        // Ownership handoff: open the REAL file (optionally at a region).
+        try {
+          const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(parsed.path));
+          const editor = await vscode.window.showTextDocument(doc, { preview: false });
+          if (parsed.needle) {
+            const at = doc.getText().indexOf(parsed.needle);
+            if (at >= 0) {
+              const range = new vscode.Range(
+                doc.positionAt(at),
+                doc.positionAt(at + parsed.needle.length)
+              );
+              editor.revealRange(range, vscode.TextEditorRevealType.InCenterIfOutsideViewport);
+              editor.selection = new vscode.Selection(range.start, range.start);
+            }
+          }
+        } catch (error) {
+          void vscode.window.showWarningMessage(
+            `Could not open ${parsed.path}: ${error instanceof Error ? error.message : String(error)}`
+          );
+        }
+        return;
+      }
+      case 'screenRevert': {
+        // Per-change undo: swap this edit's newString back to oldString.
+        try {
+          const uri = vscode.Uri.file(parsed.path);
+          const doc = await vscode.workspace.openTextDocument(uri);
+          const text = doc.getText();
+          const newText = parsed.newText ?? '';
+          const at = newText ? text.indexOf(newText) : -1;
+          if (at < 0) {
+            void vscode.window.showWarningMessage(
+              'That change no longer matches the file (edited since?) — use the π Review panel for a full-file revert.'
+            );
+            return;
+          }
+          const edit = new vscode.WorkspaceEdit();
+          edit.replace(
+            uri,
+            new vscode.Range(doc.positionAt(at), doc.positionAt(at + newText.length)),
+            parsed.oldText ?? ''
+          );
+          await vscode.workspace.applyEdit(edit);
+          await doc.save();
+          void vscode.window.showInformationMessage('Change undone.');
+        } catch (error) {
+          void vscode.window.showWarningMessage(
+            `Undo failed: ${error instanceof Error ? error.message : String(error)}`
+          );
+        }
+        return;
+      }
       case 'toggleFollow': {
         const config = vscode.workspace.getConfiguration('piRpc');
         const next = config.get<string>('followAgent', 'open') === 'open' ? 'off' : 'open';
@@ -1868,7 +1921,7 @@ export class ChatTabManager implements vscode.Disposable {
         host.panel.visible,
         safeFsPath(context.target.workspaceFolderUri) ??
           vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
-        host.panel.viewColumn
+        (payload) => void host.panel.webview.postMessage(payload)
       );
       await host.postSnapshot(snapshot, title);
       // Mirror the active chat to a remote session, if one is running.

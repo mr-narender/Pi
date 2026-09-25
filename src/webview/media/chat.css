@@ -3617,3 +3617,227 @@ body.vscode-high-contrast .code-wrap {
   flex: 0 0 auto;
   align-self: center;
 }
+
+/* ═══ π Screen pane: the split INSIDE the chat tab ═══ */
+:root {
+  --pi-screen-w: 44%;
+}
+
+#pi-screen-pane {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: var(--pi-screen-w);
+  display: flex;
+  z-index: 18; /* under the composer dock (24) */
+  background: color-mix(in srgb, var(--vscode-editor-background) 88%, transparent);
+  backdrop-filter: blur(10px);
+  border-left: 1px solid var(--glass-line-strong);
+  box-shadow: -8px 0 28px rgba(0, 0, 0, 0.25);
+}
+
+body.screen-open .layout {
+  margin-right: var(--pi-screen-w);
+}
+
+body.screen-open .composer-dock {
+  right: calc(var(--pi-screen-w) + 12px);
+}
+
+.screen-divider {
+  width: 5px;
+  cursor: col-resize;
+  flex: 0 0 auto;
+  background: transparent;
+}
+
+.screen-divider:hover {
+  background: var(--ember-line);
+}
+
+.screen-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.screen-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--glass-line);
+  flex: 0 0 auto;
+}
+
+.screen-file {
+  border: none;
+  background: transparent;
+  color: var(--vscode-foreground);
+  font-weight: 600;
+  font-size: 12.5px;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.screen-file:hover {
+  color: var(--ember);
+}
+
+.screen-live {
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--ember-line);
+  color: var(--ember);
+}
+
+.screen-live.is-reading {
+  border-color: var(--glass-line-strong);
+  color: var(--vscode-descriptionForeground);
+}
+
+.screen-close {
+  margin-left: auto;
+  border: none;
+  background: transparent;
+  color: var(--vscode-foreground);
+  opacity: 0.6;
+  cursor: pointer;
+  border-radius: 5px;
+  padding: 2px 7px;
+}
+
+.screen-close:hover {
+  opacity: 1;
+  background: var(--glass-2);
+}
+
+.screen-code-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.screen-code {
+  margin: 0;
+  padding: 10px 14px 16px;
+  font-family: var(--vscode-editor-font-family, ui-monospace, monospace);
+  font-size: 11.5px;
+  line-height: 1.5;
+  white-space: pre;
+}
+
+.screen-line {
+  display: block;
+  min-height: 1em;
+}
+
+.screen-line.is-glow {
+  background: rgba(255, 140, 66, 0.12);
+  box-shadow: inset 2px 0 0 var(--ember);
+}
+
+/* Per-change approval cards. */
+.screen-changes {
+  flex: 0 0 auto;
+  max-height: 42%;
+  overflow: auto;
+  border-top: 1px solid var(--glass-line);
+  padding: 8px 10px calc(var(--composer-clearance, 150px)) 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.screen-changes:empty {
+  display: none;
+}
+
+.screen-changes-head {
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ember);
+}
+
+.screen-change {
+  background: var(--glass-1);
+  border: 1px solid var(--glass-line);
+  border-radius: 9px;
+  padding: 7px 9px;
+  font-size: 11.5px;
+}
+
+.screen-change header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 5px;
+}
+
+.screen-change header code {
+  font-size: 11px;
+  opacity: 0.85;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sc-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.sc-actions button {
+  border: 1px solid var(--glass-line-strong);
+  background: transparent;
+  color: var(--vscode-foreground);
+  font-size: 10.5px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.sc-keep:hover {
+  border-color: var(--ember-glow);
+  color: var(--ember);
+}
+
+.sc-undo:hover {
+  border-color: var(--vscode-editorError-foreground, #f48771);
+  color: var(--vscode-editorError-foreground, #f48771);
+}
+
+.sc-edit:hover {
+  border-color: var(--ember-glow);
+  color: var(--ember);
+}
+
+.sc-line {
+  font-family: var(--vscode-editor-font-family, ui-monospace, monospace);
+  font-size: 10.5px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.sc-del {
+  color: var(--vscode-gitDecoration-deletedResourceForeground, #c74e39);
+}
+
+.sc-add {
+  color: var(--vscode-gitDecoration-addedResourceForeground, #81b88b);
+}
+
+body.vscode-high-contrast #pi-screen-pane {
+  backdrop-filter: none;
+  background: var(--vscode-editor-background);
+}

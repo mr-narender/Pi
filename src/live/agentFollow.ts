@@ -6,7 +6,6 @@
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { readStartLine, revealNeedle, toolActivity } from './toolActivity';
-import { PiScreen } from './screenDocument';
 
 type FollowLogger = { info(message: string): void } | undefined;
 
@@ -18,7 +17,6 @@ interface SnapshotLike {
 
 export class AgentFollowService implements vscode.Disposable {
   public logger: FollowLogger;
-  private readonly screen = new PiScreen();
   /** callId → last seen args length: streaming args re-reveal as they grow. */
   private readonly seen = new Map<string, Map<string, number>>();
   private lastEditCall: string | undefined;
@@ -28,7 +26,7 @@ export class AgentFollowService implements vscode.Disposable {
         absolute: string;
         chatTitle: string;
         args?: string;
-        chatColumn?: number;
+        post?: (payload: unknown) => void;
       }
     | undefined;
   private lastReveal = 0;
@@ -37,10 +35,6 @@ export class AgentFollowService implements vscode.Disposable {
 
   public constructor() {
     this.status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 96);
-  }
-
-  private syncLogger(): void {
-    this.screen.logger = this.logger;
   }
 
   private mode(): 'open' | 'status' | 'off' {
@@ -55,7 +49,7 @@ export class AgentFollowService implements vscode.Disposable {
     snapshot: SnapshotLike,
     isActiveChat: boolean,
     workspaceRoot: string | undefined,
-    chatColumn?: number
+    post?: (payload: unknown) => void
   ): void {
     let seen = this.seen.get(key);
     if (!seen) {
@@ -92,7 +86,7 @@ export class AgentFollowService implements vscode.Disposable {
               isActiveChat,
               workspaceRoot,
               block.args,
-              chatColumn
+              post
             );
           }
         } else if (
@@ -114,7 +108,7 @@ export class AgentFollowService implements vscode.Disposable {
                 this.resolve(activity.path, workspaceRoot),
                 chatTitle,
                 block.args,
-                chatColumn
+                post
               );
             }
           }
@@ -137,16 +131,16 @@ export class AgentFollowService implements vscode.Disposable {
     isActiveChat: boolean,
     workspaceRoot: string | undefined,
     args: string | undefined,
-    chatColumn?: number
+    post?: (payload: unknown) => void
   ): void {
     const absolute = this.resolve(filePath, workspaceRoot);
     this.logger?.info(
-      `[follow] ${kind} ${absolute} (chat "${chatTitle.trim()}", visible=${isActiveChat}, mode=${this.mode()}, column=${String(chatColumn)})`
+      `[follow] ${kind} ${absolute} (chat "${chatTitle.trim()}", visible=${isActiveChat}, mode=${this.mode()})`
     );
     if (isActiveChat) {
       // Remembered even while off/status: toggling follow ON jumps straight
       // to the file π is currently on.
-      this.lastActivity = { kind, absolute, chatTitle, args, chatColumn };
+      this.lastActivity = { kind, absolute, chatTitle, args, post };
     }
     if (this.mode() === 'off') {
       return;
@@ -174,44 +168,51 @@ export class AgentFollowService implements vscode.Disposable {
       );
       return;
     }
-    void this.showInSidePane(kind, absolute, chatTitle, args, chatColumn);
+    void this.showInSidePane(kind, absolute, chatTitle, args, post);
   }
 
-  /** Where the π Screen lives. Deterministic, focus-independent:
-   * 1) an existing π Screen tab wins — wherever the USER put it (drag once,
-   *    remembered forever);  2) else the numeric column right after the chat;
-   * 3) else column 2. Never ViewColumn.Beside (it honors the user's
-   * openSideBySideDirection and split DOWNWARD on 'down' setups). */
-  private followGroup(chatColumn: number | undefined): vscode.ViewColumn {
-    for (const group of vscode.window.tabGroups.all) {
-      for (const tab of group.tabs) {
-        const input = tab.input;
-        if (input instanceof vscode.TabInputText && input.uri.scheme === 'pi-screen') {
-          return group.viewColumn;
-        }
-      }
-    }
-    return ((chatColumn ?? 1) + 1) as vscode.ViewColumn;
-  }
-
+  /** The split view lives INSIDE the chat webview — we just feed it. */
   private async showInSidePane(
     kind: 'editing' | 'reading',
     absolute: string,
     chatTitle: string,
     args: string | undefined,
-    chatColumn?: number
+    post?: (payload: unknown) => void
   ): Promise<void> {
-    this.syncLogger();
-    const column = this.followGroup(chatColumn);
-    await this.screen.show({
+    if (!post) {
+      return;
+    }
+    const content = await this.readWithRetry(absolute);
+    if (content === undefined) {
+      this.logger?.info(`[screen] ${absolute} not on disk after retries`);
+      return;
+    }
+    post({
+      type: 'screen',
       kind,
-      absolute,
-      chatTitle,
-      column,
-      chatColumn,
-      needle: kind === 'editing' ? revealNeedle(args) : undefined,
+      path: absolute,
+      content: content.length > 200_000 ? content.slice(0, 200_000) : content,
+      truncated: content.length > 200_000,
       revealLine: kind === 'reading' ? (readStartLine(args) ?? 1) : undefined,
+      needle: kind === 'editing' ? revealNeedle(args) : undefined,
+      chatTitle: chatTitle.trim(),
     });
+  }
+
+  /** Fresh writes land on disk AFTER the tool call streams — retry briefly. */
+  private async readWithRetry(absolute: string): Promise<string | undefined> {
+    for (const delay of [0, 800, 2200]) {
+      if (delay > 0) {
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+      try {
+        const bytes = await vscode.workspace.fs.readFile(vscode.Uri.file(absolute));
+        return new TextDecoder('utf-8', { fatal: false }).decode(bytes);
+      } catch {
+        /* not there yet */
+      }
+    }
+    return undefined;
   }
 
   /** Toggle-ON affordance: immediately show the file π was last on.
@@ -220,14 +221,13 @@ export class AgentFollowService implements vscode.Disposable {
     if (this.mode() !== 'open' || !this.lastActivity) {
       return false;
     }
-    const { kind, absolute, chatTitle, args, chatColumn } = this.lastActivity;
-    void this.showInSidePane(kind, absolute, chatTitle, args, chatColumn);
+    const { kind, absolute, chatTitle, args, post } = this.lastActivity;
+    void this.showInSidePane(kind, absolute, chatTitle, args, post);
     return true;
   }
 
   public dispose(): void {
     clearTimeout(this.statusTimer);
-    this.screen.dispose();
     this.status.dispose();
     this.seen.clear();
   }

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.241
+
+- SPLIT VIEW INSIDE THE CHAT TAB (the architecture you asked for): one π tab, internally split — conversation left, π’s live file mirror right (syntax-highlighted, ember glow on the region being written, reads jump to their offset). Draggable divider (width remembered), filename click opens the real file, ✕ = crosshair off. No VS Code tab/group APIs — tab pileups and placement bugs are structurally impossible.
+- PER-CHANGE APPROVAL: every edit π makes this turn appears as a card under the mirror — compact −/+ diff with Keep ✓ / Undo ↩ (reverts exactly that change in the file) / Edit ✎ (opens the real file at the change). VS Code-style change review, per edit.
+- editReplacements now understands all of Pi’s edit dialects (oldString/newString, edits[], appendContent, symbol+content) — fused tool-card diffs get richer too.
+
 ## 0.0.240
 
 - CRITICAL FIX: activation was hard-failing since 0.0.234 (“Missing command handlers: piRpc.reviewOpenDiff/RevertFile/RevertTurn”) — the Review panel registered its commands outside the central registrations map, tripping the startup self-check on the next window reload (no commands, no chats). Handlers now flow through the map; a new static gate test enforces manifest⇄handler parity forever; the VS Code E2E suite runs green again (test-electron updated for the Code binary rename) and proves activation.
