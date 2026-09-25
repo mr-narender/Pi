@@ -199,20 +199,40 @@ function renderAssistantBody(
       textRun = [];
     }
   };
+  // FUSE each tool call with ITS result (matched by callId when present, else
+  // the immediately following unclaimed result) into ONE card.
+  const claimed = new Set<number>();
   for (let index = 0; index < blocks.length; index += 1) {
     const block = blocks[index]!;
+    if (claimed.has(index)) {
+      continue;
+    }
     if (block.kind === 'text') {
       textRun.push(block.text);
       continue;
     }
     flush();
-    // FUSE a tool call with its adjacent result into ONE card, so it is always
-    // obvious which result belongs to which call.
-    const next = blocks[index + 1];
-    if (block.kind === 'tool' && next?.kind === 'toolResult') {
-      nodes.push({ kind: 'toolPair', call: block, result: next });
-      index += 1;
-      continue;
+    if (block.kind === 'tool') {
+      let resultIndex = -1;
+      for (let ahead = index + 1; ahead < blocks.length; ahead += 1) {
+        const candidate = blocks[ahead]!;
+        if (candidate.kind !== 'toolResult' || claimed.has(ahead)) {
+          continue;
+        }
+        if (block.callId ? candidate.callId === block.callId : ahead === index + 1) {
+          resultIndex = ahead;
+        }
+        break;
+      }
+      if (resultIndex >= 0) {
+        claimed.add(resultIndex);
+        nodes.push({
+          kind: 'toolPair',
+          call: block,
+          result: blocks[resultIndex] as Extract<MessageBlock, { kind: 'toolResult' }>,
+        });
+        continue;
+      }
     }
     nodes.push(block);
   }

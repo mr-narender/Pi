@@ -259,6 +259,7 @@ function toBlocks(message: JsonObject): WebviewMessageBlock[] {
           typed.arguments !== undefined && typed.arguments !== null
             ? JSON.stringify(typed.arguments, null, 2)
             : undefined,
+        callId: typeof typed.id === 'string' ? typed.id : undefined,
       });
     } else if (typed.type === 'toolResult') {
       blocks.push({
@@ -266,12 +267,87 @@ function toBlocks(message: JsonObject): WebviewMessageBlock[] {
         name: typeof typed.name === 'string' ? typed.name : undefined,
         text: typeof typed.content === 'string' ? typed.content : messageText(raw as JsonObject),
         isError: typed.isError === true,
+        callId: typeof typed.toolCallId === 'string' ? typed.toolCallId : undefined,
       });
     } else if (typed.type === 'image') {
       blocks.push({ kind: 'image', mimeType: String(typed.mimeType ?? 'image') });
     }
   }
   return blocks;
+}
+
+// Tool RESULTS stream in as separate messages, which rendered as disconnected
+// cards. Fold each result INTO the assistant message that made the call (matched
+// by toolCallId, else the nearest previous assistant with tool calls), inserted
+// right after its call block — the renderer then fuses call+result into one
+// card. Results with no owning call stay standalone.
+function foldToolResults(
+  items: WebviewMessageItem[],
+  raws: readonly JsonObject[]
+): WebviewMessageItem[] {
+  const out: WebviewMessageItem[] = [];
+  for (let index = 0; index < items.length; index += 1) {
+    const item = items[index]!;
+    const raw = raws[index];
+    const role = item.role;
+    const isResultRole =
+      role === 'toolResult' ||
+      role === 'tool' ||
+      role === 'tool_result' ||
+      role === 'bashExecution';
+    if (!isResultRole) {
+      out.push(item);
+      continue;
+    }
+    const callId = typeof raw?.toolCallId === 'string' ? raw.toolCallId : undefined;
+    // Find the owning assistant: prefer exact callId match, else nearest
+    // previous assistant that has any tool-call block.
+    let targetIndex = -1;
+    for (let back = out.length - 1; back >= 0; back -= 1) {
+      const candidate = out[back]!;
+      if (candidate.role !== 'assistant' || !candidate.blocks) {
+        continue;
+      }
+      const hasMatch = callId
+        ? candidate.blocks.some((block) => block.kind === 'tool' && block.callId === callId)
+        : candidate.blocks.some((block) => block.kind === 'tool');
+      if (hasMatch) {
+        targetIndex = back;
+        break;
+      }
+      if (candidate.role === 'assistant') {
+        break; // don't skip past an unrelated assistant turn
+      }
+    }
+    if (targetIndex < 0) {
+      out.push(item); // no owner — keep it standalone
+      continue;
+    }
+    const target = out[targetIndex]!;
+    const resultBlock: WebviewMessageBlock = {
+      kind: 'toolResult',
+      name: item.blocks?.find((block) => block.kind === 'toolResult')?.name,
+      text: item.text,
+      isError:
+        raw?.isError === true ||
+        item.blocks?.some((block) => block.kind === 'toolResult' && block.isError === true) ===
+          true,
+      callId,
+    };
+    const blocks = [...(target.blocks ?? [])];
+    let insertAt = blocks.length;
+    if (callId) {
+      const callIndex = blocks.findIndex(
+        (block) => block.kind === 'tool' && block.callId === callId
+      );
+      if (callIndex >= 0) {
+        insertAt = callIndex + 1;
+      }
+    }
+    blocks.splice(insertAt, 0, resultBlock);
+    out[targetIndex] = { ...target, blocks };
+  }
+  return out;
 }
 
 function toItem(message: JsonObject, index: number, cwd: string): WebviewMessageItem {
@@ -349,9 +425,12 @@ export function createWebviewSnapshot(
       typeof state.state.pendingMessageCount === 'number'
         ? state.state.pendingMessageCount
         : undefined,
-    messages: state.messages
-      .slice(windowOffset)
-      .map((message, index) => toItem(message, windowOffset + index, state.cwd)),
+    messages: foldToolResults(
+      state.messages
+        .slice(windowOffset)
+        .map((message, index) => toItem(message, windowOffset + index, state.cwd)),
+      state.messages.slice(windowOffset)
+    ),
     messageWindow: {
       total: totalMessages,
       offset: windowOffset,

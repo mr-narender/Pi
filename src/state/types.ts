@@ -159,8 +159,8 @@ export interface WebviewAttachmentItem {
 export type WebviewMessageBlock =
   | { kind: 'text'; text: string }
   | { kind: 'thinking'; text: string }
-  | { kind: 'tool'; name: string; args?: string }
-  | { kind: 'toolResult'; name?: string; text: string; isError?: boolean }
+  | { kind: 'tool'; name: string; args?: string; callId?: string }
+  | { kind: 'toolResult'; name?: string; text: string; isError?: boolean; callId?: string }
   | { kind: 'image'; mimeType: string };
 
 export interface WebviewMessageItem {

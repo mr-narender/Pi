@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.211
+
+- Tool call + result fusion now works for the REAL streaming shape: results that arrive as separate messages are folded into the assistant turn that made the call (matched by toolCallId, else the nearest owning turn) and rendered inside the SAME card as the call. Results with no owning call remain standalone.
+
 ## 0.0.210
 
 - Tool calls and their results are now ONE fused card: the result nests inside its call (collapsed with a line count when long, open when short or failed, with a red failed flag). No more guessing which result belongs to which call; JSON results keep the structured table view.
