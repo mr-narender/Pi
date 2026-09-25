@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.240
+
+- CRITICAL FIX: activation was hard-failing since 0.0.234 (“Missing command handlers: piRpc.reviewOpenDiff/RevertFile/RevertTurn”) — the Review panel registered its commands outside the central registrations map, tripping the startup self-check on the next window reload (no commands, no chats). Handlers now flow through the map; a new static gate test enforces manifest⇄handler parity forever; the VS Code E2E suite runs green again (test-electron updated for the Code binary rename) and proves activation.
+
 ## 0.0.239
 
 - π Screen placement is deterministic and focus-independent: an existing π Screen tab is the source of truth (drag it anywhere ONCE — remembered forever); otherwise it opens in the numeric column right of the chat. ViewColumn.Beside is never used (it honored openSideBySideDirection=down and split UNDER the chat). If layout quirks park it next to the chat, one honest toast explains the one-time drag. Cold tab shows a “waiting for agent activity” placeholder.

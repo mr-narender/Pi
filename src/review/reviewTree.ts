@@ -74,24 +74,26 @@ export class ReviewTreeProvider implements vscode.TreeDataProvider<ReviewNode> {
   }
 }
 
-/** Registers the tree view + its commands; returns disposables. */
-export function registerReviewTree(review: TurnReview): vscode.Disposable[] {
+/** Creates the tree view and returns the view + command HANDLERS.
+ * Handlers must be wired through extension.ts's central `registrations` map —
+ * registering commands directly here bypasses the activation self-check
+ * (learned the hard way: it hard-fails activation). */
+export function createReviewTree(review: TurnReview): {
+  view: vscode.Disposable;
+  handlers: Record<string, (node: ReviewNode) => Promise<void>>;
+} {
   const provider = new ReviewTreeProvider(review);
   const view = vscode.window.createTreeView('piRpc.review', {
     treeDataProvider: provider,
     showCollapseAll: true,
   });
-  const openDiff = vscode.commands.registerCommand(
-    'piRpc.reviewOpenDiff',
-    async (node: ReviewNode) => {
+  const handlers: Record<string, (node: ReviewNode) => Promise<void>> = {
+    'piRpc.reviewOpenDiff': async (node) => {
       if (node?.kind === 'file') {
         await review.openDiff(node.record, node.change);
       }
-    }
-  );
-  const revertFile = vscode.commands.registerCommand(
-    'piRpc.reviewRevertFile',
-    async (node: ReviewNode) => {
+    },
+    'piRpc.reviewRevertFile': async (node) => {
       if (node?.kind !== 'file') {
         return;
       }
@@ -104,11 +106,8 @@ export function registerReviewTree(review: TurnReview): vscode.Disposable[] {
         await review.revertFile(node.record, node.change);
         void vscode.window.showInformationMessage(`Reverted ${node.change.file}`);
       }
-    }
-  );
-  const revertTurn = vscode.commands.registerCommand(
-    'piRpc.reviewRevertTurn',
-    async (node: ReviewNode) => {
+    },
+    'piRpc.reviewRevertTurn': async (node) => {
       if (node?.kind !== 'turn') {
         return;
       }
@@ -124,7 +123,7 @@ export function registerReviewTree(review: TurnReview): vscode.Disposable[] {
         }
         void vscode.window.showInformationMessage(`Reverted ${count} file(s).`);
       }
-    }
-  );
-  return [view, openDiff, revertFile, revertTurn];
+    },
+  };
+  return { view, handlers };
 }
