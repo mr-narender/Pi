@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.214
+
+- Collapsed work phases now say WHAT happened — "Worked: bash ×3, edit ×2 · 2 files changed" (thinking-only turns read "Thought it through") — with a subtle SHOW WORK affordance instead of a meaningless step count.
+
 ## 0.0.213
 
 - CALM TIMELINE: settled turns collapse their thinking/tool runs into one "N steps · M files" chip (live turn stays expanded; failed phases stay open with an error tint; open state survives re-renders).

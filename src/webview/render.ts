@@ -257,13 +257,15 @@ function renderAssistantBody(
       rendered.push(html);
       return;
     }
-    let steps = 0;
+    // Say WHAT the agent did, not how many "steps": tool names with counts,
+    // plus how many files were touched. ("3 steps" was meaningless.)
+    const toolCounts = new Map<string, number>();
     const files = new Set<string>();
     let hasError = false;
     for (const node of runNodes) {
       if (node.kind === 'tool' || node.kind === 'toolPair') {
-        steps += 1;
         const call = node.kind === 'toolPair' ? node.call : node;
+        toolCounts.set(call.name, (toolCounts.get(call.name) ?? 0) + 1);
         const path = editToolFilePath(call.name, call.args);
         if (path) {
           files.add(path);
@@ -276,13 +278,17 @@ function renderAssistantBody(
         hasError = true;
       }
     }
+    const names = [...toolCounts.entries()].map(([name, count]) =>
+      count > 1 ? `${name} ×${count}` : name
+    );
+    const shown = names.slice(0, 3).join(', ') + (names.length > 3 ? ` +${names.length - 3}` : '');
     const label =
-      steps > 0
-        ? `${steps} step${steps === 1 ? '' : 's'}${files.size > 0 ? ` · ${files.size} file${files.size === 1 ? '' : 's'}` : ''}`
-        : 'thinking';
+      names.length > 0
+        ? `Worked: ${shown}${files.size > 0 ? ` · ${files.size} file${files.size === 1 ? '' : 's'} changed` : ''}`
+        : 'Thought it through';
     const open = streamingAnswer || hasError ? ' open' : '';
     rendered.push(
-      `<details class="work-phase${hasError ? ' is-error' : ''}" data-preserve-open id="wp-${escapeHtml(message.id)}-${rendered.length}"${open}><summary class="work-phase-head">${META_ICONS.tool}<span class="work-phase-label">${escapeHtml(label)}</span>${hasError ? '<span class="tl-flag-error">failed</span>' : ''}${CARET_ICON}</summary>${html}</details>`
+      `<details class="work-phase${hasError ? ' is-error' : ''}" data-preserve-open id="wp-${escapeHtml(message.id)}-${rendered.length}"${open}><summary class="work-phase-head" title="Click to show the agent's work">${META_ICONS.tool}<span class="work-phase-label">${escapeHtml(label)}</span><span class="work-phase-hint">show work</span>${hasError ? '<span class="tl-flag-error">failed</span>' : ''}${CARET_ICON}</summary>${html}</details>`
     );
   };
   for (let index = 0; index < nodes.length; index += 1) {

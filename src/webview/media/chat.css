@@ -1431,6 +1431,18 @@ button.ghost:hover,
   display: none;
 }
 
+.work-phase-hint {
+  margin-left: auto;
+  font-size: 0.78em;
+  opacity: 0.5;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.work-phase[open] .work-phase-hint {
+  display: none;
+}
+
 .work-phase[open] > summary.work-phase-head {
   opacity: 1;
   margin-bottom: 4px;
