@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.226
+
+- Chat settings is a guided flow now: 1/3 pick the provider → 2/3 pick that provider’s model (thinking capability, context and image support shown per model) → 3/3 pick the thinking level for that model (skipped automatically for models that can’t reason).
+
 ## 0.0.225
 
 - ONE settings box: clicking the composer chip opens a single centered picker with models (grouped by provider) and thinking sizes (off→max) under them — choose either from the same window. Palette: “Pi: Chat Settings (Model & Thinking)”.
