@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.228
+
+- π’s live screen (Zed-style follow, done right): a SIDE editor group now follows the agent — every file π reads or edits appears there live in one reused preview tab (chat on one side, the agent’s working file on the other). Reads jump to the offset being read; edits glow ember with hover attribution (“edited by π — <chat>”); focus never leaves your cursor; background chats narrate in the status bar only.
+
 ## 0.0.227
 
 - FOLLOW THE AGENT (Zed-style live file activity): as π works, the status bar shows “π · editing foo.ts” / “reading bar.ts” (click to open); the file being EDITED opens in a preview tab without stealing focus, and the edited region glows ember with an overview-ruler mark. Background chats stay in the status bar only — no tab thrash. piRpc.followAgent: open (default) · status · off; “Pi: Toggle Follow Agent” cycles modes.

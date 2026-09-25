@@ -80,3 +80,25 @@ export function revealNeedle(args: string | undefined): string | undefined {
   }
   return undefined;
 }
+
+/** Line the agent started reading at (read tools carry offset/startLine). */
+export function readStartLine(args: string | undefined): number | undefined {
+  if (!args) {
+    return undefined;
+  }
+  try {
+    const parsed: unknown = JSON.parse(args);
+    if (parsed && typeof parsed === 'object') {
+      const record = parsed as Record<string, unknown>;
+      for (const key of ['offset', 'startLine', 'start_line']) {
+        const value = record[key];
+        if (typeof value === 'number' && value > 0) {
+          return Math.floor(value);
+        }
+      }
+    }
+  } catch {
+    /* streaming args */
+  }
+  return undefined;
+}

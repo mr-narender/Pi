@@ -2,7 +2,7 @@
   "name": "pi",
   "displayName": "Pi – this one is (y)ours",
   "description": "An unofficial, personal VS Code chat UI for the Pi coding agent (pi.dev). Not affiliated with pi.dev — shared for anyone who wants it.",
-  "version": "0.0.227",
+  "version": "0.0.228",
   "publisher": "mr-narender",
   "license": "MIT",
   "private": true,
@@ -1029,12 +1029,12 @@
             "off"
           ],
           "enumDescriptions": [
-            "Open the file π is editing in a preview tab (focus never moves) and glow the edited region; reads show in the status bar.",
+            "π's live screen: every file the agent reads or edits opens in a side editor group (one reused preview tab, focus never moves); edited regions glow with chat attribution.",
             "Only show live read/edit activity in the status bar.",
             "No live activity."
           ],
           "default": "open",
-          "description": "Follow the agent Zed-style: surface which file π is reading or editing as it happens."
+          "description": "Follow the agent Zed-style: a side editor shows the file π is reading or editing, live."
         }
       }
     },

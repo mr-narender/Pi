@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { revealNeedle, toolActivity } from '../../src/live/toolActivity';
+import { readStartLine, revealNeedle, toolActivity } from '../../src/live/toolActivity';
 
 test('edit tools classify as editing with the target path', () => {
   const activity = toolActivity('edit', JSON.stringify({ path: 'src/a.ts', oldString: 'x' }));
@@ -36,4 +36,11 @@ test('revealNeedle picks the first substantial changed line', () => {
   );
   assert.equal(needle, 'const value = 42;');
   assert.equal(revealNeedle(JSON.stringify({ path: 'x.ts' })), undefined);
+});
+
+test('readStartLine honors offset/startLine spellings', () => {
+  assert.equal(readStartLine(JSON.stringify({ path: 'a', offset: 120 })), 120);
+  assert.equal(readStartLine(JSON.stringify({ path: 'a', startLine: 7 })), 7);
+  assert.equal(readStartLine(JSON.stringify({ path: 'a' })), undefined);
+  assert.equal(readStartLine('{"offset": 1'), undefined);
 });

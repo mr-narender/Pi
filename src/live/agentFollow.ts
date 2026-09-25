@@ -1,10 +1,11 @@
-// Follow the agent, Zed-style: as π reads/edits files, surface it LIVE —
-// status bar shows "π (chat): editing foo.ts", the edited file opens in a
-// preview tab (never stealing focus), and the touched region glows ember.
-// Modes (piRpc.followAgent): 'open' (default) | 'status' | 'off'.
+// Follow the agent, Zed-style: a SIDE EDITOR acts as π's live screen. Every
+// file the agent reads or edits appears there as it happens — one reused
+// preview tab cycling file-to-file (chat on one side, π's working file on the
+// other), with the edited region glowing ember and hover attribution of WHICH
+// chat did it. Modes (piRpc.followAgent): 'open' (default) | 'status' | 'off'.
 import * as path from 'node:path';
 import * as vscode from 'vscode';
-import { revealNeedle, toolActivity } from './toolActivity';
+import { readStartLine, revealNeedle, toolActivity } from './toolActivity';
 
 interface SnapshotLike {
   messages: Array<{
@@ -19,6 +20,8 @@ export class AgentFollowService implements vscode.Disposable {
   private statusTimer: ReturnType<typeof setTimeout> | undefined;
   private decorationTimer: ReturnType<typeof setTimeout> | undefined;
   private decoratedEditor: vscode.TextEditor | undefined;
+  /** The side group that serves as π's screen; recomputed if the user closes it. */
+  private followColumn: vscode.ViewColumn | undefined;
 
   public constructor() {
     this.status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 96);
@@ -77,7 +80,7 @@ export class AgentFollowService implements vscode.Disposable {
             chatTitle,
             isActiveChat,
             workspaceRoot,
-            revealNeedle(block.args)
+            block.args
           );
         }
       }
@@ -93,17 +96,16 @@ export class AgentFollowService implements vscode.Disposable {
     chatTitle: string,
     isActiveChat: boolean,
     workspaceRoot: string | undefined,
-    needle: string | undefined
+    args: string | undefined
   ): void {
     const absolute = path.isAbsolute(filePath)
       ? filePath
       : path.join(workspaceRoot ?? '', filePath);
     const base = path.basename(filePath);
-    const icon = kind === 'editing' ? '$(edit)' : '$(eye)';
     const shortTitle = chatTitle.replace(/\u2007+$/g, '').trim();
-    this.status.text = `${icon} π · ${kind === 'editing' ? 'editing' : 'reading'} ${base}`;
+    this.status.text = `${kind === 'editing' ? '$(edit)' : '$(eye)'} π · ${kind} ${base}`;
     this.status.tooltip = new vscode.MarkdownString(
-      `**${shortTitle}** is ${kind} \`${filePath}\`\n\n_Click to open · piRpc.followAgent controls this_`
+      `**${shortTitle}** is ${kind} \`${filePath}\`\n\n_Click to open · setting: piRpc.followAgent_`
     );
     this.status.command = {
       command: 'vscode.open',
@@ -114,60 +116,87 @@ export class AgentFollowService implements vscode.Disposable {
     clearTimeout(this.statusTimer);
     this.statusTimer = setTimeout(() => this.status.hide(), kind === 'editing' ? 9000 : 5000);
 
-    // Only EDITS open files, and only for the chat you're looking at —
-    // parallel background chats stay in the status bar, not your tab strip.
-    if (kind !== 'editing' || this.mode() !== 'open' || !isActiveChat) {
+    // The side pane follows READS and EDITS — but only for the chat you're
+    // looking at; parallel background chats narrate in the status bar only.
+    if (this.mode() !== 'open' || !isActiveChat) {
       return;
     }
-    void this.openAndReveal(absolute, needle);
+    void this.showInSidePane(kind, absolute, chatTitle, args);
   }
 
-  private async openAndReveal(absolute: string, needle: string | undefined): Promise<void> {
+  /** π's screen: a stable side editor group, one preview tab reused per file. */
+  private sideColumn(): vscode.ViewColumn {
+    const groups = vscode.window.tabGroups.all;
+    const stillThere =
+      this.followColumn !== undefined &&
+      groups.some((group) => group.viewColumn === this.followColumn);
+    if (stillThere && this.followColumn !== undefined) {
+      return this.followColumn;
+    }
+    const chatColumn = vscode.window.tabGroups.activeTabGroup.viewColumn;
+    const other = groups.find((group) => group.viewColumn !== chatColumn);
+    this.followColumn = other ? other.viewColumn : vscode.ViewColumn.Beside;
+    return this.followColumn;
+  }
+
+  private async showInSidePane(
+    kind: 'editing' | 'reading',
+    absolute: string,
+    chatTitle: string,
+    args: string | undefined
+  ): Promise<void> {
     try {
       const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(absolute));
-      const column =
-        vscode.window.visibleTextEditors.find((editor) => editor.viewColumn !== undefined)
-          ?.viewColumn ?? vscode.ViewColumn.Beside;
       const editor = await vscode.window.showTextDocument(doc, {
-        viewColumn: column,
-        preview: true,
-        preserveFocus: true,
+        viewColumn: this.sideColumn(),
+        preview: true, // one live tab, reused as π moves file-to-file
+        preserveFocus: true, // NEVER steal the user's cursor
       });
-      // The tool call streams BEFORE the write lands on disk — give it two
-      // chances to find the edited region, then decorate + reveal.
+      this.followColumn = editor.viewColumn ?? this.followColumn;
+      if (kind === 'reading') {
+        const line = Math.max(0, (readStartLine(args) ?? 1) - 1);
+        const range = doc.lineAt(Math.min(line, doc.lineCount - 1)).range;
+        editor.revealRange(range, vscode.TextEditorRevealType.AtTop);
+        return;
+      }
+      // Edits: the tool call streams BEFORE the write lands — two chances to
+      // find the changed region, then glow it with chat attribution.
+      const needle = revealNeedle(args);
       const attempt = (delay: number) =>
-        setTimeout(() => void this.reveal(editor, absolute, needle), delay);
+        setTimeout(() => void this.revealEdit(absolute, needle, chatTitle), delay);
       attempt(500);
       attempt(1800);
     } catch {
-      /* file may not exist yet (fresh write) — the status bar already points at it */
+      /* file may not exist yet (fresh write) — status bar already points at it */
     }
   }
 
-  private async reveal(
-    editor: vscode.TextEditor,
+  private async revealEdit(
     absolute: string,
-    needle: string | undefined
+    needle: string | undefined,
+    chatTitle: string
   ): Promise<void> {
     try {
       const fresh = await vscode.workspace.openTextDocument(vscode.Uri.file(absolute));
-      const live = vscode.window.visibleTextEditors.find(
+      const target = vscode.window.visibleTextEditors.find(
         (candidate) => candidate.document.uri.fsPath === absolute
       );
-      const target = live ?? editor;
-      let range: vscode.Range | undefined;
-      if (needle) {
-        const at = fresh.getText().indexOf(needle);
-        if (at >= 0) {
-          range = new vscode.Range(fresh.positionAt(at), fresh.positionAt(at + needle.length));
-        }
-      }
-      if (!range) {
+      if (!target || !needle) {
         return;
       }
+      const at = fresh.getText().indexOf(needle);
+      if (at < 0) {
+        return;
+      }
+      const range = new vscode.Range(fresh.positionAt(at), fresh.positionAt(at + needle.length));
       target.revealRange(range, vscode.TextEditorRevealType.InCenterIfOutsideViewport);
       this.decoratedEditor?.setDecorations(this.decoration, []);
-      target.setDecorations(this.decoration, [range]);
+      target.setDecorations(this.decoration, [
+        {
+          range,
+          hoverMessage: new vscode.MarkdownString(`$(edit) edited by **π — ${chatTitle.trim()}**`),
+        },
+      ]);
       this.decoratedEditor = target;
       clearTimeout(this.decorationTimer);
       this.decorationTimer = setTimeout(() => {
