@@ -259,6 +259,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   initChatUriRegistry(context.workspaceState);
   const chatTabs = new ChatTabManager(context, registry, uiState, logger);
   const turnReview = new TurnReview(logger);
+  context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider(
+      'piRpc.chat',
+      {
+        resolveWebviewView: (view) => chatTabs.attachSidebarChat(context.extensionUri, view),
+      },
+      { webviewOptions: { retainContextWhenHidden: true } }
+    )
+  );
+
   const reviewTree = createReviewTree(turnReview);
   context.subscriptions.push(reviewTree.view);
   chatTabs.setTurnReview(turnReview);
@@ -1015,6 +1025,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }
   });
   registrations.set('piRpc.selectModel', registrations.get('piRpc.showModels')!);
+  // Sidebar chat: focus the docked π chat (Zed layout — center stays free).
+  registrations.set('piRpc.openSidebarChat', async () => {
+    await vscode.commands.executeCommand('piRpc.chat.focus');
+  });
+
   // Zed-style follow mode: cycle open → status → off from the palette.
   registrations.set('piRpc.toggleFollowAgent', async () => {
     const config = vscode.workspace.getConfiguration('piRpc');

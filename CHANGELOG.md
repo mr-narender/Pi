@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.0.244
+
+- THE ZED LAYOUT: π Chat now lives in the SIDEBAR (π activity bar → Chat) — full chat experience docked left (own persistent session, survives reloads), leaving the CENTER for real editors. “Pi: Open Chat in Sidebar” focuses it.
+- Follow, done the Zed way: with the center free, π opens the REAL file it is reading/editing in one preview slot (no tab pileup), reveals the exact region and glows it ember with chat attribution. Auto-skips when a π chat tab owns the active group. Crosshair still rules; every decision logged.
+- Per-change approval on edit cards: ✓ Keep · ↩ Undo (surgically reverts that change) · ✎ Edit (opens the file at the change) — in both the sidebar chat and chat tabs.
+- Activation verified by the VS Code E2E (exit 0).
+
 ## 0.0.243
 
 - Removed the in-chat split pane (superseded by the upcoming sidebar-chat layout). Follow currently narrates via the status bar + Pi output log; per-change Keep/Undo/Edit plumbing stays for the tool-card integration.

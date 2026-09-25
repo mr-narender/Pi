@@ -177,6 +177,24 @@ const WEBVIEW_COMMAND_ALLOWLIST = new Set<string>([
   'piRpcInternal.start',
 ]);
 
+/** Common surface for chat hosts: editor-tab panels AND the sidebar view.
+ * tabManager treats both identically; only construction differs. */
+export interface ChatHost extends vscode.Disposable {
+  readonly resource: vscode.Uri;
+  readonly panel: {
+    readonly webview: vscode.Webview;
+    readonly visible: boolean;
+    readonly active: boolean;
+    readonly viewColumn?: vscode.ViewColumn;
+    title: string;
+    reveal(viewColumn?: vscode.ViewColumn, preserveFocus?: boolean): void;
+  };
+  postSnapshot(snapshot: WebviewSnapshot, title: string): Promise<void>;
+  post(message: unknown): void;
+  hasAttachment(uri: string): boolean;
+  reveal(): void;
+}
+
 class ChatEditorHost implements vscode.Disposable {
   private readonly disposables: vscode.Disposable[] = [];
   private attachmentFileUris = new Set<string>();
@@ -254,6 +272,76 @@ class ChatEditorHost implements vscode.Disposable {
   }
 }
 
+/** The π sidebar chat: same webview, same pipeline, docked in the activity
+ * bar — the editor area stays free for real files (Zed layout). Binds to a
+ * stable synthetic resource so its session persists across reloads. */
+class SidebarChatHost implements ChatHost {
+  private readonly disposables: vscode.Disposable[] = [];
+  private attachmentFileUris = new Set<string>();
+  public readonly panel: ChatHost['panel'];
+
+  public constructor(
+    extensionUri: vscode.Uri,
+    private readonly view: vscode.WebviewView,
+    private readonly manager: ChatTabManager,
+    public readonly resource: vscode.Uri
+  ) {
+    view.webview.options = {
+      enableScripts: true,
+      localResourceRoots: [extensionUri, vscode.Uri.joinPath(extensionUri, 'dist')],
+    };
+    view.webview.html = renderChatWebviewHtml(extensionUri, view.webview, 'Pi Chat', __PI_BUILD__);
+    const self = this;
+    this.panel = {
+      webview: view.webview,
+      get visible() {
+        return self.view.visible;
+      },
+      get active() {
+        return self.view.visible;
+      },
+      viewColumn: undefined,
+      title: '',
+      reveal: () => self.view.show?.(true),
+    };
+    this.disposables.push(
+      view.webview.onDidReceiveMessage((message: unknown) => void manager.onMessage(this, message)),
+      view.onDidDispose(() => void manager.onHostDisposed(this)),
+      view.onDidChangeVisibility(() => void manager.onHostViewStateChanged(this, view.visible))
+    );
+  }
+
+  public async postSnapshot(snapshot: WebviewSnapshot, title: string): Promise<void> {
+    this.view.description = title.replace(/\u2007+$/g, '').trim();
+    this.attachmentFileUris = new Set(
+      snapshot.messages.flatMap((message) =>
+        message.attachments
+          .map((attachment) => attachment.fileRef?.uri)
+          .filter((uri): uri is string => typeof uri === 'string')
+      )
+    );
+    void this.view.webview.postMessage({ type: 'snapshot', snapshot });
+  }
+
+  public post(message: unknown): void {
+    void this.view.webview.postMessage(message);
+  }
+
+  public hasAttachment(uri: string): boolean {
+    return this.attachmentFileUris.has(uri);
+  }
+
+  public reveal(): void {
+    this.view.show?.(true);
+  }
+
+  public dispose(): void {
+    for (const disposable of this.disposables) {
+      disposable.dispose();
+    }
+  }
+}
+
 export interface ChatTabContext {
   controller: SessionController;
   resource: vscode.Uri;
@@ -264,7 +352,7 @@ export class ChatTabManager implements vscode.Disposable {
   private readonly follow = new AgentFollowService();
 
   private readonly cache: ChatTabStateCache;
-  private readonly hosts = new Map<string, ChatEditorHost>();
+  private readonly hosts = new Map<string, ChatHost>();
   private readonly resourceSequence = new Map<string, number>();
   private readonly activeResourceByWorkspace = new Map<string, string>();
   // Completion-notification bookkeeping (busy->ready transition per controller).
@@ -977,7 +1065,7 @@ export class ChatTabManager implements vscode.Disposable {
     return draftResource;
   }
 
-  public async onHostDisposed(host: ChatEditorHost): Promise<void> {
+  public async onHostDisposed(host: ChatHost): Promise<void> {
     // Controller key BEFORE dropping the binding (afterwards keyFor would
     // resolve back to the raw draft key and miss the registry entry).
     const controllerKey = this.keyFor(host.resource);
@@ -997,14 +1085,14 @@ export class ChatTabManager implements vscode.Disposable {
     }
   }
 
-  public async onHostViewStateChanged(host: ChatEditorHost, active: boolean): Promise<void> {
+  public async onHostViewStateChanged(host: ChatHost, active: boolean): Promise<void> {
     if (!active) {
       return;
     }
     await this.activateResource(host.resource, { startIfStopped: false });
   }
 
-  public async onMessage(host: ChatEditorHost, message: unknown): Promise<void> {
+  public async onMessage(host: ChatHost, message: unknown): Promise<void> {
     const parsed = parseWebviewMessage(message);
     const context = this.contextForResource(host.resource);
     if (!parsed || !context) {
@@ -1550,11 +1638,41 @@ export class ChatTabManager implements vscode.Disposable {
   // hardening review) — bindings, owners, effective targets, registry keys.
   private readonly sessions: SessionIndex;
 
+  private sidebarTarget: ChatTabTarget | undefined;
+
+  /** Mount the sidebar chat view onto the shared pipeline. */
+  public async attachSidebarChat(
+    extensionUri: vscode.Uri,
+    view: vscode.WebviewView
+  ): Promise<void> {
+    const resource = vscode.Uri.parse('piRpcSidebar://chat/main');
+    const folder = vscode.workspace.workspaceFolders?.[0];
+    if (!folder) {
+      view.webview.html =
+        '<html><body style="font-family:sans-serif;padding:16px">Open a folder to chat with π.</body></html>';
+      return;
+    }
+    this.sidebarTarget = {
+      workspaceFolderUri: folder.uri.toString(),
+      kind: 'workspaceDraft',
+      draftId: 'sidebar', // constant → same session key across reloads
+    };
+    const host = new SidebarChatHost(extensionUri, view, this, resource);
+    this.hosts.set(resource.toString(), host);
+    await this.renderResource(resource, { active: true });
+  }
+
   private resolveTarget(resource: vscode.Uri): ChatTabTarget | undefined {
+    if (resource.scheme === 'piRpcSidebar') {
+      return this.sidebarTarget;
+    }
     return this.sessions.resolveTarget(resource);
   }
 
   private keyFor(resource: vscode.Uri): string {
+    if (resource.scheme === 'piRpcSidebar') {
+      return 'piRpcSidebar:main';
+    }
     return this.sessions.keyFor(resource);
   }
 

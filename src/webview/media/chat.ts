@@ -5,6 +5,7 @@ declare function acquireVsCodeApi(): {
 };
 
 import morphdom from 'morphdom';
+import { deriveScreenChanges } from '../editToolPath';
 import type { WebviewSnapshot } from '../../state/types';
 import {
   COMPOSER_FIELD_ID,
@@ -1009,6 +1010,41 @@ function renderNow(snapshot: WebviewSnapshot): void {
   }
 
   // #3 — open file / open changes for edit-tool cards.
+  for (const span of Array.from(root.querySelectorAll<HTMLElement>('.edit-approve'))) {
+    const callId = span.dataset.ecid ?? '';
+    const changesFor = () =>
+      deriveScreenChanges((currentSnapshot?.messages ?? []) as never).filter((change) =>
+        change.callId.startsWith(`${callId}-`)
+      );
+    bindOnce(span.querySelector<HTMLButtonElement>('.ed-keep')!, 'click', () => {
+      span.classList.add('is-decided');
+      span.innerHTML = '<span class="ed-done">✓ kept</span>';
+    });
+    bindOnce(span.querySelector<HTMLButtonElement>('.ed-undo')!, 'click', () => {
+      for (const change of changesFor()) {
+        vscode.postMessage({
+          type: 'screenRevert',
+          path: change.path,
+          oldText: change.oldText,
+          newText: change.newText,
+        });
+      }
+      span.classList.add('is-decided');
+      span.innerHTML = '<span class="ed-done">↩ undone</span>';
+    });
+    bindOnce(span.querySelector<HTMLButtonElement>('.ed-edit')!, 'click', () => {
+      const change = changesFor()[0];
+      if (change) {
+        vscode.postMessage({
+          type: 'screenOpenFile',
+          path: change.path,
+          needle:
+            change.newText.split('\n').find((line) => line.trim().length > 4) ?? change.newText,
+        });
+      }
+    });
+  }
+
   for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>('[data-file-open]'))) {
     bindOnce(button, 'click', () => {
       const path = button.getAttribute('data-file-open');

@@ -30,6 +30,16 @@ export class AgentFollowService implements vscode.Disposable {
       }
     | undefined;
   private lastReveal = 0;
+  private readonly decoration = vscode.window.createTextEditorDecorationType({
+    isWholeLine: true,
+    backgroundColor: 'rgba(255, 140, 66, 0.10)',
+    borderColor: 'rgba(255, 140, 66, 0.85)',
+    borderStyle: 'solid',
+    borderWidth: '0 0 0 2px',
+    overviewRulerColor: 'rgba(255, 140, 66, 0.8)',
+    overviewRulerLane: vscode.OverviewRulerLane.Full,
+  });
+  private decorationTimer: ReturnType<typeof setTimeout> | undefined;
   private readonly status: vscode.StatusBarItem;
   private statusTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -171,32 +181,91 @@ export class AgentFollowService implements vscode.Disposable {
     void this.showInSidePane(kind, absolute, chatTitle, args, post);
   }
 
-  /** The split view lives INSIDE the chat webview — we just feed it. */
+  /** Zed follow: the CENTER editor area shows the real file π is on — one
+   * preview slot cycling file-to-file, ember glow on the edited region.
+   * Skipped when a π chat tab owns the active group (editor-tab layout keeps
+   * the transcript in front); with the sidebar chat the center is always free. */
   private async showInSidePane(
     kind: 'editing' | 'reading',
     absolute: string,
     chatTitle: string,
     args: string | undefined,
-    post?: (payload: unknown) => void
+    _post?: (payload: unknown) => void
   ): Promise<void> {
-    if (!post) {
+    const activeTab = vscode.window.tabGroups.activeTabGroup.activeTab;
+    if (
+      activeTab?.input instanceof vscode.TabInputCustom &&
+      activeTab.input.viewType.startsWith('piRpc.')
+    ) {
+      this.logger?.info('[follow] center skipped: a π chat tab is active in this group');
       return;
     }
     const content = await this.readWithRetry(absolute);
     if (content === undefined) {
-      this.logger?.info(`[screen] ${absolute} not on disk after retries`);
+      this.logger?.info(`[follow] ${absolute} not on disk after retries`);
       return;
     }
-    post({
-      type: 'screen',
-      kind,
-      path: absolute,
-      content: content.length > 200_000 ? content.slice(0, 200_000) : content,
-      truncated: content.length > 200_000,
-      revealLine: kind === 'reading' ? (readStartLine(args) ?? 1) : undefined,
-      needle: kind === 'editing' ? revealNeedle(args) : undefined,
-      chatTitle: chatTitle.trim(),
-    });
+    try {
+      const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(absolute));
+      const editor = await vscode.window.showTextDocument(doc, {
+        preview: true, // ONE slot cycling as π moves — no tab pileup
+        preserveFocus: true,
+        viewColumn: vscode.ViewColumn.Active,
+      });
+      this.logger?.info(`[follow] center showing ${absolute}`);
+      if (kind === 'reading') {
+        const line = Math.max(0, (readStartLine(args) ?? 1) - 1);
+        editor.revealRange(
+          doc.lineAt(Math.min(line, doc.lineCount - 1)).range,
+          vscode.TextEditorRevealType.AtTop
+        );
+        return;
+      }
+      const needle = revealNeedle(args);
+      const attempt = (delay: number) =>
+        setTimeout(() => void this.glowEdit(absolute, needle, chatTitle), delay);
+      attempt(400);
+      attempt(1600);
+    } catch (error) {
+      this.logger?.info(
+        `[follow] center open failed: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  private async glowEdit(
+    absolute: string,
+    needle: string | undefined,
+    chatTitle: string
+  ): Promise<void> {
+    if (!needle) {
+      return;
+    }
+    try {
+      const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(absolute));
+      const editor = vscode.window.visibleTextEditors.find(
+        (candidate) => candidate.document.uri.fsPath === absolute
+      );
+      if (!editor) {
+        return;
+      }
+      const at = doc.getText().indexOf(needle);
+      if (at < 0) {
+        return;
+      }
+      const range = new vscode.Range(doc.positionAt(at), doc.positionAt(at + needle.length));
+      editor.revealRange(range, vscode.TextEditorRevealType.InCenterIfOutsideViewport);
+      editor.setDecorations(this.decoration, [
+        {
+          range,
+          hoverMessage: new vscode.MarkdownString(`$(edit) edited by **π — ${chatTitle.trim()}**`),
+        },
+      ]);
+      clearTimeout(this.decorationTimer);
+      this.decorationTimer = setTimeout(() => editor.setDecorations(this.decoration, []), 7000);
+    } catch {
+      /* editor closed between attempts */
+    }
   }
 
   /** Fresh writes land on disk AFTER the tool call streams — retry briefly. */
@@ -227,6 +296,8 @@ export class AgentFollowService implements vscode.Disposable {
   }
 
   public dispose(): void {
+    clearTimeout(this.decorationTimer);
+    this.decoration.dispose();
     clearTimeout(this.statusTimer);
     this.status.dispose();
     this.seen.clear();

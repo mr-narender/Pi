@@ -326,6 +326,13 @@ function finalizeWorkPhases(html: string): string {
 
 // Rich diff for `edit` tool cards: removed lines (−) then added lines (+),
 // coloured with the theme's diff palette. Long diffs get a Show more toggle.
+
+// Per-change approval on edit cards: Keep dismisses, Undo reverts exactly this
+// change in the file, Edit opens the real file at the change.
+function renderEditApprove(callId: string): string {
+  return `<span class="edit-approve" data-ecid="${escapeHtml(callId)}"><button type="button" class="tl-file-btn ed-keep" title="Keep this change">✓ Keep</button><button type="button" class="tl-file-btn ed-undo" title="Undo this change in the file">↩ Undo</button><button type="button" class="tl-file-btn ed-edit" title="Open the file at this change">✎ Edit</button></span>`;
+}
+
 function renderEditDiff(replacements: EditReplacement[]): string {
   const lines: string[] = [];
   for (const replacement of replacements) {
@@ -494,8 +501,9 @@ function renderTimelineNode(node: TimelineNode, streamingAnswer = false): string
           : node.args
             ? renderToolContent(node.args)
             : '';
+      const approve = editPath && node.callId ? renderEditApprove(node.callId) : '';
       const fileActions = editPath
-        ? `<div class="tl-file-actions"><span class="tl-file-path">${escapeHtml(editPath)}</span><button type="button" class="tl-file-btn" data-file-open="${escapeHtml(editPath)}">Open file</button><button type="button" class="tl-file-btn" data-file-diff="${escapeHtml(editPath)}">Open changes</button></div>`
+        ? `<div class="tl-file-actions"><span class="tl-file-path">${escapeHtml(editPath)}</span><button type="button" class="tl-file-btn" data-file-open="${escapeHtml(editPath)}">Open file</button><button type="button" class="tl-file-btn" data-file-diff="${escapeHtml(editPath)}">Open changes</button>${approve}</div>`
         : '';
       return `<div class="tl-node tl-tool">${marker}<div class="tl-card"><div class="tl-head">${META_ICONS.tool}<span class="tl-label">Tool</span><code class="tool-name">${escapeHtml(node.name)}</code></div>${body}${fileActions}</div></div>`;
     }
@@ -516,8 +524,9 @@ function renderTimelineNode(node: TimelineNode, streamingAnswer = false): string
           : call.args
             ? renderToolContent(call.args)
             : '';
+      const approve = editPath && call.callId ? renderEditApprove(call.callId) : '';
       const fileActions = editPath
-        ? `<div class="tl-file-actions"><span class="tl-file-path">${escapeHtml(editPath)}</span><button type="button" class="tl-file-btn" data-file-open="${escapeHtml(editPath)}">Open file</button><button type="button" class="tl-file-btn" data-file-diff="${escapeHtml(editPath)}">Open changes</button></div>`
+        ? `<div class="tl-file-actions"><span class="tl-file-path">${escapeHtml(editPath)}</span><button type="button" class="tl-file-btn" data-file-open="${escapeHtml(editPath)}">Open file</button><button type="button" class="tl-file-btn" data-file-diff="${escapeHtml(editPath)}">Open changes</button>${approve}</div>`
         : '';
       const lineCount = result.text ? result.text.split('\n').length : 0;
       const shortResult = !err && lineCount <= 12 && (result.text?.length ?? 0) <= 1400;
