@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { deriveScreenChanges } from '../../src/webview/model';
+import { deriveScreenChanges } from '../../src/webview/editToolPath';
 
 const editBlock = (callId: string, path: string, oldString: string, newString: string) => ({
   kind: 'tool' as const,

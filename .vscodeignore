@@ -27,3 +27,4 @@ coverage/**
 .tmp/**
 *.log
 **/.DS_Store
+graphify-out/**

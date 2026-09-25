@@ -1,4 +1,3 @@
-import { editReplacements, editToolFilePath } from './editToolPath';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { redactText } from '../diagnostics/redaction';
@@ -506,43 +505,4 @@ function derivePlan(
     }
   }
   return undefined;
-}
-
-/** Per-change approval units: every edit tool call in the NEWEST assistant
- * turn, as { path, oldText, newText } — the pane renders Keep/Undo/Edit for
- * each. Pure so tests can drive it directly. */
-export function deriveScreenChanges(
-  messages: Array<{ role: string; blocks?: WebviewMessageBlock[] }>
-): Array<{ callId: string; path: string; oldText: string; newText: string }> {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index]!;
-    if (message.role === 'user') {
-      break;
-    }
-    if (message.role !== 'assistant') {
-      continue;
-    }
-    const changes: Array<{ callId: string; path: string; oldText: string; newText: string }> = [];
-    for (const block of message.blocks ?? []) {
-      if (block.kind !== 'tool' || !('name' in block)) {
-        continue;
-      }
-      const path = editToolFilePath(block.name, block.args);
-      if (!path) {
-        continue;
-      }
-      for (const [at, replacement] of editReplacements(block.name, block.args).entries()) {
-        changes.push({
-          callId: `${block.callId ?? 'call'}-${at}`,
-          path,
-          oldText: replacement.oldText ?? '',
-          newText: replacement.newText ?? '',
-        });
-      }
-    }
-    if (changes.length > 0) {
-      return changes.slice(-12);
-    }
-  }
-  return [];
 }
