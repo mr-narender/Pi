@@ -3623,6 +3623,10 @@ body.vscode-high-contrast .code-wrap {
   --pi-screen-w: 44%;
 }
 
+#pi-screen-pane[hidden] {
+  display: none !important; /* author display:flex must not defeat [hidden] */
+}
+
 #pi-screen-pane {
   position: fixed;
   top: 0;

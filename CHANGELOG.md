@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.242
+
+- Fixed the empty split pane overlaying the chat: the pane’s display:flex was defeating the hidden attribute, so an inert glass sheet covered the transcript whenever follow was off — hidden now always wins, the pane DOM isn’t even created until there’s something to show, and the chat reclaims full width the moment the pane hides.
+
 ## 0.0.241
 
 - SPLIT VIEW INSIDE THE CHAT TAB (the architecture you asked for): one π tab, internally split — conversation left, π’s live file mirror right (syntax-highlighted, ember glow on the region being written, reads jump to their offset). Draggable divider (width remembered), filename click opens the real file, ✕ = crosshair off. No VS Code tab/group APIs — tab pileups and placement bugs are structurally impossible.

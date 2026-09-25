@@ -1768,9 +1768,12 @@ function renderScreenChanges(): void {
 }
 
 function syncScreenPane(): void {
-  const pane = screenPane();
   const followOn = currentSnapshot?.followMode === 'open';
   const shouldShow = followOn && screenData !== undefined;
+  if (!shouldShow && !document.getElementById('pi-screen-pane')) {
+    return; // no reason to even create the DOM yet
+  }
+  const pane = screenPane();
   pane.hidden = !shouldShow;
   document.body.classList.toggle('screen-open', shouldShow);
   if (shouldShow) {
