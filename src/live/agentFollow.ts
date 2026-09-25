@@ -32,8 +32,6 @@ export class AgentFollowService implements vscode.Disposable {
       }
     | undefined;
   private lastReveal = 0;
-  /** Our dedicated right-of-chat group (recreated if the user closes it). */
-  private followColumn: vscode.ViewColumn | undefined;
   private readonly status: vscode.StatusBarItem;
   private statusTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -179,38 +177,21 @@ export class AgentFollowService implements vscode.Disposable {
     void this.showInSidePane(kind, absolute, chatTitle, args, chatColumn);
   }
 
-  /** π's screen must sit geometrically RIGHT of the chat. ViewColumn math
-   * can't guarantee that (numbers are creation order, and Beside honors
-   * workbench.editor.openSideBySideDirection — 'down' opens at the bottom),
-   * so we create our own right split once and reuse it. */
-  private async followGroup(
-    chatColumn: number | undefined
-  ): Promise<vscode.ViewColumn | undefined> {
-    const groups = vscode.window.tabGroups.all;
-    if (
-      this.followColumn !== undefined &&
-      groups.some((group) => group.viewColumn === this.followColumn)
-    ) {
-      return this.followColumn;
+  /** Where the π Screen lives. Deterministic, focus-independent:
+   * 1) an existing π Screen tab wins — wherever the USER put it (drag once,
+   *    remembered forever);  2) else the numeric column right after the chat;
+   * 3) else column 2. Never ViewColumn.Beside (it honors the user's
+   * openSideBySideDirection and split DOWNWARD on 'down' setups). */
+  private followGroup(chatColumn: number | undefined): vscode.ViewColumn {
+    for (const group of vscode.window.tabGroups.all) {
+      for (const tab of group.tabs) {
+        const input = tab.input;
+        if (input instanceof vscode.TabInputText && input.uri.scheme === 'pi-screen') {
+          return group.viewColumn;
+        }
+      }
     }
-    if (chatColumn === undefined) {
-      return undefined;
-    }
-    const active = vscode.window.tabGroups.activeTabGroup;
-    if (active.viewColumn === chatColumn) {
-      // Chat group is active: split RIGHT deterministically, hand focus back.
-      await vscode.commands.executeCommand('workbench.action.newGroupRight');
-      await vscode.commands.executeCommand('workbench.action.focusPreviousGroup');
-      this.followColumn = (chatColumn + 1) as vscode.ViewColumn;
-      this.logger?.info(`[follow] created right split at column ${String(this.followColumn)}`);
-      return this.followColumn;
-    }
-    const existing = groups.find((group) => group.viewColumn === chatColumn + 1);
-    if (existing) {
-      this.followColumn = existing.viewColumn;
-      return this.followColumn;
-    }
-    return undefined;
+    return ((chatColumn ?? 1) + 1) as vscode.ViewColumn;
   }
 
   private async showInSidePane(
@@ -221,12 +202,13 @@ export class AgentFollowService implements vscode.Disposable {
     chatColumn?: number
   ): Promise<void> {
     this.syncLogger();
-    const column = (await this.followGroup(chatColumn)) ?? vscode.ViewColumn.Beside;
+    const column = this.followGroup(chatColumn);
     await this.screen.show({
       kind,
       absolute,
       chatTitle,
       column,
+      chatColumn,
       needle: kind === 'editing' ? revealNeedle(args) : undefined,
       revealLine: kind === 'reading' ? (readStartLine(args) ?? 1) : undefined,
     });

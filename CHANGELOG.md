@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.239
+
+- π Screen placement is deterministic and focus-independent: an existing π Screen tab is the source of truth (drag it anywhere ONCE — remembered forever); otherwise it opens in the numeric column right of the chat. ViewColumn.Beside is never used (it honored openSideBySideDirection=down and split UNDER the chat). If layout quirks park it next to the chat, one honest toast explains the one-time drag. Cold tab shows a “waiting for agent activity” placeholder.
+- Note: tabs restored on reload from pre-238 versions are old real-file tabs (close them once) — π Screen never creates real-file tabs, so the pileup cannot recur.
+
 ## 0.0.238
 
 - π SCREEN (clean architecture, no more tab pileups — ever): the follow pane is now ONE virtual document (pi-screen://) in the right split. It MIRRORS whatever file π reads or edits, swapping content in place — real syntax highlighting per file, ember glow on edited regions, reads jump to their offset, huge files auto-window. The header line names the file and chat and is a LINK to the real file for hand-editing. Two tabs total: your chat, π’s screen. Harness-proven single-tab invariant.

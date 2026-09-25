@@ -81,11 +81,14 @@ export interface ScreenActivity {
   /** Text to locate and glow (edits), or undefined. */
   needle?: string;
   column: vscode.ViewColumn;
+  /** The chat's own column — used to detect same-group placement. */
+  chatColumn?: number;
 }
 
 export class PiScreen implements vscode.Disposable {
   private readonly changeEmitter = new vscode.EventEmitter<vscode.Uri>();
-  private content = '';
+  private content = 'π Screen — waiting for agent activity. Files π reads or edits appear here.';
+  private warnedPlacement = false;
   private currentLanguage = 'plaintext';
   private readonly disposables: vscode.Disposable[] = [];
   private readonly decoration: vscode.TextEditorDecorationType;
@@ -167,6 +170,19 @@ export class PiScreen implements vscode.Disposable {
       preview: false, // same URI = same tab; preview heuristics irrelevant
       preserveFocus: true,
     });
+    // If VS Code parked us in the chat's own group (layout quirks), say so
+    // ONCE — dragging the π Screen tab right is remembered forever after.
+    if (
+      !this.warnedPlacement &&
+      editor.viewColumn !== undefined &&
+      activity.chatColumn !== undefined &&
+      editor.viewColumn === activity.chatColumn
+    ) {
+      this.warnedPlacement = true;
+      void vscode.window.showInformationMessage(
+        'π Screen opened next to the chat — drag its tab to the right split once; the spot is remembered.'
+      );
+    }
     if (this.currentLanguage !== language) {
       this.currentLanguage = language;
       await vscode.languages.setTextDocumentLanguage(editor.document, language).then(
