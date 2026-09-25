@@ -139,14 +139,33 @@ export class AgentFollowService implements vscode.Disposable {
     return this.followColumn;
   }
 
+  private async openWithRetry(absolute: string): Promise<vscode.TextDocument | undefined> {
+    for (const delay of [0, 800, 2200]) {
+      if (delay > 0) {
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+      try {
+        return await vscode.workspace.openTextDocument(vscode.Uri.file(absolute));
+      } catch {
+        /* not on disk yet — try again */
+      }
+    }
+    return undefined;
+  }
+
   private async showInSidePane(
     kind: 'editing' | 'reading',
     absolute: string,
     chatTitle: string,
     args: string | undefined
   ): Promise<void> {
+    // Fresh writes: the tool call streams BEFORE the file exists on disk —
+    // retry a few times instead of giving up on ENOENT.
+    const doc = await this.openWithRetry(absolute);
+    if (!doc) {
+      return;
+    }
     try {
-      const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(absolute));
       const editor = await vscode.window.showTextDocument(doc, {
         viewColumn: this.sideColumn(),
         preview: true, // one live tab, reused as π moves file-to-file

@@ -1833,7 +1833,10 @@ export class ChatTabManager implements vscode.Disposable {
         this.keyFor(resource),
         title,
         snapshot,
-        options?.active ?? false,
+        // The pane follows the chat the user can SEE (visible ≠ focused —
+        // focus stays wherever the user is typing). Live updates arrive with
+        // active:false, so the render-path flag was never the right signal.
+        host.panel.visible,
         safeFsPath(context.target.workspaceFolderUri) ??
           vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
       );

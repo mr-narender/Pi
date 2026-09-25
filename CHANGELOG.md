@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.229
+
+- Follow pane actually opens now: it keys off the chat panel’s real visibility (live updates carried active:false, so it never fired), and brand-new files retry opening until the write lands on disk (0.8s/2.2s backoff).
+
 ## 0.0.228
 
 - π’s live screen (Zed-style follow, done right): a SIDE editor group now follows the agent — every file π reads or edits appears there live in one reused preview tab (chat on one side, the agent’s working file on the other). Reads jump to the offset being read; edits glow ember with hover attribution (“edited by π — <chat>”); focus never leaves your cursor; background chats narrate in the status bar only.
