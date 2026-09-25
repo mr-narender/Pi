@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.224
+
+- Transcript now ends ABOVE the composer — messages never slide underneath the input; the scroll floor tracks the dock’s live height (auto-grow included).
+
 ## 0.0.223
 
 - Thinking level is one click too: a dedicated pill next to the model chip opens the centered picker (off/minimal/low/medium/high/xhigh/max, current level checked) — same pattern as model selection.

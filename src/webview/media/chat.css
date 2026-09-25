@@ -3437,3 +3437,26 @@ button.composer-thinking svg {
   flex: 0 0 auto;
   opacity: 0.75;
 }
+
+/* ═══ Pass 8: transcript ends ABOVE the composer — never slides under it ═══
+   The layout column is viewport-height with bottom padding equal to the
+   dock's live height, so the scroll area's floor sits on the dock's roof. */
+body {
+  overflow: hidden; /* the transcript is the single scroller */
+}
+
+.layout {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+  box-sizing: border-box;
+  gap: 12px;
+  padding: 12px 16px 0;
+  padding-bottom: var(--composer-clearance, 150px);
+}
+
+#messages {
+  /* pass-3 clearance padding no longer needed: the column floor handles it */
+  padding-bottom: 20px;
+}
