@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.231
+
+- Input overlap fixed: the transcript-clearance observer re-attaches after every render (morphdom could swap the dock node — e.g. when the Working banner mounts — freezing the spacing), plus a larger breathing buffer.
+- Follow pane, single-container feel: π’s files now open in the split DIRECTLY RIGHT of the chat (chat column + 1) as real separate tabs (no preview reuse), and clicking the crosshair ON immediately opens the file π is currently working on.
+
 ## 0.0.230
 
 - Zed’s crosshair, for real: a follow toggle lives in the composer (crosshair icon, ember when active, aria-pressed). While on, the side editor tracks EVERY move — files π opens/reads/edits, the offset it reads from, and the LINE it is writing while edit args stream in (throttled live reveal, Zed-cursor style). Click to stop/start; state syncs with piRpc.followAgent.

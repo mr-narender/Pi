@@ -1244,6 +1244,7 @@ function renderNow(snapshot: WebviewSnapshot): void {
   startWorkingAnimation();
   applyScrollAndPaging(snapshot, scrollMetrics);
   applyFocus();
+  ensureDockObserved(); // dock node can be swapped by morphdom — re-attach
   if (findOpen) {
     const anchor = findRanges[findIndex];
     runFind(findQuery, false);
@@ -1464,14 +1465,23 @@ const composerClearance = new ResizeObserver((entries) => {
   for (const entry of entries) {
     document.documentElement.style.setProperty(
       '--composer-clearance',
-      `${Math.ceil(entry.contentRect.height) + 26}px`
+      `${Math.ceil(entry.contentRect.height) + 34}px`
     );
   }
 });
-const dockEl = document.querySelector('.composer-dock');
-if (dockEl) {
-  composerClearance.observe(dockEl);
+let observedDock: Element | null = null;
+// morphdom can REPLACE the dock node (e.g. when the Working banner mounts) —
+// re-attach the observer after every render or the clearance goes stale and
+// the transcript slides under the input.
+function ensureDockObserved(): void {
+  const dock = document.querySelector('.composer-dock');
+  if (dock && dock !== observedDock) {
+    observedDock = dock;
+    composerClearance.disconnect();
+    composerClearance.observe(dock);
+  }
 }
+ensureDockObserved();
 
 // Approvals answer to the keyboard: Y = Allow, N = Deny (skipped while
 // typing). The highest-friction agentic moment shouldn't need the mouse.

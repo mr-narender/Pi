@@ -1116,6 +1116,9 @@ export class ChatTabManager implements vscode.Disposable {
         const next = config.get<string>('followAgent', 'open') === 'open' ? 'off' : 'open';
         await config.update('followAgent', next, vscode.ConfigurationTarget.Global);
         await this.renderResource(host.resource);
+        if (next === 'open') {
+          this.follow.replayLast(); // jump straight to the file π is on
+        }
         return;
       }
       case 'abort': {
@@ -1848,7 +1851,8 @@ export class ChatTabManager implements vscode.Disposable {
         // active:false, so the render-path flag was never the right signal.
         host.panel.visible,
         safeFsPath(context.target.workspaceFolderUri) ??
-          vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
+          vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
+        host.panel.viewColumn
       );
       await host.postSnapshot(snapshot, title);
       // Mirror the active chat to a remote session, if one is running.

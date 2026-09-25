@@ -17,14 +17,21 @@ export class AgentFollowService implements vscode.Disposable {
   /** callId → last seen args length: streaming args re-reveal as they grow. */
   private readonly seen = new Map<string, Map<string, number>>();
   private lastEditCall: string | undefined;
+  private lastActivity:
+    | {
+        kind: 'editing' | 'reading';
+        absolute: string;
+        chatTitle: string;
+        args?: string;
+        chatColumn?: number;
+      }
+    | undefined;
   private lastReveal = 0;
   private readonly status: vscode.StatusBarItem;
   private readonly decoration: vscode.TextEditorDecorationType;
   private statusTimer: ReturnType<typeof setTimeout> | undefined;
   private decorationTimer: ReturnType<typeof setTimeout> | undefined;
   private decoratedEditor: vscode.TextEditor | undefined;
-  /** The side group that serves as π's screen; recomputed if the user closes it. */
-  private followColumn: vscode.ViewColumn | undefined;
 
   public constructor() {
     this.status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 96);
@@ -50,11 +57,9 @@ export class AgentFollowService implements vscode.Disposable {
     chatTitle: string,
     snapshot: SnapshotLike,
     isActiveChat: boolean,
-    workspaceRoot: string | undefined
+    workspaceRoot: string | undefined,
+    chatColumn?: number
   ): void {
-    if (this.mode() === 'off') {
-      return;
-    }
     let seen = this.seen.get(key);
     if (!seen) {
       seen = new Map();
@@ -89,7 +94,8 @@ export class AgentFollowService implements vscode.Disposable {
               chatTitle,
               isActiveChat,
               workspaceRoot,
-              block.args
+              block.args,
+              chatColumn
             );
           }
         } else if (
@@ -110,7 +116,8 @@ export class AgentFollowService implements vscode.Disposable {
                 'editing',
                 this.resolve(activity.path, workspaceRoot),
                 chatTitle,
-                block.args
+                block.args,
+                chatColumn
               );
             }
           }
@@ -132,9 +139,18 @@ export class AgentFollowService implements vscode.Disposable {
     chatTitle: string,
     isActiveChat: boolean,
     workspaceRoot: string | undefined,
-    args: string | undefined
+    args: string | undefined,
+    chatColumn?: number
   ): void {
     const absolute = this.resolve(filePath, workspaceRoot);
+    if (isActiveChat) {
+      // Remembered even while off/status: toggling follow ON jumps straight
+      // to the file π is currently on.
+      this.lastActivity = { kind, absolute, chatTitle, args, chatColumn };
+    }
+    if (this.mode() === 'off') {
+      return;
+    }
     const base = path.basename(filePath);
     const shortTitle = chatTitle.replace(/\u2007+$/g, '').trim();
     this.status.text = `${kind === 'editing' ? '$(edit)' : '$(eye)'} π · ${kind} ${base}`;
@@ -155,22 +171,7 @@ export class AgentFollowService implements vscode.Disposable {
     if (this.mode() !== 'open' || !isActiveChat) {
       return;
     }
-    void this.showInSidePane(kind, absolute, chatTitle, args);
-  }
-
-  /** π's screen: a stable side editor group, one preview tab reused per file. */
-  private sideColumn(): vscode.ViewColumn {
-    const groups = vscode.window.tabGroups.all;
-    const stillThere =
-      this.followColumn !== undefined &&
-      groups.some((group) => group.viewColumn === this.followColumn);
-    if (stillThere && this.followColumn !== undefined) {
-      return this.followColumn;
-    }
-    const chatColumn = vscode.window.tabGroups.activeTabGroup.viewColumn;
-    const other = groups.find((group) => group.viewColumn !== chatColumn);
-    this.followColumn = other ? other.viewColumn : vscode.ViewColumn.Beside;
-    return this.followColumn;
+    void this.showInSidePane(kind, absolute, chatTitle, args, chatColumn);
   }
 
   private async openWithRetry(absolute: string): Promise<vscode.TextDocument | undefined> {
@@ -191,7 +192,8 @@ export class AgentFollowService implements vscode.Disposable {
     kind: 'editing' | 'reading',
     absolute: string,
     chatTitle: string,
-    args: string | undefined
+    args: string | undefined,
+    chatColumn?: number
   ): Promise<void> {
     // Fresh writes: the tool call streams BEFORE the file exists on disk —
     // retry a few times instead of giving up on ENOENT.
@@ -200,12 +202,14 @@ export class AgentFollowService implements vscode.Disposable {
       return;
     }
     try {
+      // One container feel: chat on the left, π's files in the split to its
+      // RIGHT — each file gets its own persistent tab there.
       const editor = await vscode.window.showTextDocument(doc, {
-        viewColumn: this.sideColumn(),
-        preview: true, // one live tab, reused as π moves file-to-file
+        viewColumn: chatColumn && chatColumn >= 1 ? chatColumn + 1 : vscode.ViewColumn.Beside,
+        preview: false,
         preserveFocus: true, // NEVER steal the user's cursor
       });
-      this.followColumn = editor.viewColumn ?? this.followColumn;
+      void editor;
       if (kind === 'reading') {
         const line = Math.max(0, (readStartLine(args) ?? 1) - 1);
         const range = doc.lineAt(Math.min(line, doc.lineCount - 1)).range;
@@ -258,6 +262,15 @@ export class AgentFollowService implements vscode.Disposable {
     } catch {
       /* editor closed between attempts — fine */
     }
+  }
+
+  /** Toggle-ON affordance: immediately show the file π was last on. */
+  public replayLast(): void {
+    if (this.mode() !== 'open' || !this.lastActivity) {
+      return;
+    }
+    const { kind, absolute, chatTitle, args, chatColumn } = this.lastActivity;
+    void this.showInSidePane(kind, absolute, chatTitle, args, chatColumn);
   }
 
   public dispose(): void {
