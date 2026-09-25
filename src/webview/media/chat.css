@@ -3391,3 +3391,38 @@ body.vscode-high-contrast .menu-panel {
   left: 0;
   right: auto;
 }
+
+/* ═══ Pass 7: status chip is a BUTTON now — one click, centered model picker.
+   (The old popover made choosing a model a two-step trip.) ═══ */
+button.composer-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 11px;
+  font-size: 11px;
+  color: var(--vscode-foreground);
+  background: var(--glass-1);
+  border: 1px solid var(--glass-line);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: border-color 120ms ease;
+  max-width: 260px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+button.composer-status:hover {
+  border-color: var(--ember-glow);
+  background: var(--glass-2);
+}
+
+button.composer-status:focus-visible {
+  outline: 1px solid var(--ember);
+  outline-offset: 1px;
+}
+
+body.vscode-high-contrast button.composer-status {
+  background: var(--vscode-editor-background);
+  border: 1px solid var(--vscode-panel-border);
+}

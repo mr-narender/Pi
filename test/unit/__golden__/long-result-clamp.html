@@ -57,7 +57,7 @@ line 30</code></pre></div><button type="button" class="code-showmore">Show more<
           <textarea id="composer-field" rows="3" placeholder="Ask π to edit…" ></textarea>
           <div class="composer-actions" aria-label="Composer actions">
             <div class="composer-actions-left">
-              <details class="menu-details composer-status" id="status-chip"><summary title="Model · cost · thinking" aria-label="Chat status and settings"><span class="model-dot"></span>model · medium</summary><div class="menu-panel" role="menu"><button type="button" class="menu-item" data-command="piRpc.showModels"><span class="dot"></span>Model: mock/model</button><button type="button" class="menu-item" data-command="piRpc.setThinkingLevel"><span class="dot"></span>Thinking level: medium</button><button type="button" class="menu-item" data-command="piRpc.showSessionStats"><span class="dot"></span>Usage &amp; cost</button></div></details>
+              <button type="button" class="composer-status" id="status-chip" data-command="piRpc.showModels" title="Choose model — thinking level lives in the π menu" aria-label="Choose model"><span class="model-dot"></span>model · medium</button>
               <button type="button" id="attach-trigger" class="icon-button" data-action="appendPickedFile" title="Add a file" aria-label="Add a file" >+</button>
               <button type="button" class="icon-button" data-command="piRpc.showPiCommands" title="Commands" aria-label="Commands" >/</button>
             </div>

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.222
+
+- One-click model switching: the composer chip now opens the centered model picker directly (no intermediate popover). Thinking level stays in the π menu; usage stays in the palette/sidebar.
+
 ## 0.0.221
 
 - Nested-frame audit, all fixed: composer textarea border (the real double frame), find-bar inner input, assistant bubbles (now open canvas — no more frame around tool cards), cards inside work phases (hairline list), code blocks inside tool cards, attachment tray.

@@ -939,7 +939,7 @@ function renderStatusChip(snapshot: WebviewSnapshot): string {
   const usage = snapshot.usage ? formatUsageChip(snapshot.usage) : '';
   const thinking = typeof snapshot.thinkingLevel === 'string' ? snapshot.thinkingLevel : '';
   const summaryParts = [model, usage, thinking].filter(Boolean);
-  return `<details class="menu-details composer-status" id="status-chip"><summary title="Model · cost · thinking" aria-label="Chat status and settings"><span class="model-dot"></span>${escapeHtml(summaryParts.join(' · '))}</summary><div class="menu-panel" role="menu"><button type="button" class="menu-item" data-command="piRpc.showModels"><span class="dot"></span>Model: ${escapeHtml(modelLabel(snapshot))}</button><button type="button" class="menu-item" data-command="piRpc.setThinkingLevel"><span class="dot"></span>Thinking level${thinking ? `: ${escapeHtml(thinking)}` : ''}</button><button type="button" class="menu-item" data-command="piRpc.showSessionStats"><span class="dot"></span>Usage &amp; cost${usage ? `: ${escapeHtml(usage)}` : ''}</button></div></details>`;
+  return `<button type="button" class="composer-status" id="status-chip" data-command="piRpc.showModels" title="Choose model — thinking level lives in the π menu" aria-label="Choose model"><span class="model-dot"></span>${escapeHtml(summaryParts.join(' · '))}</button>`;
 }
 
 // Chat header ("sidecar" top bar): per-chat overflow actions live here.
