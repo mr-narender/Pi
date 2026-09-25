@@ -152,7 +152,7 @@ test('editorTabs.open.multiRootIsolation', () => {
 
 test('editorTabs.render.headerHasModelChipAndMore', () => {
   const html = renderChatApp(snapshot());
-  assert.match(html, /class="menu-details composer-status"/);
+  assert.match(html, /class="composer-status" id="status-chip" data-command="piRpc.showModels"/);
   assert.match(html, /mock\/model/);
   // Chat actions moved to the native editor title bar (piRpc.chatActions).
   assert.doesNotMatch(html, /aria-label="Chat actions"/);

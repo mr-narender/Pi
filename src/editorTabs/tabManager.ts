@@ -169,8 +169,6 @@ const WEBVIEW_COMMAND_ALLOWLIST = new Set<string>([
   'piRpc.remote.stop',
   'piRpc.showModels',
   'piRpc.showPiCommands',
-  'piRpc.showSessionStats',
-  'piRpc.setThinkingLevel',
   'piRpc.switchSession',
   'piRpcInternal.restart',
   'piRpcInternal.retryLast',

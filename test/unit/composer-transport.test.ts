@@ -128,7 +128,7 @@ test('default simple mode keeps the composer primary controls; chat actions are 
   const html = renderChatApp(snapshot());
   // Composer keeps the model chip (New/History live in the sidebar; the ⋯ chat
   // actions moved to the native editor title bar — piRpc.chatActions submenu).
-  assert.match(html, /class="menu-details composer-status"/);
+  assert.match(html, /class="composer-status" id="status-chip" data-command="piRpc.showModels"/);
   assert.doesNotMatch(html, /aria-label="Chat actions"/);
   assert.doesNotMatch(html, /data-command="piRpc\.newSession"/);
   assert.doesNotMatch(html, /data-command="piRpc\.switchSession"/);

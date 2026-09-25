@@ -939,7 +939,7 @@ function renderStatusChip(snapshot: WebviewSnapshot): string {
   const usage = snapshot.usage ? formatUsageChip(snapshot.usage) : '';
   const thinking = typeof snapshot.thinkingLevel === 'string' ? snapshot.thinkingLevel : '';
   const summaryParts = [model, usage, thinking].filter(Boolean);
-  return `<button type="button" class="composer-status" id="status-chip" data-command="piRpc.showModels" title="Choose model — thinking level lives in the π menu" aria-label="Choose model"><span class="model-dot"></span>${escapeHtml(summaryParts.join(' · '))}</button>`;
+  return `<button type="button" class="composer-status" id="status-chip" data-command="piRpc.showModels" title="Model: ${escapeHtml(modelLabel(snapshot))} — click to change (thinking level: π menu)" aria-label="Choose model"><span class="model-dot"></span>${escapeHtml(summaryParts.join(' · '))}</button>`;
 }
 
 // Chat header ("sidecar" top bar): per-chat overflow actions live here.

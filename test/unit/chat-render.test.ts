@@ -63,7 +63,7 @@ test('renderChatApp renders a minimal composer + chat header (clean layout)', ()
   assert.match(html, /placeholder="Ask π to edit/);
   // Model is a borderless clickable label inside the composer; chat actions
   // moved to the NATIVE editor title bar (piRpc.chatActions submenu).
-  assert.match(html, /class="menu-details composer-status"/); // one status chip now
+  assert.match(html, /class="composer-status" id="status-chip" data-command="piRpc.showModels"/); // one-click model picker
   assert.doesNotMatch(html, /aria-label="Chat actions"/);
   assert.doesNotMatch(html, /data-command="piRpc\.newSession"/);
   assert.doesNotMatch(html, /data-command="piRpc\.switchSession"/);
