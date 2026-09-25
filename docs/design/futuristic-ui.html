@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>π — futuristic UI directions</title>
+<style>
+  :root { --bg:#17171a; --fg:#d6d6d6; --muted:#9a9a9a; --ember1:#ffbe7a; --ember2:#ff8c42; --ember3:#df5f24; }
+  *{box-sizing:border-box} body{background:var(--bg);color:var(--fg);font:13px/1.6 -apple-system,"SF Pro Text","Segoe UI",sans-serif;margin:0;padding:32px}
+  h1{font-size:20px;font-weight:650} h1 span{background:linear-gradient(120deg,var(--ember1),var(--ember2),var(--ember3));-webkit-background-clip:text;background-clip:text;color:transparent}
+  p.lead{color:var(--muted);max-width:760px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(430px,1fr));gap:30px;margin-top:26px}
+  .opt-title{font-size:14px;font-weight:650;margin:0 0 2px} .opt-title b{color:var(--ember2);margin-right:6px}
+  .opt-desc{color:var(--muted);font-size:12px;margin:0 0 12px;min-height:48px}
+  .frame{border-radius:14px;padding:18px;display:flex;flex-direction:column;gap:12px;min-height:520px}
+  .u{align-self:flex-end;max-width:78%;padding:9px 13px;font-size:12.5px}
+  .a{padding:12px 14px;font-size:12.5px}
+  .phase{display:flex;align-items:center;gap:8px;font-size:11.5px;padding:6px 10px;cursor:pointer}
+  .phase .hint{margin-left:auto;font-size:9.5px;letter-spacing:.06em;opacity:.5;text-transform:uppercase}
+  .tool{font-size:11.5px;padding:8px 10px}
+  .tool .head{display:flex;gap:6px;align-items:center;font-weight:600;font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;opacity:.75;margin-bottom:6px}
+  .tool code{background:rgba(127,127,127,.14);padding:1px 6px;border-radius:4px;font-family:ui-monospace,monospace;font-size:10.5px}
+  .resp .label{display:flex;align-items:center;gap:6px;font-size:10.5px;font-weight:650;letter-spacing:.05em;text-transform:uppercase;margin-bottom:6px}
+  .composer{margin-top:auto;padding:10px 12px}
+  .composer .row{display:flex;align-items:center;gap:8px;margin-top:8px}
+  .chiplet{font-size:10.5px;padding:3px 9px;border-radius:999px;opacity:.85}
+  .send{margin-left:auto;width:26px;height:26px;border-radius:8px;display:grid;place-items:center;font-size:13px}
+  .input{opacity:.5;font-size:12px}
+  .dot{width:6px;height:6px;border-radius:50%}
+
+  /* ── A. REFINED GLASS ─────────────────────── */
+  .vA .frame{background:linear-gradient(180deg,#1d1d21,#191a1d);border:1px solid rgba(255,255,255,.06)}
+  .vA .u{background:rgba(255,140,66,.09);border:1px solid rgba(255,140,66,.22);border-radius:12px 12px 4px 12px}
+  .vA .a{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:12px;backdrop-filter:blur(6px)}
+  .vA .phase{background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.08);border-radius:9px}
+  .vA .tool{background:rgba(0,0,0,.22);border:1px solid rgba(255,255,255,.05);border-radius:9px}
+  .vA .resp .label{color:var(--ember2)}
+  .vA .composer{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.09);border-radius:12px;box-shadow:0 6px 24px rgba(0,0,0,.35)}
+  .vA .composer:hover{border-color:rgba(255,140,66,.35)}
+  .vA .chiplet{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.09)}
+  .vA .send{background:linear-gradient(135deg,var(--ember2),var(--ember3));color:#1a1a1a;box-shadow:0 0 12px rgba(255,140,66,.35)}
+  .vA .dot{background:var(--ember2);box-shadow:0 0 6px rgba(255,140,66,.8)}
+
+  /* ── B. NEON EMBER ────────────────────────── */
+  .vB .frame{background:radial-gradient(1200px 500px at 20% -10%,rgba(255,140,66,.06),transparent),#141416;border:1px solid rgba(255,140,66,.14)}
+  .vB .u{background:linear-gradient(135deg,rgba(255,140,66,.16),rgba(223,95,36,.10));border:1px solid rgba(255,140,66,.45);border-radius:12px 12px 4px 12px;box-shadow:0 0 14px rgba(255,140,66,.12)}
+  .vB .a{background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.06);border-left:2px solid var(--ember2);border-radius:4px 12px 12px 4px}
+  .vB .phase{background:rgba(255,140,66,.06);border:1px solid rgba(255,140,66,.3);border-radius:999px;box-shadow:inset 0 0 12px rgba(255,140,66,.05)}
+  .vB .tool{background:#101012;border:1px solid rgba(255,255,255,.05);border-radius:10px;position:relative;overflow:hidden}
+  .vB .tool::before{content:'';position:absolute;inset:0 auto 0 0;width:2px;background:linear-gradient(180deg,var(--ember1),var(--ember3));opacity:.8}
+  .vB .resp .label{background:linear-gradient(120deg,var(--ember1),var(--ember2));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .vB .composer{background:#101013;border:1px solid rgba(255,140,66,.4);border-radius:14px;box-shadow:0 0 22px rgba(255,140,66,.14), inset 0 0 18px rgba(255,140,66,.04)}
+  .vB .chiplet{background:rgba(255,140,66,.1);border:1px solid rgba(255,140,66,.4);color:var(--ember1)}
+  .vB .send{background:linear-gradient(135deg,var(--ember1),var(--ember3));color:#141414;box-shadow:0 0 18px rgba(255,140,66,.55)}
+  .vB .dot{background:var(--ember1);box-shadow:0 0 10px rgba(255,190,122,.9)}
+
+  /* ── C. MINIMAL ELEVATION ─────────────────── */
+  .vC .frame{background:#1b1b1e}
+  .vC .u{background:#26262b;border-radius:14px 14px 5px 14px;box-shadow:0 2px 10px rgba(0,0,0,.35)}
+  .vC .a{background:#202024;border-radius:14px;box-shadow:0 3px 16px rgba(0,0,0,.4)}
+  .vC .phase{background:#232327;border-radius:10px;box-shadow:0 1px 6px rgba(0,0,0,.3)}
+  .vC .tool{background:#19191c;border-radius:10px;box-shadow:inset 0 1px 4px rgba(0,0,0,.4)}
+  .vC .resp .label{color:var(--ember2)}
+  .vC .composer{background:#242429;border-radius:16px;box-shadow:0 8px 30px rgba(0,0,0,.5)}
+  .vC .chiplet{background:#2c2c31}
+  .vC .send{background:var(--ember2);color:#1a1a1a;border-radius:10px}
+  .vC .dot{background:var(--ember2)}
+</style>
+</head>
+<body>
+<h1><span>π</span> Futuristic UI — pick a direction</h1>
+<p class="lead">Same chat composition, three visual languages. All keep the ember-orange identity, Claude typography, and the calm-timeline structure — they differ in surface treatment, glow, and depth. Motion notes below each.</p>
+<div class="grid">
+<script>
+const mock = `
+  <div class="u">Refactor the session pool and run the tests</div>
+  <div class="phase"><span class="dot"></span> Worked: bash ×3, edit ×2 · 2 files changed <span class="hint">show work</span></div>
+  <div class="tool"><div class="head">TOOL <code>bash</code></div><div>npm run gate → 267 passed, 0 failed</div></div>
+  <div class="a resp"><div class="label">◉ π RESPONSE</div>Pool refactored: sessions are sticky per worker and the gate is green. Two files changed — want the diff summary?</div>
+  <div class="composer"><div class="input">Ask π to edit…</div><div class="row"><span class="chiplet">claude-opus-4 · $0.14 · med</span><span class="send">↑</span></div></div>`;
+const options = [
+  ['A','Refined Glass','Layered translucency + blur on floating surfaces, soft ember glow on interactive elements, gradient send. Motion: 150ms fade-rise on new messages, glow-pulse on the streaming card. Subtle — closest to today.'],
+  ['B','Neon Ember','Dark glass with ember gradients: glowing left-rail on responses/tools, gradient π labels, neon send, radial ember ambiance. Motion: shimmer sweep on streaming, animated gradient rail while tools run. The boldest.'],
+  ['C','Minimal Elevation','No borders anywhere — pure shadow/elevation hierarchy, bigger radii, calm matte surfaces, single accent. Motion: spring-y expand on work phases. The quietest, most "product design" look.'],
+];
+document.currentScript.outerHTML = options.map(([k,name,desc]) => `
+  <section class="v${k}">
+    <p class="opt-title"><b>Option ${k}</b> ${name}</p>
+    <p class="opt-desc">${desc}</p>
+    <div class="frame">${mock}</div>
+  </section>`).join('');
+</script>
+</div>
+</body>
+</html>

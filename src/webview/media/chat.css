@@ -2848,3 +2848,154 @@ button.ghost:hover,
   font-size: 11px;
   color: var(--vscode-descriptionForeground);
 }
+
+/* ═══════════════════ Refined Glass design layer (Option A) ═══════════════════
+   Layered translucency + soft ember glow. Neutral glass derives from the theme
+   foreground via color-mix, so light themes get dark-on-light glass for free;
+   the ember accent is fixed brand. Appended last so it wins the cascade. */
+:root {
+  --glass-1: color-mix(in srgb, var(--vscode-foreground) 3%, transparent);
+  --glass-2: color-mix(in srgb, var(--vscode-foreground) 5%, transparent);
+  --glass-line: color-mix(in srgb, var(--vscode-foreground) 8%, transparent);
+  --glass-line-strong: color-mix(in srgb, var(--vscode-foreground) 13%, transparent);
+  --ember: #ff8c42;
+  --ember-deep: #df5f24;
+  --ember-soft: rgba(255, 140, 66, 0.09);
+  --ember-line: rgba(255, 140, 66, 0.22);
+  --ember-glow: rgba(255, 140, 66, 0.35);
+}
+
+/* Surfaces: depth from layers, not boxes-in-boxes. */
+#messages .message-user .message-body {
+  background: var(--ember-soft);
+  border: 1px solid var(--ember-line);
+  border-radius: 12px 12px 4px 12px;
+}
+
+#messages .message-assistant .message-body {
+  background: var(--glass-1);
+  border: 1px solid var(--glass-line);
+  border-radius: 12px;
+}
+
+#messages .tl-card {
+  background: color-mix(in srgb, var(--vscode-editor-background) 55%, transparent);
+  border: 1px solid var(--glass-line);
+  border-radius: 9px;
+}
+
+.work-phase {
+  background: var(--glass-1);
+  border: 1px solid var(--glass-line);
+  border-radius: 9px;
+}
+
+.work-phase > summary.work-phase-head:hover {
+  background: var(--glass-2);
+}
+
+/* Floating surfaces get real glass: blur + elevation. */
+.composer-dock {
+  background: var(--glass-2);
+  border: 1px solid var(--glass-line-strong);
+  border-radius: 12px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(6px);
+  transition: border-color 140ms ease;
+}
+
+.composer-dock:focus-within {
+  border-color: var(--ember-glow);
+}
+
+.find-bar,
+.menu-panel,
+.queue-tray,
+.retry-banner {
+  background: color-mix(in srgb, var(--vscode-editor-background) 78%, transparent);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--glass-line-strong);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+}
+
+/* Ember energy on the actions that matter. */
+.send-button {
+  background: linear-gradient(135deg, var(--ember), var(--ember-deep));
+  color: #1a1a1a;
+  border: none;
+  box-shadow: 0 0 12px var(--ember-glow);
+  transition:
+    box-shadow 140ms ease,
+    transform 140ms ease;
+}
+
+.send-button:not(:disabled):hover {
+  box-shadow: 0 0 18px var(--ember-glow);
+  transform: translateY(-1px);
+}
+
+.jump-latest {
+  backdrop-filter: blur(6px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+/* Motion: new messages rise in; the streaming answer breathes. morphdom only
+   inserts NEW nodes, so existing cards never re-animate. */
+@keyframes pi-rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+#messages .message-card {
+  animation: pi-rise-in 150ms ease-out;
+}
+
+@keyframes pi-glow-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 rgba(255, 140, 66, 0);
+  }
+  50% {
+    box-shadow: 0 0 16px rgba(255, 140, 66, 0.16);
+  }
+}
+
+#messages .tl-card.tl-answer:has(.js-stream-text) {
+  border-color: var(--ember-line);
+  animation: pi-glow-pulse 2.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #messages .message-card,
+  #messages .tl-card.tl-answer:has(.js-stream-text) {
+    animation: none;
+  }
+  .send-button,
+  .composer-dock {
+    transition: none;
+  }
+}
+
+/* High contrast themes: glass off, honest borders back. */
+body.vscode-high-contrast .composer-dock,
+body.vscode-high-contrast .find-bar,
+body.vscode-high-contrast .menu-panel,
+body.vscode-high-contrast .queue-tray,
+body.vscode-high-contrast .retry-banner,
+body.vscode-high-contrast .jump-latest {
+  backdrop-filter: none;
+  background: var(--vscode-editor-background);
+  box-shadow: none;
+}
+
+body.vscode-high-contrast .send-button {
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  box-shadow: none;
+}

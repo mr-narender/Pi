@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.216
+
+- REFINED GLASS: new visual language — layered translucent surfaces (theme-adaptive via color-mix), real glass (blur + elevation) on the composer, menus, find bar and retry banner, ember-gradient send button with glow, messages rise in, and the streaming answer breathes with a soft ember pulse. High-contrast themes keep honest borders; reduced-motion respected.
+
 ## 0.0.215
 
 - Find in chat: typing now jumps straight to the first occurrence; each Enter advances to the next (Shift+Enter back), wrapping into older history.
