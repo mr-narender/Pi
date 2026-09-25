@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.243
+
+- Removed the in-chat split pane (superseded by the upcoming sidebar-chat layout). Follow currently narrates via the status bar + Pi output log; per-change Keep/Undo/Edit plumbing stays for the tool-card integration.
+
 ## 0.0.242
 
 - Fixed the empty split pane overlaying the chat: the pane’s display:flex was defeating the hidden attribute, so an inert glass sheet covered the transcript whenever follow was off — hidden now always wins, the pane DOM isn’t even created until there’s something to show, and the chat reclaims full width the moment the pane hides.
