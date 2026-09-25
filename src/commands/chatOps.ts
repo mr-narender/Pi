@@ -135,6 +135,10 @@ export function registerChatOps(deps: ChatOpsDeps): void {
       );
     }
     subscriptions.push(...subs);
+    // A swarm that never settles must not leak its listeners until reload —
+    // give the watch a hard ceiling (finish() disposes on normal completion).
+    const failsafe = setTimeout(() => finish(), 30 * 60_000);
+    subs.push({ dispose: () => clearTimeout(failsafe) });
   });
 
   // Composer context: attach git/terminal state into the draft.

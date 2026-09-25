@@ -50,7 +50,9 @@
     "vendor:pi": "node ./scripts/vendor-pi.mjs",
     "package:vsix": "npm run build && npm run vendor:pi && npx @vscode/vsce package --no-dependencies --allow-missing-repository",
     "audit:prod": "npm audit --omit=dev",
-    "gate": "npm run typecheck && npm run lint && npm run test:unit && npm run test:integration"
+    "gate": "npm run typecheck && npm run lint && npm run test:unit && npm run test:integration",
+    "gate:full": "npm run typecheck && npm run lint && npm run test:unit && npm run test:integration && npm run test:extension && npm run check:drift",
+    "check:drift": "node scripts/check-host-drift.mjs"
   },
   "dependencies": {
     "highlight.js": "^11.11.1",

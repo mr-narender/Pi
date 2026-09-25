@@ -1617,7 +1617,15 @@ export class ChatTabManager implements vscode.Disposable {
       if (getSettings().turnReview) {
         void this.turnReview?.onTurnEnd(controller);
       }
-      void this.checkContextPressure(controller);
+      // Context pressure costs one get_session_stats RPC — only spend it on
+      // chats someone can actually SEE (hidden tabs get checked on reveal).
+      if (this.sessions.ownerOf(controller)) {
+        const owner = this.sessions.ownerOf(controller);
+        const host = owner ? this.hosts.get(owner.toString()) : undefined;
+        if (host?.panel.visible) {
+          void this.checkContextPressure(controller);
+        }
+      }
       const elapsed = startedAt ? Date.now() - startedAt : 0;
       if (!getSettings().notifyOnComplete || elapsed < 4000) {
         return;
