@@ -3426,3 +3426,14 @@ body.vscode-high-contrast button.composer-status {
   background: var(--vscode-editor-background);
   border: 1px solid var(--vscode-panel-border);
 }
+
+/* Thinking pill: sibling of the model chip, same glass language. */
+button.composer-thinking {
+  gap: 4px;
+  max-width: 90px;
+}
+
+button.composer-thinking svg {
+  flex: 0 0 auto;
+  opacity: 0.75;
+}

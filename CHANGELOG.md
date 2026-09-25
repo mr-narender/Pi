@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.223
+
+- Thinking level is one click too: a dedicated pill next to the model chip opens the centered picker (off/minimal/low/medium/high/xhigh/max, current level checked) — same pattern as model selection.
+
 ## 0.0.222
 
 - One-click model switching: the composer chip now opens the centered model picker directly (no intermediate popover). Thinking level stays in the π menu; usage stays in the palette/sidebar.
