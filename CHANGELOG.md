@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.0.219
+
+- Model/status popover now opens UPWARD above the composer (it fell off-screen below the fixed dock) with ember hover rails instead of the solid blue bar — matching the + and / menus.
+- Light-theme glass actually shows: stronger ambient warmth, clearer dock translucency, readable near-opaque menus; the composer input is transparent so the frosted dock reads through; ember focus ring replaces the blue outline.
+- Live turns stay calm: finished phases fold WHILE the agent still works — only the active phase stays expanded (errors always stay open).
+- Approvals answer to the keyboard: Y = Allow, N = Deny (ignored while typing).
+- Fixed a broken high-contrast selector from the previous pass.
+
 ## 0.0.218
 
 - Glass you can SEE: ambient depth gradients behind the chat, and the composer now floats OVER the transcript — messages scroll behind real frosted glass (blur+saturate), with the transcript auto-clearing the dock's live height.

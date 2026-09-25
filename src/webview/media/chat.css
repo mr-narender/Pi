@@ -3205,7 +3205,6 @@ body.vscode-light .composer-dock {
     inset 0 1px 0 rgba(255, 255, 255, 0.5);
 }
 
-body.vscode-high-contrast body,
 body.vscode-high-contrast {
   background: var(--vscode-editor-background);
 }
@@ -3215,4 +3214,103 @@ body.vscode-high-contrast .composer-dock {
   backdrop-filter: none;
   background: var(--vscode-editor-background);
   border: 1px solid var(--vscode-panel-border);
+}
+
+/* ═══ Refined Glass — pass 4: popover direction, light themes, readability ═══ */
+
+/* The status-chip popover opens UPWARD like + and / — the composer is fixed
+   at the viewport bottom, so downward panels rendered off-screen. */
+.composer-status {
+  position: relative;
+}
+
+.composer-status .menu-panel {
+  top: auto;
+  bottom: calc(100% + 10px);
+  right: 0;
+  margin-top: 0;
+  max-height: 55vh;
+  overflow: auto;
+}
+
+/* Menus/popovers: near-opaque glass (readability first), explicit foreground,
+   ember hover rail instead of the harsh solid selection bar. */
+.menu-panel {
+  background: color-mix(
+    in srgb,
+    var(--vscode-editorWidget-background, var(--vscode-editor-background)) 92%,
+    transparent
+  );
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--glass-line-strong);
+  border-radius: 10px;
+  color: var(--vscode-foreground);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+}
+
+.menu-panel button,
+.menu-panel .menu-item {
+  color: var(--vscode-foreground);
+  border-radius: 6px;
+}
+
+.menu-panel button:hover,
+.menu-panel button:focus-visible,
+.menu-panel .menu-item:hover,
+.menu-panel .menu-item:focus-visible {
+  background: var(--glass-2);
+  box-shadow: inset 2px 0 0 var(--ember);
+  color: var(--vscode-foreground);
+  outline: none;
+}
+
+/* The dock's glass was hidden behind an opaque input: the field goes clear,
+   focus ring becomes ember (not the theme's blue). */
+.composer-dock textarea,
+.composer-dock input[type='text'] {
+  background: transparent;
+}
+
+.composer-dock textarea:focus,
+.composer-dock textarea:focus-visible {
+  outline: none;
+}
+
+.composer-dock:focus-within {
+  border-color: var(--ember-glow);
+  box-shadow:
+    0 10px 32px rgba(0, 0, 0, 0.42),
+    0 0 0 1px var(--ember-line),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+/* Light themes: ambient warmth was invisible at dark-tuned alphas. */
+body.vscode-light {
+  background:
+    radial-gradient(900px 480px at 12% -8%, rgba(255, 140, 66, 0.1), transparent 60%),
+    radial-gradient(1100px 600px at 88% 112%, rgba(223, 95, 36, 0.07), transparent 55%),
+    radial-gradient(700px 420px at 70% 20%, rgba(60, 60, 70, 0.05), transparent 65%),
+    var(--vscode-editor-background);
+  background-attachment: fixed;
+}
+
+body.vscode-light .composer-dock {
+  background: color-mix(in srgb, var(--vscode-editor-background) 55%, transparent);
+  border-color: color-mix(in srgb, var(--vscode-foreground) 18%, transparent);
+}
+
+body.vscode-light .menu-panel {
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.14);
+}
+
+body.vscode-light #messages .message-user .message-body {
+  background: rgba(255, 140, 66, 0.12);
+  border-color: rgba(223, 95, 36, 0.35);
+}
+
+/* HC: popover direction stands, glass does not. */
+body.vscode-high-contrast .menu-panel {
+  backdrop-filter: none;
+  background: var(--vscode-editor-background);
+  color: var(--vscode-foreground);
 }

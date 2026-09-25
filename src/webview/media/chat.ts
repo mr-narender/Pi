@@ -1473,6 +1473,32 @@ if (dockEl) {
   composerClearance.observe(dockEl);
 }
 
+// Approvals answer to the keyboard: Y = Allow, N = Deny (skipped while
+// typing). The highest-friction agentic moment shouldn't need the mouse.
+window.addEventListener('keydown', (event) => {
+  if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) {
+    return;
+  }
+  const key = event.key.toLowerCase();
+  if (key !== 'y' && key !== 'n') {
+    return;
+  }
+  const target = event.target as HTMLElement | null;
+  if (
+    target &&
+    (target.tagName === 'TEXTAREA' || target.tagName === 'INPUT' || target.isContentEditable)
+  ) {
+    return;
+  }
+  const button = document.querySelector<HTMLButtonElement>(
+    key === 'y' ? '.approval-allow' : '.approval-deny'
+  );
+  if (button) {
+    event.preventDefault();
+    button.click();
+  }
+});
+
 window.addEventListener('keydown', (event) => {
   if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === 'f') {
     event.preventDefault();

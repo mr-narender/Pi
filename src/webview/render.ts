@@ -286,7 +286,10 @@ function renderAssistantBody(
       names.length > 0
         ? `Worked: ${shown}${files.size > 0 ? ` · ${files.size} file${files.size === 1 ? '' : 's'} changed` : ''}`
         : 'Thought it through';
-    const open = streamingAnswer || hasError ? ' open' : '';
+    // During streaming only the LATEST phase stays expanded (still working);
+    // earlier phases of the live turn fold as they finish. Tokens resolve in
+    // finalizeWorkPhases() at join time.
+    const open = hasError ? ' open' : streamingAnswer ? '__PHASE_OPEN__' : '';
     rendered.push(
       `<details class="work-phase${hasError ? ' is-error' : ''}" data-preserve-open id="wp-${escapeHtml(message.id)}-${rendered.length}"${open}><summary class="work-phase-head" title="Click to show the agent's work">${META_ICONS.tool}<span class="work-phase-label">${escapeHtml(label)}</span><span class="work-phase-hint">show work</span>${hasError ? '<span class="tl-flag-error">failed</span>' : ''}${CARET_ICON}</summary>${html}</details>`
     );
@@ -301,7 +304,24 @@ function renderAssistantBody(
     rendered.push(renderTimelineNode(node, streamingAnswer && index === nodes.length - 1));
   }
   flushRun();
-  return `<div class="timeline">${rendered.join('')}</div>`;
+  return `<div class="timeline">${finalizeWorkPhases(rendered.join(''))}</div>`;
+}
+
+/** Live turns fold finished phases: every __PHASE_OPEN__ token except the
+ * last collapses; the final (still-active) phase keeps its details open. */
+function finalizeWorkPhases(html: string): string {
+  const token = '__PHASE_OPEN__';
+  const last = html.lastIndexOf(token);
+  if (last === -1) {
+    return html;
+  }
+  let out = '';
+  let cursor = 0;
+  for (let at = html.indexOf(token); at !== -1; at = html.indexOf(token, cursor)) {
+    out += html.slice(cursor, at) + (at === last ? ' open' : '');
+    cursor = at + token.length;
+  }
+  return out + html.slice(cursor);
 }
 
 // Rich diff for `edit` tool cards: removed lines (−) then added lines (+),
