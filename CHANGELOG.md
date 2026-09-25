@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.227
+
+- FOLLOW THE AGENT (Zed-style live file activity): as π works, the status bar shows “π · editing foo.ts” / “reading bar.ts” (click to open); the file being EDITED opens in a preview tab without stealing focus, and the edited region glows ember with an overview-ruler mark. Background chats stay in the status bar only — no tab thrash. piRpc.followAgent: open (default) · status · off; “Pi: Toggle Follow Agent” cycles modes.
+
 ## 0.0.226
 
 - Chat settings is a guided flow now: 1/3 pick the provider → 2/3 pick that provider’s model (thinking capability, context and image support shown per model) → 3/3 pick the thinking level for that model (skipped automatically for models that can’t reason).

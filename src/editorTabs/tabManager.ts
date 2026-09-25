@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { basename } from 'node:path';
 import { existsSync } from 'node:fs';
 import { getSettings, tabTitleSettings } from '../config/settings';
+import { AgentFollowService } from '../live/agentFollow';
 import { ensureTrustedForMutation } from '../security/trust';
 import { SessionRegistry } from '../sessions/sessionRegistry';
 import type { SessionController } from '../sessions/sessionController';
@@ -260,6 +261,8 @@ export interface ChatTabContext {
 }
 
 export class ChatTabManager implements vscode.Disposable {
+  private readonly follow = new AgentFollowService();
+
   private readonly cache: ChatTabStateCache;
   private readonly hosts = new Map<string, ChatEditorHost>();
   private readonly resourceSequence = new Map<string, number>();
@@ -423,6 +426,7 @@ export class ChatTabManager implements vscode.Disposable {
   }
 
   public dispose(): void {
+    this.follow.dispose();
     if (this.reapTimer) {
       clearInterval(this.reapTimer);
       this.reapTimer = undefined;
@@ -1825,6 +1829,14 @@ export class ChatTabManager implements vscode.Disposable {
     const title = this.titleForContext(context, snapshot);
     const host = this.hosts.get(resource.toString());
     if (host) {
+      this.follow.handleSnapshot(
+        this.keyFor(resource),
+        title,
+        snapshot,
+        options?.active ?? false,
+        safeFsPath(context.target.workspaceFolderUri) ??
+          vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
+      );
       await host.postSnapshot(snapshot, title);
       // Mirror the active chat to a remote session, if one is running.
       if (options?.active ?? false) {
@@ -2362,4 +2374,15 @@ export function formatTabTitle(raw: string): string {
     return `${title.slice(0, Math.max(1, width - 1)).trimEnd()}…`;
   }
   return title + '\u2007'.repeat(width - title.length);
+}
+
+function safeFsPath(uri: string | undefined): string | undefined {
+  if (!uri) {
+    return undefined;
+  }
+  try {
+    return vscode.Uri.parse(uri, true).fsPath;
+  } catch {
+    return undefined;
+  }
 }

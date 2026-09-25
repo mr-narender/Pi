@@ -1012,6 +1012,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }
   });
   registrations.set('piRpc.selectModel', registrations.get('piRpc.showModels')!);
+  // Zed-style follow mode: cycle open → status → off from the palette.
+  registrations.set('piRpc.toggleFollowAgent', async () => {
+    const config = vscode.workspace.getConfiguration('piRpc');
+    const current = config.get<string>('followAgent', 'open');
+    const next = current === 'open' ? 'status' : current === 'status' ? 'off' : 'open';
+    await config.update('followAgent', next, vscode.ConfigurationTarget.Global);
+    void vscode.window.showInformationMessage(
+      `π follow agent: ${next === 'open' ? 'open files + glow edits' : next === 'status' ? 'status bar only' : 'off'}`
+    );
+  });
+
   // Chat settings, guided: 1) provider → 2) that provider's models → 3) that
   // model's thinking capability (skipped when the model can't reason).
   registrations.set('piRpc.chatSettings', async () => {
