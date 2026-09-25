@@ -15,12 +15,14 @@ interface TurnSnapshot {
   at: number;
 }
 
-interface TurnChange {
+export interface TurnChange {
   file: string;
   kind: 'modified' | 'added' | 'deleted' | 'new';
+  added?: number;
+  deleted?: number;
 }
 
-interface TurnRecord {
+export interface TurnRecord {
   sha: string;
   cwd: string;
   changes: TurnChange[];
@@ -36,6 +38,10 @@ interface TurnRecord {
  * are detected via an ls-files delta (git doesn't snapshot those).
  */
 export class TurnReview {
+  /** Last N reviewed turns (newest first) — feeds the π Review panel. */
+  public readonly history: Array<TurnRecord & { title: string }> = [];
+  private readonly changeEmitter = new vscode.EventEmitter<void>();
+  public readonly onDidChange = this.changeEmitter.event;
   private readonly snapshots = new Map<SessionController, TurnSnapshot>();
   private readonly lastTurn = new Map<SessionController, TurnRecord>();
   // cwd -> is a safe repo to snapshot. Guards macOS TCC: git in a HOME-rooted
@@ -120,7 +126,39 @@ export class TurnReview {
         this.lastTurn.delete(controller);
         return;
       }
+      // Per-file +/- counts for the review panel (one numstat call).
+      try {
+        const numstat = await this.git(cwd, ['diff', '--numstat', snapshot.sha]);
+        const stats = new Map<string, { added: number; deleted: number }>();
+        for (const line of numstat.split('\n')) {
+          const [added = '', deleted = '', ...file] = line.split('\t');
+          if (file.length > 0) {
+            stats.set(file[file.length - 1]!, {
+              added: Number.parseInt(added, 10) || 0,
+              deleted: Number.parseInt(deleted, 10) || 0,
+            });
+          }
+        }
+        for (const change of changes) {
+          const stat = stats.get(change.file);
+          change.added = stat?.added;
+          change.deleted = stat?.deleted;
+        }
+      } catch {
+        /* diffstat optional */
+      }
       this.lastTurn.set(controller, { sha: snapshot.sha, cwd, changes, at: Date.now() });
+      this.history.unshift({
+        sha: snapshot.sha,
+        cwd,
+        changes,
+        at: Date.now(),
+        title: basename(cwd),
+      });
+      if (this.history.length > 10) {
+        this.history.length = 10;
+      }
+      this.changeEmitter.fire();
       const count = changes.length;
       void vscode.window
         .showInformationMessage(
@@ -207,7 +245,7 @@ export class TurnReview {
     }
   }
 
-  private async openDiff(record: TurnRecord, change: TurnChange): Promise<void> {
+  public async openDiff(record: TurnRecord, change: TurnChange): Promise<void> {
     const fileUri = vscode.Uri.file(join(record.cwd, change.file));
     if (change.kind === 'new') {
       await vscode.window.showTextDocument(fileUri, { preview: true });
@@ -238,7 +276,7 @@ export class TurnReview {
     );
   }
 
-  private async revertFile(record: TurnRecord, change: TurnChange): Promise<void> {
+  public async revertFile(record: TurnRecord, change: TurnChange): Promise<void> {
     if (change.kind === 'new') {
       await vscode.workspace.fs.delete(vscode.Uri.file(join(record.cwd, change.file)), {
         useTrash: true,

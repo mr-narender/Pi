@@ -11,6 +11,7 @@ import {
 import { registerChatOps } from './commands/chatOps';
 import { initSharedPiHost, disposeSharedPiHost, getSharedPiHost } from './process/sharedPiHost';
 import { TurnReview } from './review/turnReview';
+import { registerReviewTree } from './review/reviewTree';
 import { SessionIndexService } from './sessions/sessionIndexService';
 import { ensureManagedPi, managedPiCliPath, managedPiRoot } from './process/piManaged';
 import { COMMAND_IDS, CONTRIBUTED_COMMANDS } from './config/commands';
@@ -258,6 +259,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   initChatUriRegistry(context.workspaceState);
   const chatTabs = new ChatTabManager(context, registry, uiState, logger);
   const turnReview = new TurnReview(logger);
+  context.subscriptions.push(...registerReviewTree(turnReview));
   chatTabs.setTurnReview(turnReview);
   // Draft capture/restore must use the OWNING TAB's identity (per-tab model) —
   // the controller's current-session identity drifts after forks/prewarm and

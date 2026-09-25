@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.234
+
+- π REVIEW PANEL (flagship): a persistent Review tree in the π sidebar — the last 10 agent turns, each expandable into every file it touched with +/− line counts; click a file for the before↔after diff, inline ↩ reverts a file or a whole turn. The trust loop for agentic edits.
+- Hygiene: context-pressure stats RPC only for visible chats; swarm watches get a 30-min failsafe; scripts/check-host-drift.mjs guards the host fork against Pi upgrades (baselined); gate:full = gate + VS Code E2E + drift check.
+
 ## 0.0.233
 
 - Follow-agent verified end-to-end with a harness (opens right-of-chat, separate tab, focus preserved) — the reported “nothing opens” traced to piRpc.followAgent persisted as off plus a bash-only test (pwd touches no file, by design).

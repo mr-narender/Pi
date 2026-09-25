@@ -25,13 +25,14 @@ test('coverage row inventory totals stay stable', () => {
   assert.equal((coverage.match(/\| D-\d+/g) ?? []).length, 8);
 });
 
-test('manifest contributes a single Chats webview sidebar', () => {
+test('manifest contributes the Chats webview + Review tree sidebars', () => {
   const view = packageJson.contributes.views.piRpc;
   assert.deepEqual(
     view.map((entry) => entry.id),
-    ['piRpc.sessions']
+    ['piRpc.sessions', 'piRpc.review']
   );
   assert.equal(view[0]?.type, 'webview');
+  assert.equal(view[1]?.type, undefined); // tree view (default type)
   const allMenus = JSON.stringify(packageJson.contributes.menus ?? {});
   assert.ok(!allMenus.includes('piRpc.currentChat'));
 });
