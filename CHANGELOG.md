@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.218
+
+- Glass you can SEE: ambient depth gradients behind the chat, and the composer now floats OVER the transcript — messages scroll behind real frosted glass (blur+saturate), with the transcript auto-clearing the dock's live height.
+- Consistent tab widths: π chat tabs pad/ellipsize to one width so the tab strip stops looking ragged (piRpc.tabTitleMode: consistent|full, default consistent; piRpc.tabTitleWidth, default 20).
+
 ## 0.0.217
 
 - Refined Glass pass 2 — FULL coverage: approval cards (glass + ember Allow), recovery/restricted banners, composer status chip, attachment tray, code blocks with glass headers and ember copy hover, floating message actions, boot ambiance, thin modern scrollbars, and the entire sidebar (search, rows, active ember edge, dividers, buttons). High-contrast resets included.

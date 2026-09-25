@@ -2,7 +2,7 @@
   "name": "pi",
   "displayName": "Pi – this one is (y)ours",
   "description": "An unofficial, personal VS Code chat UI for the Pi coding agent (pi.dev). Not affiliated with pi.dev — shared for anyone who wants it.",
-  "version": "0.0.217",
+  "version": "0.0.218",
   "publisher": "mr-narender",
   "license": "MIT",
   "private": true,
@@ -990,6 +990,26 @@
           "type": "string",
           "default": "",
           "markdownDescription": "Host secret used to open a remote session (matches the broker PI_YOURS_HOST_SECRET). Store it securely; source from the vault."
+        },
+        "piRpc.tabTitleMode": {
+          "type": "string",
+          "enum": [
+            "consistent",
+            "full"
+          ],
+          "enumDescriptions": [
+            "Every π tab gets the same width: long titles ellipsize, short ones pad. Keeps the tab strip even.",
+            "Tabs size naturally to the full chat title."
+          ],
+          "default": "consistent",
+          "description": "How π chat tab titles are sized in the editor tab strip."
+        },
+        "piRpc.tabTitleWidth": {
+          "type": "number",
+          "default": 20,
+          "minimum": 8,
+          "maximum": 48,
+          "description": "Character budget per tab title when piRpc.tabTitleMode is \"consistent\"."
         }
       }
     },

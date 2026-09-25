@@ -1457,6 +1457,22 @@ function stepFind(direction: number): void {
   findIndex = (next + findRanges.length) % findRanges.length;
   updateFindCurrent(true);
 }
+// The composer floats over the transcript (true glass: content scrolls behind
+// it). Keep the transcript's bottom padding in sync with the dock's real
+// height so the last message is never hidden under it.
+const composerClearance = new ResizeObserver((entries) => {
+  for (const entry of entries) {
+    document.documentElement.style.setProperty(
+      '--composer-clearance',
+      `${Math.ceil(entry.contentRect.height) + 26}px`
+    );
+  }
+});
+const dockEl = document.querySelector('.composer-dock');
+if (dockEl) {
+  composerClearance.observe(dockEl);
+}
+
 window.addEventListener('keydown', (event) => {
   if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === 'f') {
     event.preventDefault();

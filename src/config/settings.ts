@@ -121,3 +121,12 @@ export function validateAdditionalArgs(args: string[]): void {
     );
   }
 }
+
+/** Tab title presentation: 'consistent' pads/truncates to a fixed width so the
+ * tab strip stays even; 'full' shows natural title lengths. */
+export function tabTitleSettings(): { mode: 'consistent' | 'full'; width: number } {
+  const config = vscode.workspace.getConfiguration('piRpc');
+  const mode = config.get<string>('tabTitleMode', 'consistent') === 'full' ? 'full' : 'consistent';
+  const width = Math.max(8, Math.min(48, config.get<number>('tabTitleWidth', 20)));
+  return { mode, width };
+}

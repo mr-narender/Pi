@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { basename } from 'node:path';
 import { existsSync } from 'node:fs';
-import { getSettings } from '../config/settings';
+import { getSettings, tabTitleSettings } from '../config/settings';
 import { ensureTrustedForMutation } from '../security/trust';
 import { SessionRegistry } from '../sessions/sessionRegistry';
 import type { SessionController } from '../sessions/sessionController';
@@ -219,7 +219,7 @@ class ChatEditorHost implements vscode.Disposable {
   }
 
   public async postSnapshot(snapshot: WebviewSnapshot, title: string): Promise<void> {
-    this.panel.title = title;
+    this.panel.title = formatTabTitle(title);
     this.attachmentFileUris = new Set(
       snapshot.messages.flatMap((message) =>
         message.attachments
@@ -2348,4 +2348,20 @@ export class ChatTabManager implements vscode.Disposable {
       },
     };
   }
+}
+
+/** Normalize chat tab labels. VS Code sizes tabs by label text, so uneven
+ * titles make the strip look ragged/squeezed. 'consistent' mode truncates
+ * long titles with an ellipsis and pads short ones with figure spaces
+ * (U+2007 — digit-width, non-collapsing) so every π tab renders near-equal. */
+export function formatTabTitle(raw: string): string {
+  const { mode, width } = tabTitleSettings();
+  const title = raw.replace(/\s+/g, ' ').trim() || 'π Chat';
+  if (mode === 'full') {
+    return title;
+  }
+  if (title.length > width) {
+    return `${title.slice(0, Math.max(1, width - 1)).trimEnd()}…`;
+  }
+  return title + '\u2007'.repeat(width - title.length);
 }
