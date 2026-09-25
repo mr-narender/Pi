@@ -3314,3 +3314,17 @@ body.vscode-high-contrast .menu-panel {
   background: var(--vscode-editor-background);
   color: var(--vscode-foreground);
 }
+
+/* ═══ Refined Glass — pass 5: ONE frame around the input ═══
+   The dock is the only chrome. The inner .composer-card was drawing a second
+   border + opaque input background inside the glass dock (double frame, and
+   it blocked the frost). The card is now an invisible layout container. */
+.composer-card {
+  border: none;
+  background: transparent;
+  padding: 2px 2px 0;
+}
+
+.composer-card:focus-within {
+  outline: none;
+}

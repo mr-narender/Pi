@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.220
+
+- Composer is ONE clean frame: removed the inner card border + opaque background that drew a second box around the input (and blocked the glass).
+
 ## 0.0.219
 
 - Model/status popover now opens UPWARD above the composer (it fell off-screen below the fixed dock) with ember hover rails instead of the solid blue bar — matching the + and / menus.
