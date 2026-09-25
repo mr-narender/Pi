@@ -1312,7 +1312,14 @@ function buildFindBar(): HTMLElement {
     '<button id="pi-find-close" class="find-btn" title="Close (Esc)" aria-label="Close find">\u2715</button>';
   document.body.appendChild(bar);
   const input = bar.querySelector<HTMLInputElement>('#pi-find-input');
-  input?.addEventListener('input', () => runFind(input.value, true));
+  input?.addEventListener('input', () => {
+    runFind(input.value, true);
+    // Land on the FIRST occurrence immediately — Enter then advances 2, 3, …
+    // (previously nothing scrolled until Enter, which then skipped to #2).
+    if (findRanges.length > 0) {
+      updateFindCurrent(true);
+    }
+  });
   input?.addEventListener('keydown', (event) => {
     if (event.key === 'Enter') {
       event.preventDefault();

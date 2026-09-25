@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.215
+
+- Find in chat: typing now jumps straight to the first occurrence; each Enter advances to the next (Shift+Enter back), wrapping into older history.
+
 ## 0.0.214
 
 - Collapsed work phases now say WHAT happened — "Worked: bash ×3, edit ×2 · 2 files changed" (thinking-only turns read "Thought it through") — with a subtle SHOW WORK affordance instead of a meaningless step count.
