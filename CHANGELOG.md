@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.221
+
+- Nested-frame audit, all fixed: composer textarea border (the real double frame), find-bar inner input, assistant bubbles (now open canvas — no more frame around tool cards), cards inside work phases (hairline list), code blocks inside tool cards, attachment tray.
+- Model/status chip moved to the left cluster before + and / — the send corner breathes; its popover opens upward-left.
+
 ## 0.0.220
 
 - Composer is ONE clean frame: removed the inner card border + opaque background that drew a second box around the input (and blocked the glass).

@@ -3328,3 +3328,66 @@ body.vscode-high-contrast .menu-panel {
 .composer-card:focus-within {
   outline: none;
 }
+
+/* ═══ Refined Glass — pass 6: kill EVERY nested frame (full audit) ═══ */
+
+/* 1. The input itself: the global textarea rule drew a border INSIDE the
+   glass dock — this was the remaining double frame around typing. */
+.composer-dock textarea {
+  border: none;
+  background: transparent;
+}
+
+#app .composer-dock textarea:focus-visible {
+  outline: none; /* the dock's ember focus ring is the single indicator */
+}
+
+/* 2. Find bar: inner input drew its own frame inside the bar's frame. */
+.find-bar .find-input {
+  border: none;
+  background: transparent;
+  color: var(--vscode-foreground);
+}
+
+.find-bar .find-input:focus-visible {
+  outline: none;
+}
+
+/* 3. Assistant responses: open canvas. The bubble border+background wrapped
+   bordered tool cards / code blocks — frames in frames. π's text now sits
+   directly on the page; cards and code provide their own structure. */
+#messages .message-assistant .message-body {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+/* 4. Inside a work phase, cards flatten to a hairline-separated list. */
+.work-phase .tl-node .tl-card {
+  border: none;
+  background: transparent;
+  box-shadow: none;
+}
+
+.work-phase .tl-node + .tl-node {
+  border-top: 1px solid var(--glass-line);
+}
+
+/* 5. Code blocks inside tool cards: tint only, no second border. */
+.tl-card .code-wrap {
+  border: none;
+}
+
+/* 6. Attachment tray: transparent container, chips are the only chrome. */
+.attachment-tray {
+  border: none;
+  background: transparent;
+}
+
+/* Chip now lives in the left cluster: popover aligns left, still upward. */
+.composer-actions-left .composer-status .menu-panel {
+  left: 0;
+  right: auto;
+}

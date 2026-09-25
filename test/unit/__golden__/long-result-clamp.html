@@ -57,12 +57,12 @@ line 30</code></pre></div><button type="button" class="code-showmore">Show more<
           <textarea id="composer-field" rows="3" placeholder="Ask π to edit…" ></textarea>
           <div class="composer-actions" aria-label="Composer actions">
             <div class="composer-actions-left">
+              <details class="menu-details composer-status" id="status-chip"><summary title="Model · cost · thinking" aria-label="Chat status and settings"><span class="model-dot"></span>model · medium</summary><div class="menu-panel" role="menu"><button type="button" class="menu-item" data-command="piRpc.showModels"><span class="dot"></span>Model: mock/model</button><button type="button" class="menu-item" data-command="piRpc.setThinkingLevel"><span class="dot"></span>Thinking level: medium</button><button type="button" class="menu-item" data-command="piRpc.showSessionStats"><span class="dot"></span>Usage &amp; cost</button></div></details>
               <button type="button" id="attach-trigger" class="icon-button" data-action="appendPickedFile" title="Add a file" aria-label="Add a file" >+</button>
               <button type="button" class="icon-button" data-command="piRpc.showPiCommands" title="Commands" aria-label="Commands" >/</button>
             </div>
             <div class="composer-actions-right">
               
-              <details class="menu-details composer-status" id="status-chip"><summary title="Model · cost · thinking" aria-label="Chat status and settings"><span class="model-dot"></span>model · medium</summary><div class="menu-panel" role="menu"><button type="button" class="menu-item" data-command="piRpc.showModels"><span class="dot"></span>Model: mock/model</button><button type="button" class="menu-item" data-command="piRpc.setThinkingLevel"><span class="dot"></span>Thinking level: medium</button><button type="button" class="menu-item" data-command="piRpc.showSessionStats"><span class="dot"></span>Usage &amp; cost</button></div></details>
               
               <button type="button" id="composer-send-button" class="send-button" data-send-command="prompt" title="Send (Enter · Shift+Enter for newline)" aria-label="Send (Enter · Shift+Enter for newline)" ><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12.5 4v3a1.5 1.5 0 0 1-1.5 1.5H4.5"/><path d="M7 6L4.3 8.5 7 11"/></svg></button>
             </div>
