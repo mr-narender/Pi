@@ -3,6 +3,7 @@
 // preview tab cycling file-to-file (chat on one side, π's working file on the
 // other), with the edited region glowing ember and hover attribution of WHICH
 // chat did it. Modes (piRpc.followAgent): 'open' (default) | 'status' | 'off'.
+import { spawn } from 'node:child_process';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
@@ -54,6 +55,9 @@ export class AgentFollowService implements vscode.Disposable {
   /** Paths the tool-layer just acted on — the watcher skips these (dedupe). */
   private readonly recentlyActed = new Map<string, number>();
   private readonly fsDebounce = new Map<string, ReturnType<typeof setTimeout>>();
+  /** Cmd/Ctrl+Enter: follow THIS turn even when the crosshair is off. */
+  private readonly followOnceKeys = new Set<string>();
+  private awakeProcess: import('node:child_process').ChildProcess | undefined;
   private readonly status: vscode.StatusBarItem;
   private statusTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -67,6 +71,11 @@ export class AgentFollowService implements vscode.Disposable {
   }
 
   /** Feed every rendered snapshot through here; new tool calls become activity. */
+  /** Arm follow for the next turn of this chat regardless of the setting. */
+  public armOnce(key: string): void {
+    this.followOnceKeys.add(key);
+  }
+
   public handleSnapshot(
     key: string,
     chatTitle: string,
@@ -79,9 +88,14 @@ export class AgentFollowService implements vscode.Disposable {
     if (busy && workspaceRoot) {
       this.busyChats.set(key, { title: chatTitle, root: workspaceRoot, visible: isActiveChat });
       this.ensureWatcher();
+      this.ensureAwake();
     } else {
       this.busyChats.delete(key);
+      this.followOnceKeys.delete(key); // one turn only
       this.scheduleWatcherIdle();
+      if (this.busyChats.size === 0) {
+        this.releaseAwake();
+      }
     }
     let seen = this.seen.get(key);
     if (!seen) {
@@ -141,7 +155,8 @@ export class AgentFollowService implements vscode.Disposable {
               isActiveChat,
               workspaceRoot,
               block.args,
-              post
+              post,
+              key
             );
           }
         } else if (
@@ -173,6 +188,32 @@ export class AgentFollowService implements vscode.Disposable {
     if (seen.size > 2000) {
       this.seen.set(key, new Map(Array.from(seen.entries()).slice(-500)));
     }
+  }
+
+  /** macOS: hold off idle sleep while any turn runs (caffeinate -di). */
+  private ensureAwake(): void {
+    if (process.platform !== 'darwin' || this.awakeProcess) {
+      return;
+    }
+    const enabled = vscode.workspace
+      .getConfiguration('piRpc')
+      .get<boolean>('preventSleepWhileBusy', true);
+    if (!enabled) {
+      return;
+    }
+    try {
+      this.awakeProcess = spawn('caffeinate', ['-di'], { stdio: 'ignore' });
+      this.awakeProcess.on('exit', () => {
+        this.awakeProcess = undefined;
+      });
+    } catch {
+      this.awakeProcess = undefined;
+    }
+  }
+
+  private releaseAwake(): void {
+    this.awakeProcess?.kill();
+    this.awakeProcess = undefined;
   }
 
   private ensureWatcher(): void {
@@ -277,7 +318,8 @@ export class AgentFollowService implements vscode.Disposable {
     isActiveChat: boolean,
     workspaceRoot: string | undefined,
     args: string | undefined,
-    post?: (payload: unknown) => void
+    post?: (payload: unknown) => void,
+    key?: string
   ): void {
     const absolute = this.resolve(filePath, workspaceRoot);
     this.recentlyActed.set(absolute, Date.now());
@@ -312,7 +354,8 @@ export class AgentFollowService implements vscode.Disposable {
 
     // The side pane follows READS and EDITS — but only for the chat you're
     // looking at; parallel background chats narrate in the status bar only.
-    if (this.mode() !== 'open' || !isActiveChat) {
+    const followForced = key !== undefined && this.followOnceKeys.has(key);
+    if ((this.mode() !== 'open' && !followForced) || !isActiveChat) {
       this.logger?.info(
         `[follow] pane skipped: ${this.mode() !== 'open' ? `mode=${this.mode()}` : 'chat not visible'}`
       );
@@ -436,6 +479,7 @@ export class AgentFollowService implements vscode.Disposable {
   }
 
   public dispose(): void {
+    this.releaseAwake();
     clearTimeout(this.decorationTimer);
     clearTimeout(this.watcherIdleTimer);
     this.watcher?.dispose();

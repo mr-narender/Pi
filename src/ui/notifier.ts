@@ -28,6 +28,19 @@ class Notifier {
   }
 
   private flush(): void {
+    if (
+      process.platform === 'darwin' &&
+      vscode.workspace.getConfiguration('piRpc').get<boolean>('soundOnComplete', false)
+    ) {
+      try {
+        // Fire-and-forget system sound; no API in VS Code for this.
+        void import('node:child_process').then(({ spawn }) =>
+          spawn('afplay', ['/System/Library/Sounds/Glass.aiff'], { stdio: 'ignore' })
+        );
+      } catch {
+        /* sound is best-effort */
+      }
+    }
     this.timer = undefined;
     const items = this.pending.splice(0);
     if (items.length === 0) {

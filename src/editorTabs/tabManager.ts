@@ -1181,7 +1181,7 @@ export class ChatTabManager implements vscode.Disposable {
         await this.openCodeInNewFile(parsed.text, parsed.language);
         return;
       case 'requestSend':
-        await this.handleRequestSend(host.resource, parsed.command);
+        await this.handleRequestSend(host.resource, parsed.command, parsed.follow === true);
         return;
       case 'acceptPreview':
         await this.acceptPreview(host.resource);
@@ -1255,6 +1255,11 @@ export class ChatTabManager implements vscode.Disposable {
           const change = record.changes.find((entry) => entry.file === parsed.file);
           if (change) {
             await this.turnReview.openDiff(record, change);
+          }
+        } else if (parsed.action === 'inline' && parsed.file) {
+          const change = record.changes.find((entry) => entry.file === parsed.file);
+          if (change) {
+            await this.inlineReview?.start(record, change);
           }
         } else if (parsed.action === 'revertFile' && parsed.file) {
           const change = record.changes.find((entry) => entry.file === parsed.file);
@@ -1631,8 +1636,12 @@ export class ChatTabManager implements vscode.Disposable {
 
   private async handleRequestSend(
     resource: vscode.Uri,
-    command: 'prompt' | 'follow_up' | 'steer'
+    command: 'prompt' | 'follow_up' | 'steer',
+    followOnce?: boolean
   ): Promise<void> {
+    if (followOnce) {
+      this.follow.armOnce(this.keyFor(resource));
+    }
     ensureTrustedForMutation();
     let context = this.contextForResource(resource);
     if (!context) {
@@ -1790,6 +1799,8 @@ export class ChatTabManager implements vscode.Disposable {
   private readonly sessions: SessionIndex;
 
   private sidebarTarget: ChatTabTarget | undefined;
+  /** Injected: line-by-line review engine. */
+  public inlineReview: { start(record: unknown, change: unknown): Promise<void> } | undefined;
   /** Injected by extension.ts: recent-session data for the sidebar switcher. */
   public chatListSource:
     | (() => {

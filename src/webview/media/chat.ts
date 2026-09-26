@@ -398,6 +398,7 @@ let lastSubmittedText: string | undefined;
 let lastMessageKey: string | undefined;
 let lastWindowOffset: number | undefined;
 let loadOlderPending = false;
+let followOnceRequested = false;
 // When a chat is opened/switched, we must land at the bottom. The first render
 // for a resource is often the empty "loading" state (no messages yet), so we
 // remember the intent and perform the scroll on the render where messages
@@ -466,7 +467,8 @@ function submitComposer(command: string): void {
     lastSubmittedText = textarea.value; // remember it so no later render restores it
     textarea.value = '';
   }
-  vscode.postMessage({ type: 'requestSend', command });
+  vscode.postMessage({ type: 'requestSend', command, follow: followOnceRequested || undefined });
+  followOnceRequested = false;
 }
 
 function focusElement(id: string | undefined): boolean {
@@ -864,6 +866,9 @@ function renderNow(snapshot: WebviewSnapshot): void {
       // Enter submits (TUI-style); Shift+Enter inserts a newline. Cmd/Ctrl+Enter
       // also submits. IME composition Enter is ignored so it doesn't send mid-word.
       if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
+        if (event.metaKey || event.ctrlKey) {
+          followOnceRequested = true;
+        }
         event.preventDefault();
         const sendButton = document.getElementById(SEND_BUTTON_ID) as HTMLButtonElement | null;
         if (!sendButton || sendButton.disabled) {
@@ -1750,7 +1755,7 @@ function renderReview(): void {
               ? ` <span class="rv-stat"><span class="sc-add">+${file.added ?? 0}</span> <span class="sc-del">−${file.deleted ?? 0}</span></span>`
               : '';
           const name = file.file.split('/').pop() ?? file.file;
-          return `<div class="rv-file"><button type="button" class="rv-open" data-turn="${turn.index}" data-file="${file.file.replaceAll('"', '&quot;')}" title="${file.file} — open diff">${name}${stat}</button><button type="button" class="rv-undo" data-turn="${turn.index}" data-file="${file.file.replaceAll('"', '&quot;')}" title="Revert this file">↩</button></div>`;
+          return `<div class="rv-file"><button type="button" class="rv-open" data-turn="${turn.index}" data-file="${file.file.replaceAll('"', '&quot;')}" title="${file.file} — open diff">${name}${stat}</button><button type="button" class="rv-inline" data-turn="${turn.index}" data-file="${file.file.replaceAll('"', '&quot;')}" title="Review line by line IN the file (hunk controls)">≣</button><button type="button" class="rv-undo" data-turn="${turn.index}" data-file="${file.file.replaceAll('"', '&quot;')}" title="Revert this file">↩</button></div>`;
         })
         .join('');
       return `<details class="rv-turn"${order === 0 ? ' open' : ''}><summary><span class="rv-turn-title">${turn.title.replaceAll('<', '&lt;')} · ${turn.time}</span><span class="rv-turn-meta">${turn.files.length} file${turn.files.length === 1 ? '' : 's'}</span><button type="button" class="rv-revert-turn" data-turn="${turn.index}" title="Revert the whole turn">↩ all</button></summary>${files}</details>`;
@@ -1761,6 +1766,16 @@ function renderReview(): void {
       vscode.postMessage({
         type: 'reviewAction',
         action: 'diff',
+        turn: Number(button.dataset.turn),
+        file: button.dataset.file,
+      })
+    );
+  }
+  for (const button of Array.from(list.querySelectorAll<HTMLButtonElement>('.rv-inline'))) {
+    button.addEventListener('click', () =>
+      vscode.postMessage({
+        type: 'reviewAction',
+        action: 'inline',
         turn: Number(button.dataset.turn),
         file: button.dataset.file,
       })

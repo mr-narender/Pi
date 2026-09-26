@@ -11,6 +11,7 @@ import {
 import { registerChatOps } from './commands/chatOps';
 import { initSharedPiHost, disposeSharedPiHost, getSharedPiHost } from './process/sharedPiHost';
 import { TurnReview } from './review/turnReview';
+import { InlineReview } from './review/inlineReview';
 import { SessionIndexService } from './sessions/sessionIndexService';
 import { ensureManagedPi, managedPiCliPath, managedPiRoot } from './process/piManaged';
 import { COMMAND_IDS, CONTRIBUTED_COMMANDS } from './config/commands';
@@ -258,6 +259,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   initChatUriRegistry(context.workspaceState);
   const chatTabs = new ChatTabManager(context, registry, uiState, logger);
   const turnReview = new TurnReview(logger);
+  const inlineReview = new InlineReview(turnReview);
+  context.subscriptions.push(inlineReview);
+  chatTabs.inlineReview = inlineReview;
   chatTabs.chatListSource = () => {
     const folder = vscode.workspace.workspaceFolders?.[0];
     if (!folder) {
@@ -1022,6 +1026,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }
   });
   registrations.set('piRpc.selectModel', registrations.get('piRpc.showModels')!);
+  // Line-by-line review controls (CodeLens inside the real file).
+  registrations.set('piRpcInternal.hunkKeep', async (fsPath?: unknown, index?: unknown) => {
+    await inlineReview.keepHunk(String(fsPath), Number(index));
+  });
+  registrations.set('piRpcInternal.hunkRevert', async (fsPath?: unknown, index?: unknown) => {
+    await inlineReview.revertHunk(String(fsPath), Number(index));
+  });
+  registrations.set('piRpcInternal.hunkKeepAll', async (fsPath?: unknown) => {
+    await inlineReview.keepAll(String(fsPath));
+  });
+  registrations.set('piRpcInternal.hunkRevertAll', async (fsPath?: unknown) => {
+    await inlineReview.revertAll(String(fsPath));
+  });
+
   // Sidebar chat: focus the docked π chat (Zed layout — center stays free).
   registrations.set('piRpc.openSidebarChat', async () => {
     await vscode.commands.executeCommand('piRpc.chat.focus');

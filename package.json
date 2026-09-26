@@ -2,7 +2,7 @@
   "name": "pi",
   "displayName": "Pi – this one is (y)ours",
   "description": "An unofficial, personal VS Code chat UI for the Pi coding agent (pi.dev). Not affiliated with pi.dev — shared for anyone who wants it.",
-  "version": "0.0.260",
+  "version": "0.0.261",
   "publisher": "mr-narender",
   "license": "MIT",
   "private": true,
@@ -1042,6 +1042,16 @@
           ],
           "default": "open",
           "description": "Follow the agent Zed-style: a side editor shows the file π is reading or editing, live."
+        },
+        "piRpc.preventSleepWhileBusy": {
+          "type": "boolean",
+          "default": true,
+          "description": "macOS: keep the system awake (caffeinate) while any π turn is running."
+        },
+        "piRpc.soundOnComplete": {
+          "type": "boolean",
+          "default": false,
+          "description": "Play a short sound when a background chat finishes (macOS)."
         }
       }
     },

@@ -1,5 +1,5 @@
 export type WebviewInboundMessage =
-  | { type: 'requestSend'; command: 'prompt' | 'follow_up' | 'steer' }
+  | { type: 'requestSend'; command: 'prompt' | 'follow_up' | 'steer'; follow?: boolean }
   | { type: 'acceptPreview' }
   | { type: 'cancelPreview' }
   | { type: 'copyAcceptedSnapshot' }
@@ -11,7 +11,7 @@ export type WebviewInboundMessage =
   | { type: 'requestReview' }
   | {
       type: 'reviewAction';
-      action: 'diff' | 'revertFile' | 'revertTurn';
+      action: 'diff' | 'inline' | 'revertFile' | 'revertTurn';
       turn: number;
       file?: string;
     }
@@ -67,7 +67,11 @@ export function parseWebviewMessage(value: unknown): WebviewInboundMessage | und
         record.command === 'follow_up' ||
         record.command === 'steer'
       ) {
-        return { type: 'requestSend', command: record.command };
+        return {
+          follow: record.follow === true ? true : undefined,
+          type: 'requestSend',
+          command: record.command,
+        };
       }
       return undefined;
     case 'acceptPreview':

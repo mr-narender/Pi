@@ -251,6 +251,18 @@ export class TurnReview {
     }
   }
 
+  /** Snapshot content of a file before the turn ('' for new files). */
+  public async fileBefore(record: TurnRecord, change: TurnChange): Promise<string> {
+    if (change.kind === 'new') {
+      return '';
+    }
+    try {
+      return await this.git(record.cwd, ['show', `${record.sha}:${change.file}`], 32 * 1024 * 1024);
+    } catch {
+      return '';
+    }
+  }
+
   public async openDiff(record: TurnRecord, change: TurnChange): Promise<void> {
     const fileUri = vscode.Uri.file(join(record.cwd, change.file));
     if (change.kind === 'new') {

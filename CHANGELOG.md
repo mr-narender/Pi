@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.0.261
+
+- LINE-BY-LINE REVIEW (Zed’s single-file review, in VS Code): from the ⧉ Review overlay, hit ≣ on any file — the REAL file opens with per-hunk CodeLens controls: “π −n +m · ✓ Keep · ↩ Revert” above every changed region (green tint + before-text on hover), plus Keep all / Revert all / Done at the top. Revert applies a surgical edit restoring just that hunk from the turn snapshot; hunks recompute live as you or π keep editing.
+- Cmd/Ctrl+Enter when sending = follow THAT turn even with the crosshair off (Zed parity).
+- macOS: system stays awake while any turn runs (caffeinate; piRpc.preventSleepWhileBusy).
+- Optional completion sound for background chats (piRpc.soundOnComplete, default off).
+
 ## 0.0.260
 
 - 🗑 deletes immediately — no confirmation modal. Row vanishes, runtime stops, file removed, one click.
