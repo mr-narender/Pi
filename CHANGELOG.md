@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.260
+
+- 🗑 deletes immediately — no confirmation modal. Row vanishes, runtime stops, file removed, one click.
+
 ## 0.0.259
 
 - Tracking heartbeat: while any chat runs, the status bar shows “👁 π watching files…” — so an idle net is visibly ALIVE, not silently ambiguous. Activity replaces it with the file being touched, then it returns to watching until all chats go idle.

@@ -634,15 +634,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     if (!sessionPath) {
       return;
     }
-    const label = asString(node?.sessionLabel) ?? sessionPath.split('/').pop() ?? 'this chat';
-    const confirm = await vscode.window.showWarningMessage(
-      `Delete chat "${label}"? This permanently removes its saved session file.`,
-      { modal: true },
-      'Delete'
-    );
-    if (confirm !== 'Delete') {
-      return;
-    }
+    // One click = deleted. No confirmation by design (Master's call).
     chatTabs.stopControllersForSessionFile(sessionPath); // runtime down, no wait
     await chatTabs.closeForSessionFile(sessionPath);
     try {
