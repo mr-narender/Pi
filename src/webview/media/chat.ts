@@ -1193,8 +1193,13 @@ function renderNow(snapshot: WebviewSnapshot): void {
       // (opens the guided picker first, THEN resends with whatever was
       // chosen — this is what lets you edit AND retarget in one motion).
       const submitEdit = (pickModel: boolean): void => {
+        vscode.postMessage({
+          type: 'debugLog',
+          text: `submitEdit invoked (pickModel=${pickModel}, fromBottom=${fromBottom})`,
+        });
         const edited = ta.value.trim();
         if (!edited) {
+          vscode.postMessage({ type: 'debugLog', text: 'submitEdit: empty text, cancelling' });
           cancel();
           return;
         }
@@ -1231,9 +1236,17 @@ function renderNow(snapshot: WebviewSnapshot): void {
           cancel();
         }
       });
-      bindOnce(editor.querySelector('.inline-edit-model-btn') as HTMLButtonElement, 'click', () =>
-        submitEdit(true)
-      );
+      const modelButton = editor.querySelector(
+        '.inline-edit-model-btn'
+      ) as HTMLButtonElement | null;
+      vscode.postMessage({
+        type: 'debugLog',
+        text: `inline editor built; model button found=${Boolean(modelButton)}`,
+      });
+      bindOnce(modelButton, 'click', () => {
+        vscode.postMessage({ type: 'debugLog', text: 'different-model button clicked' });
+        submitEdit(true);
+      });
     });
   }
 

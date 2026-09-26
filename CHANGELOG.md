@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.269
+
+- MODEL SEARCH IS SEPARATOR-AGNOSTIC: "claude 4.8" now matches an id like "claude-4-8" (or "claude.4.8", "claude*4_8") — previously VS Code's native fuzzy filter did literal character matching, so a space in your query had nothing to match against a hyphen in the id and silently found nothing. Both model pickers (the composer chip and "Retry with a different model") now share one fuzzy matcher that treats -, *, ., and whitespace as interchangeable. Harness-proven end-to-end (real QuickPick wiring, not just the matcher function).
+- Consolidated the two separate model-picker implementations into one shared picker — same guided provider→model→thinking flow everywhere now.
+- Strengthened diagnostics on edit-and-resend: every step of the pencil-edit flow (button click, model-button click, submit) now posts a debugLog entry visible in Output → Pi. Traced the whole pipeline again end to end — found no code defect (the new code is confirmed present in the shipped bundle, event binding is null-safe) — the most likely explanation for a still-broken report is an already-open chat tab running a pre-0.0.268 cached script. If it still fails after a full reload, the new logs will show exactly which step didn't fire.
+
 ## 0.0.268
 
 - API ERRORS SHOWN PROPERLY: a rate-limit/auth/server-error response no longer dumps raw JSON at you. Parsed into a structured card — status badge (Rate Limited / Overloaded / Auth Error / …), the clean human message, model, and a copyable Request ID — with Retry, Retry with a different model, and Logs actions. Falls back to the plain message untouched for anything that doesn't match the parseable shape — never hides information.
