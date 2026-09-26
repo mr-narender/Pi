@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.256
+
+- THE BIG ONE (found via choke-point tracers in the user’s logs): Pi v0.87 streams hundreds of state events per second and every event ran a FULL snapshot render — the extension host saturated (9+ renders per millisecond), async timers drifted ~12s, so follow “worked” but opened files long after turns ended (invisible). Renders are now coalesced per chat: instant leading edge + one trailing render per 50ms window. Everything downstream (live tracking, glow, digests) lands on time; tracer noise removed.
+
 ## 0.0.255
 
 - Live tracking follows EVERYTHING now (harness-proven): the previous fix guessed history-vs-live by call COUNT, which swallowed real scaffolding work (fast agents emit 3–5 calls per streamed snapshot — only sparse reads survived, hence “only package.json”). New rule: a 1.5s grace window after a chat binds absorbs the switch/reload backfill; after that, every call follows — bursts included.

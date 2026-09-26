@@ -1932,10 +1932,7 @@ export class ChatTabManager implements vscode.Disposable {
 
   private async onControllerChanged(controller: SessionController): Promise<void> {
     this.lastActivityAt.set(controller, Date.now());
-    const dbgOwner = this.sessions.ownerOf(controller);
-    this.logger.info(
-      `[flow] change conn=${controller.snapshot.connectionState} msgs=${Array.isArray(controller.snapshot.messages) ? controller.snapshot.messages.length : -1} owner=${dbgOwner ? dbgOwner.scheme : 'NONE'}`
-    );
+
     this.detectTurnCompletion(controller);
     // Restore the draft under the OWNING TAB's identity — not the controller's
     // current-session identity, which drifts after forks/prewarm-adoption and
@@ -2201,7 +2198,46 @@ export class ChatTabManager implements vscode.Disposable {
     }
   }
 
+  /** Coalesced render: Pi v0.87 streams hundreds of events/sec and a full
+   * render per event melted the extension host (12s timer drift — follow
+   * opened files long after turns ended). Leading edge renders instantly;
+   * further events within the window collapse into ONE trailing render. */
+  private readonly pendingRender = new Map<
+    string,
+    { timer: ReturnType<typeof setTimeout>; resolvers: Array<() => void>; active: boolean }
+  >();
+  private readonly lastRenderAt = new Map<string, number>();
+
   private async renderResource(
+    resource: vscode.Uri,
+    options?: { active?: boolean }
+  ): Promise<void> {
+    const key = resource.toString();
+    const entry = this.pendingRender.get(key);
+    const active = (options?.active ?? false) || (entry?.active ?? false);
+    if (!entry && Date.now() - (this.lastRenderAt.get(key) ?? 0) > 50) {
+      this.lastRenderAt.set(key, Date.now());
+      return this.renderResourceNow(resource, options);
+    }
+    return new Promise((resolve) => {
+      const pending = entry ?? { timer: setTimeout(() => undefined, 0), resolvers: [], active };
+      clearTimeout(pending.timer);
+      pending.active = active;
+      pending.resolvers.push(resolve);
+      pending.timer = setTimeout(() => {
+        this.pendingRender.delete(key);
+        this.lastRenderAt.set(key, Date.now());
+        void this.renderResourceNow(resource, { active: pending.active }).finally(() => {
+          for (const done of pending.resolvers) {
+            done();
+          }
+        });
+      }, 50);
+      this.pendingRender.set(key, pending);
+    });
+  }
+
+  private async renderResourceNow(
     resource: vscode.Uri,
     options?: { active?: boolean }
   ): Promise<void> {
@@ -2214,11 +2250,7 @@ export class ChatTabManager implements vscode.Disposable {
       snapshot.sharing = { active: true, label: this.sharing.label };
     }
     snapshot.surface = resource.scheme === 'piRpcSidebar' ? 'sidebar' : 'tab';
-    if (snapshot.surface === 'sidebar') {
-      this.logger.info(
-        `[flow] render sidebar key=${this.keyFor(resource)} msgs=${snapshot.messages.length}`
-      );
-    }
+
     snapshot.reviewCount = this.turnReview?.history.length ?? 0;
     snapshot.followMode = vscode.workspace
       .getConfiguration('piRpc')
