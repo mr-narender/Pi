@@ -1659,6 +1659,9 @@ export class ChatTabManager implements vscode.Disposable {
     };
     const host = new SidebarChatHost(extensionUri, view, this, resource);
     this.hosts.set(resource.toString(), host);
+    // START the controller — rendering alone leaves it "Connecting…" forever
+    // (editor tabs start via activateResource; the sidebar must too).
+    await this.activateResource(resource, { startIfStopped: true });
     await this.renderResource(resource, { active: true });
   }
 

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.245
+
+- Sidebar chat connects: its controller now actually STARTS on attach (it only rendered before — stuck at “Connecting to π” forever).
+
 ## 0.0.244
 
 - THE ZED LAYOUT: π Chat now lives in the SIDEBAR (π activity bar → Chat) — full chat experience docked left (own persistent session, survives reloads), leaving the CENTER for real editors. “Pi: Open Chat in Sidebar” focuses it.
