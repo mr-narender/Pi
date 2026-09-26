@@ -1265,35 +1265,34 @@ export class ChatTabManager implements vscode.Disposable {
         return;
       }
       case 'requestChatList': {
-        const source = this.chatListSource?.();
-        const relative = (at: number): string => {
-          const mins = Math.max(1, Math.round((Date.now() - at) / 60_000));
-          if (mins < 60) {
-            return `${mins}m`;
-          }
-          if (mins < 60 * 24) {
-            return `${Math.round(mins / 60)}h`;
-          }
-          return `${Math.round(mins / (60 * 24))}d`;
-        };
-        const currentFile =
-          this.sidebarTarget?.kind === 'sessionFile' ? this.sidebarTarget.sessionFile : undefined;
-        host.post({
-          type: 'chatList',
-          current: (source?.items ?? []).slice(0, 30).map((item) => ({
-            path: item.path,
-            title: item.displayName,
-            time: relative(item.modifiedAt),
-            current: item.path === currentFile,
-          })),
-          others: (source?.others ?? []).slice(0, 20).map((item) => ({
-            path: item.path,
-            title: item.displayName,
-            time: relative(item.modifiedAt),
-            workspace: item.workspaceLabel,
-            cwd: item.cwd,
-          })),
+        this.sendChatList(host);
+        return;
+      }
+      case 'deleteChatSession': {
+        if (host.resource.scheme !== 'piRpcSidebar') {
+          return;
+        }
+        const wasCurrent =
+          this.sidebarTarget?.kind === 'sessionFile' &&
+          this.sidebarTarget.sessionFile === parsed.path;
+        await vscode.commands.executeCommand('piRpcInternal.deleteSession', {
+          sessionPath: parsed.path,
+          sessionLabel: parsed.title,
         });
+        if (wasCurrent) {
+          // The chat being viewed was deleted — hand the surface a fresh draft.
+          const folder = vscode.workspace.workspaceFolders?.[0];
+          if (folder) {
+            this.sidebarTarget = {
+              workspaceFolderUri: folder.uri.toString(),
+              kind: 'workspaceDraft',
+              draftId: `sidebar-${Date.now()}`,
+            };
+            await this.activateResource(host.resource, { startIfStopped: true });
+            await this.renderResource(host.resource, { active: true });
+          }
+        }
+        this.sendChatList(host); // refreshed list (unchanged if user cancelled)
         return;
       }
       case 'openChatSession': {
@@ -1784,6 +1783,38 @@ export class ChatTabManager implements vscode.Disposable {
         }>;
       })
     | undefined;
+
+  private sendChatList(host: ChatHost): void {
+    const source = this.chatListSource?.();
+    const relative = (at: number): string => {
+      const mins = Math.max(1, Math.round((Date.now() - at) / 60_000));
+      if (mins < 60) {
+        return `${mins}m`;
+      }
+      if (mins < 60 * 24) {
+        return `${Math.round(mins / 60)}h`;
+      }
+      return `${Math.round(mins / (60 * 24))}d`;
+    };
+    const currentFile =
+      this.sidebarTarget?.kind === 'sessionFile' ? this.sidebarTarget.sessionFile : undefined;
+    host.post({
+      type: 'chatList',
+      current: (source?.items ?? []).slice(0, 30).map((item) => ({
+        path: item.path,
+        title: item.displayName,
+        time: relative(item.modifiedAt),
+        current: item.path === currentFile,
+      })),
+      others: (source?.others ?? []).slice(0, 20).map((item) => ({
+        path: item.path,
+        title: item.displayName,
+        time: relative(item.modifiedAt),
+        workspace: item.workspaceLabel,
+        cwd: item.cwd,
+      })),
+    });
+  }
 
   /** Mount the sidebar chat view onto the shared pipeline. */
   public async attachSidebarChat(

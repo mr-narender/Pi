@@ -7,6 +7,7 @@ export type WebviewInboundMessage =
   | { type: 'abort' }
   | { type: 'toggleFollow' }
   | { type: 'requestChatList' }
+  | { type: 'deleteChatSession'; path: string; title?: string }
   | { type: 'requestReview' }
   | {
       type: 'reviewAction';
@@ -87,13 +88,23 @@ export function parseWebviewMessage(value: unknown): WebviewInboundMessage | und
     case 'loadOlder':
       return { type: record.type };
     case 'reviewAction':
-      return (record.action === 'diff' || record.action === 'revertFile' || record.action === 'revertTurn') &&
+      return (record.action === 'diff' ||
+        record.action === 'revertFile' ||
+        record.action === 'revertTurn') &&
         typeof record.turn === 'number'
         ? {
             type: 'reviewAction',
             action: record.action,
             turn: record.turn,
             file: typeof record.file === 'string' ? record.file : undefined,
+          }
+        : undefined;
+    case 'deleteChatSession':
+      return typeof record.path === 'string'
+        ? {
+            type: 'deleteChatSession',
+            path: record.path,
+            title: typeof record.title === 'string' ? record.title : undefined,
           }
         : undefined;
     case 'openChatSession':

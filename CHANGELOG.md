@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.252
+
+- Chat delete is back: ☰ switcher rows show 🗑 on hover — native confirm modal, session file removed, list refreshes; deleting the chat you are viewing hands the sidebar a fresh draft automatically.
+
 ## 0.0.251
 
 - Transcript scrollbar no longer kisses the composer: the reserved band grew (dock height + 48) and the scroller ends with real margin above the dock.

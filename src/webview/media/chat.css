@@ -4001,3 +4001,54 @@ body.vscode-high-contrast #review-overlay {
   margin-bottom: 8px;
   border-bottom: 1px solid transparent; /* crisp visual end for the track */
 }
+
+/* Switcher rows: open button + hover-revealed delete. */
+.cl-item {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  padding: 0;
+}
+
+.cl-open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  padding: 7px 9px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--vscode-foreground);
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.cl-open:hover {
+  background: var(--glass-2);
+}
+
+.cl-del {
+  border: none;
+  background: transparent;
+  color: var(--vscode-foreground);
+  opacity: 0;
+  cursor: pointer;
+  border-radius: 7px;
+  padding: 0 7px;
+  font-size: 11px;
+  flex: none;
+}
+
+.cl-item:hover .cl-del {
+  opacity: 0.55;
+}
+
+.cl-del:hover {
+  opacity: 1 !important;
+  color: var(--vscode-editorError-foreground, #f48771);
+  background: var(--glass-2);
+}

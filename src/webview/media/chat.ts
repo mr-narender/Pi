@@ -1646,7 +1646,7 @@ function renderChatList(): void {
   const match = (item: ChatListItem): boolean =>
     !chatListFilter || item.title.toLowerCase().includes(chatListFilter);
   const row = (item: ChatListItem, meta: string): string =>
-    `<button type="button" class="cl-item${item.current ? ' is-current' : ''}" data-path="${item.path.replaceAll('"', '&quot;')}" data-ws="${item.workspaceFolderUri ?? ''}"><span class="cl-title">${item.title.replaceAll('<', '&lt;')}</span><span class="cl-meta">${meta}</span></button>`;
+    `<div class="cl-item${item.current ? ' is-current' : ''}"><button type="button" class="cl-open" data-path="${item.path.replaceAll('"', '&quot;')}" data-ws="${item.workspaceFolderUri ?? ''}"><span class="cl-title">${item.title.replaceAll('<', '&lt;')}</span><span class="cl-meta">${meta}</span></button><button type="button" class="cl-del" data-path="${item.path.replaceAll('"', '&quot;')}" data-title="${item.title.replaceAll('"', '&quot;')}" title="Delete chat (permanent)">🗑</button></div>`;
   const current = (chatListData?.current ?? []).filter(match);
   const others = (chatListData?.others ?? []).filter(match);
   list.innerHTML =
@@ -1659,7 +1659,7 @@ function renderChatList(): void {
         others.map((item) => row(item, `${item.workspace ?? ''} · ${item.time}`)).join('') +
         '</details>'
       : '');
-  for (const button of Array.from(list.querySelectorAll<HTMLButtonElement>('.cl-item'))) {
+  for (const button of Array.from(list.querySelectorAll<HTMLButtonElement>('.cl-open'))) {
     button.addEventListener('click', () => {
       vscode.postMessage({
         type: 'openChatSession',
@@ -1667,6 +1667,17 @@ function renderChatList(): void {
         workspaceFolderUri: button.dataset.ws || undefined,
       });
       toggleChatListOverlay(false);
+    });
+  }
+  for (const button of Array.from(list.querySelectorAll<HTMLButtonElement>('.cl-del'))) {
+    button.addEventListener('click', () => {
+      // Confirmation is a native modal on the extension side; the refreshed
+      // list comes back as a chatList message either way.
+      vscode.postMessage({
+        type: 'deleteChatSession',
+        path: button.dataset.path ?? '',
+        title: button.dataset.title ?? undefined,
+      });
     });
   }
 }
