@@ -11,7 +11,7 @@ export type WebviewInboundMessage =
   | { type: 'requestReview' }
   | {
       type: 'reviewAction';
-      action: 'diff' | 'inline' | 'revertFile' | 'revertTurn';
+      action: 'diff' | 'inline' | 'revertFile' | 'revertTurn' | 'replayTurn' | 'replaySession';
       turn: number;
       file?: string;
     }
@@ -93,8 +93,11 @@ export function parseWebviewMessage(value: unknown): WebviewInboundMessage | und
       return { type: record.type };
     case 'reviewAction':
       return (record.action === 'diff' ||
+        record.action === 'inline' ||
         record.action === 'revertFile' ||
-        record.action === 'revertTurn') &&
+        record.action === 'revertTurn' ||
+        record.action === 'replayTurn' ||
+        record.action === 'replaySession') &&
         typeof record.turn === 'number'
         ? {
             type: 'reviewAction',

@@ -13,6 +13,7 @@ import { initSharedPiHost, disposeSharedPiHost, getSharedPiHost } from './proces
 import { TurnReview } from './review/turnReview';
 import { syncApprovalGateForWorkspace } from './review/approvalGate';
 import { InlineReview } from './review/inlineReview';
+import { SessionReplay } from './review/sessionReplay';
 import { SessionIndexService } from './sessions/sessionIndexService';
 import { ensureManagedPi, managedPiCliPath, managedPiRoot } from './process/piManaged';
 import { COMMAND_IDS, CONTRIBUTED_COMMANDS } from './config/commands';
@@ -263,6 +264,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const inlineReview = new InlineReview(turnReview);
   context.subscriptions.push(inlineReview);
   chatTabs.inlineReview = inlineReview;
+  const sessionReplay = new SessionReplay(turnReview);
+  context.subscriptions.push(sessionReplay);
+  chatTabs.sessionReplay = sessionReplay;
 
   // True pre-apply approval gate (opt-in): sync on activation so a workspace
   // opened with the setting already on gets it without waiting for a toggle.

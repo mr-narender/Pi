@@ -4070,3 +4070,32 @@ body.vscode-high-contrast #review-overlay {
   color: var(--ember);
   background: var(--glass-2);
 }
+
+.rv-replay {
+  border: 1px solid var(--glass-line-strong);
+  background: transparent;
+  color: var(--ember);
+  font-size: 9.5px;
+  padding: 1px 6px;
+  border-radius: 5px;
+  cursor: pointer;
+  flex: none;
+}
+
+.rv-replay:hover {
+  border-color: var(--ember-glow);
+  background: var(--ember-soft);
+}
+
+#rv-replay-all {
+  font-size: 10.5px;
+  opacity: 0.85;
+  width: auto;
+  padding: 3px 9px;
+  margin-right: 6px;
+}
+
+#rv-replay-all:hover {
+  opacity: 1;
+  background: var(--glass-2);
+}

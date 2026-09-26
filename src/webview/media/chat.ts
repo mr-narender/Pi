@@ -1714,10 +1714,15 @@ function reviewOverlay(): HTMLElement {
   overlay.id = 'review-overlay';
   overlay.hidden = true;
   overlay.innerHTML =
-    '<div class="rv-head"><span class="rv-title">Review π\u2019s changes</span><button type="button" id="rv-close" class="screen-close" title="Close (Esc)">✕</button></div>' +
+    '<div class="rv-head"><span class="rv-title">Review π\u2019s changes</span><button type="button" id="rv-replay-all" class="screen-close" title="Replay the whole session, oldest turn first">▶ Session</button><button type="button" id="rv-close" class="screen-close" title="Close (Esc)">✕</button></div>' +
     '<div id="rv-list" class="rv-list"></div>';
   document.body.appendChild(overlay);
   overlay.querySelector('#rv-close')?.addEventListener('click', () => toggleReviewOverlay(false));
+  overlay
+    .querySelector('#rv-replay-all')
+    ?.addEventListener('click', () =>
+      vscode.postMessage({ type: 'reviewAction', action: 'replaySession', turn: 0 })
+    );
   window.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && !overlay!.hidden) {
       toggleReviewOverlay(false);
@@ -1758,7 +1763,7 @@ function renderReview(): void {
           return `<div class="rv-file"><button type="button" class="rv-open" data-turn="${turn.index}" data-file="${file.file.replaceAll('"', '&quot;')}" title="${file.file} — open diff">${name}${stat}</button><button type="button" class="rv-inline" data-turn="${turn.index}" data-file="${file.file.replaceAll('"', '&quot;')}" title="Review line by line IN the file (hunk controls)">≣</button><button type="button" class="rv-undo" data-turn="${turn.index}" data-file="${file.file.replaceAll('"', '&quot;')}" title="Revert this file">↩</button></div>`;
         })
         .join('');
-      return `<details class="rv-turn"${order === 0 ? ' open' : ''}><summary><span class="rv-turn-title">${turn.title.replaceAll('<', '&lt;')} · ${turn.time}</span><span class="rv-turn-meta">${turn.files.length} file${turn.files.length === 1 ? '' : 's'}</span><button type="button" class="rv-revert-turn" data-turn="${turn.index}" title="Revert the whole turn">↩ all</button></summary>${files}</details>`;
+      return `<details class="rv-turn"${order === 0 ? ' open' : ''}><summary><span class="rv-turn-title">${turn.title.replaceAll('<', '&lt;')} · ${turn.time}</span><span class="rv-turn-meta">${turn.files.length} file${turn.files.length === 1 ? '' : 's'}</span><button type="button" class="rv-replay" data-turn="${turn.index}" title="Replay this turn: watch each changed file, in order">▶</button><button type="button" class="rv-revert-turn" data-turn="${turn.index}" title="Revert the whole turn">↩ all</button></summary>${files}</details>`;
     })
     .join('');
   for (const button of Array.from(list.querySelectorAll<HTMLButtonElement>('.rv-open'))) {
@@ -1790,6 +1795,16 @@ function renderReview(): void {
         file: button.dataset.file,
       })
     );
+  }
+  for (const button of Array.from(list.querySelectorAll<HTMLButtonElement>('.rv-replay'))) {
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      vscode.postMessage({
+        type: 'reviewAction',
+        action: 'replayTurn',
+        turn: Number(button.dataset.turn),
+      });
+    });
   }
   for (const button of Array.from(list.querySelectorAll<HTMLButtonElement>('.rv-revert-turn'))) {
     button.addEventListener('click', (event) => {

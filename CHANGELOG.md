@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.266
+
+- SESSION REPLAY: the ⧉ Review overlay can now REWIND. ▶ on any turn walks its changed files in order, revealing each one with a violet glow (distinct from live ember) and a cancellable progress notification. ▶ Session in the header replays the WHOLE session, oldest turn first — watch how it evolved, after the fact. Built entirely on the turn history persisted in 0.0.264 and the hunk-diff engine from line-by-line review — nearly free, as planned.
+- Fixed a real latent bug found while wiring this: the ≣ line-by-line review action was declared in the message TYPE but missing from the runtime VALIDATION guard — every ≣ click since 0.0.261 was silently dropped before reaching the handler.
+
 ## 0.0.265
 
 - TRUE PRE-APPLY APPROVAL (the crucial one, done right this time): `piRpc.requireApprovalForEdits` installs a PROJECT-scoped Pi extension (`.pi/extensions/pi-approval-gate.ts`, registered in `.pi/settings.json`) that intercepts every file-mutating tool call BEFORE it runs — Allow / Allow rest of turn / Deny. The change never touches disk unless approved. Rides Pi's own documented `tool_call` hook and the same extension-UI subprotocol our approval cards already render, so it works instantly in both chat surfaces with zero new UI code. Applies everywhere π runs for this project (VS Code, terminal, CI) — a real policy, not a VS-Code-only overlay. Toggling prompts to restart the π runtime.

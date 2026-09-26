@@ -1261,6 +1261,10 @@ export class ChatTabManager implements vscode.Disposable {
           if (change) {
             await this.inlineReview?.start(record, change);
           }
+        } else if (parsed.action === 'replayTurn') {
+          void this.sessionReplay?.replayTurn(record);
+        } else if (parsed.action === 'replaySession') {
+          void this.sessionReplay?.replaySession(this.turnReview?.history ?? []);
         } else if (parsed.action === 'revertFile' && parsed.file) {
           const change = record.changes.find((entry) => entry.file === parsed.file);
           if (!change) {
@@ -1801,6 +1805,10 @@ export class ChatTabManager implements vscode.Disposable {
   private sidebarTarget: ChatTabTarget | undefined;
   /** Injected: line-by-line review engine. */
   public inlineReview: { start(record: unknown, change: unknown): Promise<void> } | undefined;
+  /** Injected: session replay (walk past turns' files, oldest or single). */
+  public sessionReplay:
+    | { replayTurn(record: unknown): Promise<void>; replaySession(history: unknown[]): Promise<void> }
+    | undefined;
   /** Injected by extension.ts: recent-session data for the sidebar switcher. */
   public chatListSource:
     | (() => {
