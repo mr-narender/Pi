@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.265
+
+- TRUE PRE-APPLY APPROVAL (the crucial one, done right this time): `piRpc.requireApprovalForEdits` installs a PROJECT-scoped Pi extension (`.pi/extensions/pi-approval-gate.ts`, registered in `.pi/settings.json`) that intercepts every file-mutating tool call BEFORE it runs — Allow / Allow rest of turn / Deny. The change never touches disk unless approved. Rides Pi's own documented `tool_call` hook and the same extension-UI subprotocol our approval cards already render, so it works instantly in both chat surfaces with zero new UI code. Applies everywhere π runs for this project (VS Code, terminal, CI) — a real policy, not a VS-Code-only overlay. Toggling prompts to restart the π runtime.
+
 ## 0.0.264
 
 - ⧉ Review history now survives reload/restart: turns persist to workspace storage (last 10, same as before) and restore on activation. Durability fix underneath: each turn’s git-stash snapshot — previously a DANGLING commit `git gc` could prune — is now rooted under its own ref (`refs/pi-review/...`), deleted automatically when it ages out of the 10-turn window. Nothing unbounded, nothing lost.

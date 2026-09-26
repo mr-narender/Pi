@@ -11,6 +11,7 @@ import {
 import { registerChatOps } from './commands/chatOps';
 import { initSharedPiHost, disposeSharedPiHost, getSharedPiHost } from './process/sharedPiHost';
 import { TurnReview } from './review/turnReview';
+import { syncApprovalGateForWorkspace } from './review/approvalGate';
 import { InlineReview } from './review/inlineReview';
 import { SessionIndexService } from './sessions/sessionIndexService';
 import { ensureManagedPi, managedPiCliPath, managedPiRoot } from './process/piManaged';
@@ -262,6 +263,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const inlineReview = new InlineReview(turnReview);
   context.subscriptions.push(inlineReview);
   chatTabs.inlineReview = inlineReview;
+
+  // True pre-apply approval gate (opt-in): sync on activation so a workspace
+  // opened with the setting already on gets it without waiting for a toggle.
+  void syncApprovalGateForWorkspace(
+    context.extensionUri,
+    vscode.workspace.getConfiguration('piRpc').get<boolean>('requireApprovalForEdits', false)
+  );
   chatTabs.chatListSource = () => {
     const folder = vscode.workspace.workspaceFolders?.[0];
     if (!folder) {
@@ -1711,6 +1719,23 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
       if (event.affectsConfiguration('piRpc.codeLensEnabled')) {
         codeLensProvider.refresh();
+      }
+      if (event.affectsConfiguration('piRpc.requireApprovalForEdits')) {
+        const enabled = vscode.workspace
+          .getConfiguration('piRpc')
+          .get<boolean>('requireApprovalForEdits', false);
+        void syncApprovalGateForWorkspace(context.extensionUri, enabled).then(() => {
+          void vscode.window
+            .showInformationMessage(
+              `π approval gate ${enabled ? 'enabled' : 'disabled'} for this project — restart the π runtime to apply.`,
+              'Restart Now'
+            )
+            .then((choice) => {
+              if (choice === 'Restart Now') {
+                void vscode.commands.executeCommand('piRpc.restartSharedRuntime');
+              }
+            });
+        });
       }
     })
   );

@@ -2,7 +2,7 @@
   "name": "pi",
   "displayName": "Pi – this one is (y)ours",
   "description": "An unofficial, personal VS Code chat UI for the Pi coding agent (pi.dev). Not affiliated with pi.dev — shared for anyone who wants it.",
-  "version": "0.0.264",
+  "version": "0.0.265",
   "publisher": "mr-narender",
   "license": "MIT",
   "private": true,
@@ -1052,6 +1052,11 @@
           "type": "boolean",
           "default": false,
           "description": "Play a short sound when a background chat finishes (macOS)."
+        },
+        "piRpc.requireApprovalForEdits": {
+          "type": "boolean",
+          "default": false,
+          "description": "True pre-apply approval: every file edit π makes must be Allowed before it touches disk (Allow / Allow rest of turn / Deny). Installs a PROJECT-scoped Pi extension (.pi/extensions/pi-approval-gate.ts) — applies everywhere π runs for this project, not just in VS Code. Requires restarting the π runtime after toggling."
         }
       }
     },
