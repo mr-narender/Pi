@@ -1932,6 +1932,10 @@ export class ChatTabManager implements vscode.Disposable {
 
   private async onControllerChanged(controller: SessionController): Promise<void> {
     this.lastActivityAt.set(controller, Date.now());
+    const dbgOwner = this.sessions.ownerOf(controller);
+    this.logger.info(
+      `[flow] change conn=${controller.snapshot.connectionState} msgs=${Array.isArray(controller.snapshot.messages) ? controller.snapshot.messages.length : -1} owner=${dbgOwner ? dbgOwner.scheme : 'NONE'}`
+    );
     this.detectTurnCompletion(controller);
     // Restore the draft under the OWNING TAB's identity — not the controller's
     // current-session identity, which drifts after forks/prewarm-adoption and
@@ -2210,6 +2214,11 @@ export class ChatTabManager implements vscode.Disposable {
       snapshot.sharing = { active: true, label: this.sharing.label };
     }
     snapshot.surface = resource.scheme === 'piRpcSidebar' ? 'sidebar' : 'tab';
+    if (snapshot.surface === 'sidebar') {
+      this.logger.info(
+        `[flow] render sidebar key=${this.keyFor(resource)} msgs=${snapshot.messages.length}`
+      );
+    }
     snapshot.reviewCount = this.turnReview?.history.length ?? 0;
     snapshot.followMode = vscode.workspace
       .getConfiguration('piRpc')

@@ -87,6 +87,27 @@ export class AgentFollowService implements vscode.Disposable {
     // follows, no matter how many arrive per streamed snapshot (a count
     // threshold here once swallowed real scaffolding work).
     const absorbHistory = Date.now() - (this.keyBornAt.get(key) ?? 0) < 1500;
+    {
+      let toolBlocks = 0;
+      let withId = 0;
+      let unseenNow = 0;
+      for (const message of snapshot.messages) {
+        for (const block of message.blocks ?? []) {
+          if (block.kind === 'tool') {
+            toolBlocks += 1;
+            if (block.callId) {
+              withId += 1;
+              if (!seen.has(block.callId)) {
+                unseenNow += 1;
+              }
+            }
+          }
+        }
+      }
+      this.logger?.info(
+        `[follow] snap msgs=${snapshot.messages.length} tool=${toolBlocks} withId=${withId} unseen=${unseenNow} grace=${absorbHistory} visible=${isActiveChat}`
+      );
+    }
     if (absorbHistory) {
       let unseen = 0;
       for (const message of snapshot.messages) {
