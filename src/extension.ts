@@ -12,6 +12,7 @@ import { registerChatOps } from './commands/chatOps';
 import { initSharedPiHost, disposeSharedPiHost, getSharedPiHost } from './process/sharedPiHost';
 import { TurnReview } from './review/turnReview';
 import { syncApprovalGateForWorkspace } from './review/approvalGate';
+import { pickChatModel } from './commands/modelPicker';
 import { InlineReview } from './review/inlineReview';
 import { SessionReplay } from './review/sessionReplay';
 import { SessionIndexService } from './sessions/sessionIndexService';
@@ -1085,97 +1086,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       void vscode.window.showInformationMessage('Open a Pi chat first.');
       return;
     }
-    const models = await controller.getAvailableModels();
-    const current = asRecord(controller.snapshot.state.model);
-    const currentProvider = current ? asString(current.provider) : undefined;
-    const currentKey = current
-      ? `${asString(current.provider)}/${asString(current.id)}`
-      : undefined;
-    const currentLevel = asString(controller.snapshot.state.thinkingLevel);
-
-    const byProvider = new Map<string, JsonObject[]>();
-    for (const model of models) {
-      const provider = String(model.provider ?? 'provider');
-      (byProvider.get(provider) ?? byProvider.set(provider, []).get(provider)!).push(model);
-    }
-    const providers = Array.from(byProvider.keys()).sort();
-
-    // ── Step 1/3: provider ──
-    let provider = providers[0];
-    if (providers.length > 1) {
-      const pick = await vscode.window.showQuickPick(
-        providers.map((name) => ({
-          label: `${name === currentProvider ? '$(check) ' : ''}$(server) ${name}`,
-          description: `${byProvider.get(name)?.length ?? 0} model(s)`,
-          name,
-        })),
-        { title: 'Chat Settings — 1/3: Provider', placeHolder: 'Which LLM provider?' }
-      );
-      if (!pick) {
-        return;
-      }
-      provider = pick.name;
-    }
-    if (!provider) {
-      return;
-    }
-
-    // ── Step 2/3: model within the provider ──
-    const modelPick = await vscode.window.showQuickPick(
-      (byProvider.get(provider) ?? [])
-        .slice()
-        .sort((a, b) => String(a.id ?? '').localeCompare(String(b.id ?? '')))
-        .map((model) => {
-          const id = String(model.id ?? 'model');
-          const inputs = Array.isArray(model.input) ? model.input.map(String) : [];
-          const bits = [
-            model.reasoning ? '$(lightbulb) thinking' : 'no thinking',
-            typeof model.contextWindow === 'number'
-              ? `ctx ${formatTokenCount(model.contextWindow)}`
-              : undefined,
-            typeof model.maxTokens === 'number'
-              ? `out ${formatTokenCount(model.maxTokens)}`
-              : undefined,
-            inputs.includes('image') ? 'images' : undefined,
-          ].filter(Boolean);
-          return {
-            label: `${`${provider}/${id}` === currentKey ? '$(check) ' : ''}${id}`,
-            description: String(model.name ?? ''),
-            detail: bits.join('  \u00b7  '),
-            model,
-          };
-        }),
-      {
-        title: `Chat Settings — 2/3: Model (${provider})`,
-        placeHolder: 'Which model?',
-        matchOnDetail: true,
-      }
-    );
-    if (!modelPick) {
-      return;
-    }
-    await controller.selectModel(provider, String(modelPick.model.id ?? ''));
-
-    // ── Step 3/3: thinking capability for THAT model ──
-    if (modelPick.model.reasoning) {
-      const levelPick = await vscode.window.showQuickPick(
-        ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'].map((level) => ({
-          label: `${level === currentLevel ? '$(check) ' : ''}$(lightbulb) ${level}`,
-          description: level === currentLevel ? 'current' : '',
-          level,
-        })),
-        {
-          title: `Chat Settings — 3/3: Thinking (${String(modelPick.model.id ?? '')})`,
-          placeHolder: 'How hard should it think?',
-        }
-      );
-      if (levelPick) {
-        await controller.setThinkingLevel(levelPick.level);
-      }
-    }
-    await controller.refreshState();
+    await pickChatModel(controller);
     refreshViews();
   });
+
   registrations.set('piRpc.setThinkingLevel', async () => {
     const controller = activeController();
     if (!controller) {

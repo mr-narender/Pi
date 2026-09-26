@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { basename } from 'node:path';
 import { existsSync } from 'node:fs';
 import { getSettings, tabTitleSettings } from '../config/settings';
+import { pickChatModel } from '../commands/modelPicker';
 import { AgentFollowService } from '../live/agentFollow';
 import { ensureTrustedForMutation } from '../security/trust';
 import { SessionRegistry } from '../sessions/sessionRegistry';
@@ -166,6 +167,7 @@ function diagnosticSeverity(
 // Keep in sync with data-command usages in render.ts / chat.ts — nothing else.
 const WEBVIEW_COMMAND_ALLOWLIST = new Set<string>([
   'piRpc.togglePermissionMode',
+  'piRpcInternal.retryWithModel',
   'piRpc.abort',
   'piRpc.commandPalette',
   'piRpc.remote.stop',
@@ -1560,7 +1562,13 @@ export class ChatTabManager implements vscode.Disposable {
         context.controller.log('info', `[webview] ${parsed.text}`);
         return;
       case 'forkAndSend':
-        await this.forkAndSendInTab(context, parsed.fromBottom, parsed.originalText, parsed.text);
+        await this.forkAndSendInTab(
+          context,
+          parsed.fromBottom,
+          parsed.originalText,
+          parsed.text,
+          parsed.pickModel === true
+        );
         return;
       default:
         return;
@@ -1574,19 +1582,28 @@ export class ChatTabManager implements vscode.Disposable {
     context: ChatTabContext,
     fromBottom: number,
     originalText: string,
-    text: string
+    text: string,
+    pickModelFirst?: boolean
   ): Promise<void> {
     const controller = context.controller;
     const edited = text.trim();
     controller.log(
       'info',
-      `[edit] forkAndSend (tab): fromBottom=${fromBottom}, chars=${edited.length}`
+      `[edit] forkAndSend (tab): fromBottom=${fromBottom}, chars=${edited.length}, pickModel=${Boolean(pickModelFirst)}`
     );
     if (!edited) {
       return;
     }
     try {
       ensureTrustedForMutation();
+      if (pickModelFirst) {
+        const picked = await pickChatModel(controller);
+        if (!picked) {
+          controller.log('info', '[edit] model pick cancelled — resend aborted');
+          await this.renderResource(context.resource); // repaint the untouched transcript
+          return;
+        }
+      }
       const entries = await controller.getForkMessages();
       controller.log('info', `[edit] fork points available: ${entries.length}`);
       if (entries.length === 0) {

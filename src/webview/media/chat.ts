@@ -1163,7 +1163,8 @@ function renderNow(snapshot: WebviewSnapshot): void {
       ta.value = original;
       const hint = document.createElement('div');
       hint.className = 'inline-edit-hint';
-      hint.textContent = 'Enter to save & resend · Esc to cancel';
+      hint.innerHTML =
+        '<span>Enter to save &amp; resend \u00b7 Esc to cancel</span><button type="button" class="inline-edit-model-btn">\ud83d\udd00 Different model\u2026</button>';
       editor.append(ta, hint);
 
       const actions = article.querySelector('.msg-actions') as HTMLElement | null;
@@ -1188,49 +1189,68 @@ function renderNow(snapshot: WebviewSnapshot): void {
         // Resume rendering and repaint the authoritative state.
         endInlineEdit(true);
       };
+      // Shared by Enter (same model) and the "Different model…" button
+      // (opens the guided picker first, THEN resends with whatever was
+      // chosen — this is what lets you edit AND retarget in one motion).
+      const submitEdit = (pickModel: boolean): void => {
+        const edited = ta.value.trim();
+        if (!edited) {
+          cancel();
+          return;
+        }
+        // Instant feedback: hide every message after this one until the
+        // forked snapshot arrives.
+        let sibling = article.nextElementSibling as HTMLElement | null;
+        while (sibling) {
+          sibling.style.display = 'none';
+          sibling = sibling.nextElementSibling as HTMLElement | null;
+        }
+        editor.remove();
+        body.textContent = edited;
+        body.style.display = '';
+        if (actions) {
+          actions.style.display = '';
+        }
+        vscode.postMessage({
+          type: 'forkAndSend',
+          fromBottom,
+          originalText: original,
+          text: edited,
+          pickModel: pickModel || undefined,
+        });
+        // Resume rendering; the fork's fresh snapshots repaint the truncated
+        // transcript + new response. Discard the stale (pre-fork) deferred one.
+        endInlineEdit(false);
+      };
       bindOnce(ta, 'keydown', (event) => {
         if (event.key === 'Enter' && !event.shiftKey) {
           event.preventDefault();
-          const edited = ta.value.trim();
-          if (!edited) {
-            cancel();
-            return;
-          }
-          // Instant feedback: hide every message after this one until the
-          // forked snapshot arrives.
-          let sibling = article.nextElementSibling as HTMLElement | null;
-          while (sibling) {
-            sibling.style.display = 'none';
-            sibling = sibling.nextElementSibling as HTMLElement | null;
-          }
-          editor.remove();
-          body.textContent = edited;
-          body.style.display = '';
-          if (actions) {
-            actions.style.display = '';
-          }
-          vscode.postMessage({
-            type: 'debugLog',
-            text: `enter: posting forkAndSend (chars=${edited.length})`,
-          });
-          vscode.postMessage({
-            type: 'forkAndSend',
-            fromBottom,
-            originalText: original,
-            text: edited,
-          });
-          // Resume rendering; the fork's fresh snapshots repaint the truncated
-          // transcript + new response. Discard the stale (pre-fork) deferred one.
-          endInlineEdit(false);
+          submitEdit(false);
         } else if (event.key === 'Escape') {
           event.preventDefault();
           cancel();
         }
       });
+      bindOnce(editor.querySelector('.inline-edit-model-btn') as HTMLButtonElement, 'click', () =>
+        submitEdit(true)
+      );
     });
   }
 
   // #3 — copy a single message's output.
+  for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>('.api-error-copy'))) {
+    bindOnce(button, 'click', () => {
+      const text = button.dataset.copyText ?? '';
+      void navigator.clipboard.writeText(text).then(() => {
+        const original = button.textContent;
+        button.textContent = 'Copied';
+        setTimeout(() => {
+          button.textContent = original;
+        }, 1200);
+      });
+    });
+  }
+
   for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>('.msg-copy'))) {
     bindOnce(button, 'click', () => {
       const article = button.closest('.message-card');

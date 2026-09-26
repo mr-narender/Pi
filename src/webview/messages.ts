@@ -25,7 +25,13 @@ export type WebviewInboundMessage =
       focus: 'composer' | 'attach' | 'contextChip' | 'imageChip' | 'preview' | 'none';
     }
   | { type: 'executeCommand'; command: string; argument?: unknown }
-  | { type: 'forkAndSend'; fromBottom: number; originalText: string; text: string }
+  | {
+      type: 'forkAndSend';
+      fromBottom: number;
+      originalText: string;
+      text: string;
+      pickModel?: boolean;
+    }
   | { type: 'debugLog'; text: string }
   | { type: 'pickImages' }
   | { type: 'clearAttachments' }
@@ -173,6 +179,7 @@ export function parseWebviewMessage(value: unknown): WebviewInboundMessage | und
             fromBottom: record.fromBottom,
             originalText: typeof record.originalText === 'string' ? record.originalText : '',
             text: record.text,
+            ...(record.pickModel === true ? { pickModel: true } : {}),
           }
         : undefined;
     case 'removeContextItem':

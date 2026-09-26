@@ -1,4 +1,5 @@
 import type { WebviewSnapshot } from '../state/types';
+import { friendlyApiStatus, parseProviderError } from './apiError';
 import { highlightCode } from './highlight';
 import { chipPrivacyLabel, summarizeChip, type PendingContextItem } from './composer';
 import { formatUsageChip } from './usageSummary';
@@ -182,8 +183,10 @@ function renderAssistantBody(
   if (!hasAnyContent && !streamingAnswer) {
     const who = modelName ? `<strong>${escapeHtml(modelName)}</strong>` : 'The model';
     if (message.errorMessage) {
-      // Show the provider's REAL error (same text the TUI shows) — never guess.
-      return `<div class="assistant-empty assistant-error">${who} failed: <span class="error-text">${escapeHtml(message.errorMessage)}</span> <button type="button" class="link-button" data-command="piRpcInternal.retryLast">Retry</button> · <button type="button" class="link-button" data-command="piRpcInternal.showLogs">Logs</button></div>`;
+      // Show the provider's REAL error (same text the TUI shows) — parsed into
+      // a structured card when it matches the "provider/model failed: N {json}"
+      // shape; falls back to the plain message untouched otherwise.
+      return renderApiErrorCard(message.errorMessage);
     }
     return `<div class="assistant-empty">${who} returned an empty response and the provider reported no error details. <button type="button" class="link-button" data-command="piRpcInternal.retryLast">Retry</button> · <button type="button" class="link-button" data-command="piRpcInternal.showLogs">Logs</button></div>`;
   }
@@ -993,6 +996,35 @@ function renderPlanStrip(snapshot: WebviewSnapshot): string {
     )
     .join('');
   return `<details class="plan-strip" id="plan-strip" data-preserve-open><summary title="π's current plan"><span class="plan-badge">Plan</span><span class="plan-progress"><span class="plan-progress-fill" style="width:${pct}%"></span></span><span class="plan-count">${plan.done}/${total}</span>${CARET_ICON}</summary><ul class="plan-list">${rows}</ul></details>`;
+}
+
+
+// Structured provider-error card — never a raw JSON dump. Falls back to a
+// plain sentence when the message doesn't match the parseable shape.
+function renderApiErrorCard(errorMessage: string): string {
+  const parsed = parseProviderError(errorMessage);
+  const retryButtons = `<button type="button" class="link-button" data-command="piRpcInternal.retryLast">Retry</button> · <button type="button" class="link-button" data-command="piRpcInternal.retryWithModel">Retry with a different model</button> · <button type="button" class="link-button" data-command="piRpcInternal.showLogs">Logs</button>`;
+  if (parsed.statusCode === undefined && parsed.provider === undefined) {
+    return `<div class="assistant-empty assistant-error"><span class="error-text">${escapeHtml(parsed.message)}</span> ${retryButtons}</div>`;
+  }
+  const status = friendlyApiStatus(parsed.statusCode, parsed.errorType);
+  const rows: Array<[string, string]> = [];
+  if (parsed.provider || parsed.model) {
+    rows.push(['Model', escapeHtml([parsed.provider, parsed.model].filter(Boolean).join('/'))]);
+  }
+  if (parsed.statusCode !== undefined) {
+    rows.push([
+      'Status',
+      `${parsed.statusCode}${parsed.errorType ? ` · ${escapeHtml(parsed.errorType)}` : ''}`,
+    ]);
+  }
+  if (parsed.requestId) {
+    rows.push([
+      'Request ID',
+      `<code class="api-error-reqid">${escapeHtml(parsed.requestId)}</code><button type="button" class="link-button api-error-copy" data-copy-text="${escapeHtml(parsed.requestId)}" title="Copy request ID">Copy</button>`,
+    ]);
+  }
+  return `<div class="assistant-empty assistant-error api-error-card"><div class="api-error-head"><span class="api-error-badge api-error-${status.severity}">${escapeHtml(status.label)}</span></div><div class="api-error-message">${escapeHtml(parsed.message)}</div><div class="api-error-grid">${rows.map(([label, value]) => `<span>${label}</span><span>${value}</span>`).join('')}</div><div class="api-error-actions">${retryButtons}</div></div>`;
 }
 
 function renderStatusChip(snapshot: WebviewSnapshot): string {

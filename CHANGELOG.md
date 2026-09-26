@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.268
+
+- API ERRORS SHOWN PROPERLY: a rate-limit/auth/server-error response no longer dumps raw JSON at you. Parsed into a structured card — status badge (Rate Limited / Overloaded / Auth Error / …), the clean human message, model, and a copyable Request ID — with Retry, Retry with a different model, and Logs actions. Falls back to the plain message untouched for anything that doesn't match the parseable shape — never hides information.
+- EDIT + RESEND WITH A DIFFERENT MODEL: the pencil-edit-a-message flow now has a "🔀 Different model…" option next to Enter/Esc — opens the same guided provider→model→thinking picker, then resends your EDITED text with whatever you picked. Cancelling the picker aborts the resend cleanly (transcript repaints untouched).
+
 ## 0.0.267
 
 - CLAUDE-STYLE MODE SWITCH: a lock icon in the composer deck flips Auto <-> Approve-Every-Edit with ONE CLICK — no settings.json, no manual file editing, no menu. Glows when approval mode is on. “Pi: Toggle Approval Mode” in the palette does the same. Under the hood it's the exact same project-file sync from 0.0.265, now reachable in one click from where you're already working.

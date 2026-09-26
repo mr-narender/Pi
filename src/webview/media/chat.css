@@ -2845,8 +2845,28 @@ button.ghost:hover,
   border-color: var(--vscode-focusBorder);
 }
 #messages .inline-edit-hint {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   font-size: 11px;
   color: var(--vscode-descriptionForeground);
+}
+
+#messages .inline-edit-model-btn {
+  border: 1px solid var(--glass-line-strong, var(--vscode-panel-border));
+  background: transparent;
+  color: var(--vscode-descriptionForeground);
+  font-size: 10.5px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  cursor: pointer;
+  flex: none;
+}
+
+#messages .inline-edit-model-btn:hover {
+  color: var(--ember, #ff8c42);
+  border-color: var(--ember-glow, rgba(255, 140, 66, 0.4));
 }
 
 /* ═══════════════════ Refined Glass design layer (Option A) ═══════════════════
@@ -4109,4 +4129,78 @@ body.vscode-high-contrast #review-overlay {
 
 .permission-toggle:hover {
   color: #f48771;
+}
+
+/* Structured provider-error card — no more raw JSON dumps. */
+.api-error-card {
+  background: color-mix(in srgb, var(--vscode-editor-background) 78%, transparent);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(244, 135, 113, 0.35);
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.api-error-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.api-error-badge {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.api-error-badge.api-error-warning {
+  background: rgba(226, 185, 61, 0.16);
+  color: #e2b93d;
+  border: 1px solid rgba(226, 185, 61, 0.4);
+}
+
+.api-error-badge.api-error-error {
+  background: rgba(244, 135, 113, 0.14);
+  color: #f48771;
+  border: 1px solid rgba(244, 135, 113, 0.4);
+}
+
+.api-error-message {
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.api-error-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 3px 12px;
+  font-size: 11.5px;
+}
+
+.api-error-grid span:nth-child(odd) {
+  opacity: 0.6;
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  padding-top: 2px;
+}
+
+.api-error-reqid {
+  font-family: var(--vscode-editor-font-family, ui-monospace, monospace);
+  font-size: 10.5px;
+  opacity: 0.85;
+}
+
+.api-error-copy {
+  margin-left: 6px;
+  font-size: 10px;
+}
+
+.api-error-actions {
+  font-size: 11.5px;
+  opacity: 0.9;
 }
