@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.253
+
+- Follow is live-only now, harness-proven: switching chats or reloading delivered the transcript as a burst that REPLAYED every historical edit/read as “live” (phantom file-opens; only long-dead files → nothing visible; this was also the old tab-pileup source). Bursts >2 unseen calls are absorbed silently; genuine activity (1–2 calls per update) follows instantly.
+- Pi’s ~-prefixed tool paths expand to the real home dir (they used to become <workspace>/~/… and always failed).
+- Sidebar attach/switch now log to the Pi channel for future diagnosis.
+
 ## 0.0.252
 
 - Chat delete is back: ☰ switcher rows show 🗑 on hover — native confirm modal, session file removed, list refreshes; deleting the chat you are viewing hands the sidebar a fresh draft automatically.

@@ -3,6 +3,7 @@
 // preview tab cycling file-to-file (chat on one side, π's working file on the
 // other), with the edited region glowing ember and hover attribution of WHICH
 // chat did it. Modes (piRpc.followAgent): 'open' (default) | 'status' | 'off'.
+import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { readStartLine, revealNeedle, toolActivity } from './toolActivity';
@@ -75,6 +76,23 @@ export class AgentFollowService implements vscode.Disposable {
       }
       return;
     }
+    // Pass 1: how many UNSEEN calls does this delivery carry? Live activity
+    // arrives one-or-two at a time; a burst means history backfill (chat
+    // switch / reload delivered an empty snapshot first, then the full
+    // transcript) — absorb silently or we replay every old edit as "live"
+    // (the phantom file-opens and tab pileups came from exactly this).
+    let unseen = 0;
+    for (const message of snapshot.messages) {
+      for (const block of message.blocks ?? []) {
+        if (block.kind === 'tool' && block.callId && !seen.has(block.callId)) {
+          unseen += 1;
+        }
+      }
+    }
+    const absorbHistory = unseen > 2;
+    if (absorbHistory && unseen > 0) {
+      this.logger?.info(`[follow] absorbed ${unseen} historical tool calls (no replay)`);
+    }
     for (const message of snapshot.messages) {
       for (const block of message.blocks ?? []) {
         if (block.kind !== 'tool' || !block.callId) {
@@ -84,6 +102,9 @@ export class AgentFollowService implements vscode.Disposable {
         const prior = seen.get(block.callId);
         if (prior === undefined) {
           seen.set(block.callId, argsLen);
+          if (absorbHistory) {
+            continue;
+          }
           const activity = toolActivity(block.name, block.args);
           if (activity) {
             if (activity.kind === 'editing') {
@@ -131,6 +152,11 @@ export class AgentFollowService implements vscode.Disposable {
   }
 
   private resolve(filePath: string, workspaceRoot: string | undefined): string {
+    // Pi tools sometimes emit ~-prefixed paths; joining those onto the
+    // workspace produced garbage like <root>/~/Desktop/….
+    if (filePath === '~' || filePath.startsWith('~/')) {
+      return path.join(os.homedir(), filePath.slice(1));
+    }
     return path.isAbsolute(filePath) ? filePath : path.join(workspaceRoot ?? '', filePath);
   }
 

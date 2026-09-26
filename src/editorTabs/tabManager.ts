@@ -1311,6 +1311,7 @@ export class ChatTabManager implements vscode.Disposable {
           kind: 'sessionFile',
           sessionFile: parsed.path,
         };
+        this.logger.info(`[sidebar] switch → ${parsed.path.split('/').pop() ?? ''}`);
         await this.activateResource(host.resource, { startIfStopped: true });
         await this.renderResource(host.resource, { active: true });
         return;
@@ -1833,6 +1834,7 @@ export class ChatTabManager implements vscode.Disposable {
       kind: 'workspaceDraft',
       draftId: 'sidebar', // constant → same session key across reloads
     };
+    this.logger.info(`[sidebar] attach (draft=${this.sidebarTarget.draftId ?? ''})`);
     const host = new SidebarChatHost(extensionUri, view, this, resource);
     this.hosts.set(resource.toString(), host);
     // START the controller — rendering alone leaves it "Connecting…" forever
