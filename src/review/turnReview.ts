@@ -13,6 +13,7 @@ interface TurnSnapshot {
   sha: string;
   untracked: Set<string>;
   at: number;
+  refId?: string;
 }
 
 export interface TurnChange {
@@ -27,6 +28,8 @@ export interface TurnRecord {
   cwd: string;
   changes: TurnChange[];
   at: number;
+  /** git ref rooting the stash commit — survives `git gc` across reloads. */
+  refId?: string;
 }
 
 /**
@@ -70,7 +73,25 @@ export class TurnReview {
     return allowed;
   }
 
-  public constructor(private readonly logger: DiagnosticsLogger) {}
+  private static readonly STORAGE_KEY = 'piRpc.turnReview.history.v1';
+
+  public constructor(
+    private readonly logger: DiagnosticsLogger,
+    private readonly memento?: vscode.Memento
+  ) {
+    const saved = this.memento?.get<Array<TurnRecord & { title: string }>>(
+      TurnReview.STORAGE_KEY,
+      []
+    );
+    if (saved && saved.length > 0) {
+      this.history.push(...saved);
+      this.logger.info(`Restored ${saved.length} reviewable turn(s) from disk.`);
+    }
+  }
+
+  private persist(): void {
+    void this.memento?.update(TurnReview.STORAGE_KEY, this.history);
+  }
 
   public async onTurnStart(controller: SessionController): Promise<void> {
     const cwd = controller.folder.uri.fsPath;
@@ -85,7 +106,15 @@ export class TurnReview {
           .split('\n')
           .filter(Boolean)
       );
-      this.snapshots.set(controller, { sha, untracked, at: Date.now() });
+      // `stash create` returns a DANGLING commit — nothing references it, so
+      // `git gc` can prune it. Root it under our own ref namespace so the
+      // snapshot survives long enough to be reviewed after a reload/restart.
+      let refId: string | undefined;
+      if (stashSha) {
+        refId = `refs/pi-review/${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        await this.git(cwd, ['update-ref', refId, stashSha]).catch(() => undefined);
+      }
+      this.snapshots.set(controller, { sha, untracked, at: Date.now(), refId });
     } catch {
       // Not a git repo / git unavailable — turn review silently unavailable.
       this.snapshots.delete(controller);
@@ -150,17 +179,31 @@ export class TurnReview {
       } catch {
         /* diffstat optional */
       }
-      this.lastTurn.set(controller, { sha: snapshot.sha, cwd, changes, at: Date.now() });
+      this.lastTurn.set(controller, {
+        sha: snapshot.sha,
+        cwd,
+        changes,
+        at: Date.now(),
+        refId: snapshot.refId,
+      });
       this.history.unshift({
         sha: snapshot.sha,
         cwd,
         changes,
         at: Date.now(),
         title: basename(cwd),
+        refId: snapshot.refId,
       });
       if (this.history.length > 10) {
-        this.history.length = 10;
+        // Un-root anything falling out of the reviewable window so refs never
+        // grow unbounded.
+        for (const dropped of this.history.splice(10)) {
+          if (dropped.refId) {
+            void this.git(dropped.cwd, ['update-ref', '-d', dropped.refId]).catch(() => undefined);
+          }
+        }
       }
+      this.persist();
       this.changeEmitter.fire();
       const count = changes.length;
       if (options?.silent) {

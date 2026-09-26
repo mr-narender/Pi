@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.264
+
+- ⧉ Review history now survives reload/restart: turns persist to workspace storage (last 10, same as before) and restore on activation. Durability fix underneath: each turn’s git-stash snapshot — previously a DANGLING commit `git gc` could prune — is now rooted under its own ref (`refs/pi-review/...`), deleted automatically when it ages out of the 10-turn window. Nothing unbounded, nothing lost.
+
 ## 0.0.263
 
 - Followed files stay open: each file π reads or edits opens as its own persistent tab (no more single cycling preview slot), so you can flip back through everything touched this session. Focus never leaves your cursor.
