@@ -896,6 +896,10 @@ function renderNow(snapshot: WebviewSnapshot): void {
       if (!action) {
         return;
       }
+      if (action === 'toggleChatList') {
+        toggleChatListOverlay();
+        return;
+      }
       if (action === 'acceptPreview') {
         previewReturnFocusId = undefined;
         vscode.postMessage({ type: 'acceptPreview' });
@@ -1571,6 +1575,94 @@ window.addEventListener('keydown', (event) => {
   }
 });
 
+// ── One-surface switcher: the chat list slides OVER the chat ────────────────
+interface ChatListItem {
+  path: string;
+  title: string;
+  time: string;
+  current?: boolean;
+  workspace?: string;
+  workspaceFolderUri?: string;
+}
+let chatListData: { current: ChatListItem[]; others: ChatListItem[] } | undefined;
+let chatListFilter = '';
+
+function chatListOverlay(): HTMLElement {
+  let overlay = document.getElementById('chat-list-overlay');
+  if (overlay) {
+    return overlay;
+  }
+  overlay = document.createElement('div');
+  overlay.id = 'chat-list-overlay';
+  overlay.hidden = true;
+  overlay.innerHTML =
+    '<input id="cl-search" type="text" placeholder="Search chats…" aria-label="Search chats" />' +
+    '<button type="button" id="cl-new" class="cl-new">✚ New Chat</button>' +
+    '<div id="cl-list" class="cl-list" role="listbox"></div>';
+  document.body.appendChild(overlay);
+  overlay.querySelector<HTMLInputElement>('#cl-search')?.addEventListener('input', (event) => {
+    chatListFilter = (event.target as HTMLInputElement).value.toLowerCase();
+    renderChatList();
+  });
+  overlay.querySelector('#cl-new')?.addEventListener('click', () => {
+    vscode.postMessage({ type: 'newChatSession' });
+    toggleChatListOverlay(false);
+  });
+  window.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !overlay!.hidden) {
+      event.preventDefault();
+      toggleChatListOverlay(false);
+    }
+  });
+  return overlay;
+}
+
+function toggleChatListOverlay(force?: boolean): void {
+  const overlay = chatListOverlay();
+  const show = force ?? overlay.hidden;
+  overlay.hidden = !show;
+  if (show) {
+    vscode.postMessage({ type: 'requestChatList' });
+    renderChatList();
+    overlay.querySelector<HTMLInputElement>('#cl-search')?.focus();
+  } else {
+    document.getElementById(COMPOSER_FIELD_ID)?.focus();
+  }
+}
+
+function renderChatList(): void {
+  const list = document.getElementById('cl-list');
+  if (!list) {
+    return;
+  }
+  const match = (item: ChatListItem): boolean =>
+    !chatListFilter || item.title.toLowerCase().includes(chatListFilter);
+  const row = (item: ChatListItem, meta: string): string =>
+    `<button type="button" class="cl-item${item.current ? ' is-current' : ''}" data-path="${item.path.replaceAll('"', '&quot;')}" data-ws="${item.workspaceFolderUri ?? ''}"><span class="cl-title">${item.title.replaceAll('<', '&lt;')}</span><span class="cl-meta">${meta}</span></button>`;
+  const current = (chatListData?.current ?? []).filter(match);
+  const others = (chatListData?.others ?? []).filter(match);
+  list.innerHTML =
+    (current.length > 0
+      ? `<div class="cl-sec">This workspace</div>` +
+        current.map((item) => row(item, item.time)).join('')
+      : '<div class="cl-sec">No chats yet</div>') +
+    (others.length > 0
+      ? `<details class="cl-others"><summary class="cl-sec">Other projects (${others.length})</summary>` +
+        others.map((item) => row(item, `${item.workspace ?? ''} · ${item.time}`)).join('') +
+        '</details>'
+      : '');
+  for (const button of Array.from(list.querySelectorAll<HTMLButtonElement>('.cl-item'))) {
+    button.addEventListener('click', () => {
+      vscode.postMessage({
+        type: 'openChatSession',
+        path: button.dataset.path ?? '',
+        workspaceFolderUri: button.dataset.ws || undefined,
+      });
+      toggleChatListOverlay(false);
+    });
+  }
+}
+
 // Approvals answer to the keyboard: Y = Allow, N = Deny (skipped while
 // typing). The highest-friction agentic moment shouldn't need the mouse.
 window.addEventListener('keydown', (event) => {
@@ -1904,6 +1996,15 @@ window.addEventListener('keydown', (event) => {
 window.addEventListener(
   'message',
   (event: MessageEvent<{ type: string; snapshot: WebviewSnapshot }>) => {
+    if (event.data?.type === 'chatList') {
+      const payload = event.data as unknown as {
+        current?: ChatListItem[];
+        others?: ChatListItem[];
+      };
+      chatListData = { current: payload.current ?? [], others: payload.others ?? [] };
+      renderChatList();
+      return;
+    }
     if (event.data?.type === 'find') {
       openFind();
       return;

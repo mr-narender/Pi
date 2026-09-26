@@ -6,6 +6,9 @@ export type WebviewInboundMessage =
   | { type: 'sendAcceptedSnapshotAgain' }
   | { type: 'abort' }
   | { type: 'toggleFollow' }
+  | { type: 'requestChatList' }
+  | { type: 'newChatSession' }
+  | { type: 'openChatSession'; path: string; workspaceFolderUri?: string }
   | { type: 'screenOpenFile'; path: string; needle?: string }
   | { type: 'screenRevert'; path: string; oldText?: string; newText?: string }
   | { type: 'setDraft'; text: string; resetSeq?: number }
@@ -64,6 +67,8 @@ export function parseWebviewMessage(value: unknown): WebviewInboundMessage | und
     case 'copyAcceptedSnapshot':
     case 'sendAcceptedSnapshotAgain':
     case 'toggleFollow':
+    case 'requestChatList':
+    case 'newChatSession':
     case 'abort':
     case 'pickImages':
     case 'clearAttachments':
@@ -73,6 +78,15 @@ export function parseWebviewMessage(value: unknown): WebviewInboundMessage | und
     case 'appendPickedFile':
     case 'loadOlder':
       return { type: record.type };
+    case 'openChatSession':
+      return typeof record.path === 'string'
+        ? {
+            type: 'openChatSession',
+            path: record.path,
+            workspaceFolderUri:
+              typeof record.workspaceFolderUri === 'string' ? record.workspaceFolderUri : undefined,
+          }
+        : undefined;
     case 'screenOpenFile':
       return typeof record.path === 'string'
         ? {

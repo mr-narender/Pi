@@ -259,6 +259,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   initChatUriRegistry(context.workspaceState);
   const chatTabs = new ChatTabManager(context, registry, uiState, logger);
   const turnReview = new TurnReview(logger);
+  chatTabs.chatListSource = () => {
+    const folder = vscode.workspace.workspaceFolders?.[0];
+    if (!folder) {
+      return { items: [], others: [] };
+    }
+    void recentSessions.refresh(folder);
+    const state = recentSessions.getState(folder);
+    return { items: state.items, others: state.others ?? [] };
+  };
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(
       'piRpc.chat',
@@ -354,9 +363,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   context.subscriptions.push(
     sessionDirWatcher,
-    vscode.window.registerWebviewViewProvider(SessionsWebviewProvider.viewType, sessionsView, {
-      webviewOptions: { retainContextWhenHidden: true },
-    }),
     recentSessions.onDidChange(() => sessionsView.refresh())
   );
 

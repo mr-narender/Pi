@@ -169,6 +169,9 @@ const WEBVIEW_COMMAND_ALLOWLIST = new Set<string>([
   'piRpc.commandPalette',
   'piRpc.remote.stop',
   'piRpc.chatSettings',
+  'piRpc.reviewLastTurn',
+  'piRpc.showChatVersions',
+  'piRpc.exportHtml',
   'piRpc.showPiCommands',
   'piRpc.switchSession',
   'piRpcInternal.restart',
@@ -1199,6 +1202,75 @@ export class ChatTabManager implements vscode.Disposable {
         }
         return;
       }
+      case 'requestChatList': {
+        const source = this.chatListSource?.();
+        const relative = (at: number): string => {
+          const mins = Math.max(1, Math.round((Date.now() - at) / 60_000));
+          if (mins < 60) {
+            return `${mins}m`;
+          }
+          if (mins < 60 * 24) {
+            return `${Math.round(mins / 60)}h`;
+          }
+          return `${Math.round(mins / (60 * 24))}d`;
+        };
+        const currentFile =
+          this.sidebarTarget?.kind === 'sessionFile' ? this.sidebarTarget.sessionFile : undefined;
+        host.post({
+          type: 'chatList',
+          current: (source?.items ?? []).slice(0, 30).map((item) => ({
+            path: item.path,
+            title: item.displayName,
+            time: relative(item.modifiedAt),
+            current: item.path === currentFile,
+          })),
+          others: (source?.others ?? []).slice(0, 20).map((item) => ({
+            path: item.path,
+            title: item.displayName,
+            time: relative(item.modifiedAt),
+            workspace: item.workspaceLabel,
+            cwd: item.cwd,
+          })),
+        });
+        return;
+      }
+      case 'openChatSession': {
+        if (host.resource.scheme !== 'piRpcSidebar') {
+          return;
+        }
+        const folder =
+          vscode.workspace.workspaceFolders?.find(
+            (candidate) => parsed.workspaceFolderUri === candidate.uri.toString()
+          ) ?? vscode.workspace.workspaceFolders?.[0];
+        if (!folder) {
+          return;
+        }
+        this.sidebarTarget = {
+          workspaceFolderUri: folder.uri.toString(),
+          kind: 'sessionFile',
+          sessionFile: parsed.path,
+        };
+        await this.activateResource(host.resource, { startIfStopped: true });
+        await this.renderResource(host.resource, { active: true });
+        return;
+      }
+      case 'newChatSession': {
+        if (host.resource.scheme !== 'piRpcSidebar') {
+          return;
+        }
+        const folder = vscode.workspace.workspaceFolders?.[0];
+        if (!folder) {
+          return;
+        }
+        this.sidebarTarget = {
+          workspaceFolderUri: folder.uri.toString(),
+          kind: 'workspaceDraft',
+          draftId: `sidebar-${Date.now()}`,
+        };
+        await this.activateResource(host.resource, { startIfStopped: true });
+        await this.renderResource(host.resource, { active: true });
+        return;
+      }
       case 'screenOpenFile': {
         // Ownership handoff: open the REAL file (optionally at a region).
         try {
@@ -1639,6 +1711,19 @@ export class ChatTabManager implements vscode.Disposable {
   private readonly sessions: SessionIndex;
 
   private sidebarTarget: ChatTabTarget | undefined;
+  /** Injected by extension.ts: recent-session data for the sidebar switcher. */
+  public chatListSource:
+    | (() => {
+        items: Array<{ path: string; displayName: string; modifiedAt: number }>;
+        others: Array<{
+          path: string;
+          displayName: string;
+          modifiedAt: number;
+          cwd: string;
+          workspaceLabel: string;
+        }>;
+      })
+    | undefined;
 
   /** Mount the sidebar chat view onto the shared pipeline. */
   public async attachSidebarChat(
@@ -2025,6 +2110,7 @@ export class ChatTabManager implements vscode.Disposable {
     if (this.sharing && this.sharing.key === this.keyFor(resource)) {
       snapshot.sharing = { active: true, label: this.sharing.label };
     }
+    snapshot.surface = resource.scheme === 'piRpcSidebar' ? 'sidebar' : 'tab';
     snapshot.followMode = vscode.workspace
       .getConfiguration('piRpc')
       .get<'open' | 'status' | 'off'>('followAgent', 'open');

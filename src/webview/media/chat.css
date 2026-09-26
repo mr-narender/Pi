@@ -3640,3 +3640,202 @@ body.vscode-high-contrast .code-wrap {
   font-size: 10.5px;
   opacity: 0.7;
 }
+
+/* ═══ One-surface sidebar: command deck + switcher overlay ═══ */
+.sb-deck {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  margin: -4px -8px 4px;
+  border-bottom: 1px solid var(--glass-line);
+  background: var(--glass-1);
+  backdrop-filter: blur(8px);
+  flex: 0 0 auto;
+}
+
+.sb-btn,
+.sb-more > summary.sb-btn {
+  border: none;
+  background: transparent;
+  color: var(--vscode-foreground);
+  opacity: 0.75;
+  cursor: pointer;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  list-style: none;
+  padding: 0;
+}
+
+.sb-more > summary.sb-btn::-webkit-details-marker {
+  display: none;
+}
+
+.sb-btn:hover {
+  opacity: 1;
+  background: var(--glass-2);
+}
+
+.sb-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 46%;
+  border: 1px solid var(--glass-line);
+  background: var(--glass-1);
+  color: var(--vscode-foreground);
+  font-weight: 600;
+  font-size: 12px;
+  padding: 3px 9px;
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.sb-title:hover {
+  border-color: var(--ember-glow);
+}
+
+.sb-title-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb-caret {
+  opacity: 0.6;
+  font-size: 9px;
+}
+
+.sb-spacer {
+  flex: 1;
+}
+
+.sb-more {
+  position: relative;
+}
+
+.sb-more .menu-panel {
+  right: 0;
+  top: calc(100% + 6px);
+  bottom: auto;
+  margin-top: 0;
+}
+
+#chat-list-overlay {
+  position: fixed;
+  inset: 37px 0 0 0;
+  z-index: 30;
+  background: color-mix(in srgb, var(--vscode-editor-background) 88%, transparent);
+  backdrop-filter: blur(12px);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+#chat-list-overlay[hidden] {
+  display: none !important;
+}
+
+#cl-search {
+  background: var(--glass-1);
+  border: 1px solid var(--glass-line-strong);
+  border-radius: 8px;
+  padding: 7px 10px;
+  color: var(--vscode-foreground);
+  font-size: 12px;
+}
+
+#cl-search:focus {
+  outline: none;
+  border-color: var(--ember-glow);
+}
+
+.cl-new {
+  display: flex;
+  justify-content: center;
+  padding: 7px;
+  border: 1px dashed var(--ember-line);
+  border-radius: 9px;
+  background: transparent;
+  color: var(--ember);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.cl-new:hover {
+  background: var(--ember-soft);
+}
+
+.cl-list {
+  flex: 1;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cl-sec {
+  font-size: 9.5px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--vscode-descriptionForeground);
+  margin: 8px 2px 3px;
+  cursor: default;
+}
+
+.cl-others > summary.cl-sec {
+  cursor: pointer;
+  list-style: none;
+}
+
+.cl-others > summary.cl-sec::-webkit-details-marker {
+  display: none;
+}
+
+.cl-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  padding: 7px 9px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--vscode-foreground);
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+}
+
+.cl-item:hover {
+  background: var(--glass-2);
+}
+
+.cl-item.is-current {
+  background: var(--glass-2);
+  box-shadow: inset 2px 0 0 var(--ember);
+}
+
+.cl-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cl-meta {
+  color: var(--vscode-descriptionForeground);
+  font-size: 10px;
+  flex: none;
+}
+
+body.vscode-high-contrast .sb-deck,
+body.vscode-high-contrast #chat-list-overlay {
+  backdrop-filter: none;
+  background: var(--vscode-editor-background);
+}

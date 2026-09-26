@@ -29,11 +29,10 @@ test('manifest contributes the Chats webview + Review tree sidebars', () => {
   const view = packageJson.contributes.views.piRpc;
   assert.deepEqual(
     view.map((entry) => entry.id),
-    ['piRpc.chat', 'piRpc.sessions', 'piRpc.review']
+    ['piRpc.chat', 'piRpc.review']
   );
   assert.equal(view[0]?.type, 'webview');
-  assert.equal(view[1]?.type, 'webview');
-  assert.equal(view[2]?.type, undefined); // tree view (default type)
+  assert.equal(view[1]?.type, undefined); // tree view (default type)
   const allMenus = JSON.stringify(packageJson.contributes.menus ?? {});
   assert.ok(!allMenus.includes('piRpc.currentChat'));
 });

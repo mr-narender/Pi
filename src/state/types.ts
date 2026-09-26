@@ -190,6 +190,8 @@ export interface WebviewPendingImageItem {
 }
 
 export interface WebviewSnapshot {
+  /** Which host renders this: the sidebar one-surface or an editor tab. */
+  surface?: 'sidebar' | 'tab';
   /** Most recent task list π wrote — rendered as the plan strip. */
   plan?: { items: Array<{ text: string; done: boolean }>; done: number };
   /** Zed-style follow toggle state (crosshair button). */

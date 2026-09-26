@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.246
+
+- ONE-SURFACE SIDEBAR: the stacked Chat + Chats squeeze is gone — the chat IS the π sidebar. New command deck header: ☰ / title ▾ open the chat SWITCHER as an overlay sliding over the conversation (search · ✚ New Chat · this workspace · Other projects; Esc closes, pick rebinds in place); ✚ new chat; ⌖ follow crosshair; ⋯ menu (Review last turn · Chat versions · Export · Restart). The separate Chats view is removed — its data powers the overlay.
+- Activation E2E green.
+
 ## 0.0.245
 
 - Sidebar chat connects: its controller now actually STARTS on attach (it only rendered before — stuck at “Connecting to π” forever).
