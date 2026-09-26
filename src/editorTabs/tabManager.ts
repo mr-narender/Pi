@@ -1315,8 +1315,7 @@ export class ChatTabManager implements vscode.Disposable {
             parsed.oldText ?? ''
           );
           await vscode.workspace.applyEdit(edit);
-          await doc.save();
-          void vscode.window.showInformationMessage('Change undone.');
+          await doc.save(); // the file itself shows the result — no toast
         } catch (error) {
           void vscode.window.showWarningMessage(
             `Undo failed: ${error instanceof Error ? error.message : String(error)}`
@@ -1330,15 +1329,9 @@ export class ChatTabManager implements vscode.Disposable {
         await config.update('followAgent', next, vscode.ConfigurationTarget.Global);
         await this.renderResource(host.resource);
         if (next === 'open') {
-          const replayed = this.follow.replayLast(); // jump to the file π is on
-          void vscode.window.showInformationMessage(
-            replayed
-              ? 'Following π — opened the file the agent is on.'
-              : 'Following π — files the agent reads or edits will open in the split to the right.'
-          );
-        } else {
-          void vscode.window.showInformationMessage('π follow off.');
+          this.follow.replayLast(); // jump to the file π is on
         }
+        // No toast: the crosshair + status bar already show the state.
         return;
       }
       case 'abort': {
@@ -1877,8 +1870,15 @@ export class ChatTabManager implements vscode.Disposable {
     if (prev === 'busy' && now === 'ready') {
       const startedAt = this.busySince.get(controller);
       this.busySince.delete(controller);
+      const ownerResource = this.sessions.ownerOf(controller);
+      const ownerHost = ownerResource ? this.hosts.get(ownerResource.toString()) : undefined;
+      // "Watching" = the window is focused AND this chat is visible anywhere —
+      // active editor tab OR the sidebar surface. Watched chats stay silent.
+      const watching =
+        vscode.window.state.focused &&
+        (this.getActiveContext()?.controller === controller || ownerHost?.panel.visible === true);
       if (getSettings().turnReview) {
-        void this.turnReview?.onTurnEnd(controller);
+        void this.turnReview?.onTurnEnd(controller, { silent: watching });
       }
       // Context pressure costs one get_session_stats RPC — only spend it on
       // chats someone can actually SEE (hidden tabs get checked on reveal).
@@ -1890,12 +1890,7 @@ export class ChatTabManager implements vscode.Disposable {
         }
       }
       const elapsed = startedAt ? Date.now() - startedAt : 0;
-      if (!getSettings().notifyOnComplete || elapsed < 4000) {
-        return;
-      }
-      const watching =
-        vscode.window.state.focused && this.getActiveContext()?.controller === controller;
-      if (watching) {
+      if (!getSettings().notifyOnComplete || elapsed < 4000 || watching) {
         return;
       }
       const label = basename(controller.folder.uri.fsPath) || 'workspace';

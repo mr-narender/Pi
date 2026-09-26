@@ -92,7 +92,10 @@ export class TurnReview {
     }
   }
 
-  public async onTurnEnd(controller: SessionController): Promise<void> {
+  public async onTurnEnd(
+    controller: SessionController,
+    options?: { silent?: boolean }
+  ): Promise<void> {
     const snapshot = this.snapshots.get(controller);
     this.snapshots.delete(controller);
     if (!snapshot) {
@@ -160,6 +163,9 @@ export class TurnReview {
       }
       this.changeEmitter.fire();
       const count = changes.length;
+      if (options?.silent) {
+        return; // user is watching this chat — the Review panel has it
+      }
       void vscode.window
         .showInformationMessage(
           `Pi changed ${count} file${count === 1 ? '' : 's'} this turn.`,

@@ -1165,7 +1165,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       await controller.setThinkingLevel(picked.level);
       await controller.refreshState();
       refreshViews();
-      void vscode.window.showInformationMessage(`Thinking level set to “${picked.level}”.`);
     }
   });
   registrations.set('piRpc.cycleThinkingLevel', async () =>

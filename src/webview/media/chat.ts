@@ -1622,6 +1622,10 @@ function toggleChatListOverlay(force?: boolean): void {
   const show = force ?? overlay.hidden;
   overlay.hidden = !show;
   if (show) {
+    // Anchor just below the command deck (fixed 37px overlapped it — the
+    // layout's top padding pushes the deck lower than that).
+    const deck = document.querySelector('.sb-deck');
+    overlay.style.top = deck ? `${Math.ceil(deck.getBoundingClientRect().bottom) + 4}px` : '8px';
     vscode.postMessage({ type: 'requestChatList' });
     renderChatList();
     overlay.querySelector<HTMLInputElement>('#cl-search')?.focus();

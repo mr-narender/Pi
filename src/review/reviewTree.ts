@@ -103,8 +103,7 @@ export function createReviewTree(review: TurnReview): {
         'Revert'
       );
       if (confirm === 'Revert') {
-        await review.revertFile(node.record, node.change);
-        void vscode.window.showInformationMessage(`Reverted ${node.change.file}`);
+        await review.revertFile(node.record, node.change); // tree + editor show it
       }
     },
     'piRpc.reviewRevertTurn': async (node) => {
@@ -121,7 +120,6 @@ export function createReviewTree(review: TurnReview): {
         for (const change of node.record.changes) {
           await review.revertFile(node.record, change).catch(() => undefined);
         }
-        void vscode.window.showInformationMessage(`Reverted ${count} file(s).`);
       }
     },
   };
