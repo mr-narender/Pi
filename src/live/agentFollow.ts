@@ -7,7 +7,13 @@ import { spawn } from 'node:child_process';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
-import { anchorNeedle, readStartLine, revealNeedle, shouldTrackFsPath, toolActivity } from './toolActivity';
+import {
+  anchorNeedle,
+  readStartLine,
+  revealNeedle,
+  shouldTrackFsPath,
+  toolActivity,
+} from './toolActivity';
 
 type FollowLogger = { info(message: string): void } | undefined;
 
@@ -470,7 +476,9 @@ export class AgentFollowService implements vscode.Disposable {
     try {
       const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(absolute));
       const editor = await vscode.window.showTextDocument(doc, {
-        preview: true, // ONE slot cycling as π moves — no tab pileup
+        // Persistent tabs: every file π opens/edits stays open (no cycling
+        // slot) so you can flip back through the whole session's files.
+        preview: false,
         preserveFocus: true,
         viewColumn: vscode.ViewColumn.Active,
       });

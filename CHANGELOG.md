@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.263
+
+- Followed files stay open: each file π reads or edits opens as its own persistent tab (no more single cycling preview slot), so you can flip back through everything touched this session. Focus never leaves your cursor.
+
 ## 0.0.262
 
 - REALTIME AGENT CARET: while a turn runs, a live “⟵ π” marker travels through the file to the exact line the agent is reading or editing RIGHT NOW — updated every snapshot (throttled), anchored on text that exists before the write even lands, auto-scrolling to stay in view. You literally watch π’s position move line by line, across files, in realtime. Clears when the turn ends.
