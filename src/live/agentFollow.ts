@@ -7,7 +7,7 @@ import { spawn } from 'node:child_process';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
-import { readStartLine, revealNeedle, shouldTrackFsPath, toolActivity } from './toolActivity';
+import { anchorNeedle, readStartLine, revealNeedle, shouldTrackFsPath, toolActivity } from './toolActivity';
 
 type FollowLogger = { info(message: string): void } | undefined;
 
@@ -58,6 +58,17 @@ export class AgentFollowService implements vscode.Disposable {
   /** Cmd/Ctrl+Enter: follow THIS turn even when the crosshair is off. */
   private readonly followOnceKeys = new Set<string>();
   private awakeProcess: import('node:child_process').ChildProcess | undefined;
+  /** The moving "π is here" caret — updated every snapshot while a turn runs,
+   * so you watch the agent's position travel through the file in realtime. */
+  private readonly liveCaret = vscode.window.createTextEditorDecorationType({
+    isWholeLine: true,
+    backgroundColor: 'rgba(255, 140, 66, 0.16)',
+    after: { contentText: '  ⟵ π', color: '#ff8c42', fontWeight: 'bold' },
+    overviewRulerColor: '#ffbe7a',
+    overviewRulerLane: vscode.OverviewRulerLane.Center,
+  });
+  private liveCaretEditor: vscode.TextEditor | undefined;
+  private liveThrottleAt = 0;
   private readonly status: vscode.StatusBarItem;
   private statusTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -92,6 +103,7 @@ export class AgentFollowService implements vscode.Disposable {
     } else {
       this.busyChats.delete(key);
       this.followOnceKeys.delete(key); // one turn only
+      this.clearLiveCaret();
       this.scheduleWatcherIdle();
       if (this.busyChats.size === 0) {
         this.releaseAwake();
@@ -188,6 +200,73 @@ export class AgentFollowService implements vscode.Disposable {
     if (seen.size > 2000) {
       this.seen.set(key, new Map(Array.from(seen.entries()).slice(-500)));
     }
+    this.updateLiveFocus(snapshot, isActiveChat, workspaceRoot, busy === true, key);
+  }
+
+  /** Move the realtime caret to π's current position (newest file-touching call
+   * in the transcript). Runs every snapshot while busy; throttled. Anchors on
+   * text that exists NOW (old text mid-edit / read offset) so it tracks live,
+   * before the write even lands. */
+  private updateLiveFocus(
+    snapshot: SnapshotLike,
+    isActiveChat: boolean,
+    workspaceRoot: string | undefined,
+    busy: boolean,
+    key: string
+  ): void {
+    const followForced = this.followOnceKeys.has(key);
+    if (!busy || !isActiveChat || (this.mode() !== 'open' && !followForced)) {
+      this.clearLiveCaret();
+      return;
+    }
+    const now = Date.now();
+    if (now - this.liveThrottleAt < 120) {
+      return;
+    }
+    this.liveThrottleAt = now;
+    // Newest tool block that targets a file.
+    let focus: { name?: string; args?: string } | undefined;
+    for (let m = snapshot.messages.length - 1; m >= 0 && !focus; m -= 1) {
+      const blocks = snapshot.messages[m]?.blocks ?? [];
+      for (let b = blocks.length - 1; b >= 0; b -= 1) {
+        const block = blocks[b]!;
+        if (block.kind === 'tool' && toolActivity(block.name, block.args)) {
+          focus = block;
+          break;
+        }
+      }
+    }
+    if (!focus) {
+      return;
+    }
+    const activity = toolActivity(focus.name, focus.args)!;
+    const absolute = this.resolve(activity.path, workspaceRoot);
+    const editor = vscode.window.visibleTextEditors.find(
+      (candidate) => candidate.document.uri.fsPath === absolute
+    );
+    if (!editor) {
+      return; // act() opens it; next snapshot places the caret
+    }
+    let line = 0;
+    if (activity.kind === 'reading') {
+      line = Math.max(0, (readStartLine(focus.args) ?? 1) - 1);
+    } else {
+      const needle = anchorNeedle(focus.args);
+      if (needle) {
+        const at = editor.document.getText().indexOf(needle);
+        line = at >= 0 ? editor.document.positionAt(at).line : 0;
+      }
+    }
+    line = Math.min(line, Math.max(0, editor.document.lineCount - 1));
+    const range = new vscode.Range(line, 0, line, 0);
+    editor.setDecorations(this.liveCaret, [range]);
+    editor.revealRange(range, vscode.TextEditorRevealType.InCenterIfOutsideViewport);
+    this.liveCaretEditor = editor;
+  }
+
+  private clearLiveCaret(): void {
+    this.liveCaretEditor?.setDecorations(this.liveCaret, []);
+    this.liveCaretEditor = undefined;
   }
 
   /** macOS: hold off idle sleep while any turn runs (caffeinate -di). */
@@ -480,6 +559,7 @@ export class AgentFollowService implements vscode.Disposable {
 
   public dispose(): void {
     this.releaseAwake();
+    this.liveCaret.dispose();
     clearTimeout(this.decorationTimer);
     clearTimeout(this.watcherIdleTimer);
     this.watcher?.dispose();

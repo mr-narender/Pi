@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.262
+
+- REALTIME AGENT CARET: while a turn runs, a live “⟵ π” marker travels through the file to the exact line the agent is reading or editing RIGHT NOW — updated every snapshot (throttled), anchored on text that exists before the write even lands, auto-scrolling to stay in view. You literally watch π’s position move line by line, across files, in realtime. Clears when the turn ends.
+
 ## 0.0.261
 
 - LINE-BY-LINE REVIEW (Zed’s single-file review, in VS Code): from the ⧉ Review overlay, hit ≣ on any file — the REAL file opens with per-hunk CodeLens controls: “π −n +m · ✓ Keep · ↩ Revert” above every changed region (green tint + before-text on hover), plus Keep all / Revert all / Done at the top. Revert applies a surgical edit restoring just that hunk from the turn snapshot; hunks recompute live as you or π keep editing.

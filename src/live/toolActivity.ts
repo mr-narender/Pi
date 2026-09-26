@@ -136,3 +136,32 @@ export function shouldTrackFsPath(fsPath: string, roots: string[]): boolean {
   }
   return true;
 }
+
+/** The text π is working AT right now — the old text still present in the file
+ * during a streaming edit (best live anchor), else the new text. */
+export function anchorNeedle(args: string | undefined): string | undefined {
+  if (!args) {
+    return undefined;
+  }
+  try {
+    const parsed: unknown = JSON.parse(args);
+    if (parsed && typeof parsed === 'object') {
+      const record = parsed as Record<string, unknown>;
+      for (const key of ['oldString', 'old_str', 'newString', 'new_str', 'content', 'appendContent']) {
+        const value = record[key];
+        if (typeof value === 'string' && value.trim()) {
+          const line = value
+            .split('\n')
+            .map((entry) => entry.trim())
+            .find((entry) => entry.length >= 6);
+          if (line) {
+            return line.slice(0, 120);
+          }
+        }
+      }
+    }
+  } catch {
+    /* streaming */
+  }
+  return undefined;
+}
