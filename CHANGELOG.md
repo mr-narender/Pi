@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.254
+
+- Deck ✚ now dismisses the switcher/review overlay before opening the new chat (the fresh chat was appearing hidden behind the list).
+
 ## 0.0.253
 
 - Follow is live-only now, harness-proven: switching chats or reloading delivered the transcript as a burst that REPLAYED every historical edit/read as “live” (phantom file-opens; only long-dead files → nothing visible; this was also the old tab-pileup source). Bursts >2 unseen calls are absorbed silently; genuine activity (1–2 calls per update) follows instantly.

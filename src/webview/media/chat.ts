@@ -904,6 +904,14 @@ function renderNow(snapshot: WebviewSnapshot): void {
         toggleReviewOverlay();
         return;
       }
+      if (action === 'newChatSession') {
+        // Dismiss any overlay first — the fresh chat must be visible, not
+        // hidden behind the switcher/review layer.
+        toggleChatListOverlay(false);
+        toggleReviewOverlay(false);
+        vscode.postMessage({ type: 'newChatSession' });
+        return;
+      }
       if (action === 'acceptPreview') {
         previewReturnFocusId = undefined;
         vscode.postMessage({ type: 'acceptPreview' });
