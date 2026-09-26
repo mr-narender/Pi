@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.259
+
+- Tracking heartbeat: while any chat runs, the status bar shows “👁 π watching files…” — so an idle net is visibly ALIVE, not silently ambiguous. Activity replaces it with the file being touched, then it returns to watching until all chats go idle.
+
 ## 0.0.258
 
 - Deleting chats is instant: the row disappears optimistically and the sessions-dir rescan runs in the background (it was awaited — the slowness). Active sessions delete cleanly too: their runtime is aborted+stopped fire-and-forget, tabs close, and the sidebar rebinds to a fresh draft when you delete the chat you’re on.

@@ -184,7 +184,21 @@ export class AgentFollowService implements vscode.Disposable {
     const onEvent = (uri: vscode.Uri): void => this.onFsEvent(uri);
     this.watcher.onDidCreate(onEvent);
     this.watcher.onDidChange(onEvent);
+    this.showWatchingHeartbeat();
     this.logger?.info('[follow] fs-net armed (a chat is busy)');
+  }
+
+  /** While armed with no activity yet: “watching” — so quiet ≠ broken. */
+  private showWatchingHeartbeat(): void {
+    if (this.mode() === 'off') {
+      return;
+    }
+    this.status.text = '$(eye-watch) π watching files…';
+    this.status.tooltip = new vscode.MarkdownString(
+      'A chat is running — any file it touches (any tool, even bash) will open here. Quiet means π has not changed files yet.'
+    );
+    this.status.command = undefined;
+    this.status.show();
   }
 
   private scheduleWatcherIdle(): void {
@@ -196,6 +210,7 @@ export class AgentFollowService implements vscode.Disposable {
       if (this.busyChats.size === 0 && this.watcher) {
         this.watcher.dispose();
         this.watcher = undefined;
+        this.status.hide();
         this.logger?.info('[follow] fs-net disarmed (all chats idle)');
       }
     }, 5000);
@@ -290,7 +305,10 @@ export class AgentFollowService implements vscode.Disposable {
     };
     this.status.show();
     clearTimeout(this.statusTimer);
-    this.statusTimer = setTimeout(() => this.status.hide(), kind === 'editing' ? 9000 : 5000);
+    this.statusTimer = setTimeout(
+      () => (this.watcher ? this.showWatchingHeartbeat() : this.status.hide()),
+      kind === 'editing' ? 9000 : 5000
+    );
 
     // The side pane follows READS and EDITS — but only for the chat you're
     // looking at; parallel background chats narrate in the status bar only.
