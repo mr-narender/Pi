@@ -1052,6 +1052,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     await inlineReview.revertAll(String(fsPath));
   });
 
+  // Claude-style mode switch: one click flips Auto <-> Approve-every-edit.
+  // Reuses the existing onDidChangeConfiguration sync (writes .pi/settings.json
+  // + .pi/extensions/pi-approval-gate.ts, offers a runtime restart).
+  registrations.set('piRpc.togglePermissionMode', async () => {
+    const config = vscode.workspace.getConfiguration('piRpc');
+    const next = !config.get<boolean>('requireApprovalForEdits', false);
+    await config.update('requireApprovalForEdits', next, vscode.ConfigurationTarget.Workspace);
+  });
+
   // Sidebar chat: focus the docked π chat (Zed layout — center stays free).
   registrations.set('piRpc.openSidebarChat', async () => {
     await vscode.commands.executeCommand('piRpc.chat.focus');

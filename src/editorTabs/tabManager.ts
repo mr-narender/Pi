@@ -165,6 +165,7 @@ function diagnosticSeverity(
 // Commands the chat webview may invoke via the generic executeCommand message.
 // Keep in sync with data-command usages in render.ts / chat.ts — nothing else.
 const WEBVIEW_COMMAND_ALLOWLIST = new Set<string>([
+  'piRpc.togglePermissionMode',
   'piRpc.abort',
   'piRpc.commandPalette',
   'piRpc.remote.stop',
@@ -1807,7 +1808,10 @@ export class ChatTabManager implements vscode.Disposable {
   public inlineReview: { start(record: unknown, change: unknown): Promise<void> } | undefined;
   /** Injected: session replay (walk past turns' files, oldest or single). */
   public sessionReplay:
-    | { replayTurn(record: unknown): Promise<void>; replaySession(history: unknown[]): Promise<void> }
+    | {
+        replayTurn(record: unknown): Promise<void>;
+        replaySession(history: unknown[]): Promise<void>;
+      }
     | undefined;
   /** Injected by extension.ts: recent-session data for the sidebar switcher. */
   public chatListSource:
@@ -2299,6 +2303,9 @@ export class ChatTabManager implements vscode.Disposable {
     snapshot.followMode = vscode.workspace
       .getConfiguration('piRpc')
       .get<'open' | 'status' | 'off'>('followAgent', 'open');
+    snapshot.requireApprovalForEdits = vscode.workspace
+      .getConfiguration('piRpc')
+      .get<boolean>('requireApprovalForEdits', false);
     const title = this.titleForContext(context, snapshot);
     const host = this.hosts.get(resource.toString());
     if (host) {

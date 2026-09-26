@@ -198,6 +198,8 @@ export interface WebviewSnapshot {
   plan?: { items: Array<{ text: string; done: boolean }>; done: number };
   /** Zed-style follow toggle state (crosshair button). */
   followMode?: 'open' | 'status' | 'off';
+  /** True pre-apply approval mode — surfaced as a one-click deck toggle. */
+  requireApprovalForEdits?: boolean;
   retry?: { attempt?: number; errorMessage?: string };
   sequence: number;
   title: string;

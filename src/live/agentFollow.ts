@@ -7,6 +7,7 @@ import { spawn } from 'node:child_process';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
+import { predictNextFiles } from './importScan';
 import {
   anchorNeedle,
   readStartLine,
@@ -483,6 +484,7 @@ export class AgentFollowService implements vscode.Disposable {
         viewColumn: vscode.ViewColumn.Active,
       });
       this.logger?.info(`[follow] center showing ${absolute}`);
+      this.predictAndPrewarm(absolute, doc.languageId);
       if (kind === 'reading') {
         const line = Math.max(0, (readStartLine(args) ?? 1) - 1);
         editor.revealRange(
@@ -501,6 +503,30 @@ export class AgentFollowService implements vscode.Disposable {
         `[follow] center open failed: ${error instanceof Error ? error.message : String(error)}`
       );
     }
+  }
+
+  /** Zero-dependency predictive pre-fetch: scan the file π is on for LOCAL
+   * imports and silently warm VS Code's document cache for the top few — no
+   * tab opens, no UI change, just a head start for when π touches them next. */
+  private predictAndPrewarm(absolute: string, languageId: string): void {
+    const enabled = vscode.workspace
+      .getConfiguration('piRpc')
+      .get<boolean>('predictivePreload', true);
+    if (!enabled) {
+      return;
+    }
+    void vscode.workspace.openTextDocument(vscode.Uri.file(absolute)).then(
+      (doc) => {
+        const targets = predictNextFiles(doc.getText(), absolute, languageId);
+        for (const target of targets) {
+          void vscode.workspace.openTextDocument(vscode.Uri.file(target)).then(
+            () => this.logger?.info(`[follow] preloaded ${target}`),
+            () => undefined
+          );
+        }
+      },
+      () => undefined
+    );
   }
 
   private async glowEdit(

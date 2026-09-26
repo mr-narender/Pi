@@ -946,6 +946,15 @@ function renderApprovals(snapshot: WebviewSnapshot): string {
 
 // Zed's crosshair: toggle "follow π" — the side editor tracks every file and
 // line the agent opens, reads, or edits, live.
+
+// One-click permission mode toggle (Claude-style mode switch — no settings.json
+// hunting, no menu, click flips it). Lock glows when every edit requires
+// your approval before it touches disk.
+function renderPermissionModeToggle(snapshot: WebviewSnapshot): string {
+  const on = snapshot.requireApprovalForEdits === true;
+  return `<button type="button" class="icon-button permission-toggle${on ? ' is-on' : ''}" data-command="piRpc.togglePermissionMode" title="${on ? 'Approval required for every edit (click for Auto)' : 'Auto mode — π writes freely (click to require approval)'}" aria-label="Toggle approval mode" aria-pressed="${on ? 'true' : 'false'}"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="7" width="9" height="6.5" rx="1.3"/><path d="M5.5 7V4.8a2.5 2.5 0 0 1 5 0V7"/></svg></button>`;
+}
+
 function renderFollowToggle(snapshot: WebviewSnapshot): string {
   const on = (snapshot.followMode ?? 'open') === 'open';
   return `<button type="button" class="icon-button follow-toggle${on ? ' is-on' : ''}" data-action="toggleFollow" title="${on ? 'Following π — the side editor tracks every file and line the agent touches (click to stop)' : 'Follow π: open the file the agent is reading or editing, live (click to start)'}" aria-label="Toggle follow agent" aria-pressed="${on ? 'true' : 'false'}"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="8" cy="8" r="4.4"/><circle cx="8" cy="8" r="1" fill="currentColor" stroke="none"/><path d="M8 1v2.2M8 12.8V15M1 8h2.2M12.8 8H15"/></svg></button>`;
@@ -967,7 +976,7 @@ function renderSidebarHeader(snapshot: WebviewSnapshot): string {
     (snapshot.reviewCount ?? 0) > 0
       ? `<button type="button" class="sb-btn sb-review" data-action="toggleReview" title="Review π's changes (${snapshot.reviewCount} turn${snapshot.reviewCount === 1 ? '' : 's'})" aria-label="Review changes">⧉<span class="sb-review-count">${snapshot.reviewCount}</span></button>`
       : '';
-  return `<header class="sb-deck"><button type="button" class="sb-btn" data-action="toggleChatList" title="All chats" aria-label="All chats">☰</button>${label}<span class="sb-spacer"></span>${review}<button type="button" class="sb-btn" data-action="newChatSession" title="New chat" aria-label="New chat">✚</button>${renderFollowToggle(snapshot)}<details class="menu-details sb-more"><summary class="sb-btn" title="More" aria-label="More actions">⋯</summary><div class="menu-panel" role="menu"><button type="button" class="menu-item" data-command="piRpc.reviewLastTurn">Review last turn</button><button type="button" class="menu-item" data-command="piRpc.showChatVersions">Chat versions</button><button type="button" class="menu-item" data-command="piRpc.exportHtml">Export chat</button><button type="button" class="menu-item" data-command="piRpcInternal.restart">Restart π</button></div></details></header>`;
+  return `<header class="sb-deck"><button type="button" class="sb-btn" data-action="toggleChatList" title="All chats" aria-label="All chats">☰</button>${label}<span class="sb-spacer"></span>${review}<button type="button" class="sb-btn" data-action="newChatSession" title="New chat" aria-label="New chat">✚</button>${renderFollowToggle(snapshot)}${renderPermissionModeToggle(snapshot)}<details class="menu-details sb-more"><summary class="sb-btn" title="More" aria-label="More actions">⋯</summary><div class="menu-panel" role="menu"><button type="button" class="menu-item" data-command="piRpc.reviewLastTurn">Review last turn</button><button type="button" class="menu-item" data-command="piRpc.showChatVersions">Chat versions</button><button type="button" class="menu-item" data-command="piRpc.exportHtml">Export chat</button><button type="button" class="menu-item" data-command="piRpcInternal.restart">Restart π</button></div></details></header>`;
 }
 
 function renderPlanStrip(snapshot: WebviewSnapshot): string {
@@ -1416,6 +1425,7 @@ export function renderChatApp(snapshot: WebviewSnapshot): string {
             </div>
             <div class="composer-actions-right">
               ${connecting ? '' : renderFollowToggle(snapshot)}
+              ${connecting ? '' : renderPermissionModeToggle(snapshot)}
               ${connecting ? '' : folderSelect}
               ${busy ? '<button type="button" class="ghost" data-action="abort">Stop</button>' : ''}
               <button type="button" id="${SEND_BUTTON_ID}" class="send-button" data-send-command="${sendCommand}" title="${sendLabel}" aria-label="${sendLabel}" ${disabledAttr}><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12.5 4v3a1.5 1.5 0 0 1-1.5 1.5H4.5"/><path d="M7 6L4.3 8.5 7 11"/></svg></button>

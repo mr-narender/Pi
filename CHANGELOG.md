@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.267
+
+- CLAUDE-STYLE MODE SWITCH: a lock icon in the composer deck flips Auto <-> Approve-Every-Edit with ONE CLICK — no settings.json, no manual file editing, no menu. Glows when approval mode is on. “Pi: Toggle Approval Mode” in the palette does the same. Under the hood it's the exact same project-file sync from 0.0.265, now reachable in one click from where you're already working.
+- PREDICTIVE PRE-FETCH (③, zero-dependency): a small import scanner we wrote ourselves (regex-based, JS/TS/Python, no external tools) silently warms VS Code's document cache for files locally imported by whatever π is reading or editing — no visible tabs, just a head start for when π touches them next. `piRpc.predictivePreload` (default on).
+
 ## 0.0.266
 
 - SESSION REPLAY: the ⧉ Review overlay can now REWIND. ▶ on any turn walks its changed files in order, revealing each one with a violet glow (distinct from live ember) and a cancellable progress notification. ▶ Session in the header replays the WHOLE session, oldest turn first — watch how it evolved, after the fact. Built entirely on the turn history persisted in 0.0.264 and the hunk-diff engine from line-by-line review — nearly free, as planned.
