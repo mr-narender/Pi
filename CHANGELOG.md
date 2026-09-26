@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.258
+
+- Deleting chats is instant: the row disappears optimistically and the sessions-dir rescan runs in the background (it was awaited — the slowness). Active sessions delete cleanly too: their runtime is aborted+stopped fire-and-forget, tabs close, and the sidebar rebinds to a fresh draft when you delete the chat you’re on.
+
 ## 0.0.257
 
 - FS-TRUTH TRACKING: follow no longer depends on parsing tool args. While any chat is BUSY, a workspace file watcher arms itself — ANY file created/changed (bash heredocs, sed -i, subagents, MCP tools, scripts) is tracked and followed, attributed to the busy chat. The tool layer stays as the precision pass (reads, offsets, glow needles); the watcher is the net that can't be fooled. Junk excluded (node_modules/.git/dist/logs/dotfiles), your own active-editor saves ignored, per-file debounce, auto-disarms 5s after all chats go idle.

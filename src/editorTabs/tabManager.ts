@@ -790,6 +790,25 @@ export class ChatTabManager implements vscode.Disposable {
     }
   }
 
+  /** Deleting an ACTIVE session must also shut its runtime down — tabs alone
+   * left the controller running headless. Fire-and-forget: the UI never waits
+   * on process teardown. */
+  public stopControllersForSessionFile(sessionFile: string): void {
+    const wanted = normalizeSessionFilePath(sessionFile);
+    for (const controller of this.trackedControllers) {
+      const target = currentTargetForController(controller);
+      if (
+        target.kind === 'sessionFile' &&
+        target.sessionFile &&
+        normalizeSessionFilePath(target.sessionFile) === wanted
+      ) {
+        void Promise.resolve(controller.abort?.())
+          .catch(() => undefined)
+          .finally(() => void controller.stop().catch(() => undefined));
+      }
+    }
+  }
+
   public async closeForSessionFile(sessionFile: string): Promise<void> {
     for (const group of vscode.window.tabGroups.all) {
       for (const tab of group.tabs) {
@@ -1292,7 +1311,7 @@ export class ChatTabManager implements vscode.Disposable {
             await this.renderResource(host.resource, { active: true });
           }
         }
-        this.sendChatList(host); // refreshed list (unchanged if user cancelled)
+        this.sendChatList(host, parsed.path); // optimistic: gone immediately
         return;
       }
       case 'openChatSession': {
@@ -1785,7 +1804,7 @@ export class ChatTabManager implements vscode.Disposable {
       })
     | undefined;
 
-  private sendChatList(host: ChatHost): void {
+  private sendChatList(host: ChatHost, excludePath?: string): void {
     const source = this.chatListSource?.();
     const relative = (at: number): string => {
       const mins = Math.max(1, Math.round((Date.now() - at) / 60_000));
@@ -1801,19 +1820,25 @@ export class ChatTabManager implements vscode.Disposable {
       this.sidebarTarget?.kind === 'sessionFile' ? this.sidebarTarget.sessionFile : undefined;
     host.post({
       type: 'chatList',
-      current: (source?.items ?? []).slice(0, 30).map((item) => ({
-        path: item.path,
-        title: item.displayName,
-        time: relative(item.modifiedAt),
-        current: item.path === currentFile,
-      })),
-      others: (source?.others ?? []).slice(0, 20).map((item) => ({
-        path: item.path,
-        title: item.displayName,
-        time: relative(item.modifiedAt),
-        workspace: item.workspaceLabel,
-        cwd: item.cwd,
-      })),
+      current: (source?.items ?? [])
+        .filter((item) => item.path !== excludePath)
+        .slice(0, 30)
+        .map((item) => ({
+          path: item.path,
+          title: item.displayName,
+          time: relative(item.modifiedAt),
+          current: item.path === currentFile,
+        })),
+      others: (source?.others ?? [])
+        .filter((item) => item.path !== excludePath)
+        .slice(0, 20)
+        .map((item) => ({
+          path: item.path,
+          title: item.displayName,
+          time: relative(item.modifiedAt),
+          workspace: item.workspaceLabel,
+          cwd: item.cwd,
+        })),
     });
   }
 

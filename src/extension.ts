@@ -643,13 +643,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     if (confirm !== 'Delete') {
       return;
     }
+    chatTabs.stopControllersForSessionFile(sessionPath); // runtime down, no wait
     await chatTabs.closeForSessionFile(sessionPath);
     try {
       await vscode.workspace.fs.delete(vscode.Uri.file(sessionPath));
     } catch {
       /* file may already be gone; still refresh the list */
     }
-    await recentSessions.refresh();
+    // The full sessions-dir rescan is the slow part — never block the UI on it.
+    void recentSessions.refresh().then(() => refreshViews());
     refreshViews();
   });
 
