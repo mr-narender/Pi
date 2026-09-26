@@ -102,3 +102,37 @@ export function readStartLine(args: string | undefined): number | undefined {
   }
   return undefined;
 }
+
+const FS_EXCLUDE = [
+  '/node_modules/',
+  '/.git/',
+  '/dist/',
+  '/out/',
+  '/build/',
+  '/coverage/',
+  '/.vscode-test/',
+  '/.tmp/',
+  '/__pycache__/',
+  '/.venv/',
+  '/vendor/',
+];
+const FS_EXCLUDE_SUFFIX = ['.log', '.lock', '.tmp', '.map', '.vsix', '.DS_Store'];
+
+/** FS-truth tracking filter: is this changed file worth following? */
+export function shouldTrackFsPath(fsPath: string, roots: string[]): boolean {
+  if (!roots.some((root) => root && fsPath.startsWith(root.endsWith('/') ? root : `${root}/`))) {
+    return false;
+  }
+  const normalized = fsPath.replaceAll('\\', '/');
+  if (FS_EXCLUDE.some((part) => normalized.includes(part))) {
+    return false;
+  }
+  if (FS_EXCLUDE_SUFFIX.some((suffix) => normalized.endsWith(suffix))) {
+    return false;
+  }
+  const base = normalized.split('/').pop() ?? '';
+  if (base.startsWith('.')) {
+    return false;
+  }
+  return true;
+}

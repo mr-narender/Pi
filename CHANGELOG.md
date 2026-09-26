@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.257
+
+- FS-TRUTH TRACKING: follow no longer depends on parsing tool args. While any chat is BUSY, a workspace file watcher arms itself — ANY file created/changed (bash heredocs, sed -i, subagents, MCP tools, scripts) is tracked and followed, attributed to the busy chat. The tool layer stays as the precision pass (reads, offsets, glow needles); the watcher is the net that can't be fooled. Junk excluded (node_modules/.git/dist/logs/dotfiles), your own active-editor saves ignored, per-file debounce, auto-disarms 5s after all chats go idle.
+
 ## 0.0.256
 
 - THE BIG ONE (found via choke-point tracers in the user’s logs): Pi v0.87 streams hundreds of state events per second and every event ran a FULL snapshot render — the extension host saturated (9+ renders per millisecond), async timers drifted ~12s, so follow “worked” but opened files long after turns ended (invisible). Renders are now coalesced per chat: instant leading edge + one trailing render per 50ms window. Everything downstream (live tracking, glow, digests) lands on time; tracer noise removed.

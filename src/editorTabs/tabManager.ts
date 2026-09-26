@@ -2269,7 +2269,8 @@ export class ChatTabManager implements vscode.Disposable {
         host.panel.visible,
         safeFsPath(context.target.workspaceFolderUri) ??
           vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
-        (payload) => void host.panel.webview.postMessage(payload)
+        (payload) => void host.panel.webview.postMessage(payload),
+        snapshot.connectionState === 'busy' || snapshot.isStreaming === true
       );
       await host.postSnapshot(snapshot, title);
       // Mirror the active chat to a remote session, if one is running.

@@ -6,7 +6,7 @@
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
-import { readStartLine, revealNeedle, toolActivity } from './toolActivity';
+import { readStartLine, revealNeedle, shouldTrackFsPath, toolActivity } from './toolActivity';
 
 type FollowLogger = { info(message: string): void } | undefined;
 
@@ -45,6 +45,15 @@ export class AgentFollowService implements vscode.Disposable {
     overviewRulerLane: vscode.OverviewRulerLane.Full,
   });
   private decorationTimer: ReturnType<typeof setTimeout> | undefined;
+  /** FS-truth net: chats currently BUSY (key → attribution). While any busy
+   * chat is visible, ANY workspace file change is π's work — bash heredocs,
+   * subagents, MCP tools — no arg-parsing can enumerate them all. */
+  private readonly busyChats = new Map<string, { title: string; root: string; visible: boolean }>();
+  private watcher: vscode.FileSystemWatcher | undefined;
+  private watcherIdleTimer: ReturnType<typeof setTimeout> | undefined;
+  /** Paths the tool-layer just acted on — the watcher skips these (dedupe). */
+  private readonly recentlyActed = new Map<string, number>();
+  private readonly fsDebounce = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly status: vscode.StatusBarItem;
   private statusTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -64,8 +73,16 @@ export class AgentFollowService implements vscode.Disposable {
     snapshot: SnapshotLike,
     isActiveChat: boolean,
     workspaceRoot: string | undefined,
-    post?: (payload: unknown) => void
+    post?: (payload: unknown) => void,
+    busy?: boolean
   ): void {
+    if (busy && workspaceRoot) {
+      this.busyChats.set(key, { title: chatTitle, root: workspaceRoot, visible: isActiveChat });
+      this.ensureWatcher();
+    } else {
+      this.busyChats.delete(key);
+      this.scheduleWatcherIdle();
+    }
     let seen = this.seen.get(key);
     if (!seen) {
       seen = new Map();
@@ -158,6 +175,77 @@ export class AgentFollowService implements vscode.Disposable {
     }
   }
 
+  private ensureWatcher(): void {
+    clearTimeout(this.watcherIdleTimer);
+    if (this.watcher || this.mode() === 'off') {
+      return;
+    }
+    this.watcher = vscode.workspace.createFileSystemWatcher('**/*');
+    const onEvent = (uri: vscode.Uri): void => this.onFsEvent(uri);
+    this.watcher.onDidCreate(onEvent);
+    this.watcher.onDidChange(onEvent);
+    this.logger?.info('[follow] fs-net armed (a chat is busy)');
+  }
+
+  private scheduleWatcherIdle(): void {
+    if (this.busyChats.size > 0) {
+      return;
+    }
+    clearTimeout(this.watcherIdleTimer);
+    this.watcherIdleTimer = setTimeout(() => {
+      if (this.busyChats.size === 0 && this.watcher) {
+        this.watcher.dispose();
+        this.watcher = undefined;
+        this.logger?.info('[follow] fs-net disarmed (all chats idle)');
+      }
+    }, 5000);
+  }
+
+  private onFsEvent(uri: vscode.Uri): void {
+    if (uri.scheme !== 'file' || this.busyChats.size === 0 || this.mode() === 'off') {
+      return;
+    }
+    const fsPath = uri.fsPath;
+    const roots = Array.from(this.busyChats.values()).map((entry) => entry.root);
+    if (!shouldTrackFsPath(fsPath, roots)) {
+      return;
+    }
+    // The precision layer already handled it moments ago.
+    const acted = this.recentlyActed.get(fsPath);
+    if (acted && Date.now() - acted < 2500) {
+      return;
+    }
+    // The USER saving their own file must not count as agent work.
+    if (vscode.window.activeTextEditor?.document.uri.fsPath === fsPath) {
+      return;
+    }
+    // Debounce per file: writes often land in quick multiples.
+    clearTimeout(this.fsDebounce.get(fsPath));
+    this.fsDebounce.set(
+      fsPath,
+      setTimeout(() => {
+        this.fsDebounce.delete(fsPath);
+        const attribution =
+          Array.from(this.busyChats.values()).find((entry) => entry.visible) ??
+          Array.from(this.busyChats.values())[0];
+        if (!attribution) {
+          return;
+        }
+        this.recentlyActed.set(fsPath, Date.now());
+        this.logger?.info(`[follow] fs-net: ${fsPath} (${attribution.title.trim()})`);
+        this.act(
+          'editing',
+          fsPath,
+          attribution.title,
+          attribution.visible,
+          undefined,
+          undefined,
+          undefined
+        );
+      }, 250)
+    );
+  }
+
   private resolve(filePath: string, workspaceRoot: string | undefined): string {
     // Pi tools sometimes emit ~-prefixed paths; joining those onto the
     // workspace produced garbage like <root>/~/Desktop/….
@@ -177,6 +265,7 @@ export class AgentFollowService implements vscode.Disposable {
     post?: (payload: unknown) => void
   ): void {
     const absolute = this.resolve(filePath, workspaceRoot);
+    this.recentlyActed.set(absolute, Date.now());
     this.logger?.info(
       `[follow] ${kind} ${absolute} (chat "${chatTitle.trim()}", visible=${isActiveChat}, mode=${this.mode()})`
     );
@@ -330,6 +419,11 @@ export class AgentFollowService implements vscode.Disposable {
 
   public dispose(): void {
     clearTimeout(this.decorationTimer);
+    clearTimeout(this.watcherIdleTimer);
+    this.watcher?.dispose();
+    for (const timer of this.fsDebounce.values()) {
+      clearTimeout(timer);
+    }
     this.decoration.dispose();
     clearTimeout(this.statusTimer);
     this.status.dispose();

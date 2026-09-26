@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { readStartLine, revealNeedle, toolActivity } from '../../src/live/toolActivity';
+import {
+  readStartLine,
+  revealNeedle,
+  shouldTrackFsPath,
+  toolActivity,
+} from '../../src/live/toolActivity';
 
 test('edit tools classify as editing with the target path', () => {
   const activity = toolActivity('edit', JSON.stringify({ path: 'src/a.ts', oldString: 'x' }));
@@ -43,4 +48,16 @@ test('readStartLine honors offset/startLine spellings', () => {
   assert.equal(readStartLine(JSON.stringify({ path: 'a', startLine: 7 })), 7);
   assert.equal(readStartLine(JSON.stringify({ path: 'a' })), undefined);
   assert.equal(readStartLine('{"offset": 1'), undefined);
+});
+
+test('fs-net filter: workspace files yes; junk and dotfiles no', () => {
+  const roots = ['/repo'];
+  assert.equal(shouldTrackFsPath('/repo/src/a.ts', roots), true);
+  assert.equal(shouldTrackFsPath('/elsewhere/a.ts', roots), false);
+  assert.equal(shouldTrackFsPath('/repo/node_modules/x/i.js', roots), false);
+  assert.equal(shouldTrackFsPath('/repo/.git/HEAD', roots), false);
+  assert.equal(shouldTrackFsPath('/repo/dist/out.js', roots), false);
+  assert.equal(shouldTrackFsPath('/repo/app.log', roots), false);
+  assert.equal(shouldTrackFsPath('/repo/.env', roots), false);
+  assert.equal(shouldTrackFsPath('/repo/docs/readme.md', roots), true);
 });
