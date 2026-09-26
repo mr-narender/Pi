@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.250
+
+- Pressing Enter on an empty composer is a silent no-op (it showed “Attachments need attention. Enter a message or attach something to send.” — an attachment warning for… not typing). Real preflight problems (attachments too large, expired images) now use the honest title “Can’t send yet.”
+
 ## 0.0.249
 
 - Review earns its place: the always-there collapsible tree is GONE. A ⧉ badge appears in the deck ONLY when π actually changed files; clicking it opens Review as a full surface over the chat (same pattern as ☰) — turns → files with +/− counts, click = diff, ↩ per file or whole turn (modal-confirmed), Esc back to chat. Empty state costs zero pixels.

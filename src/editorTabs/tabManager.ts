@@ -1205,7 +1205,11 @@ export class ChatTabManager implements vscode.Disposable {
       case 'requestReview': {
         const relative = (at: number): string => {
           const mins = Math.max(1, Math.round((Date.now() - at) / 60_000));
-          return mins < 60 ? `${mins}m` : mins < 1440 ? `${Math.round(mins / 60)}h` : `${Math.round(mins / 1440)}d`;
+          return mins < 60
+            ? `${mins}m`
+            : mins < 1440
+              ? `${Math.round(mins / 60)}h`
+              : `${Math.round(mins / 1440)}d`;
         };
         host.post({
           type: 'reviewData',
@@ -1640,10 +1644,15 @@ export class ChatTabManager implements vscode.Disposable {
       if (!context) {
         return;
       }
+      const detail = error instanceof Error ? error.message : String(error);
+      // Empty composer + Enter is a non-event, not an error — stay silent.
+      if (detail.startsWith('Enter a message')) {
+        return;
+      }
       state.recovery = {
         kind: 'preflightError',
-        title: 'Attachments need attention.',
-        detail: error instanceof Error ? error.message : String(error),
+        title: 'Can\u2019t send yet.',
+        detail,
       };
       await this.uiState.setComposerStateForIdentity(context.controller, context.target, state);
       await this.renderResource(resource);

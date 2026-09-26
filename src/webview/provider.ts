@@ -349,10 +349,15 @@ export class ChatPanelProvider implements vscode.Disposable {
       }
       await this.sendPreview(controller, state, preview);
     } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      // Empty composer + Enter is a non-event, not an error — stay silent.
+      if (detail.startsWith('Enter a message')) {
+        return;
+      }
       state.recovery = {
         kind: 'preflightError',
-        title: 'Attachments need attention.',
-        detail: error instanceof Error ? error.message : String(error),
+        title: 'Can\u2019t send yet.',
+        detail,
       };
       await this.uiState.setComposerState(controller, state);
       await this.postSnapshot(controller);
