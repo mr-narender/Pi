@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.255
+
+- Live tracking follows EVERYTHING now (harness-proven): the previous fix guessed history-vs-live by call COUNT, which swallowed real scaffolding work (fast agents emit 3–5 calls per streamed snapshot — only sparse reads survived, hence “only package.json”). New rule: a 1.5s grace window after a chat binds absorbs the switch/reload backfill; after that, every call follows — bursts included.
+
 ## 0.0.254
 
 - Deck ✚ now dismisses the switcher/review overlay before opening the new chat (the fresh chat was appearing hidden behind the list).

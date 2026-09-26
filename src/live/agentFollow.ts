@@ -20,6 +20,10 @@ export class AgentFollowService implements vscode.Disposable {
   public logger: FollowLogger;
   /** callId → last seen args length: streaming args re-reveal as they grow. */
   private readonly seen = new Map<string, Map<string, number>>();
+  /** When each chat key was first seen — history backfill lands inside this
+   * window; everything after is genuinely live (NO count-based guessing:
+   * fast agents legitimately emit 3–5 calls per streamed snapshot). */
+  private readonly keyBornAt = new Map<string, number>();
   private lastEditCall: string | undefined;
   private lastActivity:
     | {
@@ -66,6 +70,7 @@ export class AgentFollowService implements vscode.Disposable {
     if (!seen) {
       seen = new Map();
       this.seen.set(key, seen);
+      this.keyBornAt.set(key, Date.now());
       // First snapshot of a chat = history, not live activity. Mark, don't act.
       for (const message of snapshot.messages) {
         for (const block of message.blocks ?? []) {
@@ -76,22 +81,24 @@ export class AgentFollowService implements vscode.Disposable {
       }
       return;
     }
-    // Pass 1: how many UNSEEN calls does this delivery carry? Live activity
-    // arrives one-or-two at a time; a burst means history backfill (chat
-    // switch / reload delivered an empty snapshot first, then the full
-    // transcript) — absorb silently or we replay every old edit as "live"
-    // (the phantom file-opens and tab pileups came from exactly this).
-    let unseen = 0;
-    for (const message of snapshot.messages) {
-      for (const block of message.blocks ?? []) {
-        if (block.kind === 'tool' && block.callId && !seen.has(block.callId)) {
-          unseen += 1;
+    // History backfill (chat switch/reload: empty snapshot, then the full
+    // transcript) lands within moments of the key being born — absorb inside
+    // that grace window. AFTER it, every unseen call is genuinely live and
+    // follows, no matter how many arrive per streamed snapshot (a count
+    // threshold here once swallowed real scaffolding work).
+    const absorbHistory = Date.now() - (this.keyBornAt.get(key) ?? 0) < 1500;
+    if (absorbHistory) {
+      let unseen = 0;
+      for (const message of snapshot.messages) {
+        for (const block of message.blocks ?? []) {
+          if (block.kind === 'tool' && block.callId && !seen.has(block.callId)) {
+            unseen += 1;
+          }
         }
       }
-    }
-    const absorbHistory = unseen > 2;
-    if (absorbHistory && unseen > 0) {
-      this.logger?.info(`[follow] absorbed ${unseen} historical tool calls (no replay)`);
+      if (unseen > 0) {
+        this.logger?.info(`[follow] absorbed ${unseen} historical tool calls (grace window)`);
+      }
     }
     for (const message of snapshot.messages) {
       for (const block of message.blocks ?? []) {
