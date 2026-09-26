@@ -3695,8 +3695,8 @@ body.vscode-high-contrast .code-wrap {
   cursor: pointer;
 }
 
-.sb-title:hover {
-  border-color: var(--ember-glow);
+.sb-title {
+  cursor: default;
 }
 
 .sb-title-text {

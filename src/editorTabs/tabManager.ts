@@ -1759,7 +1759,11 @@ export class ChatTabManager implements vscode.Disposable {
 
   private keyFor(resource: vscode.Uri): string {
     if (resource.scheme === 'piRpcSidebar') {
-      return 'piRpcSidebar:main';
+      // Key follows the BINDING: switching chats must resolve to that
+      // session's own controller (a constant key pinned the first controller
+      // forever — clicking a chat in the switcher silently did nothing).
+      const target = this.sidebarTarget;
+      return `piRpcSidebar:${target?.sessionFile ?? target?.draftId ?? 'main'}`;
     }
     return this.sessions.keyFor(resource);
   }

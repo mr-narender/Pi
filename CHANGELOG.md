@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.247
+
+- Switching chats from the sidebar WORKS: the sidebar controller key now follows the bound session (a constant key pinned the first controller forever, so picking a chat silently did nothing). Each picked session gets its own controller, tab-style.
+- Header per spec: ☰ is the only switcher trigger; the title is a passive label shown only when a named chat is active (fresh drafts show nothing).
+
 ## 0.0.246
 
 - ONE-SURFACE SIDEBAR: the stacked Chat + Chats squeeze is gone — the chat IS the π sidebar. New command deck header: ☰ / title ▾ open the chat SWITCHER as an overlay sliding over the conversation (search · ✚ New Chat · this workspace · Other projects; Esc closes, pick rebinds in place); ✚ new chat; ⌖ follow crosshair; ⋯ menu (Review last turn · Chat versions · Export · Restart). The separate Chats view is removed — its data powers the overlay.

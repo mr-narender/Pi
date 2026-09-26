@@ -957,8 +957,13 @@ function renderFollowToggle(snapshot: WebviewSnapshot): string {
 // (webview-local), ✚ rebinds fresh, ⌖ is the follow crosshair, ⋯ holds the
 // rest. Rendered ONLY for the sidebar surface.
 function renderSidebarHeader(snapshot: WebviewSnapshot): string {
-  const title = (snapshot.sessionName ?? 'π Chat').trim() || 'π Chat';
-  return `<header class="sb-deck"><button type="button" class="sb-btn" data-action="toggleChatList" title="All chats" aria-label="All chats">☰</button><button type="button" class="sb-title" data-action="toggleChatList" title="${escapeHtml(title)} — switch chat"><span class="sb-title-text">${escapeHtml(title)}</span><span class="sb-caret">▾</span></button><span class="sb-spacer"></span><button type="button" class="sb-btn" data-action="newChatSession" title="New chat" aria-label="New chat">✚</button>${renderFollowToggle(snapshot)}<details class="menu-details sb-more"><summary class="sb-btn" title="More" aria-label="More actions">⋯</summary><div class="menu-panel" role="menu"><button type="button" class="menu-item" data-command="piRpc.reviewLastTurn">Review last turn</button><button type="button" class="menu-item" data-command="piRpc.showChatVersions">Chat versions</button><button type="button" class="menu-item" data-command="piRpc.exportHtml">Export chat</button><button type="button" class="menu-item" data-command="piRpcInternal.restart">Restart π</button></div></details></header>`;
+  // ☰ is the ONLY switcher trigger. The title is a passive label shown only
+  // when a named chat is active (drafts show nothing).
+  const name = snapshot.sessionName?.trim();
+  const label = name
+    ? `<span class="sb-title" title="${escapeHtml(name)}"><span class="sb-title-text">${escapeHtml(name)}</span></span>`
+    : '';
+  return `<header class="sb-deck"><button type="button" class="sb-btn" data-action="toggleChatList" title="All chats" aria-label="All chats">☰</button>${label}<span class="sb-spacer"></span><button type="button" class="sb-btn" data-action="newChatSession" title="New chat" aria-label="New chat">✚</button>${renderFollowToggle(snapshot)}<details class="menu-details sb-more"><summary class="sb-btn" title="More" aria-label="More actions">⋯</summary><div class="menu-panel" role="menu"><button type="button" class="menu-item" data-command="piRpc.reviewLastTurn">Review last turn</button><button type="button" class="menu-item" data-command="piRpc.showChatVersions">Chat versions</button><button type="button" class="menu-item" data-command="piRpc.exportHtml">Export chat</button><button type="button" class="menu-item" data-command="piRpcInternal.restart">Restart π</button></div></details></header>`;
 }
 
 function renderPlanStrip(snapshot: WebviewSnapshot): string {
