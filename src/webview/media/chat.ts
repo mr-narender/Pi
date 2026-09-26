@@ -1509,7 +1509,7 @@ const composerClearance = new ResizeObserver((entries) => {
   for (const entry of entries) {
     document.documentElement.style.setProperty(
       '--composer-clearance',
-      `${Math.ceil(entry.contentRect.height) + 34}px`
+      `${Math.ceil(entry.contentRect.height) + 48}px`
     );
   }
 });

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.251
+
+- Transcript scrollbar no longer kisses the composer: the reserved band grew (dock height + 48) and the scroller ends with real margin above the dock.
+
 ## 0.0.250
 
 - Pressing Enter on an empty composer is a silent no-op (it showed “Attachments need attention. Enter a message or attach something to send.” — an attachment warning for… not typing). Real preflight problems (attachments too large, expired images) now use the honest title “Can’t send yet.”
