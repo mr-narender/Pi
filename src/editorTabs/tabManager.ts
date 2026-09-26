@@ -1202,6 +1202,64 @@ export class ChatTabManager implements vscode.Disposable {
         }
         return;
       }
+      case 'requestReview': {
+        const relative = (at: number): string => {
+          const mins = Math.max(1, Math.round((Date.now() - at) / 60_000));
+          return mins < 60 ? `${mins}m` : mins < 1440 ? `${Math.round(mins / 60)}h` : `${Math.round(mins / 1440)}d`;
+        };
+        host.post({
+          type: 'reviewData',
+          turns: (this.turnReview?.history ?? []).map((record, index) => ({
+            index,
+            title: record.title,
+            time: relative(record.at),
+            files: record.changes.map((change) => ({
+              file: change.file,
+              kind: change.kind,
+              added: change.added,
+              deleted: change.deleted,
+            })),
+          })),
+        });
+        return;
+      }
+      case 'reviewAction': {
+        const record = this.turnReview?.history[parsed.turn];
+        if (!record || !this.turnReview) {
+          return;
+        }
+        if (parsed.action === 'diff' && parsed.file) {
+          const change = record.changes.find((entry) => entry.file === parsed.file);
+          if (change) {
+            await this.turnReview.openDiff(record, change);
+          }
+        } else if (parsed.action === 'revertFile' && parsed.file) {
+          const change = record.changes.find((entry) => entry.file === parsed.file);
+          if (!change) {
+            return;
+          }
+          const confirm = await vscode.window.showWarningMessage(
+            `Revert ${change.file} to its state before this turn?`,
+            { modal: true },
+            'Revert'
+          );
+          if (confirm === 'Revert') {
+            await this.turnReview.revertFile(record, change);
+          }
+        } else if (parsed.action === 'revertTurn') {
+          const confirm = await vscode.window.showWarningMessage(
+            `Revert all ${record.changes.length} file(s) from this turn?`,
+            { modal: true },
+            'Revert All'
+          );
+          if (confirm === 'Revert All') {
+            for (const change of record.changes) {
+              await this.turnReview.revertFile(record, change).catch(() => undefined);
+            }
+          }
+        }
+        return;
+      }
       case 'requestChatList': {
         const source = this.chatListSource?.();
         const relative = (at: number): string => {
@@ -2110,6 +2168,7 @@ export class ChatTabManager implements vscode.Disposable {
       snapshot.sharing = { active: true, label: this.sharing.label };
     }
     snapshot.surface = resource.scheme === 'piRpcSidebar' ? 'sidebar' : 'tab';
+    snapshot.reviewCount = this.turnReview?.history.length ?? 0;
     snapshot.followMode = vscode.workspace
       .getConfiguration('piRpc')
       .get<'open' | 'status' | 'off'>('followAgent', 'open');

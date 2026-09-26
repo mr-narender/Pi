@@ -11,7 +11,6 @@ import {
 import { registerChatOps } from './commands/chatOps';
 import { initSharedPiHost, disposeSharedPiHost, getSharedPiHost } from './process/sharedPiHost';
 import { TurnReview } from './review/turnReview';
-import { createReviewTree } from './review/reviewTree';
 import { SessionIndexService } from './sessions/sessionIndexService';
 import { ensureManagedPi, managedPiCliPath, managedPiRoot } from './process/piManaged';
 import { COMMAND_IDS, CONTRIBUTED_COMMANDS } from './config/commands';
@@ -278,8 +277,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     )
   );
 
-  const reviewTree = createReviewTree(turnReview);
-  context.subscriptions.push(reviewTree.view);
   chatTabs.setTurnReview(turnReview);
   // Draft capture/restore must use the OWNING TAB's identity (per-tab model) —
   // the controller's current-session identity drifts after forks/prewarm and
@@ -2406,9 +2403,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     capability('setToolsExpanded', { ignored: true })
   );
 
-  for (const [id, handler] of Object.entries(reviewTree.handlers)) {
-    registrations.set(id, handler as (...args: unknown[]) => Promise<unknown>);
-  }
   const missing = COMMAND_IDS.filter((id) => !registrations.has(id));
   if (missing.length > 0) {
     throw new Error(`Missing command handlers: ${missing.join(', ')}`);

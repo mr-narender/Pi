@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.249
+
+- Review earns its place: the always-there collapsible tree is GONE. A ⧉ badge appears in the deck ONLY when π actually changed files; clicking it opens Review as a full surface over the chat (same pattern as ☰) — turns → files with +/− counts, click = diff, ↩ per file or whole turn (modal-confirmed), Esc back to chat. Empty state costs zero pixels.
+
 ## 0.0.248
 
 - Quiet by default: notifications only when you are NOT watching. “Watching” now includes the sidebar chat (it never counted before, so completions toasted in your face). Turn-complete + files-changed notices are suppressed while the chat is visible and the window focused; removed redundant info toasts (follow on/off, thinking level set, change undone, reverted N files) — state is visible in the UI itself. Warnings/errors still always surface.

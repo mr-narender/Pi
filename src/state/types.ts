@@ -190,6 +190,8 @@ export interface WebviewPendingImageItem {
 }
 
 export interface WebviewSnapshot {
+  /** Turns with reviewable file changes (deck badge; 0 = hide). */
+  reviewCount?: number;
   /** Which host renders this: the sidebar one-surface or an editor tab. */
   surface?: 'sidebar' | 'tab';
   /** Most recent task list π wrote — rendered as the plan strip. */

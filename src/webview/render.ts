@@ -963,7 +963,11 @@ function renderSidebarHeader(snapshot: WebviewSnapshot): string {
   const label = name
     ? `<span class="sb-title" title="${escapeHtml(name)}"><span class="sb-title-text">${escapeHtml(name)}</span></span>`
     : '';
-  return `<header class="sb-deck"><button type="button" class="sb-btn" data-action="toggleChatList" title="All chats" aria-label="All chats">☰</button>${label}<span class="sb-spacer"></span><button type="button" class="sb-btn" data-action="newChatSession" title="New chat" aria-label="New chat">✚</button>${renderFollowToggle(snapshot)}<details class="menu-details sb-more"><summary class="sb-btn" title="More" aria-label="More actions">⋯</summary><div class="menu-panel" role="menu"><button type="button" class="menu-item" data-command="piRpc.reviewLastTurn">Review last turn</button><button type="button" class="menu-item" data-command="piRpc.showChatVersions">Chat versions</button><button type="button" class="menu-item" data-command="piRpc.exportHtml">Export chat</button><button type="button" class="menu-item" data-command="piRpcInternal.restart">Restart π</button></div></details></header>`;
+  const review =
+    (snapshot.reviewCount ?? 0) > 0
+      ? `<button type="button" class="sb-btn sb-review" data-action="toggleReview" title="Review π's changes (${snapshot.reviewCount} turn${snapshot.reviewCount === 1 ? '' : 's'})" aria-label="Review changes">⧉<span class="sb-review-count">${snapshot.reviewCount}</span></button>`
+      : '';
+  return `<header class="sb-deck"><button type="button" class="sb-btn" data-action="toggleChatList" title="All chats" aria-label="All chats">☰</button>${label}<span class="sb-spacer"></span>${review}<button type="button" class="sb-btn" data-action="newChatSession" title="New chat" aria-label="New chat">✚</button>${renderFollowToggle(snapshot)}<details class="menu-details sb-more"><summary class="sb-btn" title="More" aria-label="More actions">⋯</summary><div class="menu-panel" role="menu"><button type="button" class="menu-item" data-command="piRpc.reviewLastTurn">Review last turn</button><button type="button" class="menu-item" data-command="piRpc.showChatVersions">Chat versions</button><button type="button" class="menu-item" data-command="piRpc.exportHtml">Export chat</button><button type="button" class="menu-item" data-command="piRpcInternal.restart">Restart π</button></div></details></header>`;
 }
 
 function renderPlanStrip(snapshot: WebviewSnapshot): string {

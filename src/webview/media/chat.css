@@ -3839,3 +3839,159 @@ body.vscode-high-contrast #chat-list-overlay {
   backdrop-filter: none;
   background: var(--vscode-editor-background);
 }
+
+/* Review: conditional deck badge + full-surface overlay. */
+.sb-review {
+  position: relative;
+  width: auto;
+  padding: 0 6px;
+  gap: 3px;
+  display: inline-flex;
+  color: var(--ember);
+  opacity: 1;
+}
+
+.sb-review-count {
+  font-size: 9.5px;
+  font-weight: 700;
+}
+
+#review-overlay {
+  position: fixed;
+  inset: 37px 0 0 0;
+  z-index: 30;
+  background: color-mix(in srgb, var(--vscode-editor-background) 90%, transparent);
+  backdrop-filter: blur(12px);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+#review-overlay[hidden] {
+  display: none !important;
+}
+
+.rv-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.rv-title {
+  font-weight: 650;
+  font-size: 12.5px;
+}
+
+.rv-list {
+  flex: 1;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.rv-turn {
+  background: var(--glass-1);
+  border: 1px solid var(--glass-line);
+  border-radius: 9px;
+  padding: 2px 8px 6px;
+}
+
+.rv-turn > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 2px;
+  cursor: pointer;
+  list-style: none;
+  font-size: 12px;
+}
+
+.rv-turn > summary::-webkit-details-marker {
+  display: none;
+}
+
+.rv-turn-title {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rv-turn-meta {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--vscode-descriptionForeground);
+  flex: none;
+}
+
+.rv-revert-turn {
+  border: 1px solid var(--glass-line-strong);
+  background: transparent;
+  color: var(--vscode-foreground);
+  font-size: 9.5px;
+  border-radius: 5px;
+  padding: 1px 6px;
+  cursor: pointer;
+  flex: none;
+}
+
+.rv-revert-turn:hover {
+  border-color: var(--vscode-editorError-foreground, #f48771);
+  color: var(--vscode-editorError-foreground, #f48771);
+}
+
+.rv-file {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 0;
+}
+
+.rv-open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  border: none;
+  background: transparent;
+  color: var(--vscode-foreground);
+  font-size: 11.5px;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 6px;
+  padding: 3px 6px;
+  overflow: hidden;
+}
+
+.rv-open:hover {
+  background: var(--glass-2);
+  color: var(--ember);
+}
+
+.rv-stat {
+  font-size: 9.5px;
+}
+
+.rv-undo {
+  border: none;
+  background: transparent;
+  color: var(--vscode-foreground);
+  opacity: 0.6;
+  cursor: pointer;
+  border-radius: 5px;
+  padding: 2px 6px;
+}
+
+.rv-undo:hover {
+  opacity: 1;
+  color: var(--vscode-editorError-foreground, #f48771);
+  background: var(--glass-2);
+}
+
+body.vscode-high-contrast #review-overlay {
+  backdrop-filter: none;
+  background: var(--vscode-editor-background);
+}

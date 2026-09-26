@@ -900,6 +900,10 @@ function renderNow(snapshot: WebviewSnapshot): void {
         toggleChatListOverlay();
         return;
       }
+      if (action === 'toggleReview') {
+        toggleReviewOverlay();
+        return;
+      }
       if (action === 'acceptPreview') {
         previewReturnFocusId = undefined;
         vscode.postMessage({ type: 'acceptPreview' });
@@ -1667,6 +1671,104 @@ function renderChatList(): void {
   }
 }
 
+// ── Review overlay: full surface over the chat, only reachable when there is
+// something to review (the deck button itself is conditional). ─────────────
+interface ReviewTurnData {
+  index: number;
+  title: string;
+  time: string;
+  files: Array<{ file: string; kind: string; added?: number; deleted?: number }>;
+}
+let reviewTurns: ReviewTurnData[] = [];
+
+function reviewOverlay(): HTMLElement {
+  let overlay = document.getElementById('review-overlay');
+  if (overlay) {
+    return overlay;
+  }
+  overlay = document.createElement('div');
+  overlay.id = 'review-overlay';
+  overlay.hidden = true;
+  overlay.innerHTML =
+    '<div class="rv-head"><span class="rv-title">Review π\u2019s changes</span><button type="button" id="rv-close" class="screen-close" title="Close (Esc)">✕</button></div>' +
+    '<div id="rv-list" class="rv-list"></div>';
+  document.body.appendChild(overlay);
+  overlay.querySelector('#rv-close')?.addEventListener('click', () => toggleReviewOverlay(false));
+  window.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !overlay!.hidden) {
+      toggleReviewOverlay(false);
+    }
+  });
+  return overlay;
+}
+
+function toggleReviewOverlay(force?: boolean): void {
+  const overlay = reviewOverlay();
+  const show = force ?? overlay.hidden;
+  overlay.hidden = !show;
+  if (show) {
+    const deck = document.querySelector('.sb-deck');
+    overlay.style.top = deck ? `${Math.ceil(deck.getBoundingClientRect().bottom) + 4}px` : '8px';
+    vscode.postMessage({ type: 'requestReview' });
+  }
+}
+
+function renderReview(): void {
+  const list = document.getElementById('rv-list');
+  if (!list) {
+    return;
+  }
+  if (reviewTurns.length === 0) {
+    list.innerHTML = '<div class="cl-sec">Nothing to review</div>';
+    return;
+  }
+  list.innerHTML = reviewTurns
+    .map((turn, order) => {
+      const files = turn.files
+        .map((file) => {
+          const stat =
+            file.added !== undefined || file.deleted !== undefined
+              ? ` <span class="rv-stat"><span class="sc-add">+${file.added ?? 0}</span> <span class="sc-del">−${file.deleted ?? 0}</span></span>`
+              : '';
+          const name = file.file.split('/').pop() ?? file.file;
+          return `<div class="rv-file"><button type="button" class="rv-open" data-turn="${turn.index}" data-file="${file.file.replaceAll('"', '&quot;')}" title="${file.file} — open diff">${name}${stat}</button><button type="button" class="rv-undo" data-turn="${turn.index}" data-file="${file.file.replaceAll('"', '&quot;')}" title="Revert this file">↩</button></div>`;
+        })
+        .join('');
+      return `<details class="rv-turn"${order === 0 ? ' open' : ''}><summary><span class="rv-turn-title">${turn.title.replaceAll('<', '&lt;')} · ${turn.time}</span><span class="rv-turn-meta">${turn.files.length} file${turn.files.length === 1 ? '' : 's'}</span><button type="button" class="rv-revert-turn" data-turn="${turn.index}" title="Revert the whole turn">↩ all</button></summary>${files}</details>`;
+    })
+    .join('');
+  for (const button of Array.from(list.querySelectorAll<HTMLButtonElement>('.rv-open'))) {
+    button.addEventListener('click', () =>
+      vscode.postMessage({
+        type: 'reviewAction',
+        action: 'diff',
+        turn: Number(button.dataset.turn),
+        file: button.dataset.file,
+      })
+    );
+  }
+  for (const button of Array.from(list.querySelectorAll<HTMLButtonElement>('.rv-undo'))) {
+    button.addEventListener('click', () =>
+      vscode.postMessage({
+        type: 'reviewAction',
+        action: 'revertFile',
+        turn: Number(button.dataset.turn),
+        file: button.dataset.file,
+      })
+    );
+  }
+  for (const button of Array.from(list.querySelectorAll<HTMLButtonElement>('.rv-revert-turn'))) {
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      vscode.postMessage({
+        type: 'reviewAction',
+        action: 'revertTurn',
+        turn: Number(button.dataset.turn),
+      });
+    });
+  }
+}
+
 // Approvals answer to the keyboard: Y = Allow, N = Deny (skipped while
 // typing). The highest-friction agentic moment shouldn't need the mouse.
 window.addEventListener('keydown', (event) => {
@@ -2000,6 +2102,11 @@ window.addEventListener('keydown', (event) => {
 window.addEventListener(
   'message',
   (event: MessageEvent<{ type: string; snapshot: WebviewSnapshot }>) => {
+    if (event.data?.type === 'reviewData') {
+      reviewTurns = (event.data as unknown as { turns?: ReviewTurnData[] }).turns ?? [];
+      renderReview();
+      return;
+    }
     if (event.data?.type === 'chatList') {
       const payload = event.data as unknown as {
         current?: ChatListItem[];

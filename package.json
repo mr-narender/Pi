@@ -2,7 +2,7 @@
   "name": "pi",
   "displayName": "Pi – this one is (y)ours",
   "description": "An unofficial, personal VS Code chat UI for the Pi coding agent (pi.dev). Not affiliated with pi.dev — shared for anyone who wants it.",
-  "version": "0.0.248",
+  "version": "0.0.249",
   "publisher": "mr-narender",
   "license": "MIT",
   "private": true,
@@ -92,11 +92,6 @@
           "id": "piRpc.chat",
           "name": "Chat",
           "type": "webview"
-        },
-        {
-          "id": "piRpc.review",
-          "name": "Review",
-          "visibility": "collapsed"
         }
       ]
     },
@@ -741,24 +736,6 @@
         "title": "Pi Settings",
         "category": "Pi",
         "icon": "$(gear)"
-      },
-      {
-        "command": "piRpc.reviewOpenDiff",
-        "title": "Open Turn Diff",
-        "category": "Pi",
-        "icon": "$(diff)"
-      },
-      {
-        "command": "piRpc.reviewRevertFile",
-        "title": "Revert File to Before Turn",
-        "category": "Pi",
-        "icon": "$(discard)"
-      },
-      {
-        "command": "piRpc.reviewRevertTurn",
-        "title": "Revert Entire Turn",
-        "category": "Pi",
-        "icon": "$(discard)"
       }
     ],
     "configuration": {
@@ -1183,18 +1160,6 @@
         {
           "command": "piRpcInternal.openSettingsMenu",
           "when": "false"
-        },
-        {
-          "command": "piRpc.reviewOpenDiff",
-          "when": "false"
-        },
-        {
-          "command": "piRpc.reviewRevertFile",
-          "when": "false"
-        },
-        {
-          "command": "piRpc.reviewRevertTurn",
-          "when": "false"
         }
       ],
       "editor/context": [
@@ -1216,18 +1181,6 @@
         {
           "command": "piRpc.refactorSelection",
           "group": "1_ask@3"
-        }
-      ],
-      "view/item/context": [
-        {
-          "command": "piRpc.reviewRevertFile",
-          "when": "view == 'piRpc.review' && viewItem == 'piReviewFile'",
-          "group": "inline"
-        },
-        {
-          "command": "piRpc.reviewRevertTurn",
-          "when": "view == 'piRpc.review' && viewItem == 'piReviewTurn'",
-          "group": "inline"
         }
       ]
     },
