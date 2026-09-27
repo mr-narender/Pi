@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.287
+
+- Split the sidebar `⋯` menu's flat 8-item list into three labeled sections — **Chat** (Review last turn / Chat versions / Export chat), **Configure** (Extensions / Skills / Prompts / Agent instructions), **System** (Restart π). Reused the existing `.menu-group` header style already used elsewhere in the app instead of inventing a new one.
+
 ## 0.0.286
 
 - **New: Agent Instructions manager** — a 4th sidebar-menu entry, alongside Extensions/Skills/Prompts, for the files that shape how π behaves: `APPEND_SYSTEM.md` (adds to the default system prompt) and the `AGENTS.md`/`AGENTS.override.md`/`CLAUDE.md` family ("context files" π reads for project/personal conventions). Deliberately does NOT offer `SYSTEM.md` (full replace of the default system prompt) — explicit call: too easy to cause real damage by accident, only the additive/context-file forms are offered. Click an existing file to open it, click a missing one to create it with a short starter explaining what goes there. Correctly distinguishes that `AGENTS.md` lives at the project root while `APPEND_SYSTEM.md` lives under `.pi/` — a real, easy-to-get-wrong distinction confirmed from Pi's own docs, not assumed. Verified against this machine's actual real files, including correctly finding the very `AGENTS.md` governing this session. 8 new unit tests.
