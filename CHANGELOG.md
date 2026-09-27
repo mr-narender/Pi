@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.271
+
+- Replaced the padlock with a shield-check icon for the approval-mode toggle — a lock reads as "restricted," which is backwards (π can still edit, it just pauses for your OK). Researched this: Claude Code's own VS Code extension hit the exact same "these two states look the same" bug and fixed it with distinct icons and clear labels; adopted their now-familiar naming too — "Auto Mode" / "Ask Before Edits" — so it reads the same way to anyone who's used Claude Code. Verified visually via a real rendered screenshot before shipping, not just hand-traced coordinates.
+
 ## 0.0.270
 
 - Fixed "picked a new model but it still errors": forking a session to resend an edited message replays history up to the branch point, which can put the live connection back on whatever model was active at that point — silently discarding a just-picked model. The model is now re-asserted immediately AFTER the fork, right before the resend, guaranteeing the resend actually uses what you picked.

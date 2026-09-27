@@ -955,7 +955,14 @@ function renderApprovals(snapshot: WebviewSnapshot): string {
 // your approval before it touches disk.
 function renderPermissionModeToggle(snapshot: WebviewSnapshot): string {
   const on = snapshot.requireApprovalForEdits === true;
-  return `<button type="button" class="icon-button permission-toggle${on ? ' is-on' : ''}" data-command="piRpc.togglePermissionMode" title="${on ? 'Approval required for every edit (click for Auto)' : 'Auto mode — π writes freely (click to require approval)'}" aria-label="Toggle approval mode" aria-pressed="${on ? 'true' : 'false'}"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="7" width="9" height="6.5" rx="1.3"/><path d="M5.5 7V4.8a2.5 2.5 0 0 1 5 0V7"/></svg></button>`;
+  // Shield-check, not a padlock: a lock reads as "restricted" (the opposite —
+  // π can still edit, it just pauses for your OK). Shield-check is the
+  // standard "needs to pass a check" metaphor; labels match Claude Code's own
+  // now-familiar naming ("Auto Mode" / "Ask Before Edits") on purpose.
+  const title = on
+    ? 'Ask Before Edits — every change needs your OK first (click for Auto Mode)'
+    : 'Auto Mode — π edits freely, no pauses (click for Ask Before Edits)';
+  return `<button type="button" class="icon-button permission-toggle${on ? ' is-on' : ''}" data-command="piRpc.togglePermissionMode" title="${title}" aria-label="Toggle approval mode: Auto Mode or Ask Before Edits" aria-pressed="${on ? 'true' : 'false'}"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3 L12 3 L12 8 C12 10.5 10 12.3 8 13.5 C6 12.3 4 10.5 4 8 Z"/><path d="M5.8 8 L7.2 9.6 L10.3 6.2"/></svg></button>`;
 }
 
 function renderFollowToggle(snapshot: WebviewSnapshot): string {
