@@ -13,14 +13,16 @@ test('summarizeUsage extracts tokens/context/cost; undefined when empty', () => 
   assert.equal(summarizeUsage({}), undefined);
 });
 
-test('formatTokens and chip label', () => {
+test('formatTokens (still exported/tested for future callers)', () => {
   assert.equal(formatTokens(950), '950');
   assert.equal(formatTokens(12345), '12k');
   assert.equal(formatTokens(1234), '1.2k');
   assert.equal(formatTokens(2_500_000), '2.5M');
-  assert.equal(
-    formatUsageChip({ totalTokens: 12345, contextPercent: 6, cost: 0.0234 }),
-    '6% · 12k tok · $0.023'
-  );
+});
+
+test('formatUsageChip: percentage only — tokens/cost no longer crowd the composer chip', () => {
+  assert.equal(formatUsageChip({ totalTokens: 12345, contextPercent: 6, cost: 0.0234 }), '6%');
+  assert.equal(formatUsageChip({ totalTokens: 500, contextPercent: 42 }), '42%');
   assert.equal(formatUsageChip({ totalTokens: 0 }), '');
+  assert.equal(formatUsageChip({ totalTokens: 500 }), ''); // no percent -> chip stays lean
 });

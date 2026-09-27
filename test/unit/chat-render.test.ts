@@ -426,9 +426,13 @@ test('#5 usage chip renders in header when stats present', () => {
     snapshot({ usage: { totalTokens: 12345, contextPercent: 6, cost: 0.0234 } })
   );
   // Cost is now a read-only label (not a clickable usage-chip).
-  assert.match(html, /composer-status[\s\S]*mock\/model|composer-status/); // cost lives in the status chip summary
+  assert.match(html, /composer-status/); // percent lives in the status chip summary
   assert.doesNotMatch(html, /class="usage-chip"/);
-  assert.match(html, /6% · 12k tok · \$0.023/);
+  // Chip is model · percent · thinking now — tokens/cost were crowding out
+  // the model name and forcing truncation.
+  assert.match(html, /class="model-dot"><\/span>model \u00b7 6% \u00b7 medium<\/button>/);
+  assert.doesNotMatch(html, /12k tok/);
+  assert.doesNotMatch(html, /\$0\.023/);
   const bare = renderChatApp(snapshot({}));
   assert.doesNotMatch(bare, /class="cost-label"/); // legacy chip stays gone
 });

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.272
+
+- Reload restores your last chat: the sidebar (the primary surface) was hardcoded to bind to a brand-new blank draft on every single activation — confirmed with certainty in the code, no ambiguity — so every reload silently dropped you onto an empty chat regardless of what you were viewing. It now persists the current chat to workspace storage on every switch/new-chat and restores it on the next reload, falling back to a fresh draft only if the saved workspace folder is no longer open. (Editor-tab chats and any files the follow-agent had open are governed by VS Code's own native tab-restore, which should already bring those back on "Reload Window" if your VS Code hot-exit/restore settings are on — that part isn't something this extension controls.)
+- Composer chip: usage now shows ONLY the overall-consumed percentage — token count and dollar cost were crowding the chip and truncating the model name. The chip's max width also grew (260px → 420px) so a full model id has real room. Detailed cost still lives in Usage & cost (π menu) and the model-picker capability line.
+
 ## 0.0.271
 
 - Replaced the padlock with a shield-check icon for the approval-mode toggle — a lock reads as "restricted," which is backwards (π can still edit, it just pauses for your OK). Researched this: Claude Code's own VS Code extension hit the exact same "these two states look the same" bug and fixed it with distinct icons and clear labels; adopted their now-familiar naming too — "Auto Mode" / "Ask Before Edits" — so it reads the same way to anyone who's used Claude Code. Verified visually via a real rendered screenshot before shipping, not just hand-traced coordinates.

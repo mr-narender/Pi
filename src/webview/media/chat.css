@@ -3426,7 +3426,11 @@ button.composer-status {
   border-radius: 999px;
   cursor: pointer;
   transition: border-color 120ms ease;
-  max-width: 260px;
+  /* Wide enough for the selected model's full name — was 260px and cut off
+     longer ids. Content is now just model · thinking · %, so this is a
+     generous cap, not the everyday size. */
+  max-width: 420px;
+  flex: 0 1 auto;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

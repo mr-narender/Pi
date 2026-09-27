@@ -1319,6 +1319,7 @@ export class ChatTabManager implements vscode.Disposable {
               kind: 'workspaceDraft',
               draftId: `sidebar-${Date.now()}`,
             };
+            this.persistSidebarTarget();
             await this.activateResource(host.resource, { startIfStopped: true });
             await this.renderResource(host.resource, { active: true });
           }
@@ -1342,6 +1343,7 @@ export class ChatTabManager implements vscode.Disposable {
           kind: 'sessionFile',
           sessionFile: parsed.path,
         };
+        this.persistSidebarTarget();
         this.logger.info(`[sidebar] switch → ${parsed.path.split('/').pop() ?? ''}`);
         await this.activateResource(host.resource, { startIfStopped: true });
         await this.renderResource(host.resource, { active: true });
@@ -1360,6 +1362,7 @@ export class ChatTabManager implements vscode.Disposable {
           kind: 'workspaceDraft',
           draftId: `sidebar-${Date.now()}`,
         };
+        this.persistSidebarTarget();
         await this.activateResource(host.resource, { startIfStopped: true });
         await this.renderResource(host.resource, { active: true });
         return;
@@ -1835,6 +1838,19 @@ export class ChatTabManager implements vscode.Disposable {
   private readonly sessions: SessionIndex;
 
   private sidebarTarget: ChatTabTarget | undefined;
+  private static readonly SIDEBAR_LAST_TARGET_KEY = 'piRpc.sidebarLastTarget';
+
+  /** Remember the sidebar's current chat so a reload restores it instead of
+   * always landing on a blank draft — the sidebar is the primary surface. */
+  private persistSidebarTarget(): void {
+    if (this.sidebarTarget) {
+      void this.context.workspaceState.update(
+        ChatTabManager.SIDEBAR_LAST_TARGET_KEY,
+        this.sidebarTarget
+      );
+    }
+  }
+
   /** Injected: line-by-line review engine. */
   public inlineReview: { start(record: unknown, change: unknown): Promise<void> } | undefined;
   /** Injected: session replay (walk past turns' files, oldest or single). */
@@ -1908,12 +1924,26 @@ export class ChatTabManager implements vscode.Disposable {
         '<html><body style="font-family:sans-serif;padding:16px">Open a folder to chat with π.</body></html>';
       return;
     }
-    this.sidebarTarget = {
-      workspaceFolderUri: folder.uri.toString(),
-      kind: 'workspaceDraft',
-      draftId: 'sidebar', // constant → same session key across reloads
-    };
-    this.logger.info(`[sidebar] attach (draft=${this.sidebarTarget.draftId ?? ''})`);
+    // Restore whatever chat was last showing here — otherwise every reload
+    // silently drops you onto a blank draft, which read as "nothing restores".
+    const openFolders = new Set(
+      (vscode.workspace.workspaceFolders ?? []).map((f) => f.uri.toString())
+    );
+    const saved = this.context.workspaceState.get<ChatTabTarget>(
+      ChatTabManager.SIDEBAR_LAST_TARGET_KEY
+    );
+    this.sidebarTarget =
+      saved && openFolders.has(saved.workspaceFolderUri)
+        ? saved
+        : {
+            workspaceFolderUri: folder.uri.toString(),
+            kind: 'workspaceDraft',
+            draftId: 'sidebar', // constant → same session key across reloads
+          };
+    this.persistSidebarTarget();
+    this.logger.info(
+      `[sidebar] attach (restored=${Boolean(saved && openFolders.has(saved.workspaceFolderUri))}, kind=${this.sidebarTarget.kind}, draft=${this.sidebarTarget.draftId ?? ''})`
+    );
     const host = new SidebarChatHost(extensionUri, view, this, resource);
     this.hosts.set(resource.toString(), host);
     // START the controller — rendering alone leaves it "Connecting…" forever
