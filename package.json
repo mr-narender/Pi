@@ -2,7 +2,7 @@
   "name": "pi",
   "displayName": "Pi – this one is (y)ours",
   "description": "An unofficial, personal VS Code chat UI for the Pi coding agent (pi.dev). Not affiliated with pi.dev — shared for anyone who wants it.",
-  "version": "0.0.290",
+  "version": "0.0.291",
   "publisher": "mr-narender",
   "license": "MIT",
   "private": true,
@@ -1146,6 +1146,52 @@
           "command": "piRpc.toggleSidebarMode",
           "when": "view == piRpc.openChatList || view == piRpc.chat",
           "group": "navigation@0"
+        },
+        {
+          "command": "piRpc.newSession",
+          "when": "view == piRpc.openChatList",
+          "group": "navigation@1",
+          "icon": "$(add)"
+        },
+        {
+          "command": "piRpc.reviewLastTurn",
+          "when": "view == piRpc.openChatList",
+          "group": "1_chat@1"
+        },
+        {
+          "command": "piRpc.showChatVersions",
+          "when": "view == piRpc.openChatList",
+          "group": "1_chat@2"
+        },
+        {
+          "command": "piRpc.exportHtml",
+          "when": "view == piRpc.openChatList",
+          "group": "1_chat@3"
+        },
+        {
+          "command": "piRpc.manageExtensions",
+          "when": "view == piRpc.openChatList",
+          "group": "2_configure@1"
+        },
+        {
+          "command": "piRpc.manageSkills",
+          "when": "view == piRpc.openChatList",
+          "group": "2_configure@2"
+        },
+        {
+          "command": "piRpc.managePrompts",
+          "when": "view == piRpc.openChatList",
+          "group": "2_configure@3"
+        },
+        {
+          "command": "piRpc.manageAgentInstructions",
+          "when": "view == piRpc.openChatList",
+          "group": "2_configure@4"
+        },
+        {
+          "command": "piRpcInternal.restart",
+          "when": "view == piRpc.openChatList",
+          "group": "3_system@1"
         }
       ],
       "editor/title": [

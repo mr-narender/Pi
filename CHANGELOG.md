@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.291
+
+- **Fixed: the Chat List view had no toolbar at all** — New Chat, Review last turn, Chat versions, Export chat, Extensions/Skills/Prompts/Agent Instructions, and Restart π all lived in the webview's own header, which Agentic Mode correctly hides — but nothing replaced them on the tree view side, so switching to Agentic Mode silently lost access to all of it. Added a `+` New Chat icon plus the same Chat/Configure/System grouped overflow menu the webview has, now on the tree view's title bar too.
+- **Fixed: clicking New Chat visibly reloaded the whole list 2-3 times.** Real cause: opening a chat fires both the new `onDidChangeOpenChats` event and `recentSessions.refresh()` (which itself fires twice — loading, then settled) — three real events for one click. Debounced the tree's own refresh (120ms) so rapid-fire events collapse into one settled update, the same coalescing pattern already used for the webview's own rendering.
+- **Reduced list density** — Recent capped at 12 instead of 30; a real user's actual session history (old Claude imports, past experiments) made the list feel overwhelming rather than scannable. Full history remains one click away via the existing search-everything Quick Switch command.
+
 ## 0.0.290
 
 - **Fixed: "Loading chats" spinning forever, never settling** (reported immediately after 0.0.289). Real root cause: `getChildren()` called `recentSessions.refresh(folder)` explicitly on every invocation, while also listening for `onDidChange` and re-triggering `getChildren()` on it — `refresh()` fires `onDidChange` synchronously the moment it starts (`loading: true`), which re-triggered `getChildren()`, which called `refresh()` again, forever. `RecentSessionService.getState()` already has its own correct "refresh once if nothing cached yet" behavior built in — the predecessor code never called `refresh()` explicitly, only this rewrite added it. Removed the redundant call. Proved this with a real harness using the actual `RecentSessionService` class (not a mock): the buggy pattern produced a genuine stack-overflowing synchronous recursion (500,000+ calls before crashing), the fixed pattern settles at exactly 3 calls and stops.

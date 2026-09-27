@@ -32,6 +32,7 @@ export class OpenChatListTreeProvider
 {
   private readonly emitter = new vscode.EventEmitter<void>();
   private readonly subscriptions: vscode.Disposable[] = [];
+  private refreshTimer: ReturnType<typeof setTimeout> | undefined;
 
   public constructor(
     private readonly chatTabs: ChatTabManager,
@@ -47,8 +48,15 @@ export class OpenChatListTreeProvider
     return this.emitter.event;
   }
 
+  /** Debounced on purpose: opening one new chat fires BOTH
+   * onDidChangeOpenChats and recentSessions.onDidChange (twice — loading,
+   * then settled) — three real events for one user action. Without this,
+   * the tree visibly re-renders 2-3 times per click ("why does it keep
+   * reloading"). Collapsing rapid-fire events into one settled update is
+   * the same pattern already used for the webview's own render coalescing. */
   public refresh(): void {
-    this.emitter.fire();
+    clearTimeout(this.refreshTimer);
+    this.refreshTimer = setTimeout(() => this.emitter.fire(), 120);
   }
 
   public getTreeItem(element: SidebarNode): vscode.TreeItem {
@@ -85,6 +93,7 @@ export class OpenChatListTreeProvider
   }
 
   public dispose(): void {
+    clearTimeout(this.refreshTimer);
     for (const disposable of this.subscriptions) {
       disposable.dispose();
     }

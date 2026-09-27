@@ -107,7 +107,11 @@ export function createOpenChatListModel(input: OpenChatListInput): SidebarNode[]
   const recentOnly = input.recent.items.filter((session) => !openSessionFiles.has(session.path));
   if (recentOnly.length > 0) {
     nodes.push({ id: 'list.recent.header', kind: 'summary', label: 'Recent' });
-    for (const session of recentOnly.slice(0, 30)) {
+    // Capped smaller than the old dormant code's 30 — a real user's actual
+    // session history (Claude imports, old experiments) made the list feel
+    // dense/overwhelming rather than scannable. Full history stays one
+    // click away via piRpc.quickSwitchChat's search-everything QuickPick.
+    for (const session of recentOnly.slice(0, 12)) {
       const label = sessionDisplayName(session);
       const description = [
         session.workspaceLabel,
