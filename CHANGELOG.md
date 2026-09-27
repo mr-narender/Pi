@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.292
+
+- **Reverted the tree view's overflow menu added in 0.0.291.** Real problem found: it used the same command IDs as the webview's `⋯` menu, but VS Code's native menus display each command's Command-Palette title ("Manage Extensions", "Restart"), not the webview's actual short labels ("Extensions…", "Restart π") — so the same action showed different text in two places. That's an unintended rename, not a deliberate one. The webview's own menu is untouched and unchanged; those options remain reachable there and via Command Palette, exactly as before. Only "New Chat" stays as a toolbar icon (no naming conflict — its title already reads "New Chat" everywhere).
+- **Removed the "Recent" section label** — reported as unwanted twice; the entries themselves stay, distinguished by icon (history vs. chat-bubble) instead of a text header.
+- **Fixed: clicking any chat (not just New Chat) still visibly reloaded the list.** Real cause: revealing an already-open or already-known chat still fires the same change events as a genuinely new one, even though nothing about the list's content actually changed. Added a content diff before redrawing — computed the model, compared it to what's already shown, and only fire the tree-refresh event when it's actually different. Proved with a real harness: 3 no-op events (revealing a known chat) now cause zero redraws; a genuine new chat still causes exactly one.
+
 ## 0.0.291
 
 - **Fixed: the Chat List view had no toolbar at all** — New Chat, Review last turn, Chat versions, Export chat, Extensions/Skills/Prompts/Agent Instructions, and Restart π all lived in the webview's own header, which Agentic Mode correctly hides — but nothing replaced them on the tree view side, so switching to Agentic Mode silently lost access to all of it. Added a `+` New Chat icon plus the same Chat/Configure/System grouped overflow menu the webview has, now on the tree view's title bar too.

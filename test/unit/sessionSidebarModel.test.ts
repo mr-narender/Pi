@@ -71,9 +71,8 @@ test('THE actual fix: a session that is both open AND in recent history appears 
   const labels = model.map((n) => n.label);
   // "Fix auth bug" appears exactly ONCE across the whole list, not twice.
   assert.equal(labels.filter((l) => l === 'Fix auth bug').length, 1);
-  // "Older chat" (genuinely not open) still appears once, under Recent.
+  // "Older chat" (genuinely not open, not deduped) still appears once.
   assert.equal(labels.filter((l) => l === 'Older chat').length, 1);
-  assert.ok(labels.includes('Recent'));
 });
 
 test('Recent rows use piRpc.switchSession (reuses an existing tab if the session is already open)', () => {
@@ -99,7 +98,7 @@ test('Recent rows use piRpc.switchSession (reuses an existing tab if the session
       ],
     },
   });
-  const recentNode = model[2]; // [0]=New Chat, [1]=Recent header, [2]=entry
+  const recentNode = model[1]; // [0]=New Chat, [1]=entry (no header row)
   assert.equal(recentNode?.command?.command, 'piRpc.switchSession');
   assert.deepEqual(recentNode?.command?.arguments, [{ sessionPath: '/s/a.jsonl', label: 'Some chat' }]);
 });
@@ -127,7 +126,7 @@ test('unknown session times render without NaN labels', () => {
     },
     now: Date.UTC(2024, 0, 2, 12, 0, 0),
   });
-  const recentNode = model[2];
+  const recentNode = model[1];
   assert.ok(!recentNode?.description?.includes('NaN'));
   assert.match(recentNode?.tooltip ?? '', /Unknown/);
 });

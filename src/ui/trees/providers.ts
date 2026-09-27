@@ -33,6 +33,11 @@ export class OpenChatListTreeProvider
   private readonly emitter = new vscode.EventEmitter<void>();
   private readonly subscriptions: vscode.Disposable[] = [];
   private refreshTimer: ReturnType<typeof setTimeout> | undefined;
+  /** Last content actually shown, so refresh() can skip firing when nothing
+   * really changed — e.g. clicking an already-known chat still fires the
+   * open-chats/recentSessions events, but if the resulting list is
+   * byte-identical to what's already on screen there's nothing to redraw. */
+  private lastRenderedKey: string | undefined;
 
   public constructor(
     private readonly chatTabs: ChatTabManager,
@@ -48,15 +53,25 @@ export class OpenChatListTreeProvider
     return this.emitter.event;
   }
 
-  /** Debounced on purpose: opening one new chat fires BOTH
-   * onDidChangeOpenChats and recentSessions.onDidChange (twice — loading,
-   * then settled) — three real events for one user action. Without this,
-   * the tree visibly re-renders 2-3 times per click ("why does it keep
-   * reloading"). Collapsing rapid-fire events into one settled update is
-   * the same pattern already used for the webview's own render coalescing. */
+  /** Debounced AND diffed. Debounce: one user action can fire multiple
+   * underlying events (opening a chat fires onDidChangeOpenChats, and
+   * recentSessions itself fires twice per refresh — loading, then
+   * settled) — collapse those into one check. Diff: even after collapsing,
+   * clicking a chat that's already known to the list changes nothing about
+   * WHAT the list should show, so don't tell VS Code to redraw when the
+   * computed content is identical to what's already rendered — that's what
+   * was still visibly "reloading" the list on every click. */
   public refresh(): void {
     clearTimeout(this.refreshTimer);
-    this.refreshTimer = setTimeout(() => this.emitter.fire(), 120);
+    this.refreshTimer = setTimeout(() => {
+      const nodes = this.computeModel();
+      const key = JSON.stringify(nodes);
+      if (key === this.lastRenderedKey) {
+        return;
+      }
+      this.lastRenderedKey = key;
+      this.emitter.fire();
+    }, 120);
   }
 
   public getTreeItem(element: SidebarNode): vscode.TreeItem {
@@ -67,6 +82,12 @@ export class OpenChatListTreeProvider
     if (element) {
       return [];
     }
+    const nodes = this.computeModel();
+    this.lastRenderedKey = JSON.stringify(nodes);
+    return nodes;
+  }
+
+  private computeModel(): SidebarNode[] {
     const rawOpenChats = this.chatTabs.listOpenChats();
     const openChats: OpenChatEntry[] = rawOpenChats.map((chat) => ({
       resource: chat.resource.toString(),

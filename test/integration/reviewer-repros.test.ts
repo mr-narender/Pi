@@ -394,9 +394,9 @@ test('reviewer repro 15: malformed session timestamps never surface NaNd ago', a
       },
       now: Date.UTC(2024, 0, 4, 0, 0, 0),
     });
-    // [0] = "New Chat" action, [1] = "Recent" section header (no open chats
-    // in this repro), [2] = the actual session entry under test.
-    const recentNode = model[2];
+    // [0] = "New Chat" action, [1] = the actual session entry under test
+    // (no open chats in this repro, no section header row).
+    const recentNode = model[1];
 
     assert.equal(index.sessions[0]?.createdAt, fallbackTime.getTime());
     assert.equal(index.sessions[0]?.modifiedAt, fallbackTime.getTime());

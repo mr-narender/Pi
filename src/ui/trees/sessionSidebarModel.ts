@@ -106,7 +106,9 @@ export function createOpenChatListModel(input: OpenChatListInput): SidebarNode[]
 
   const recentOnly = input.recent.items.filter((session) => !openSessionFiles.has(session.path));
   if (recentOnly.length > 0) {
-    nodes.push({ id: 'list.recent.header', kind: 'summary', label: 'Recent' });
+    // No "Recent" header — the history icon on each row already
+    // distinguishes these from the Open section above; a text label was
+    // reported confusing/unwanted.
     // Capped smaller than the old dormant code's 30 — a real user's actual
     // session history (Claude imports, old experiments) made the list feel
     // dense/overwhelming rather than scannable. Full history stays one
