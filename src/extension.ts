@@ -1551,6 +1551,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     await vscode.commands.executeCommand('workbench.action.openSettings', '@ext:mr-narender.pi');
   });
 
+  // Debounce for the approval-gate config-change reaction (worker recycling +
+  // notification) — rapid toggling must settle to ONE outcome, not one per
+  // click (VS Code has no API to dismiss an already-shown toast).
+  let approvalGateReactionTimer: ReturnType<typeof setTimeout> | undefined;
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((event) => {
       if (
@@ -1568,34 +1572,49 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         const enabled = vscode.workspace
           .getConfiguration('piRpc')
           .get<boolean>('requireApprovalForEdits', false);
+        // Instant visual feedback on EVERY click — this was the missing
+        // piece that made the toggle look "stuck": the setting always
+        // flipped correctly, but no webview was ever told to re-render, so
+        // the icon never reflected it.
+        void chatTabs.rerenderAll();
         void syncApprovalGateForWorkspace(context.extensionUri, enabled).then(() => {
           // Pi only re-reads .pi/settings.json (and a newly toggled project
           // extension) at process boot — confirmed in Pi's own source,
           // newSession() never touches the extension runtime. A full runtime
           // restart would interrupt any chat mid-conversation just for a
-          // settings toggle, so instead: recycle only IDLE workers right now
-          // (zero disruption — nothing was running on them) and re-warm the
-          // pool. New chats get the new setting immediately; anything already
-          // running keeps going and picks it up next time IT goes idle.
-          const { recycled, stillBusy } = recycleIdleSharedPiHostWorkers();
-          const verb = enabled ? 'enabled' : 'disabled';
-          const busyNote =
-            stillBusy > 0
-              ? ` ${stillBusy} chat${stillBusy === 1 ? '' : 's'} already running will pick it up when idle (or restart π now for instant effect).`
-              : '';
-          void vscode.window
-            .showInformationMessage(
-              `π approval gate ${verb} — new chats use it immediately.${busyNote}`,
-              ...(stillBusy > 0 ? ['Restart π Now'] : [])
-            )
-            .then((choice) => {
-              if (choice === 'Restart π Now') {
-                void vscode.commands.executeCommand('piRpc.restartSharedRuntime');
-              }
-            });
-          logger.info(
-            `[approval-gate] config changed: recycled ${recycled} idle worker(s), ${stillBusy} still busy`
-          );
+          // settings toggle, so instead: recycle only IDLE workers (zero
+          // disruption — nothing was running on them) and re-warm the pool.
+          //
+          // Debounced: rapid re-toggling must settle to ONE reaction, not
+          // one per click. VS Code has no API to dismiss an already-shown
+          // toast, so debouncing BEFORE showing is the only way to avoid a
+          // stack of stale notifications — also avoids needlessly recycling
+          // workers on every intermediate click.
+          clearTimeout(approvalGateReactionTimer);
+          approvalGateReactionTimer = setTimeout(() => {
+            const finalEnabled = vscode.workspace
+              .getConfiguration('piRpc')
+              .get<boolean>('requireApprovalForEdits', false);
+            const { recycled, stillBusy } = recycleIdleSharedPiHostWorkers();
+            const verb = finalEnabled ? 'enabled' : 'disabled';
+            const busyNote =
+              stillBusy > 0
+                ? ` ${stillBusy} chat${stillBusy === 1 ? '' : 's'} already running will pick it up when idle (or restart π now for instant effect).`
+                : '';
+            void vscode.window
+              .showInformationMessage(
+                `π approval gate ${verb} — new chats use it immediately.${busyNote}`,
+                ...(stillBusy > 0 ? ['Restart π Now'] : [])
+              )
+              .then((choice) => {
+                if (choice === 'Restart π Now') {
+                  void vscode.commands.executeCommand('piRpc.restartSharedRuntime');
+                }
+              });
+            logger.info(
+              `[approval-gate] settled: recycled ${recycled} idle worker(s), ${stillBusy} still busy`
+            );
+          }, 600);
         });
       }
     })

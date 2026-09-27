@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.274
+
+- Fixed the approval-gate toggle looking "stuck on": the setting was always flipping correctly, but the 0.0.273 refactor dropped the call that refreshes the chat webview, so the icon never visually updated. Every click now re-renders instantly.
+- Fixed notification stacking on rapid toggling: the worker-recycle + notification reaction is now debounced (600ms) so repeated clicks settle to exactly ONE notification reflecting the final state, instead of one per click. (VS Code has no API to dismiss an already-shown toast, so debouncing before showing is what actually achieves "only the latest.")
+
 ## 0.0.273
 
 - Approval-gate toggle no longer demands a manual "restart the runtime" click. Researched why a restart was needed at all: confirmed in Pi's own source that a project extension is only loaded once, at process boot — starting a new chat session never re-reads it, only a fresh process does. Instead of a full pool restart (which killed even mid-conversation chats), toggling now automatically recycles ONLY idle workers (nothing was running on them — zero disruption) and re-warms the pool, so new chats get the new setting immediately. Anything already running keeps going untouched and picks it up next time it goes idle; a "Restart π Now" button is offered only when chats are actually still busy, for instant effect if you want it right away.
