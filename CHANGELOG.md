@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.276
+
+- Removed the duplicate follow (⌖) and approval-mode (🛡) toggles from the top sidebar deck. They were rendered in two places — top deck AND composer — for no reason; both are one click away at the input already. Top deck is back to session-level actions only (☰ · title · ✚ · ⋯).
+
 ## 0.0.275
 
 - Approval-gate toggle no longer shows a notification at all. The icon flipping IS the confirmation — a popup restating what you just saw happen, with a decision button on top, was double confirmation for one click. Any "chats still on the old setting" detail now lives passively in the icon's tooltip, corrected to say what's actually true (closing/restarting is the reliable way to apply it — a worker holds a chat open until it's closed, not just between turns, so "picks it up when idle" wasn't a claim the mechanism actually backs).
