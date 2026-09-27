@@ -1098,237 +1098,344 @@ export class ChatTabManager implements vscode.Disposable {
 
     switch (parsed.type) {
       case 'loadOlder':
-        await this.revealOlderMessages(host.resource);
-        return;
-      case 'openExternal': {
-        const url = parsed.url;
-        if (/^https?:\/\//i.test(url)) {
-          await vscode.env.openExternal(vscode.Uri.parse(url));
-        }
-        return;
-      }
+        return this.revealOlderMessages(host.resource);
+      case 'openExternal':
+        return this.handleOpenExternal(parsed.url);
       case 'openFile':
-        await this.openEditToolFile(context, parsed.path, false);
-        return;
+        return this.openEditToolFile(context, parsed.path, false);
       case 'openDiff':
-        await this.openEditToolFile(context, parsed.path, true);
-        return;
-      case 'respondUi': {
-        const response: JsonObject = { id: parsed.id };
-        if (typeof parsed.value === 'string') {
-          response.value = parsed.value;
-        }
-        if (typeof parsed.confirmed === 'boolean') {
-          response.confirmed = parsed.confirmed;
-        }
-        await context.controller.respondExtensionUi(response);
-        context.controller.completeExtensionUiRequest(parsed.id);
-        return;
-      }
+        return this.openEditToolFile(context, parsed.path, true);
+      case 'respondUi':
+        return this.handleRespondUi(context, parsed.id, parsed.value, parsed.confirmed);
       case 'attachFile':
-        await this.attachFileByPath(context, parsed.path);
-        return;
-      case 'requestFileMentions': {
-        const items = await this.searchWorkspaceFiles(context, parsed.query);
-        host.post({ type: 'fileMentions', items });
-        return;
-      }
-      case 'requestSlashCommands': {
-        // #6 — supply the slash-command list for inline composer autocomplete.
-        try {
-          const commands = await context.controller.getPiCommands();
-          const items = commands
-            .map((command) => ({
-              name: typeof command.name === 'string' ? command.name : '',
-              description: typeof command.description === 'string' ? command.description : '',
-            }))
-            .filter((command) => command.name.length > 0);
-          host.post({ type: 'slashCommands', items });
-        } catch {
-          host.post({ type: 'slashCommands', items: [] });
-        }
-        return;
-      }
+        return this.attachFileByPath(context, parsed.path);
+      case 'requestFileMentions':
+        return this.handleRequestFileMentions(host, context, parsed.query);
+      case 'requestSlashCommands':
+        return this.handleRequestSlashCommands(host, context);
       case 'insertCode':
-        await this.insertCodeIntoEditor(parsed.text);
-        return;
+        return this.insertCodeIntoEditor(parsed.text);
       case 'newFileFromCode':
-        await this.openCodeInNewFile(parsed.text, parsed.language);
-        return;
+        return this.openCodeInNewFile(parsed.text, parsed.language);
       case 'requestSend':
-        await this.handleRequestSend(host.resource, parsed.command, parsed.follow === true);
-        return;
+        return this.handleRequestSend(host.resource, parsed.command, parsed.follow === true);
       case 'acceptPreview':
-        await this.acceptPreview(host.resource);
-        return;
-      case 'cancelPreview': {
-        const state = await this.uiState.getComposerStateForIdentity(
-          context.controller,
-          context.target
-        );
-        state.preview = undefined;
-        state.focus = 'composer';
-        await this.uiState.setComposerStateForIdentity(context.controller, context.target, state);
-        await this.renderResource(host.resource);
-        return;
-      }
+        return this.acceptPreview(host.resource);
+      case 'cancelPreview':
+        return this.handleCancelPreview(context, host.resource);
       case 'copyAcceptedSnapshot':
-        await this.uiState.copyAcceptedSnapshotToComposerForIdentity(
-          context.controller,
-          context.target
-        );
-        await this.renderResource(host.resource);
-        return;
-      case 'sendAcceptedSnapshotAgain': {
-        const state = await this.uiState.getComposerStateForIdentity(
-          context.controller,
-          context.target
-        );
-        const command = state.acceptedSendSnapshot?.command;
-        await this.uiState.copyAcceptedSnapshotToComposerForIdentity(
-          context.controller,
-          context.target
-        );
-        if (command) {
-          await this.handleRequestSend(host.resource, command);
-        } else {
-          await this.renderResource(host.resource);
-        }
-        return;
-      }
-      case 'requestReview': {
-        const relative = (at: number): string => {
-          const mins = Math.max(1, Math.round((Date.now() - at) / 60_000));
-          return mins < 60
-            ? `${mins}m`
-            : mins < 1440
-              ? `${Math.round(mins / 60)}h`
-              : `${Math.round(mins / 1440)}d`;
-        };
-        host.post({
-          type: 'reviewData',
-          turns: (this.turnReview?.history ?? []).map((record, index) => ({
-            index,
-            title: record.title,
-            time: relative(record.at),
-            files: record.changes.map((change) => ({
-              file: change.file,
-              kind: change.kind,
-              added: change.added,
-              deleted: change.deleted,
-            })),
-          })),
-        });
-        return;
-      }
-      case 'reviewAction': {
-        const record = this.turnReview?.history[parsed.turn];
-        if (!record || !this.turnReview) {
-          return;
-        }
-        if (parsed.action === 'diff' && parsed.file) {
-          const change = record.changes.find((entry) => entry.file === parsed.file);
-          if (change) {
-            await this.turnReview.openDiff(record, change);
-          }
-        } else if (parsed.action === 'inline' && parsed.file) {
-          const change = record.changes.find((entry) => entry.file === parsed.file);
-          if (change) {
-            await this.inlineReview?.start(record, change);
-          }
-        } else if (parsed.action === 'replayTurn') {
-          void this.sessionReplay?.replayTurn(record);
-        } else if (parsed.action === 'replaySession') {
-          void this.sessionReplay?.replaySession(this.turnReview?.history ?? []);
-        } else if (parsed.action === 'revertFile' && parsed.file) {
-          const change = record.changes.find((entry) => entry.file === parsed.file);
-          if (!change) {
-            return;
-          }
-          const confirm = await vscode.window.showWarningMessage(
-            `Revert ${change.file} to its state before this turn?`,
-            { modal: true },
-            'Revert'
-          );
-          if (confirm === 'Revert') {
-            await this.turnReview.revertFile(record, change);
-          }
-        } else if (parsed.action === 'revertTurn') {
-          const confirm = await vscode.window.showWarningMessage(
-            `Revert all ${record.changes.length} file(s) from this turn?`,
-            { modal: true },
-            'Revert All'
-          );
-          if (confirm === 'Revert All') {
-            for (const change of record.changes) {
-              await this.turnReview.revertFile(record, change).catch(() => undefined);
-            }
-          }
-        }
-        return;
-      }
-      case 'requestChatList': {
+        return this.handleCopyAcceptedSnapshot(context, host.resource);
+      case 'sendAcceptedSnapshotAgain':
+        return this.handleSendAcceptedSnapshotAgain(context, host.resource);
+      case 'requestReview':
+        return this.handleRequestReview(host);
+      case 'reviewAction':
+        return this.handleReviewAction(parsed.action, parsed.turn, parsed.file);
+      case 'requestChatList':
         this.sendChatList(host);
         return;
-      }
-      case 'deleteChatSession': {
-        if (host.resource.scheme !== 'piRpcSidebar') {
-          return;
-        }
-        const wasCurrent =
-          this.sidebarTarget?.kind === 'sessionFile' &&
-          this.sidebarTarget.sessionFile === parsed.path;
-        await vscode.commands.executeCommand('piRpcInternal.deleteSession', {
-          sessionPath: parsed.path,
-          sessionLabel: parsed.title,
-        });
-        if (wasCurrent) {
-          // The chat being viewed was deleted — hand the surface a fresh draft.
-          const folder = vscode.workspace.workspaceFolders?.[0];
-          if (folder) {
-            this.sidebarTarget = {
-              workspaceFolderUri: folder.uri.toString(),
-              kind: 'workspaceDraft',
-              draftId: `sidebar-${Date.now()}`,
-            };
-            this.persistSidebarTarget();
-            await this.activateResource(host.resource, { startIfStopped: true });
-            await this.renderResource(host.resource, { active: true });
+      case 'deleteChatSession':
+        return this.handleDeleteChatSession(host, parsed.path, parsed.title);
+      case 'openChatSession':
+        return this.handleOpenChatSession(host, parsed.workspaceFolderUri, parsed.path);
+      case 'newChatSession':
+        return this.handleNewChatSession(host);
+      case 'screenOpenFile':
+        return this.handleScreenOpenFile(parsed.path, parsed.needle);
+      case 'screenRevert':
+        return this.handleScreenRevert(parsed.path, parsed.oldText, parsed.newText);
+      case 'toggleFollow':
+        return this.handleToggleFollow(host.resource);
+      case 'abort':
+        return this.handleAbort(host.resource);
+      case 'setDraft':
+        return this.handleSetDraft(context, parsed.resetSeq, parsed.text);
+      case 'setFocus':
+        return this.uiState.setFocusForIdentity(context.controller, context.target, parsed.focus);
+      case 'executeCommand':
+        return this.handleExecuteCommand(parsed.command, parsed.argument);
+      case 'pickImages':
+        return this.handlePickImages(context, host.resource);
+      case 'pasteImage':
+        return this.handlePasteImage(context, host.resource, parsed.data, parsed.mimeType);
+      case 'clearAttachments':
+        return this.handleClearAttachments(context, host.resource);
+      case 'appendActiveFile':
+        return this.handleAppendActiveFile(context, host.resource);
+      case 'appendSelection':
+        return this.handleAppendSelection(context, host.resource);
+      case 'appendDiagnostics':
+        return this.handleAppendDiagnostics(context, host.resource);
+      case 'appendPickedFile':
+        return this.handleAppendPickedFile(context, host.resource);
+      case 'removeContextItem':
+        return this.handleRemoveContextItem(context, host.resource, parsed.itemId);
+      case 'removeImageItem':
+        return this.handleRemoveImageItem(context, host.resource, parsed.itemId);
+      case 'openAttachment':
+        return this.handleOpenAttachment(host, parsed.uri);
+      case 'switchFolder':
+        return this.handleSwitchFolder(parsed.folderUri);
+      case 'debugLog':
+        context.controller.log('info', `[webview] ${parsed.text}`);
+        return;
+      case 'forkAndSend':
+        return this.forkAndSendInTab(
+          context,
+          parsed.fromBottom,
+          parsed.originalText,
+          parsed.text,
+          parsed.pickModel === true
+        );
+      default:
+        return;
+    }
+  }
+
+  // Batch 6 of the onMessage de-bloat (A4): everything else (system/utility
+  // handlers with real inline logic — the ones that were ALREADY a single
+  // delegate call, like loadOlder/openFile/attachFile, just got terse-ified
+  // in place, no new method needed for those).
+  private async handleOpenExternal(url: string): Promise<void> {
+    if (/^https?:\/\//i.test(url)) {
+      await vscode.env.openExternal(vscode.Uri.parse(url));
+    }
+  }
+
+  private async handleRespondUi(
+    context: ChatTabContext,
+    id: string,
+    value: string | undefined,
+    confirmed: boolean | undefined
+  ): Promise<void> {
+    const response: JsonObject = { id };
+    if (typeof value === 'string') {
+      response.value = value;
+    }
+    if (typeof confirmed === 'boolean') {
+      response.confirmed = confirmed;
+    }
+    await context.controller.respondExtensionUi(response);
+    context.controller.completeExtensionUiRequest(id);
+  }
+
+  private async handleRequestFileMentions(
+    host: ChatHost,
+    context: ChatTabContext,
+    query: string
+  ): Promise<void> {
+    const items = await this.searchWorkspaceFiles(context, query);
+    host.post({ type: 'fileMentions', items });
+  }
+
+  private async handleRequestSlashCommands(host: ChatHost, context: ChatTabContext): Promise<void> {
+    // #6 — supply the slash-command list for inline composer autocomplete.
+    try {
+      const commands = await context.controller.getPiCommands();
+      const items = commands
+        .map((command) => ({
+          name: typeof command.name === 'string' ? command.name : '',
+          description: typeof command.description === 'string' ? command.description : '',
+        }))
+        .filter((command) => command.name.length > 0);
+      host.post({ type: 'slashCommands', items });
+    } catch {
+      host.post({ type: 'slashCommands', items: [] });
+    }
+  }
+
+  private async handleToggleFollow(resource: vscode.Uri): Promise<void> {
+    const config = vscode.workspace.getConfiguration('piRpc');
+    const next = config.get<string>('followAgent', 'open') === 'open' ? 'off' : 'open';
+    await config.update('followAgent', next, vscode.ConfigurationTarget.Global);
+    await this.renderResource(resource);
+    if (next === 'open') {
+      this.follow.replayLast(); // jump to the file π is on
+    }
+    // No toast: the crosshair + status bar already show the state.
+  }
+
+  private async handleAbort(resource: vscode.Uri): Promise<void> {
+    const live = await this.activateResource(resource, { startIfStopped: false });
+    await live?.controller.abort();
+  }
+
+  private async handleExecuteCommand(command: string, argument: unknown): Promise<void> {
+    // SECURITY: the webview may only invoke this fixed allowlist. Without it,
+    // any HTML-escaping slip in the renderer would escalate to arbitrary
+    // VS Code command execution (terminal writes, file ops, …).
+    if (!WEBVIEW_COMMAND_ALLOWLIST.has(command)) {
+      this.logger.warn(`Blocked non-allowlisted webview command: ${command}`);
+      return;
+    }
+    try {
+      await vscode.commands.executeCommand(command, argument);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      void vscode.window
+        .showErrorMessage(`Pi: ${command} failed — ${message}`, 'Show Logs')
+        .then((choice) => {
+          if (choice === 'Show Logs') {
+            void vscode.commands.executeCommand('piRpcInternal.showLogs');
           }
+        });
+    }
+  }
+
+  private async handleSwitchFolder(folderUri: string): Promise<void> {
+    this.registry.setActive(folderUri);
+    await this.openCurrentChat({ folderUri });
+  }
+
+  // Batch 5 of the onMessage de-bloat (A4): screen/file-op handlers.
+  private async handleScreenOpenFile(path: string, needle: string | undefined): Promise<void> {
+    // Ownership handoff: open the REAL file (optionally at a region).
+    try {
+      const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(path));
+      const editor = await vscode.window.showTextDocument(doc, { preview: false });
+      if (needle) {
+        const at = doc.getText().indexOf(needle);
+        if (at >= 0) {
+          const range = new vscode.Range(doc.positionAt(at), doc.positionAt(at + needle.length));
+          editor.revealRange(range, vscode.TextEditorRevealType.InCenterIfOutsideViewport);
+          editor.selection = new vscode.Selection(range.start, range.start);
         }
-        this.sendChatList(host, parsed.path); // optimistic: gone immediately
+      }
+    } catch (error) {
+      void vscode.window.showWarningMessage(
+        `Could not open ${path}: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  private async handleScreenRevert(
+    path: string,
+    oldText: string | undefined,
+    newText: string | undefined
+  ): Promise<void> {
+    // Per-change undo: swap this edit's newString back to oldString.
+    try {
+      const uri = vscode.Uri.file(path);
+      const doc = await vscode.workspace.openTextDocument(uri);
+      const text = doc.getText();
+      const resolvedNewText = newText ?? '';
+      const at = resolvedNewText ? text.indexOf(resolvedNewText) : -1;
+      if (at < 0) {
+        void vscode.window.showWarningMessage(
+          'That change no longer matches the file (edited since?) — use the π Review panel for a full-file revert.'
+        );
         return;
       }
-      case 'openChatSession': {
-        if (host.resource.scheme !== 'piRpcSidebar') {
-          return;
-        }
-        const folder =
-          vscode.workspace.workspaceFolders?.find(
-            (candidate) => parsed.workspaceFolderUri === candidate.uri.toString()
-          ) ?? vscode.workspace.workspaceFolders?.[0];
-        if (!folder) {
-          return;
-        }
-        this.sidebarTarget = {
-          workspaceFolderUri: folder.uri.toString(),
-          kind: 'sessionFile',
-          sessionFile: parsed.path,
-        };
-        this.persistSidebarTarget();
-        this.logger.info(`[sidebar] switch → ${parsed.path.split('/').pop() ?? ''}`);
-        await this.activateResource(host.resource, { startIfStopped: true });
-        await this.renderResource(host.resource, { active: true });
+      const edit = new vscode.WorkspaceEdit();
+      edit.replace(
+        uri,
+        new vscode.Range(doc.positionAt(at), doc.positionAt(at + resolvedNewText.length)),
+        oldText ?? ''
+      );
+      await vscode.workspace.applyEdit(edit);
+      await doc.save(); // the file itself shows the result — no toast
+    } catch (error) {
+      void vscode.window.showWarningMessage(
+        `Undo failed: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  // Batch 4 of the onMessage de-bloat (A4): review/replay handlers.
+  private async handleRequestReview(host: ChatHost): Promise<void> {
+    const relative = (at: number): string => {
+      const mins = Math.max(1, Math.round((Date.now() - at) / 60_000));
+      return mins < 60
+        ? `${mins}m`
+        : mins < 1440
+          ? `${Math.round(mins / 60)}h`
+          : `${Math.round(mins / 1440)}d`;
+    };
+    host.post({
+      type: 'reviewData',
+      turns: (this.turnReview?.history ?? []).map((record, index) => ({
+        index,
+        title: record.title,
+        time: relative(record.at),
+        files: record.changes.map((change) => ({
+          file: change.file,
+          kind: change.kind,
+          added: change.added,
+          deleted: change.deleted,
+        })),
+      })),
+    });
+  }
+
+  private async handleReviewAction(
+    action: 'diff' | 'inline' | 'revertFile' | 'revertTurn' | 'replayTurn' | 'replaySession',
+    turn: number,
+    file: string | undefined
+  ): Promise<void> {
+    const record = this.turnReview?.history[turn];
+    if (!record || !this.turnReview) {
+      return;
+    }
+    if (action === 'diff' && file) {
+      const change = record.changes.find((entry) => entry.file === file);
+      if (change) {
+        await this.turnReview.openDiff(record, change);
+      }
+    } else if (action === 'inline' && file) {
+      const change = record.changes.find((entry) => entry.file === file);
+      if (change) {
+        await this.inlineReview?.start(record, change);
+      }
+    } else if (action === 'replayTurn') {
+      void this.sessionReplay?.replayTurn(record);
+    } else if (action === 'replaySession') {
+      void this.sessionReplay?.replaySession(this.turnReview?.history ?? []);
+    } else if (action === 'revertFile' && file) {
+      const change = record.changes.find((entry) => entry.file === file);
+      if (!change) {
         return;
       }
-      case 'newChatSession': {
-        if (host.resource.scheme !== 'piRpcSidebar') {
-          return;
+      const confirm = await vscode.window.showWarningMessage(
+        `Revert ${change.file} to its state before this turn?`,
+        { modal: true },
+        'Revert'
+      );
+      if (confirm === 'Revert') {
+        await this.turnReview.revertFile(record, change);
+      }
+    } else if (action === 'revertTurn') {
+      const confirm = await vscode.window.showWarningMessage(
+        `Revert all ${record.changes.length} file(s) from this turn?`,
+        { modal: true },
+        'Revert All'
+      );
+      if (confirm === 'Revert All') {
+        for (const change of record.changes) {
+          await this.turnReview.revertFile(record, change).catch(() => undefined);
         }
-        const folder = vscode.workspace.workspaceFolders?.[0];
-        if (!folder) {
-          return;
-        }
+      }
+    }
+  }
+
+  // Batch 3 of the onMessage de-bloat (A4): sidebar chat-list handlers.
+  private async handleDeleteChatSession(
+    host: ChatHost,
+    path: string,
+    title: string | undefined
+  ): Promise<void> {
+    if (host.resource.scheme !== 'piRpcSidebar') {
+      return;
+    }
+    const wasCurrent =
+      this.sidebarTarget?.kind === 'sessionFile' && this.sidebarTarget.sessionFile === path;
+    await vscode.commands.executeCommand('piRpcInternal.deleteSession', {
+      sessionPath: path,
+      sessionLabel: title,
+    });
+    if (wasCurrent) {
+      // The chat being viewed was deleted — hand the surface a fresh draft.
+      const folder = vscode.workspace.workspaceFolders?.[0];
+      if (folder) {
         this.sidebarTarget = {
           workspaceFolderUri: folder.uri.toString(),
           kind: 'workspaceDraft',
@@ -1337,216 +1444,223 @@ export class ChatTabManager implements vscode.Disposable {
         this.persistSidebarTarget();
         await this.activateResource(host.resource, { startIfStopped: true });
         await this.renderResource(host.resource, { active: true });
-        return;
       }
-      case 'screenOpenFile': {
-        // Ownership handoff: open the REAL file (optionally at a region).
-        try {
-          const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(parsed.path));
-          const editor = await vscode.window.showTextDocument(doc, { preview: false });
-          if (parsed.needle) {
-            const at = doc.getText().indexOf(parsed.needle);
-            if (at >= 0) {
-              const range = new vscode.Range(
-                doc.positionAt(at),
-                doc.positionAt(at + parsed.needle.length)
-              );
-              editor.revealRange(range, vscode.TextEditorRevealType.InCenterIfOutsideViewport);
-              editor.selection = new vscode.Selection(range.start, range.start);
-            }
-          }
-        } catch (error) {
-          void vscode.window.showWarningMessage(
-            `Could not open ${parsed.path}: ${error instanceof Error ? error.message : String(error)}`
-          );
-        }
-        return;
-      }
-      case 'screenRevert': {
-        // Per-change undo: swap this edit's newString back to oldString.
-        try {
-          const uri = vscode.Uri.file(parsed.path);
-          const doc = await vscode.workspace.openTextDocument(uri);
-          const text = doc.getText();
-          const newText = parsed.newText ?? '';
-          const at = newText ? text.indexOf(newText) : -1;
-          if (at < 0) {
-            void vscode.window.showWarningMessage(
-              'That change no longer matches the file (edited since?) — use the π Review panel for a full-file revert.'
-            );
-            return;
-          }
-          const edit = new vscode.WorkspaceEdit();
-          edit.replace(
-            uri,
-            new vscode.Range(doc.positionAt(at), doc.positionAt(at + newText.length)),
-            parsed.oldText ?? ''
-          );
-          await vscode.workspace.applyEdit(edit);
-          await doc.save(); // the file itself shows the result — no toast
-        } catch (error) {
-          void vscode.window.showWarningMessage(
-            `Undo failed: ${error instanceof Error ? error.message : String(error)}`
-          );
-        }
-        return;
-      }
-      case 'toggleFollow': {
-        const config = vscode.workspace.getConfiguration('piRpc');
-        const next = config.get<string>('followAgent', 'open') === 'open' ? 'off' : 'open';
-        await config.update('followAgent', next, vscode.ConfigurationTarget.Global);
-        await this.renderResource(host.resource);
-        if (next === 'open') {
-          this.follow.replayLast(); // jump to the file π is on
-        }
-        // No toast: the crosshair + status bar already show the state.
-        return;
-      }
-      case 'abort': {
-        const live = await this.activateResource(host.resource, { startIfStopped: false });
-        await live?.controller.abort();
-        return;
-      }
-      case 'setDraft': {
-        const state = await this.uiState.getComposerStateForIdentity(
-          context.controller,
-          context.target
-        );
-        // Drop STALE updates: each update carries the composerResetSeq it was
-        // typed under. A send bumps the seq while clearing the draft — a trailing
-        // debounced update from before the send would otherwise re-persist the
-        // just-sent text, which then popped back into the input on re-render.
-        if (
-          typeof parsed.resetSeq === 'number' &&
-          parsed.resetSeq !== (state.composerResetSeq ?? 0)
-        ) {
-          return;
-        }
-        state.draft = parsed.text;
-        // FINAL gate in the same microtask as the memory write: the async read
-        // above can be overtaken by a send's clear+seq-bump when the draft is
-        // LARGE (slow restore/validate) — writing the stale snapshot would
-        // resurrect the just-sent text AND roll the seq back. peek() reads the
-        // live map synchronously, so nothing can interleave before the write.
-        if (
-          typeof parsed.resetSeq === 'number' &&
-          this.uiState.peekComposerResetSeq(context.target) !== parsed.resetSeq
-        ) {
-          return;
-        }
-        // Persist the draft SILENTLY: no controller fire, no UI-state fire, so a
-        // keystroke never re-renders the tab (which flickered the scrollbar).
-        await this.uiState.setComposerStateForIdentity(context.controller, context.target, state, {
-          silent: true,
-        });
-        return;
-      }
-      case 'setFocus':
-        await this.uiState.setFocusForIdentity(context.controller, context.target, parsed.focus);
-        return;
-      case 'executeCommand':
-        // SECURITY: the webview may only invoke this fixed allowlist. Without it,
-        // any HTML-escaping slip in the renderer would escalate to arbitrary
-        // VS Code command execution (terminal writes, file ops, …).
-        if (!WEBVIEW_COMMAND_ALLOWLIST.has(parsed.command)) {
-          this.logger.warn(`Blocked non-allowlisted webview command: ${parsed.command}`);
-          return;
-        }
-        try {
-          await vscode.commands.executeCommand(parsed.command, parsed.argument);
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          void vscode.window
-            .showErrorMessage(`Pi: ${parsed.command} failed — ${message}`, 'Show Logs')
-            .then((choice) => {
-              if (choice === 'Show Logs') {
-                void vscode.commands.executeCommand('piRpcInternal.showLogs');
-              }
-            });
-        }
-        return;
-      case 'pickImages':
-        await this.pickImages(context.controller, context.target, host.resource);
-        return;
-      case 'pasteImage':
-        await this.addPastedImage(context, host.resource, parsed.data, parsed.mimeType);
-        return;
-      case 'clearAttachments':
-        await this.uiState.clearAttachmentsForIdentity(context.controller, context.target);
-        await this.renderResource(host.resource);
-        return;
-      case 'appendActiveFile': {
-        const item = await captureActiveFile(context.controller);
-        if (item) {
-          await this.uiState.addContextItemForIdentity(context.controller, context.target, item);
-          await this.renderResource(host.resource);
-        }
-        return;
-      }
-      case 'appendSelection': {
-        const item = await captureSelection(context.controller);
-        if (item) {
-          await this.uiState.addContextItemForIdentity(context.controller, context.target, item);
-          await this.renderResource(host.resource);
-        }
-        return;
-      }
-      case 'appendDiagnostics': {
-        const item = await captureDiagnostics(context.controller);
-        if (item) {
-          await this.uiState.addContextItemForIdentity(context.controller, context.target, item);
-          await this.renderResource(host.resource);
-        }
-        return;
-      }
-      case 'appendPickedFile': {
-        const item = await capturePickedFile(context.controller);
-        if (item) {
-          await this.uiState.addContextItemForIdentity(context.controller, context.target, item);
-          await this.renderResource(host.resource);
-        }
-        return;
-      }
-      case 'removeContextItem':
-        await this.uiState.removeContextItemForIdentity(
-          context.controller,
-          context.target,
-          parsed.itemId
-        );
-        await this.renderResource(host.resource);
-        return;
-      case 'removeImageItem':
-        await this.uiState.removeImageItemForIdentity(
-          context.controller,
-          context.target,
-          parsed.itemId
-        );
-        await this.renderResource(host.resource);
-        return;
-      case 'openAttachment':
-        if (host.hasAttachment(parsed.uri)) {
-          await vscode.commands.executeCommand('vscode.open', vscode.Uri.parse(parsed.uri, true));
-        }
-        return;
-      case 'switchFolder': {
-        this.registry.setActive(parsed.folderUri);
-        await this.openCurrentChat({ folderUri: parsed.folderUri });
-        return;
-      }
-      case 'debugLog':
-        context.controller.log('info', `[webview] ${parsed.text}`);
-        return;
-      case 'forkAndSend':
-        await this.forkAndSendInTab(
-          context,
-          parsed.fromBottom,
-          parsed.originalText,
-          parsed.text,
-          parsed.pickModel === true
-        );
-        return;
-      default:
-        return;
+    }
+    this.sendChatList(host, path); // optimistic: gone immediately
+  }
+
+  private async handleOpenChatSession(
+    host: ChatHost,
+    workspaceFolderUri: string | undefined,
+    path: string
+  ): Promise<void> {
+    if (host.resource.scheme !== 'piRpcSidebar') {
+      return;
+    }
+    const folder =
+      vscode.workspace.workspaceFolders?.find(
+        (candidate) => workspaceFolderUri === candidate.uri.toString()
+      ) ?? vscode.workspace.workspaceFolders?.[0];
+    if (!folder) {
+      return;
+    }
+    this.sidebarTarget = {
+      workspaceFolderUri: folder.uri.toString(),
+      kind: 'sessionFile',
+      sessionFile: path,
+    };
+    this.persistSidebarTarget();
+    this.logger.info(`[sidebar] switch → ${path.split('/').pop() ?? ''}`);
+    await this.activateResource(host.resource, { startIfStopped: true });
+    await this.renderResource(host.resource, { active: true });
+  }
+
+  private async handleNewChatSession(host: ChatHost): Promise<void> {
+    if (host.resource.scheme !== 'piRpcSidebar') {
+      return;
+    }
+    const folder = vscode.workspace.workspaceFolders?.[0];
+    if (!folder) {
+      return;
+    }
+    this.sidebarTarget = {
+      workspaceFolderUri: folder.uri.toString(),
+      kind: 'workspaceDraft',
+      draftId: `sidebar-${Date.now()}`,
+    };
+    this.persistSidebarTarget();
+    await this.activateResource(host.resource, { startIfStopped: true });
+    await this.renderResource(host.resource, { active: true });
+  }
+
+  // Batch 2 of the onMessage de-bloat (A4): composer/send-flow handlers.
+  private async handleCancelPreview(context: ChatTabContext, resource: vscode.Uri): Promise<void> {
+    const state = await this.uiState.getComposerStateForIdentity(
+      context.controller,
+      context.target
+    );
+    state.preview = undefined;
+    state.focus = 'composer';
+    await this.uiState.setComposerStateForIdentity(context.controller, context.target, state);
+    await this.renderResource(resource);
+  }
+
+  private async handleCopyAcceptedSnapshot(
+    context: ChatTabContext,
+    resource: vscode.Uri
+  ): Promise<void> {
+    await this.uiState.copyAcceptedSnapshotToComposerForIdentity(
+      context.controller,
+      context.target
+    );
+    await this.renderResource(resource);
+  }
+
+  private async handleSendAcceptedSnapshotAgain(
+    context: ChatTabContext,
+    resource: vscode.Uri
+  ): Promise<void> {
+    const state = await this.uiState.getComposerStateForIdentity(
+      context.controller,
+      context.target
+    );
+    const command = state.acceptedSendSnapshot?.command;
+    await this.uiState.copyAcceptedSnapshotToComposerForIdentity(
+      context.controller,
+      context.target
+    );
+    if (command) {
+      await this.handleRequestSend(resource, command);
+    } else {
+      await this.renderResource(resource);
+    }
+  }
+
+  private async handleSetDraft(
+    context: ChatTabContext,
+    resetSeq: number | undefined,
+    text: string
+  ): Promise<void> {
+    const state = await this.uiState.getComposerStateForIdentity(
+      context.controller,
+      context.target
+    );
+    // Drop STALE updates: each update carries the composerResetSeq it was
+    // typed under. A send bumps the seq while clearing the draft — a trailing
+    // debounced update from before the send would otherwise re-persist the
+    // just-sent text, which then popped back into the input on re-render.
+    if (typeof resetSeq === 'number' && resetSeq !== (state.composerResetSeq ?? 0)) {
+      return;
+    }
+    state.draft = text;
+    // FINAL gate in the same microtask as the memory write: the async read
+    // above can be overtaken by a send's clear+seq-bump when the draft is
+    // LARGE (slow restore/validate) — writing the stale snapshot would
+    // resurrect the just-sent text AND roll the seq back. peek() reads the
+    // live map synchronously, so nothing can interleave before the write.
+    if (
+      typeof resetSeq === 'number' &&
+      this.uiState.peekComposerResetSeq(context.target) !== resetSeq
+    ) {
+      return;
+    }
+    // Persist the draft SILENTLY: no controller fire, no UI-state fire, so a
+    // keystroke never re-renders the tab (which flickered the scrollbar).
+    await this.uiState.setComposerStateForIdentity(context.controller, context.target, state, {
+      silent: true,
+    });
+  }
+
+  // Batch 1 of the onMessage de-bloat (A4): attachment/context-item handlers,
+  // extracted verbatim from their old inline case bodies — mechanical moves,
+  // no logic changes, each verified byte-identical against the original
+  // before wiring in.
+  private async handlePickImages(context: ChatTabContext, resource: vscode.Uri): Promise<void> {
+    await this.pickImages(context.controller, context.target, resource);
+  }
+
+  private async handlePasteImage(
+    context: ChatTabContext,
+    resource: vscode.Uri,
+    data: string,
+    mimeType: string
+  ): Promise<void> {
+    await this.addPastedImage(context, resource, data, mimeType);
+  }
+
+  private async handleClearAttachments(
+    context: ChatTabContext,
+    resource: vscode.Uri
+  ): Promise<void> {
+    await this.uiState.clearAttachmentsForIdentity(context.controller, context.target);
+    await this.renderResource(resource);
+  }
+
+  private async handleAppendActiveFile(
+    context: ChatTabContext,
+    resource: vscode.Uri
+  ): Promise<void> {
+    const item = await captureActiveFile(context.controller);
+    if (item) {
+      await this.uiState.addContextItemForIdentity(context.controller, context.target, item);
+      await this.renderResource(resource);
+    }
+  }
+
+  private async handleAppendSelection(
+    context: ChatTabContext,
+    resource: vscode.Uri
+  ): Promise<void> {
+    const item = await captureSelection(context.controller);
+    if (item) {
+      await this.uiState.addContextItemForIdentity(context.controller, context.target, item);
+      await this.renderResource(resource);
+    }
+  }
+
+  private async handleAppendDiagnostics(
+    context: ChatTabContext,
+    resource: vscode.Uri
+  ): Promise<void> {
+    const item = await captureDiagnostics(context.controller);
+    if (item) {
+      await this.uiState.addContextItemForIdentity(context.controller, context.target, item);
+      await this.renderResource(resource);
+    }
+  }
+
+  private async handleAppendPickedFile(
+    context: ChatTabContext,
+    resource: vscode.Uri
+  ): Promise<void> {
+    const item = await capturePickedFile(context.controller);
+    if (item) {
+      await this.uiState.addContextItemForIdentity(context.controller, context.target, item);
+      await this.renderResource(resource);
+    }
+  }
+
+  private async handleRemoveContextItem(
+    context: ChatTabContext,
+    resource: vscode.Uri,
+    itemId: string
+  ): Promise<void> {
+    await this.uiState.removeContextItemForIdentity(context.controller, context.target, itemId);
+    await this.renderResource(resource);
+  }
+
+  private async handleRemoveImageItem(
+    context: ChatTabContext,
+    resource: vscode.Uri,
+    itemId: string
+  ): Promise<void> {
+    await this.uiState.removeImageItemForIdentity(context.controller, context.target, itemId);
+    await this.renderResource(resource);
+  }
+
+  private async handleOpenAttachment(host: ChatHost, uri: string): Promise<void> {
+    if (host.hasAttachment(uri)) {
+      await vscode.commands.executeCommand('vscode.open', vscode.Uri.parse(uri, true));
     }
   }
 

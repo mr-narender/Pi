@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.280
+
+- Internal only, no user-facing change: broke up the 460-line `onMessage` webview-dispatch function (A4 of the de-bloat plan, the biggest single item) into a `switch` that stays for TypeScript's discriminated-union type-narrowing, with each of the 41 cases shrunk to one line delegating to a small, individually-named handler method. `onMessage` itself: 460→102 lines. Purely mechanical extraction (cut case body → new method → one-line delegate), done in 6 checkpointed batches with a typecheck after every batch — caught and fixed 2 real type mismatches this way (`title`/`workspaceFolderUri` are optional, not required, in the actual message types) before they could ship. Full gate + real VS Code E2E green, exact match against baseline (301 unit, 24 integration) — zero regressions. This closes the tabManager.ts de-bloat plan (A1 attachment-capture, A2 remote-sharing service, A4 message-dispatch restructure — A3 was evaluated and correctly skipped, see 0.0.279).
+
 ## 0.0.279
 
 - Internal only, no user-facing change: extracted remote chat-sharing (pairing panel / phone mirror — start/stop/rename a share, list and switch remote-eligible chats, push snapshots) out of `tabManager.ts` into its own `remote/sharingService.ts` (A2 of the de-bloat plan; `tabManager.ts` 2677→2593 lines). Unlike A1's pure functions, this is a cohesive feature responsibility that needed injected read access to the chat registry, not full ownership transfer — all 9 public methods were called exclusively from `extension.ts` (15 call sites, all updated), confirming this was a genuine separable service, not just relocated code. Every method logically verified against the original before wiring in. Full gate + real VS Code E2E green, exact match against baseline (301 unit, 24 integration) — zero regressions.
