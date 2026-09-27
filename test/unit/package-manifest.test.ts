@@ -25,13 +25,21 @@ test('coverage row inventory totals stay stable', () => {
   assert.equal((coverage.match(/\| D-\d+/g) ?? []).length, 8);
 });
 
-test('manifest contributes the Chats webview + Review tree sidebars', () => {
+test('manifest contributes the Open/Recent Chats tree views + the Chat webview', () => {
   const view = packageJson.contributes.views.piRpc;
   assert.deepEqual(
     view.map((entry) => entry.id),
-    ['piRpc.chat']
+    ['piRpc.openSessions', 'piRpc.recentSessions', 'piRpc.chat']
   );
-  assert.equal(view[0]?.type, 'webview');
+  const chatWebview = view.find((entry) => entry.id === 'piRpc.chat');
+  assert.equal(chatWebview?.type, 'webview');
+  // The two tree views are native TreeDataProviders (Agentic Mode's "Open
+  // Chat List") — no `type` field, VS Code's manifest schema treats that
+  // as a tree view implicitly.
+  const openSessions = view.find((entry) => entry.id === 'piRpc.openSessions');
+  const recentSessions = view.find((entry) => entry.id === 'piRpc.recentSessions');
+  assert.equal(openSessions?.type, undefined);
+  assert.equal(recentSessions?.type, undefined);
   const allMenus = JSON.stringify(packageJson.contributes.menus ?? {});
   assert.ok(!allMenus.includes('piRpc.currentChat'));
 });

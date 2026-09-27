@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.288
+
+- **Agentic Mode Phase 1: Open Chat List.** Two new native sidebar views — "Open Chats" and "Recent Chats" — above the existing chat panel. This revives code that was already fully built (`SessionsTreeProvider`/`ResumeChatTreeProvider` + their data model) but never wired to an actual view. Clicking a session opens it as a real editor tab, alongside your files — reusing `piRpc.switchSession`, which already does exactly that by default, so no new open-a-chat behavior was needed, only the view registration. Added alongside the existing chat panel, not replacing it yet — the mode switch (showing only one or the other) is a later phase. Verified every command these views reference is actually registered before wiring anything up (learned that lesson from the "Prompts… does nothing" bug), plus real VS Code E2E activation, which caught and required fixing two other hardcoded manifest-shape assertions (a unit test and the E2E suite itself) that still expected the old single-view sidebar.
+
 ## 0.0.287
 
 - Split the sidebar `⋯` menu's flat 8-item list into three labeled sections — **Chat** (Review last turn / Chat versions / Export chat), **Configure** (Extensions / Skills / Prompts / Agent instructions), **System** (Restart π). Reused the existing `.menu-group` header style already used elsewhere in the app instead of inventing a new one.

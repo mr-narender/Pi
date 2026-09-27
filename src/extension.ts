@@ -37,6 +37,7 @@ import { DiagnosticsLogger } from './diagnostics/logger';
 import { redactJsonValue } from './diagnostics/redaction';
 import { ensureWorkspaceAvailable, ensureTrustedForMutation } from './security/trust';
 import { RecentSessionService } from './sessions/recentSessionService';
+import { SessionsTreeProvider, ResumeChatTreeProvider } from './ui/trees/providers';
 import { formatRelativeTimestamp } from './sessions/recentSessions';
 import { SessionRegistry } from './sessions/sessionRegistry';
 import { ExtensionUiBroker } from './ui/extensionUiBroker';
@@ -305,6 +306,23 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       },
       { webviewOptions: { retainContextWhenHidden: true } }
     )
+  );
+
+  // Agentic Mode Phase 1: native "Open Chat List" tree views, reviving code
+  // that was already fully built (SessionsTreeProvider/ResumeChatTreeProvider
+  // + sessionSidebarModel.ts) but never registered as a view. Every list
+  // item's command is piRpc.switchSession, which already opens the chat as
+  // an editor tab by default (editorTabsEnabled) — no new click-behavior
+  // needed, just wiring the view up. Added alongside the existing chat
+  // webview, not replacing it yet — Phase 3 (mode switch) decides which
+  // surface is visible when.
+  const openSessionsTree = new SessionsTreeProvider(registry, recentSessions, uiState);
+  const resumeChatTree = new ResumeChatTreeProvider(registry, recentSessions, uiState);
+  context.subscriptions.push(
+    openSessionsTree,
+    resumeChatTree,
+    vscode.window.registerTreeDataProvider('piRpc.openSessions', openSessionsTree),
+    vscode.window.registerTreeDataProvider('piRpc.recentSessions', resumeChatTree)
   );
 
   chatTabs.setTurnReview(turnReview);
