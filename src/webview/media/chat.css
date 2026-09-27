@@ -3270,7 +3270,14 @@ body.vscode-high-contrast .composer-dock {
 
 .menu-panel button,
 .menu-panel .menu-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  text-align: left;
+  justify-content: flex-start;
   color: var(--vscode-foreground);
+  background: transparent;
+  border: none;
   border-radius: 6px;
 }
 

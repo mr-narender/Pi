@@ -543,10 +543,17 @@ export class SharedPiHost {
    * — confirmed by reading Pi's own source, sessionManager.newSession() never
    * touches the extension runtime. A full dispose() kills BUSY workers too,
    * interrupting active conversations for a settings toggle. This recycles
-   * only IDLE workers (no chat currently routed to them) — zero disruption to
-   * anything running — and re-warms the pool so new work has capacity ready
-   * immediately. Busy workers are left untouched; they pick up the change the
-   * next time they naturally go idle and get reaped, or on a manual restart. */
+   * only IDLE workers (sessionCount === 0, i.e. no chat holds them open) —
+   * zero disruption to anything running — and re-warms the pool so new work
+   * has capacity ready immediately.
+   *
+   * NOTE on "busy" workers: a worker's channel lives for as long as a chat
+   * stays OPEN, not just for an in-flight turn — closing all chats on a
+   * worker does NOT automatically recycle it either (nothing currently
+   * reaps a newly-emptied worker opportunistically; only this explicit call
+   * does, e.g. on the next config change, or a manual restart). Don't
+   * describe this as "picks it up when idle" anywhere user-facing — that's
+   * not a guarantee this method makes. */
   public recycleIdleWorkers(): { recycled: number; stillBusy: number } {
     let recycled = 0;
     let stillBusy = 0;
@@ -604,4 +611,15 @@ export function disposeSharedPiHost(): void {
  * reload for project-scoped Pi settings changes (e.g. the approval gate). */
 export function recycleIdleSharedPiHostWorkers(): { recycled: number; stillBusy: number } {
   return singleton?.recycleIdleWorkers() ?? { recycled: 0, stillBusy: 0 };
+}
+
+/** Read-only: total active chat sessions across all workers right now. Safe
+ * to call from a render path — unlike recycleIdleWorkers, never mutates
+ * anything. Used to surface "N chats still on the old config" passively
+ * (tooltip), not as an interruption. */
+export function sharedPiHostActiveSessionCount(): number {
+  if (!singleton) {
+    return 0;
+  }
+  return singleton.poolStatus().reduce((sum, conn) => sum + conn.sessions, 0);
 }

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.275
+
+- Approval-gate toggle no longer shows a notification at all. The icon flipping IS the confirmation — a popup restating what you just saw happen, with a decision button on top, was double confirmation for one click. Any "chats still on the old setting" detail now lives passively in the icon's tooltip, corrected to say what's actually true (closing/restarting is the reliable way to apply it — a worker holds a chat open until it's closed, not just between turns, so "picks it up when idle" wasn't a claim the mechanism actually backs).
+- Fixed the "⋯" more-actions menu (Review last turn / Chat versions / Export chat / Restart π) rendering as plain white with solid blue selection bars — completely inconsistent with the rest of the UI. Root cause: VS Code's native blue button styling was bleeding through because the menu items never explicitly cleared `background`/`border` in their resting state, only on hover. Now matches the glass panel styling used everywhere else. Verified with a real headless-Chrome render in both light and dark theme variables, not just by reading the CSS.
+
 ## 0.0.274
 
 - Fixed the approval-gate toggle looking "stuck on": the setting was always flipping correctly, but the 0.0.273 refactor dropped the call that refreshes the chat webview, so the icon never visually updated. Every click now re-renders instantly.

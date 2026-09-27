@@ -200,6 +200,9 @@ export interface WebviewSnapshot {
   followMode?: 'open' | 'status' | 'off';
   /** True pre-apply approval mode — surfaced as a one-click deck toggle. */
   requireApprovalForEdits?: boolean;
+  /** Chats still running on whatever approval-gate setting was active when
+   * they started (passive tooltip detail only — never an interruption). */
+  activeSessionCount?: number;
   retry?: { attempt?: number; errorMessage?: string };
   sequence: number;
   title: string;

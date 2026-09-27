@@ -4,6 +4,7 @@ import { existsSync } from 'node:fs';
 import { getSettings, tabTitleSettings } from '../config/settings';
 import { pickChatModel } from '../commands/modelPicker';
 import { AgentFollowService } from '../live/agentFollow';
+import { sharedPiHostActiveSessionCount } from '../process/sharedPiHost';
 import { ensureTrustedForMutation } from '../security/trust';
 import { SessionRegistry } from '../sessions/sessionRegistry';
 import type { SessionController } from '../sessions/sessionController';
@@ -2367,6 +2368,7 @@ export class ChatTabManager implements vscode.Disposable {
     snapshot.requireApprovalForEdits = vscode.workspace
       .getConfiguration('piRpc')
       .get<boolean>('requireApprovalForEdits', false);
+    snapshot.activeSessionCount = sharedPiHostActiveSessionCount();
     const title = this.titleForContext(context, snapshot);
     const host = this.hosts.get(resource.toString());
     if (host) {

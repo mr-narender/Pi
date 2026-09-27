@@ -959,9 +959,19 @@ function renderPermissionModeToggle(snapshot: WebviewSnapshot): string {
   // π can still edit, it just pauses for your OK). Shield-check is the
   // standard "needs to pass a check" metaphor; labels match Claude Code's own
   // now-familiar naming ("Auto Mode" / "Ask Before Edits") on purpose.
+  //
+  // The click itself is silent (icon flip = confirmation, no toast — a
+  // separate popup on top of the visual change was double confirmation).
+  // Any "still on the old setting" nuance is passive, in the tooltip, not
+  // pushed at you. Deliberately NOT promising "picks it up when idle" — a
+  // chat holds its worker open until closed, not just between turns, so
+  // that claim wouldn't reliably be true; restart is the one lever that is.
+  const busy = snapshot.activeSessionCount ?? 0;
+  const busyNote =
+    busy > 0 ? ` — ${busy} chat${busy === 1 ? '' : 's'} still on the previous setting` : '';
   const title = on
-    ? 'Ask Before Edits — every change needs your OK first (click for Auto Mode)'
-    : 'Auto Mode — π edits freely, no pauses (click for Ask Before Edits)';
+    ? `Ask Before Edits — every change needs your OK first (click for Auto Mode)${busyNote}`
+    : `Auto Mode — π edits freely, no pauses (click for Ask Before Edits)${busyNote}`;
   return `<button type="button" class="icon-button permission-toggle${on ? ' is-on' : ''}" data-command="piRpc.togglePermissionMode" title="${title}" aria-label="Toggle approval mode: Auto Mode or Ask Before Edits" aria-pressed="${on ? 'true' : 'false'}"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3 L12 3 L12 8 C12 10.5 10 12.3 8 13.5 C6 12.3 4 10.5 4 8 Z"/><path d="M5.8 8 L7.2 9.6 L10.3 6.2"/></svg></button>`;
 }
 
