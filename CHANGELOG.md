@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.273
+
+- Approval-gate toggle no longer demands a manual "restart the runtime" click. Researched why a restart was needed at all: confirmed in Pi's own source that a project extension is only loaded once, at process boot — starting a new chat session never re-reads it, only a fresh process does. Instead of a full pool restart (which killed even mid-conversation chats), toggling now automatically recycles ONLY idle workers (nothing was running on them — zero disruption) and re-warms the pool, so new chats get the new setting immediately. Anything already running keeps going untouched and picks it up next time it goes idle; a "Restart π Now" button is offered only when chats are actually still busy, for instant effect if you want it right away.
+
 ## 0.0.272
 
 - Reload restores your last chat: the sidebar (the primary surface) was hardcoded to bind to a brand-new blank draft on every single activation — confirmed with certainty in the code, no ambiguity — so every reload silently dropped you onto an empty chat regardless of what you were viewing. It now persists the current chat to workspace storage on every switch/new-chat and restores it on the next reload, falling back to a fresh draft only if the saved workspace folder is no longer open. (Editor-tab chats and any files the follow-agent had open are governed by VS Code's own native tab-restore, which should already bring those back on "Reload Window" if your VS Code hot-exit/restore settings are on — that part isn't something this extension controls.)

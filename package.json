@@ -2,7 +2,7 @@
   "name": "pi",
   "displayName": "Pi – this one is (y)ours",
   "description": "An unofficial, personal VS Code chat UI for the Pi coding agent (pi.dev). Not affiliated with pi.dev — shared for anyone who wants it.",
-  "version": "0.0.272",
+  "version": "0.0.273",
   "publisher": "mr-narender",
   "license": "MIT",
   "private": true,
@@ -1061,7 +1061,7 @@
         "piRpc.requireApprovalForEdits": {
           "type": "boolean",
           "default": false,
-          "description": "True pre-apply approval: every file edit π makes must be Allowed before it touches disk (Allow / Allow rest of turn / Deny). Installs a PROJECT-scoped Pi extension (.pi/extensions/pi-approval-gate.ts) — applies everywhere π runs for this project, not just in VS Code. Requires restarting the π runtime after toggling."
+          "description": "True pre-apply approval: every file edit π makes must be Allowed before it touches disk (Allow / Allow rest of turn / Deny). Installs a PROJECT-scoped Pi extension (.pi/extensions/pi-approval-gate.ts) — applies everywhere π runs for this project, not just in VS Code. Takes effect immediately for new chats; chats already running pick it up when they next go idle (or restart π manually for instant effect on an active chat)."
         },
         "piRpc.predictivePreload": {
           "type": "boolean",

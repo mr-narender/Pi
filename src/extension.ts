@@ -9,7 +9,12 @@ import {
   usablePathPiRoot,
 } from './process/piLauncher';
 import { registerChatOps } from './commands/chatOps';
-import { initSharedPiHost, disposeSharedPiHost, getSharedPiHost } from './process/sharedPiHost';
+import {
+  initSharedPiHost,
+  disposeSharedPiHost,
+  getSharedPiHost,
+  recycleIdleSharedPiHostWorkers,
+} from './process/sharedPiHost';
 import { TurnReview } from './review/turnReview';
 import { syncApprovalGateForWorkspace } from './review/approvalGate';
 import { pickChatModel } from './commands/modelPicker';
@@ -1564,16 +1569,33 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           .getConfiguration('piRpc')
           .get<boolean>('requireApprovalForEdits', false);
         void syncApprovalGateForWorkspace(context.extensionUri, enabled).then(() => {
+          // Pi only re-reads .pi/settings.json (and a newly toggled project
+          // extension) at process boot — confirmed in Pi's own source,
+          // newSession() never touches the extension runtime. A full runtime
+          // restart would interrupt any chat mid-conversation just for a
+          // settings toggle, so instead: recycle only IDLE workers right now
+          // (zero disruption — nothing was running on them) and re-warm the
+          // pool. New chats get the new setting immediately; anything already
+          // running keeps going and picks it up next time IT goes idle.
+          const { recycled, stillBusy } = recycleIdleSharedPiHostWorkers();
+          const verb = enabled ? 'enabled' : 'disabled';
+          const busyNote =
+            stillBusy > 0
+              ? ` ${stillBusy} chat${stillBusy === 1 ? '' : 's'} already running will pick it up when idle (or restart π now for instant effect).`
+              : '';
           void vscode.window
             .showInformationMessage(
-              `π approval gate ${enabled ? 'enabled' : 'disabled'} for this project — restart the π runtime to apply.`,
-              'Restart Now'
+              `π approval gate ${verb} — new chats use it immediately.${busyNote}`,
+              ...(stillBusy > 0 ? ['Restart π Now'] : [])
             )
             .then((choice) => {
-              if (choice === 'Restart Now') {
+              if (choice === 'Restart π Now') {
                 void vscode.commands.executeCommand('piRpc.restartSharedRuntime');
               }
             });
+          logger.info(
+            `[approval-gate] config changed: recycled ${recycled} idle worker(s), ${stillBusy} still busy`
+          );
         });
       }
     })

@@ -537,6 +537,35 @@ export class SharedPiHost {
     }
     this.conns.length = 0;
   }
+
+  /** Graceful config-reload: Pi only re-reads .pi/settings.json (and thus a
+   * newly toggled project extension, e.g. the approval gate) at PROCESS boot
+   * — confirmed by reading Pi's own source, sessionManager.newSession() never
+   * touches the extension runtime. A full dispose() kills BUSY workers too,
+   * interrupting active conversations for a settings toggle. This recycles
+   * only IDLE workers (no chat currently routed to them) — zero disruption to
+   * anything running — and re-warms the pool so new work has capacity ready
+   * immediately. Busy workers are left untouched; they pick up the change the
+   * next time they naturally go idle and get reaped, or on a manual restart. */
+  public recycleIdleWorkers(): { recycled: number; stillBusy: number } {
+    let recycled = 0;
+    let stillBusy = 0;
+    for (const conn of [...this.conns]) {
+      if (conn.fault) {
+        continue; // already dead/dying, nothing to recycle
+      }
+      if (conn.sessionCount === 0) {
+        conn.terminate();
+        recycled += 1;
+      } else {
+        stillBusy += 1;
+      }
+    }
+    if (recycled > 0) {
+      this.warmPool();
+    }
+    return { recycled, stillBusy };
+  }
 }
 
 // Module singleton: one pool per extension host process.
@@ -569,4 +598,10 @@ export function getSharedPiHost(): SharedPiHost | undefined {
 export function disposeSharedPiHost(): void {
   singleton?.dispose();
   singleton = undefined;
+}
+
+/** See SharedPiHost.recycleIdleWorkers — graceful, non-disruptive config
+ * reload for project-scoped Pi settings changes (e.g. the approval gate). */
+export function recycleIdleSharedPiHostWorkers(): { recycled: number; stillBusy: number } {
+  return singleton?.recycleIdleWorkers() ?? { recycled: 0, stillBusy: 0 };
 }
