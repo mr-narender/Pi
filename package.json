@@ -2,7 +2,7 @@
   "name": "pi",
   "displayName": "Pi – this one is (y)ours",
   "description": "An unofficial, personal VS Code chat UI for the Pi coding agent (pi.dev). Not affiliated with pi.dev — shared for anyone who wants it.",
-  "version": "0.0.285",
+  "version": "0.0.286",
   "publisher": "mr-narender",
   "license": "MIT",
   "private": true,
@@ -217,6 +217,11 @@
       {
         "command": "piRpc.managePrompts",
         "title": "Manage Prompts",
+        "category": "Pi"
+      },
+      {
+        "command": "piRpc.manageAgentInstructions",
+        "title": "Manage Agent Instructions",
         "category": "Pi"
       },
       {

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.286
+
+- **New: Agent Instructions manager** — a 4th sidebar-menu entry, alongside Extensions/Skills/Prompts, for the files that shape how π behaves: `APPEND_SYSTEM.md` (adds to the default system prompt) and the `AGENTS.md`/`AGENTS.override.md`/`CLAUDE.md` family ("context files" π reads for project/personal conventions). Deliberately does NOT offer `SYSTEM.md` (full replace of the default system prompt) — explicit call: too easy to cause real damage by accident, only the additive/context-file forms are offered. Click an existing file to open it, click a missing one to create it with a short starter explaining what goes there. Correctly distinguishes that `AGENTS.md` lives at the project root while `APPEND_SYSTEM.md` lives under `.pi/` — a real, easy-to-get-wrong distinction confirmed from Pi's own docs, not assumed. Verified against this machine's actual real files, including correctly finding the very `AGENTS.md` governing this session. 8 new unit tests.
+
 ## 0.0.285
 
 - **Found the actual root cause of the menu bleed-through** — it was never an opacity problem, despite two rounds (0.0.283, 0.0.284) chasing it as one. `#messages .message-card` has `animation: pi-rise-in` (touches transform + opacity), which creates its own CSS stacking context per spec — regardless of whether it's still actively animating. The sidebar header (`.sb-deck`) never established its own stacking context (`position: static` has none), so the menu's z-index was being evaluated with no reliable priority over individual message/diff cards, no matter how opaque its background was. Fixed by giving `.sb-deck` `position: relative; z-index: 60`, well above every message card. Reproduced the exact bug and the fix side by side with a real animated message card + diff content before shipping — not just theorized about stacking contexts.

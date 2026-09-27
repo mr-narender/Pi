@@ -25,6 +25,7 @@ import {
   importConfiguration,
   manageResourceKind,
 } from './resources/resourceManager';
+import { showInstructionManager } from './resources/instructionManager';
 import { InlineReview } from './review/inlineReview';
 import { SessionReplay } from './review/sessionReplay';
 import { SessionIndexService } from './sessions/sessionIndexService';
@@ -980,6 +981,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   });
   registrations.set('piRpc.managePrompts', async () => {
     await manageResourceKind('prompts');
+  });
+  registrations.set('piRpc.manageAgentInstructions', async () => {
+    await showInstructionManager();
   });
   registrations.set('piRpc.addCustomResource', async () => {
     await addCustomResource();

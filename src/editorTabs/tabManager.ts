@@ -144,6 +144,7 @@ const WEBVIEW_COMMAND_ALLOWLIST = new Set<string>([
   'piRpc.manageExtensions',
   'piRpc.manageSkills',
   'piRpc.managePrompts',
+  'piRpc.manageAgentInstructions',
 ]);
 
 /** Common surface for chat hosts: editor-tab panels AND the sidebar view.
