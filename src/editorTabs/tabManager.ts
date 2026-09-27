@@ -1594,15 +1594,17 @@ export class ChatTabManager implements vscode.Disposable {
     if (!edited) {
       return;
     }
+    let pickedModel: { provider: string; id: string } | undefined;
     try {
       ensureTrustedForMutation();
       if (pickModelFirst) {
-        const picked = await pickChatModel(controller);
-        if (!picked) {
+        pickedModel = await pickChatModel(controller);
+        if (!pickedModel) {
           controller.log('info', '[edit] model pick cancelled — resend aborted');
           await this.renderResource(context.resource); // repaint the untouched transcript
           return;
         }
+        controller.log('info', `[edit] model picked: ${pickedModel.provider}/${pickedModel.id}`);
       }
       const entries = await controller.getForkMessages();
       controller.log('info', `[edit] fork points available: ${entries.length}`);
@@ -1645,6 +1647,18 @@ export class ChatTabManager implements vscode.Disposable {
       controller.log('info', '[edit] fork complete; resubmitting edited text to the model');
       if (controller.snapshot.connectionState === 'stopped') {
         await controller.start();
+      }
+      if (pickedModel) {
+        // Re-assert the picked model AFTER forking — forking replays session
+        // history up to the branch point, which can put the live connection
+        // back on whatever model was active at THAT point in history rather
+        // than the one just picked. Cheap and idempotent; guarantees the
+        // resend actually uses what was chosen, not the old (rate-limited) one.
+        await controller.selectModel(pickedModel.provider, pickedModel.id);
+        controller.log(
+          'info',
+          `[edit] re-asserted model after fork: ${pickedModel.provider}/${pickedModel.id}`
+        );
       }
       await controller.prompt(edited, 'prompt', []);
       controller.log('info', '[edit] prompt sent to model');

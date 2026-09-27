@@ -998,6 +998,18 @@ function renderPlanStrip(snapshot: WebviewSnapshot): string {
   return `<details class="plan-strip" id="plan-strip" data-preserve-open><summary title="π's current plan"><span class="plan-badge">Plan</span><span class="plan-progress"><span class="plan-progress-fill" style="width:${pct}%"></span></span><span class="plan-count">${plan.done}/${total}</span>${CARET_ICON}</summary><ul class="plan-list">${rows}</ul></details>`;
 }
 
+// Compact inline version for the slim retry banner — badge + clean message,
+// no grid. Same parser as the full card so BOTH places where a provider
+// error can surface (a settled failed turn, and Pi's own auto-retry banner)
+// show the real message, never raw JSON.
+function renderApiErrorInline(errorMessage: string): string {
+  const parsed = parseProviderError(errorMessage);
+  if (parsed.statusCode === undefined && parsed.provider === undefined) {
+    return `<span class="error-text">${escapeHtml(parsed.message)}</span>`;
+  }
+  const status = friendlyApiStatus(parsed.statusCode, parsed.errorType);
+  return `<span class="api-error-badge api-error-${status.severity}">${escapeHtml(status.label)}</span> <span class="error-text">${escapeHtml(parsed.message)}</span>`;
+}
 
 // Structured provider-error card — never a raw JSON dump. Falls back to a
 // plain sentence when the message doesn't match the parseable shape.
@@ -1428,7 +1440,7 @@ export function renderChatApp(snapshot: WebviewSnapshot): string {
                 : ''
             }${
               snapshot.retry.errorMessage
-                ? ` — <span class="error-text">${escapeHtml(snapshot.retry.errorMessage)}</span>`
+                ? ` — ${renderApiErrorInline(snapshot.retry.errorMessage)}`
                 : ''
             }</div>`
           : ''

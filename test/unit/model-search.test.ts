@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
+  compareModelRankDesc,
   fuzzyModelMatch,
   matchesAnyField,
   normalizeForModelSearch,
@@ -38,4 +39,30 @@ test('matchesAnyField checks label/description/detail together', () => {
   assert.equal(matchesAnyField('4.8', ['claude-4-8', undefined, 'ctx 200K']), true);
   assert.equal(matchesAnyField('200k', ['claude-4-8', undefined, 'ctx 200K']), true);
   assert.equal(matchesAnyField('xyz', ['claude-4-8', undefined, 'ctx 200K']), false);
+});
+
+test('compareModelRankDesc: higher version-like numbers sort first', () => {
+  const models = [
+    { id: 'claude-4-8', name: 'Claude 4.8' },
+    { id: 'claude-fable-5', name: 'Claude Fable 5' },
+    { id: 'gpt-3', name: 'GPT 3' },
+  ];
+  const sorted = [...models].sort(compareModelRankDesc);
+  assert.deepEqual(
+    sorted.map((m) => m.id),
+    ['claude-fable-5', 'claude-4-8', 'gpt-3']
+  );
+});
+
+test('compareModelRankDesc: no version found sorts last, falls back to contextWindow then id', () => {
+  const models = [
+    { id: 'zeta', name: 'no version here', contextWindow: 100 },
+    { id: 'alpha', name: 'also none', contextWindow: 500 },
+    { id: 'claude-5', name: 'has one' },
+  ];
+  const sorted = [...models].sort(compareModelRankDesc);
+  assert.deepEqual(
+    sorted.map((m) => m.id),
+    ['claude-5', 'alpha', 'zeta']
+  );
 });

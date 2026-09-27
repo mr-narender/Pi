@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.270
+
+- Fixed "picked a new model but it still errors": forking a session to resend an edited message replays history up to the branch point, which can put the live connection back on whatever model was active at that point — silently discarding a just-picked model. The model is now re-asserted immediately AFTER the fork, right before the resend, guaranteeing the resend actually uses what you picked.
+- Fixed a second, real display gap: the structured error card only covered a fully-settled failed turn. Pi's own auto-retry banner (the "retrying..." strip you see during a rate limit before it either succeeds or gives up) had its own separate raw-text path I hadn't touched — it now shows the same status badge and clean message.
+- Model picker now shows EVERY model across every provider in ONE list (grouped by provider headers, not a forced "pick provider first" step that was hiding models behind an extra click), sorted highest-version-first within each provider for easier scanning, and fully searchable end to end (separator-agnostic — harness-proven with providers, sorting, search, and clearing all verified against real QuickPick wiring).
+
 ## 0.0.269
 
 - MODEL SEARCH IS SEPARATOR-AGNOSTIC: "claude 4.8" now matches an id like "claude-4-8" (or "claude.4.8", "claude*4_8") — previously VS Code's native fuzzy filter did literal character matching, so a space in your query had nothing to match against a hyphen in the id and silently found nothing. Both model pickers (the composer chip and "Retry with a different model") now share one fuzzy matcher that treats -, *, ., and whitespace as interchangeable. Harness-proven end-to-end (real QuickPick wiring, not just the matcher function).
