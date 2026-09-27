@@ -27,6 +27,18 @@ const KIND_LABEL: Record<ResourceKind, string> = {
   prompts: 'Prompts',
 };
 
+// Plain-language explanation for each kind — shown when a picker is empty,
+// so clicking a menu item that finds nothing still clearly answers "what IS
+// this and why didn't it show anything," not just "0 results."
+const KIND_EXPLANATION: Record<ResourceKind, string> = {
+  extensions:
+    "Extensions are TypeScript/JavaScript files that add real behavior to π — tools, commands, event hooks. More power than a prompt or skill, since it's executable code.",
+  skills:
+    'Skills are folders with a SKILL.md file that give π specialized instructions for a particular kind of work — loaded automatically when a task matches, without using context until then.',
+  prompts:
+    'Prompts turn a Markdown file into a reusable "/" slash command — e.g. ~/.pi/agent/prompts/review.md becomes /review. Good for saving a prompt you type often, without writing any code.',
+};
+
 const KIND_ICON: Record<ResourceKind, string> = {
   extensions: '$(extensions)',
   skills: '$(symbol-misc)',
@@ -89,9 +101,18 @@ async function showKindPicker(kind: ResourceKind, projectRoot: string): Promise<
   const discovered = await discoverAll(kind, projectRoot);
   const states = await withEnabledState(discovered, projectRoot);
   if (states.length === 0) {
-    void vscode.window.showInformationMessage(
-      `No ${KIND_LABEL[kind].toLowerCase()} discovered yet. Use "π: Add Custom Extension/Skill/Prompt" to add one, or place one in the standard locations and reopen this.`
+    // A background toast for a DIRECT menu click is easy to miss and reads
+    // as "nothing happened." Modal forces it to be seen, and explains what
+    // this kind even IS — most people clicking "Prompts…" for the first
+    // time don't already know what a prompt template is.
+    const choice = await vscode.window.showInformationMessage(
+      `No ${KIND_LABEL[kind].toLowerCase()} found yet.\n\n${KIND_EXPLANATION[kind]}`,
+      { modal: true },
+      'Add a custom one…'
     );
+    if (choice === 'Add a custom one…') {
+      await addCustomResourceOfKind(kind, projectRoot);
+    }
     return;
   }
   states.sort((a, b) => a.name.localeCompare(b.name));
@@ -196,6 +217,37 @@ export async function showResourceManager(): Promise<void> {
   }
 }
 
+async function addCustomResourceOfKind(kind: ResourceKind, projectRoot: string): Promise<void> {
+  const scopePick = await vscode.window.showQuickPick(
+    [
+      { label: 'This project only', scope: 'project' as const },
+      { label: 'Every project (user-level)', scope: 'user' as const },
+    ],
+    { title: `Add a custom ${kind.replace(/s$/, '')}`, placeHolder: 'Where should it apply?' }
+  );
+  if (!scopePick) {
+    return;
+  }
+  const isSkill = kind === 'skills';
+  const picked = await vscode.window.showOpenDialog({
+    canSelectFiles: !isSkill,
+    canSelectFolders: isSkill,
+    canSelectMany: false,
+    openLabel: 'Add',
+    title: isSkill
+      ? 'Select a skill folder (containing SKILL.md)'
+      : `Select a ${kind.replace(/s$/, '')} file`,
+  });
+  const uri = picked?.[0];
+  if (!uri) {
+    return;
+  }
+  await applyResourceChange(scopePick.scope, projectRoot, kind, 'include', uri.fsPath);
+  void vscode.window.showInformationMessage(
+    `π: added ${path.basename(uri.fsPath)} to ${KIND_LABEL[kind].toLowerCase()} (${scopePick.scope}).`
+  );
+}
+
 export async function addCustomResource(): Promise<void> {
   const projectRoot = firstWorkspaceRoot();
   if (!projectRoot) {
@@ -213,43 +265,7 @@ export async function addCustomResource(): Promise<void> {
   if (!kindPick) {
     return;
   }
-  const scopePick = await vscode.window.showQuickPick(
-    [
-      { label: 'This project only', scope: 'project' as const },
-      { label: 'Every project (user-level)', scope: 'user' as const },
-    ],
-    {
-      title: `Add a custom ${kindPick.resourceKind.replace(/s$/, '')}`,
-      placeHolder: 'Where should it apply?',
-    }
-  );
-  if (!scopePick) {
-    return;
-  }
-  const isSkill = kindPick.resourceKind === 'skills';
-  const picked = await vscode.window.showOpenDialog({
-    canSelectFiles: !isSkill,
-    canSelectFolders: isSkill,
-    canSelectMany: false,
-    openLabel: 'Add',
-    title: isSkill
-      ? 'Select a skill folder (containing SKILL.md)'
-      : `Select a ${kindPick.resourceKind.replace(/s$/, '')} file`,
-  });
-  const uri = picked?.[0];
-  if (!uri) {
-    return;
-  }
-  await applyResourceChange(
-    scopePick.scope,
-    projectRoot,
-    kindPick.resourceKind,
-    'include',
-    uri.fsPath
-  );
-  void vscode.window.showInformationMessage(
-    `π: added ${path.basename(uri.fsPath)} to ${KIND_LABEL[kindPick.resourceKind].toLowerCase()} (${scopePick.scope}).`
-  );
+  await addCustomResourceOfKind(kindPick.resourceKind, projectRoot);
 }
 
 const ALL_KINDS: readonly ResourceKind[] = ['extensions', 'skills', 'prompts'];

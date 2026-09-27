@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.283
+
+- Fixed menu transparency being too high to read comfortably over busy transcript content — 92%→98% opaque, confirmed with a real render against realistic colored chat bubbles/code (not a flat background) before and after, not just a guessed number.
+- Fixed clicking "Prompts…" (or Extensions/Skills, if none are set up) looking like nothing happened — it was working, just showing an easy-to-miss background toast for zero results. Now a modal dialog that plainly explains what that resource kind IS (most people clicking "Prompts…" don't already know what a prompt template is) and offers "Add a custom one…" as a direct next step.
+
 ## 0.0.282
 
 - Fixed the sidebar `⋯` menu's "Extensions, skills & prompts…" item wrapping to two lines and visually overlapping with the transcript behind it. Split into three direct, short items — Extensions… / Skills… / Prompts… — jumping straight to that kind's toggle list; the menu itself is now the kind-picker instead of a redundant middle step. Verified with a real headless-Chrome render at the sidebar's actual width before shipping, not just shortened text and hoped.
