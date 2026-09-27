@@ -16,14 +16,20 @@ import { notifier } from '../ui/notifier';
 import { parseWebviewMessage } from '../webview/messages';
 import {
   acceptedSnapshotFromPreview,
-  boundDiagnosticsContent,
-  boundFileContent,
   buildSendPreview,
-  fingerprint,
   createEmptyComposerState,
-  type PendingContextItem,
   type PendingImageItem,
 } from '../webview/composer';
+import {
+  IMAGE_MIME_BY_EXTENSION,
+  makeId,
+  relativeWorkspacePath,
+  captureActiveFile,
+  capturePickedFile,
+  captureFileLike,
+  captureSelection,
+  captureDiagnostics,
+} from './attachmentCapture';
 import { conversationToMarkdown } from '../webview/conversationMarkdown';
 import { ChatUiState } from '../webview/composerState';
 import type { JsonObject } from '../rpc/protocol';
@@ -42,19 +48,6 @@ import {
 import { ChatTabStateCache, toPersistedChatSnapshot } from './sessionCache';
 import type { ChatEditorDocument } from './document';
 import { vscodeLanguageId } from './languageId';
-
-const IMAGE_MIME_BY_EXTENSION: Record<string, string> = {
-  '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.gif': 'image/gif',
-  '.webp': 'image/webp',
-  '.bmp': 'image/bmp',
-};
-
-function makeId(prefix: string): string {
-  return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
-}
 
 function isDefaultTitle(value: string | undefined): boolean {
   return !value || value === 'Pi' || value === 'Pi RPC';
@@ -127,41 +120,6 @@ function workspaceFolders(chatFolderUri?: string) {
     }
   }
   return folders;
-}
-
-function relativeWorkspacePath(
-  folder: vscode.WorkspaceFolder,
-  uri: vscode.Uri
-): string | undefined {
-  if (uri.scheme !== 'file' || folder.uri.scheme !== 'file') {
-    return undefined;
-  }
-  const owningFolder = vscode.workspace.getWorkspaceFolder(uri);
-  if (!owningFolder || owningFolder.uri.toString() !== folder.uri.toString()) {
-    return undefined;
-  }
-  const relative = vscode.workspace.asRelativePath(uri, false);
-  return relative.startsWith('..') ? undefined : relative.replaceAll('\\', '/');
-}
-
-function diagnosticSeverity(
-  diagnostics: readonly vscode.Diagnostic[]
-): 'error' | 'warning' | 'info' | 'hint' | 'mixed' {
-  const severities = new Set(diagnostics.map((item) => item.severity));
-  if (severities.size > 1) {
-    return 'mixed';
-  }
-  const only = diagnostics[0]?.severity;
-  if (only === vscode.DiagnosticSeverity.Error) {
-    return 'error';
-  }
-  if (only === vscode.DiagnosticSeverity.Warning) {
-    return 'warning';
-  }
-  if (only === vscode.DiagnosticSeverity.Information) {
-    return 'info';
-  }
-  return 'hint';
 }
 
 // Commands the chat webview may invoke via the generic executeCommand message.
@@ -632,7 +590,7 @@ export class ChatTabManager implements vscode.Disposable {
       return;
     }
     const controller = this.registry.getOrCreate(editorFolder);
-    const item = await this.captureSelection(controller);
+    const item = await captureSelection(controller);
     const resource = await this.openCurrentChat({
       folderUri: controller.folder.uri.toString(),
       focusComposer: true,
@@ -700,7 +658,7 @@ export class ChatTabManager implements vscode.Disposable {
     }
     try {
       const document = await vscode.workspace.openTextDocument(uri);
-      const item = await this.captureFileLike(context.controller, document, 'pickedFile');
+      const item = await captureFileLike(context.controller, document, 'pickedFile');
       if (item) {
         await this.uiState.addContextItemForIdentity(context.controller, context.target, item);
         await this.renderResource(context.resource);
@@ -1505,7 +1463,7 @@ export class ChatTabManager implements vscode.Disposable {
         await this.renderResource(host.resource);
         return;
       case 'appendActiveFile': {
-        const item = await this.captureActiveFile(context.controller);
+        const item = await captureActiveFile(context.controller);
         if (item) {
           await this.uiState.addContextItemForIdentity(context.controller, context.target, item);
           await this.renderResource(host.resource);
@@ -1513,7 +1471,7 @@ export class ChatTabManager implements vscode.Disposable {
         return;
       }
       case 'appendSelection': {
-        const item = await this.captureSelection(context.controller);
+        const item = await captureSelection(context.controller);
         if (item) {
           await this.uiState.addContextItemForIdentity(context.controller, context.target, item);
           await this.renderResource(host.resource);
@@ -1521,7 +1479,7 @@ export class ChatTabManager implements vscode.Disposable {
         return;
       }
       case 'appendDiagnostics': {
-        const item = await this.captureDiagnostics(context.controller);
+        const item = await captureDiagnostics(context.controller);
         if (item) {
           await this.uiState.addContextItemForIdentity(context.controller, context.target, item);
           await this.renderResource(host.resource);
@@ -1529,7 +1487,7 @@ export class ChatTabManager implements vscode.Disposable {
         return;
       }
       case 'appendPickedFile': {
-        const item = await this.capturePickedFile(context.controller);
+        const item = await capturePickedFile(context.controller);
         if (item) {
           await this.uiState.addContextItemForIdentity(context.controller, context.target, item);
           await this.renderResource(host.resource);
@@ -2689,224 +2647,6 @@ export class ChatTabManager implements vscode.Disposable {
     await this.renderResource(resource);
   }
 
-  private async captureActiveFile(
-    controller: SessionController
-  ): Promise<PendingContextItem | undefined> {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) {
-      return undefined;
-    }
-    return this.captureFileLike(controller, editor.document, 'activeFile');
-  }
-
-  private async capturePickedFile(
-    controller: SessionController
-  ): Promise<PendingContextItem | undefined> {
-    const picked = await vscode.window.showOpenDialog({
-      canSelectMany: false,
-      openLabel: 'Attach',
-      title: 'Add a file to the chat',
-      defaultUri: controller.folder.uri,
-    });
-    const uri = picked?.[0];
-    if (!uri) {
-      return undefined;
-    }
-    // Containment check first — cheap, avoids any read for out-of-workspace files.
-    const workspaceRelativePath = relativeWorkspacePath(controller.folder, uri);
-    if (!workspaceRelativePath) {
-      void vscode.window.showWarningMessage(
-        'Only files inside the active workspace can be attached.'
-      );
-      return undefined;
-    }
-    // Size guard BEFORE reading, so a huge/binary file cannot freeze the UI.
-    const MAX_ATTACH_BYTES = 512 * 1024;
-    let size = 0;
-    try {
-      const stat = await vscode.workspace.fs.stat(uri);
-      if (stat.type & vscode.FileType.Directory) {
-        void vscode.window.showWarningMessage('Pick a file, not a folder.');
-        return undefined;
-      }
-      size = stat.size;
-    } catch {
-      void vscode.window.showWarningMessage('Could not read that file.');
-      return undefined;
-    }
-    if (size > MAX_ATTACH_BYTES) {
-      void vscode.window.showWarningMessage(
-        `That file is too large to attach (${Math.round(size / 1024)} KB > ${
-          MAX_ATTACH_BYTES / 1024
-        } KB). Attach a smaller file or a selection.`
-      );
-      return undefined;
-    }
-    // Read bytes directly (fast) instead of opening a full TextDocument, which
-    // makes VS Code tokenize/language-process the whole file.
-    let text: string;
-    try {
-      const bytes = await vscode.workspace.fs.readFile(uri);
-      text = new TextDecoder('utf-8', { fatal: false }).decode(bytes);
-    } catch {
-      void vscode.window.showWarningMessage('Could not read that file.');
-      return undefined;
-    }
-    const content = boundFileContent(text);
-    const lineEnd = content.split('\n').length;
-    const languageId = basename(uri.fsPath).split('.').pop() || 'plaintext';
-    return {
-      kind: 'pickedFile',
-      itemId: makeId('pickedFile'),
-      workspaceFolder: controller.folder.uri.fsPath,
-      workspaceRelativePath,
-      lineStart: 1,
-      lineEnd,
-      languageId,
-      sanitizedContent: content,
-      capturedAt: new Date().toISOString(),
-      persistedRef: {
-        workspaceRelativePath,
-        lineStart: 1,
-        lineEnd,
-        languageId,
-        contentFingerprint: fingerprint(content),
-      },
-    };
-  }
-
-  private async captureFileLike(
-    controller: SessionController,
-    document: vscode.TextDocument,
-    kind: 'activeFile' | 'pickedFile'
-  ): Promise<PendingContextItem | undefined> {
-    const workspaceRelativePath = relativeWorkspacePath(controller.folder, document.uri);
-    if (!workspaceRelativePath) {
-      void vscode.window.showWarningMessage(
-        'Only files inside the active workspace can be attached.'
-      );
-      return undefined;
-    }
-    const content = boundFileContent(document.getText());
-    const lineEnd = Math.min(document.lineCount, content.split('\n').length);
-    return {
-      kind,
-      itemId: makeId(kind),
-      workspaceFolder: controller.folder.uri.fsPath,
-      workspaceRelativePath,
-      lineStart: 1,
-      lineEnd,
-      languageId: document.languageId,
-      sanitizedContent: content,
-      capturedAt: new Date().toISOString(),
-      persistedRef: {
-        workspaceRelativePath,
-        lineStart: 1,
-        lineEnd,
-        languageId: document.languageId,
-        contentFingerprint: fingerprint(content),
-      },
-    };
-  }
-
-  private async captureSelection(
-    controller: SessionController
-  ): Promise<PendingContextItem | undefined> {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor || editor.selection.isEmpty) {
-      return undefined;
-    }
-    const workspaceRelativePath = relativeWorkspacePath(controller.folder, editor.document.uri);
-    if (!workspaceRelativePath) {
-      void vscode.window.showWarningMessage(
-        'Only selections inside the active workspace can be attached.'
-      );
-      return undefined;
-    }
-    const content = boundFileContent(editor.document.getText(editor.selection));
-    const lineStart = editor.selection.start.line + 1;
-    const lineEnd = editor.selection.end.line + 1;
-    return {
-      kind: 'selection',
-      itemId: makeId('selection'),
-      workspaceFolder: controller.folder.uri.fsPath,
-      workspaceRelativePath,
-      lineStart,
-      lineEnd,
-      languageId: editor.document.languageId,
-      sanitizedContent: content,
-      capturedAt: new Date().toISOString(),
-      persistedRef: {
-        workspaceRelativePath,
-        lineStart,
-        lineEnd,
-        languageId: editor.document.languageId,
-        contentFingerprint: fingerprint(content),
-      },
-    };
-  }
-
-  private async captureDiagnostics(
-    controller: SessionController
-  ): Promise<PendingContextItem | undefined> {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) {
-      return undefined;
-    }
-    const workspaceRelativePath = relativeWorkspacePath(controller.folder, editor.document.uri);
-    if (!workspaceRelativePath) {
-      void vscode.window.showWarningMessage(
-        'Only diagnostics inside the active workspace can be attached.'
-      );
-      return undefined;
-    }
-    const diagnostics = vscode.languages.getDiagnostics(editor.document.uri);
-    const lineStart =
-      diagnostics.length > 0
-        ? Math.min(...diagnostics.map((item) => item.range.start.line + 1))
-        : 1;
-    const lineEnd =
-      diagnostics.length > 0 ? Math.max(...diagnostics.map((item) => item.range.end.line + 1)) : 1;
-    const severity = diagnosticSeverity(diagnostics);
-    const content = boundDiagnosticsContent(
-      diagnostics.length === 0
-        ? 'INFO L1: No diagnostics.'
-        : diagnostics
-            .slice(0, 100)
-            .map((item) => {
-              const level =
-                item.severity === vscode.DiagnosticSeverity.Error
-                  ? 'ERROR'
-                  : item.severity === vscode.DiagnosticSeverity.Warning
-                    ? 'WARNING'
-                    : item.severity === vscode.DiagnosticSeverity.Information
-                      ? 'INFO'
-                      : 'HINT';
-              return `${level} L${item.range.start.line + 1}: ${item.message}`;
-            })
-            .join('\n')
-    );
-    return {
-      kind: 'diagnostics',
-      itemId: makeId('diagnostics'),
-      workspaceFolder: controller.folder.uri.fsPath,
-      workspaceRelativePath,
-      lineStart,
-      lineEnd,
-      severity,
-      issueCount: diagnostics.length,
-      sanitizedContent: content,
-      capturedAt: new Date().toISOString(),
-      persistedRef: {
-        workspaceRelativePath,
-        lineStart,
-        lineEnd,
-        severity,
-        issueCount: diagnostics.length,
-        diagnosticFingerprint: fingerprint(content),
-      },
-    };
-  }
 }
 
 /** Normalize chat tab labels. VS Code sizes tabs by label text, so uneven

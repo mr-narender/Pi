@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.277
+
+- Internal only, no user-facing change: extracted the file/image/selection/diagnostics attachment-capture logic out of the `tabManager.ts` god-file (2937→2679 lines) into a new standalone, pure `editorTabs/attachmentCapture.ts` (258 lines, zero dependency on chat-manager instance state). First step of a planned multi-phase de-bloat. Every extracted function's body was verified byte-identical to the original via automated diff before wiring in (not just re-read by eye) — two real transcription mistakes were caught and fixed this way before they ever ran. Full gate + real VS Code E2E activation test green, exact match against the pre-change baseline (301 unit tests, 24 integration tests) — zero regressions.
+
 ## 0.0.276
 
 - Removed the duplicate follow (⌖) and approval-mode (🛡) toggles from the top sidebar deck. They were rendered in two places — top deck AND composer — for no reason; both are one click away at the input already. Top deck is back to session-level actions only (☰ · title · ✚ · ⋯).
