@@ -65,7 +65,8 @@ export function createOpenChatListModel(input: OpenChatListInput): SidebarNode[]
   ];
 
   if (input.openChats.length > 0) {
-    nodes.push({ id: 'list.open.header', kind: 'summary', label: 'Open' });
+    // No "Open" header either — flat list, icons (check/comment-discussion
+    // vs history) carry the distinction instead of text section labels.
     for (const chat of input.openChats) {
       nodes.push({
         id: `list.open.${chat.resource}`,

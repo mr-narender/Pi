@@ -2,7 +2,7 @@
   "name": "pi",
   "displayName": "Pi – this one is (y)ours",
   "description": "An unofficial, personal VS Code chat UI for the Pi coding agent (pi.dev). Not affiliated with pi.dev — shared for anyone who wants it.",
-  "version": "0.0.292",
+  "version": "0.0.293",
   "publisher": "mr-narender",
   "license": "MIT",
   "private": true,
@@ -127,7 +127,7 @@
       },
       {
         "command": "piRpcInternal.restart",
-        "title": "Restart",
+        "title": "Restart π",
         "category": "Pi"
       },
       {
@@ -212,22 +212,22 @@
       },
       {
         "command": "piRpc.manageExtensions",
-        "title": "Manage Extensions",
+        "title": "Extensions…",
         "category": "Pi"
       },
       {
         "command": "piRpc.manageSkills",
-        "title": "Manage Skills",
+        "title": "Skills…",
         "category": "Pi"
       },
       {
         "command": "piRpc.managePrompts",
-        "title": "Manage Prompts",
+        "title": "Prompts…",
         "category": "Pi"
       },
       {
         "command": "piRpc.manageAgentInstructions",
-        "title": "Manage Agent Instructions",
+        "title": "Agent instructions…",
         "category": "Pi"
       },
       {
@@ -308,7 +308,7 @@
       },
       {
         "command": "piRpc.exportHtml",
-        "title": "Export Session as HTML",
+        "title": "Export chat",
         "category": "Pi"
       },
       {
@@ -323,12 +323,12 @@
       },
       {
         "command": "piRpc.reviewLastTurn",
-        "title": "Review Files Changed Last Turn",
+        "title": "Review last turn",
         "category": "Pi"
       },
       {
         "command": "piRpc.showChatVersions",
-        "title": "Show Chat Versions (Edit History)",
+        "title": "Chat versions",
         "category": "Pi"
       },
       {
@@ -1113,6 +1113,14 @@
           "default": "agentic",
           "description": "What the π sidebar shows: a chat list (Agentic Mode) or the full chat (Chat Mode). Switch anytime from either view’s title bar."
         },
+        "piRpc.statusBarExtras": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Which extra status keys (set by installed Pi extensions/skills, e.g. an MCP-status reporter) to show in the VS Code status bar. Empty by default — every Pi extension can set its own status, and showing all of them unconditionally makes the status bar noisy. Add a key name here to opt it in."
+        },
         "piRpc.preventSleepWhileBusy": {
           "type": "boolean",
           "default": true,
@@ -1152,6 +1160,46 @@
           "when": "view == piRpc.openChatList",
           "group": "navigation@1",
           "icon": "$(add)"
+        },
+        {
+          "command": "piRpc.reviewLastTurn",
+          "when": "view == piRpc.openChatList",
+          "group": "1_chat@1"
+        },
+        {
+          "command": "piRpc.showChatVersions",
+          "when": "view == piRpc.openChatList",
+          "group": "1_chat@2"
+        },
+        {
+          "command": "piRpc.exportHtml",
+          "when": "view == piRpc.openChatList",
+          "group": "1_chat@3"
+        },
+        {
+          "command": "piRpc.manageExtensions",
+          "when": "view == piRpc.openChatList",
+          "group": "2_configure@1"
+        },
+        {
+          "command": "piRpc.manageSkills",
+          "when": "view == piRpc.openChatList",
+          "group": "2_configure@2"
+        },
+        {
+          "command": "piRpc.managePrompts",
+          "when": "view == piRpc.openChatList",
+          "group": "2_configure@3"
+        },
+        {
+          "command": "piRpc.manageAgentInstructions",
+          "when": "view == piRpc.openChatList",
+          "group": "2_configure@4"
+        },
+        {
+          "command": "piRpcInternal.restart",
+          "when": "view == piRpc.openChatList",
+          "group": "3_system@1"
         }
       ],
       "editor/title": [

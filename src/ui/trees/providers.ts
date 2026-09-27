@@ -53,23 +53,25 @@ export class OpenChatListTreeProvider
     return this.emitter.event;
   }
 
-  /** Debounced AND diffed. Debounce: one user action can fire multiple
-   * underlying events (opening a chat fires onDidChangeOpenChats, and
-   * recentSessions itself fires twice per refresh — loading, then
-   * settled) — collapse those into one check. Diff: even after collapsing,
-   * clicking a chat that's already known to the list changes nothing about
-   * WHAT the list should show, so don't tell VS Code to redraw when the
-   * computed content is identical to what's already rendered — that's what
-   * was still visibly "reloading" the list on every click. */
+  /** Debounced AND diffed against STABLE IDENTITY, not rendered text.
+   * Debounce: one user action can fire multiple underlying events (opening
+   * a chat fires onDidChangeOpenChats, and recentSessions itself fires
+   * twice per refresh — loading, then settled) — collapse into one check.
+   * Diff: rendered SidebarNode descriptions include "5m ago"-style relative
+   * timestamps that drift with real wall-clock time even when NOTHING about
+   * the underlying data changed — comparing the full rendered nodes was
+   * itself a source of spurious "changed" detections. Comparing a reduced,
+   * time-independent identity (which resources are open + which is active +
+   * which session ids are listed) avoids that while still catching every
+   * real change (chat opened/closed, active chat switched). */
   public refresh(): void {
     clearTimeout(this.refreshTimer);
     this.refreshTimer = setTimeout(() => {
-      const nodes = this.computeModel();
-      const key = JSON.stringify(nodes);
-      if (key === this.lastRenderedKey) {
+      const { identityKey } = this.computeModel();
+      if (identityKey === this.lastRenderedKey) {
         return;
       }
-      this.lastRenderedKey = key;
+      this.lastRenderedKey = identityKey;
       this.emitter.fire();
     }, 120);
   }
@@ -82,12 +84,12 @@ export class OpenChatListTreeProvider
     if (element) {
       return [];
     }
-    const nodes = this.computeModel();
-    this.lastRenderedKey = JSON.stringify(nodes);
+    const { nodes, identityKey } = this.computeModel();
+    this.lastRenderedKey = identityKey;
     return nodes;
   }
 
-  private computeModel(): SidebarNode[] {
+  private computeModel(): { nodes: SidebarNode[]; identityKey: string } {
     const rawOpenChats = this.chatTabs.listOpenChats();
     const openChats: OpenChatEntry[] = rawOpenChats.map((chat) => ({
       resource: chat.resource.toString(),
@@ -99,9 +101,6 @@ export class OpenChatListTreeProvider
       active: chat.visible,
     }));
     const folder = rawOpenChats[0]?.controller.folder ?? vscode.workspace.workspaceFolders?.[0];
-    if (!folder) {
-      return createOpenChatListModel({ openChats, recent: { loading: false, filterText: '', items: [] } });
-    }
     // NOT calling recentSessions.refresh(folder) here on purpose. getState()
     // already refreshes ONCE, internally, the first time a folder has no
     // cached state (see recentSessionService.ts). An explicit unconditional
@@ -110,7 +109,19 @@ export class OpenChatListTreeProvider
     // self-sustaining loop: refresh fires `loading:true` synchronously ->
     // listener re-fetches -> refresh again -> forever. getState() alone is
     // the same pattern this tree's predecessor code always used.
-    return createOpenChatListModel({ openChats, recent: this.recentSessions.getState(folder) });
+    const recent = folder
+      ? this.recentSessions.getState(folder)
+      : { loading: false, filterText: '', items: [] };
+    const nodes = createOpenChatListModel({ openChats, recent });
+    const identityKey = JSON.stringify({
+      open: openChats.map((c) => [c.resource, c.sessionFile, c.active]),
+      recentLoading: recent.loading,
+      recentError: recent.error,
+      // Session identity + modifiedAt (a real change), NOT any rendered
+      // "X ago" text (which changes with wall-clock time alone).
+      recentIds: recent.items.map((s) => [s.id, s.path, s.modifiedAt]),
+    });
+    return { nodes, identityKey };
   }
 
   public dispose(): void {

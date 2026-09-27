@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import type { SessionController } from '../../sessions/sessionController';
+import { stripAnsiCodes } from './ansi';
 
 // The status bar is a PASSIVE Pi-status indicator only. All configuration
 // (model, usage/cost, thinking level, etc.) lives in the chat composer toolbar
@@ -90,10 +91,22 @@ export class StatusBarController implements vscode.Disposable {
   }
 
   private renderKeyedStatuses(statuses: Record<string, string>): void {
-    const seen = new Set(Object.keys(statuses));
-    for (const [key, value] of Object.entries(statuses)) {
+    // Quiet by default, explicit opt-in per key — "don't just add
+    // everything" was the direct ask. Any Pi extension can set a status
+    // key; showing all of them unconditionally is how the status bar got
+    // noisy in the first place.
+    const allowlist = new Set(
+      vscode.workspace.getConfiguration('piRpc').get<string[]>('statusBarExtras', [])
+    );
+    const seen = new Set<string>();
+    for (const [key, rawValue] of Object.entries(statuses)) {
+      if (!allowlist.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      const value = stripAnsiCodes(rawValue);
       const item = this.keyed.get(key) ?? this.createKeyedItem(key);
-      item.text = `$(info) ${key}: ${value}`;
+      item.text = `$(info) ${stripAnsiCodes(key)}: ${value}`;
       item.tooltip = value;
       item.show();
     }

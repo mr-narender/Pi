@@ -11,7 +11,7 @@ test('leads with New Chat even with nothing else to show', () => {
   assert.equal(model[1]?.label, 'No chats yet');
 });
 
-test('Open section lists real open chats, with the active one marked and check-icon', () => {
+test('open chats are listed flat (no section header), active one marked with check-icon', () => {
   const model = createOpenChatListModel({
     openChats: [
       { resource: 'pi-chat:/a', title: 'Fix auth bug', sessionFile: '/s/a.jsonl', active: true },
@@ -20,16 +20,14 @@ test('Open section lists real open chats, with the active one marked and check-i
     recent: baseRecent,
   });
   assert.equal(model[0]?.label, 'New Chat');
-  assert.equal(model[1]?.label, 'Open');
-  assert.equal(model[1]?.kind, 'summary');
-  assert.equal(model[2]?.label, 'Fix auth bug');
-  assert.equal(model[2]?.icon, 'check');
-  assert.equal(model[2]?.description, 'Current');
-  assert.equal(model[2]?.command?.command, 'piRpcInternal.revealOpenChat');
-  assert.deepEqual(model[2]?.command?.arguments, [{ resource: 'pi-chat:/a' }]);
-  assert.equal(model[3]?.label, 'Refactor sidebar');
-  assert.equal(model[3]?.icon, 'comment-discussion');
-  assert.equal(model[3]?.description, undefined);
+  assert.equal(model[1]?.label, 'Fix auth bug');
+  assert.equal(model[1]?.icon, 'check');
+  assert.equal(model[1]?.description, 'Current');
+  assert.equal(model[1]?.command?.command, 'piRpcInternal.revealOpenChat');
+  assert.deepEqual(model[1]?.command?.arguments, [{ resource: 'pi-chat:/a' }]);
+  assert.equal(model[2]?.label, 'Refactor sidebar');
+  assert.equal(model[2]?.icon, 'comment-discussion');
+  assert.equal(model[2]?.description, undefined);
 });
 
 test('THE actual fix: a session that is both open AND in recent history appears ONLY once, under Open', () => {
