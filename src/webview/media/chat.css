@@ -3684,6 +3684,16 @@ body.vscode-high-contrast .code-wrap {
   background: var(--glass-1);
   backdrop-filter: blur(8px);
   flex: 0 0 auto;
+  /* Real root cause of menu/tool-card bleed-through: #messages .message-card
+     has `animation: pi-rise-in` (touches transform+opacity), which creates
+     its OWN stacking context per the CSS spec REGARDLESS of whether it's
+     still actively animating. The deck never established its own
+     stacking context (position:static has none), so .menu-panel's
+     z-index:2 was being evaluated with no reliable priority over
+     individual message cards, not just insufficient background opacity.
+     This was never actually an opacity bug. */
+  position: relative;
+  z-index: 60;
 }
 
 .sb-btn,

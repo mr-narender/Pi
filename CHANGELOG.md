@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.285
+
+- **Found the actual root cause of the menu bleed-through** — it was never an opacity problem, despite two rounds (0.0.283, 0.0.284) chasing it as one. `#messages .message-card` has `animation: pi-rise-in` (touches transform + opacity), which creates its own CSS stacking context per spec — regardless of whether it's still actively animating. The sidebar header (`.sb-deck`) never established its own stacking context (`position: static` has none), so the menu's z-index was being evaluated with no reliable priority over individual message/diff cards, no matter how opaque its background was. Fixed by giving `.sb-deck` `position: relative; z-index: 60`, well above every message card. Reproduced the exact bug and the fix side by side with a real animated message card + diff content before shipping — not just theorized about stacking contexts.
+
 ## 0.0.284
 
 - Menus (⋯, attach, model/status popovers) are now fully solid — no transparency at all. 92%, then 98% opaque both still let content behind them show through enough to hurt readability in practice, worse than the synthetic dark-theme-only render this was originally verified against. A menu is functional UI everyone needs to read quickly, not a decorative surface, so it no longer gets the glass treatment. Re-verified this time against three different theme palettes (dark, light, and a saturated green-tinted one deliberately close to what likely caused the reported tint) — all solid and clean now, not just the one theme checked before.
