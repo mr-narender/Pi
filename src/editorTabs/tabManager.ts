@@ -5,6 +5,7 @@ import { getSettings, tabTitleSettings } from '../config/settings';
 import { pickChatModel } from '../commands/modelPicker';
 import { AgentFollowService } from '../live/agentFollow';
 import { sharedPiHostActiveSessionCount } from '../process/sharedPiHost';
+import { RemoteSharingService } from '../remote/sharingService';
 import { ensureTrustedForMutation } from '../security/trust';
 import { SessionRegistry } from '../sessions/sessionRegistry';
 import type { SessionController } from '../sessions/sessionController';
@@ -318,6 +319,11 @@ export class ChatTabManager implements vscode.Disposable {
 
   private readonly cache: ChatTabStateCache;
   private readonly hosts = new Map<string, ChatHost>();
+  /** Remote chat sharing (pairing panel / phone mirror) — own feature surface,
+   * lives in its own service (A2 of the de-bloat plan). Only needs read
+   * access to hosts/keyFor/renderResource/activateResource/getActiveContext,
+   * which ChatTabManager legitimately owns and hands over here. */
+  public readonly remoteSharing: RemoteSharingService;
   private readonly resourceSequence = new Map<string, number>();
   private readonly activeResourceByWorkspace = new Map<string, string>();
   // Completion-notification bookkeeping (busy->ready transition per controller).
@@ -343,6 +349,13 @@ export class ChatTabManager implements vscode.Disposable {
     private readonly logger: DiagnosticsLogger
   ) {
     this.cache = new ChatTabStateCache(context);
+    this.remoteSharing = new RemoteSharingService({
+      hosts: () => this.hosts.values(),
+      keyFor: (resource) => this.keyFor(resource),
+      renderResource: (resource, options) => this.renderResource(resource, options),
+      activateResource: (resource, options) => this.activateResource(resource, options),
+      getActiveContext: () => this.getActiveContext(),
+    });
     this.sessions = new SessionIndex(context.workspaceState);
     for (const controller of registry.list()) {
       this.trackController(controller);
@@ -2161,104 +2174,6 @@ export class ChatTabManager implements vscode.Disposable {
     }
   }
 
-  private remoteSink: ((snapshot: WebviewSnapshot) => void) | undefined;
-  /** Register a sink that receives the active chat's snapshots (remote mirror). */
-  public setRemoteSink(sink: (snapshot: WebviewSnapshot) => void): void {
-    this.remoteSink = sink;
-  }
-
-  /** Force-push the active (or first open) chat's snapshot to the remote sink. */
-  public async pushActiveSnapshotToRemote(): Promise<void> {
-    const resource =
-      this.getActiveContext()?.resource ?? this.hosts.values().next().value?.resource;
-    if (resource) {
-      await this.renderResource(resource, { active: true });
-    }
-  }
-
-  /**
-   * Ensure a chat is open so a remote phone has a live session to mirror + drive.
-   * Reveals an already-open chat if there is one; otherwise opens a fresh chat.
-   */
-  private sharing: { key: string; label: string } | undefined;
-
-  /** Mark a chat as shared to a device; drives the in-chat info bar. */
-  public async setSharing(resource: vscode.Uri, label: string): Promise<void> {
-    this.sharing = { key: this.keyFor(resource), label };
-    await this.renderResource(resource, { active: true });
-  }
-
-  /** Update the shared-with label (e.g. when a device connects). */
-  public async updateSharingLabel(label: string): Promise<void> {
-    if (!this.sharing) {
-      return;
-    }
-    this.sharing.label = label;
-    await this.rerenderSharedChat();
-  }
-
-  /** Remove the shared state and its info bar. */
-  public async clearSharing(): Promise<void> {
-    if (!this.sharing) {
-      return;
-    }
-    this.sharing = undefined;
-    await this.rerenderSharedChat();
-  }
-
-  private async rerenderSharedChat(): Promise<void> {
-    for (const host of this.hosts.values()) {
-      await this.renderResource(host.resource, { active: host.panel.active });
-    }
-  }
-
-  /** Chats currently open in VS Code and eligible for remote switching. */
-  public getRemoteChats(): Array<{ id: string; title: string; active: boolean }> {
-    const active = this.getActiveContext()?.resource.toString();
-    return [...this.hosts.values()].map((host) => ({
-      id: this.keyFor(host.resource),
-      title: host.panel.title || 'Chat',
-      active: host.resource.toString() === active,
-    }));
-  }
-
-  /** Switch the shared remote view to an already-open chat. */
-  public async selectRemoteChat(chatId: string): Promise<boolean> {
-    const host = [...this.hosts.values()].find((item) => this.keyFor(item.resource) === chatId);
-    if (!host) {
-      return false;
-    }
-    await this.activateResource(host.resource, { startIfStopped: false });
-    host.panel.reveal(host.panel.viewColumn, false);
-    return true;
-  }
-
-  /** Bring the shared chat to the front (after the pairing panel is dismissed). */
-  public async revealSharedChat(): Promise<void> {
-    if (!this.sharing) {
-      return;
-    }
-    for (const host of this.hosts.values()) {
-      if (this.keyFor(host.resource) === this.sharing.key) {
-        host.panel.reveal(host.panel.viewColumn, false);
-        await this.renderResource(host.resource, { active: true });
-        return;
-      }
-    }
-  }
-
-  public async ensureActiveChat(): Promise<void> {
-    if (this.getActiveContext()) {
-      return;
-    }
-    const existing = this.hosts.values().next().value;
-    if (existing) {
-      existing.panel.reveal(existing.panel.viewColumn, false);
-      return;
-    }
-    await vscode.commands.executeCommand('piRpc.newSession');
-  }
-
   /** Re-render every open chat tab (e.g. after a presentation setting change). */
   public async rerenderAll(): Promise<void> {
     for (const host of this.hosts.values()) {
@@ -2314,8 +2229,9 @@ export class ChatTabManager implements vscode.Disposable {
       return;
     }
     const snapshot = await this.buildSnapshot(context, options?.active ?? false);
-    if (this.sharing && this.sharing.key === this.keyFor(resource)) {
-      snapshot.sharing = { active: true, label: this.sharing.label };
+    const sharingInfo = this.remoteSharing.sharingInfoFor(resource);
+    if (sharingInfo) {
+      snapshot.sharing = sharingInfo;
     }
     snapshot.surface = resource.scheme === 'piRpcSidebar' ? 'sidebar' : 'tab';
 
@@ -2347,7 +2263,7 @@ export class ChatTabManager implements vscode.Disposable {
       await host.postSnapshot(snapshot, title);
       // Mirror the active chat to a remote session, if one is running.
       if (options?.active ?? false) {
-        this.remoteSink?.(snapshot);
+        this.remoteSharing.pushSnapshot(snapshot);
       }
     }
     await this.cache.set({

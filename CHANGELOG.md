@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.279
+
+- Internal only, no user-facing change: extracted remote chat-sharing (pairing panel / phone mirror — start/stop/rename a share, list and switch remote-eligible chats, push snapshots) out of `tabManager.ts` into its own `remote/sharingService.ts` (A2 of the de-bloat plan; `tabManager.ts` 2677→2593 lines). Unlike A1's pure functions, this is a cohesive feature responsibility that needed injected read access to the chat registry, not full ownership transfer — all 9 public methods were called exclusively from `extension.ts` (15 call sites, all updated), confirming this was a genuine separable service, not just relocated code. Every method logically verified against the original before wiring in. Full gate + real VS Code E2E green, exact match against baseline (301 unit, 24 integration) — zero regressions.
+
 ## 0.0.278
 
 - Fixed: files outside the workspace (or in a different folder, in a multi-root workspace) can now be attached — file picker, active file, selection, and diagnostics all use the same shared path check. Traced the full downstream flow before changing it: files inside the chat's own folder still get a clean relative path (unchanged); anything else now gets its absolute path instead of being blocked, using the exact same isAbsolute-path pattern `tabManager.ts` already uses for the `@path`-mention attach flow — which, as a side effect, this fix also unblocks (it was resolving absolute paths but then hitting this same restriction internally). Also fixed the "stale" background re-check (composerState.ts) to resolve absolute paths the same way, so external attachments don't wrongly expire. Verified with a real harness (4 scenarios: same-folder, outside-workspace, different-open-folder in multi-root, unsaved-document-still-blocked) before shipping, not just type-checked.

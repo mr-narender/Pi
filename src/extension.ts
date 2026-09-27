@@ -320,7 +320,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }
   };
   const remoteHost = new RemoteHostClient(context.secrets);
-  chatTabs.setRemoteSink((snapshot) => remoteHost.pushSnapshot(snapshot));
+  chatTabs.remoteSharing.setRemoteSink((snapshot) => remoteHost.pushSnapshot(snapshot));
   // VS Code reload/deactivation is a transport disconnect, not an explicit
   // Stop-sharing action. Keep the broker session resumable across reloads.
   context.subscriptions.push({ dispose: () => remoteHost.disconnect() });
@@ -1740,7 +1740,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     void withController((controller) => controller.prompt(message), { requireTrust: true });
   });
   const pushRemoteChatList = async (): Promise<void> => {
-    const chats = [...chatTabs.getRemoteChats()];
+    const chats = [...chatTabs.remoteSharing.getRemoteChats()];
     // Include saved/current chats from the same workspace, not only tabs that
     // happen to be open. Selecting one below opens it in VS Code and mirrors it.
     for (const controller of registry.list()) {
@@ -1762,7 +1762,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   remoteHost.onChatListRequest(() => void pushRemoteChatList());
   remoteHost.onChatSelect((chatId) => {
     void (async () => {
-      let selected = await chatTabs.selectRemoteChat(chatId);
+      let selected = await chatTabs.remoteSharing.selectRemoteChat(chatId);
       if (!selected) {
         for (const controller of registry.list()) {
           const item = recentSessions
@@ -1776,7 +1776,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         }
       }
       if (selected) {
-        await chatTabs.pushActiveSnapshotToRemote();
+        await chatTabs.remoteSharing.pushActiveSnapshotToRemote();
         await pushRemoteChatList();
       }
     })();
@@ -1784,13 +1784,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   remoteHost.onPresence((devices, count) => {
     if (count === 0) {
       setPairingStatus('Waiting for a device…', false);
-      void chatTabs.updateSharingLabel('a device (waiting to pair)');
+      void chatTabs.remoteSharing.updateSharingLabel('a device (waiting to pair)');
       return;
     }
     const first = devices[0]?.name ?? 'a device';
     const label = count > 1 ? `${first} +${count - 1} more` : first;
     setPairingStatus(`Connected — ${label}`, true);
-    void chatTabs.updateSharingLabel(label);
+    void chatTabs.remoteSharing.updateSharingLabel(label);
   });
   remoteHost.onViewer((event, count) => {
     if (event === 'joined') {
@@ -1798,12 +1798,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       closePairingPanel();
       void vscode.window.showInformationMessage('Pi: a device connected to your remote session.');
       void (async () => {
-        await chatTabs.revealSharedChat();
-        await chatTabs.pushActiveSnapshotToRemote();
+        await chatTabs.remoteSharing.revealSharedChat();
+        await chatTabs.remoteSharing.pushActiveSnapshotToRemote();
         pushRemoteChatList();
       })();
     } else if (count === 0) {
-      void chatTabs.updateSharingLabel('a device (waiting to pair)');
+      void chatTabs.remoteSharing.updateSharingLabel('a device (waiting to pair)');
     } else {
       setPairingStatus(
         count > 0 ? `${count} device${count === 1 ? '' : 's'} connected` : 'Waiting for a device…',
@@ -1835,12 +1835,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }
     try {
       // Ensure a live chat exists so the phone has a real session to mirror + drive.
-      await chatTabs.ensureActiveChat();
+      await chatTabs.remoteSharing.ensureActiveChat();
       const sharedResource = chatTabs.getActiveContext()?.resource;
       const session = await remoteHost.start(brokerUrl, hostSecret);
       const link = pairingLink(brokerUrl, session.pairingCode);
       if (sharedResource) {
-        await chatTabs.setSharing(sharedResource, 'a device (waiting to pair)');
+        await chatTabs.remoteSharing.setSharing(sharedResource, 'a device (waiting to pair)');
       }
       // Persistent panel with QR + PIN + link (does not vanish like a notification).
       await showPairingPanel(
@@ -1856,7 +1856,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         }
       );
       // Mirror the current chat immediately so a freshly-paired phone isn't blank.
-      await chatTabs.pushActiveSnapshotToRemote();
+      await chatTabs.remoteSharing.pushActiveSnapshotToRemote();
       pushRemoteChatList();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -1865,7 +1865,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   });
   registrations.set('piRpc.remote.stop', async () => {
     closePairingPanel();
-    await chatTabs.clearSharing();
+    await chatTabs.remoteSharing.clearSharing();
     await remoteHost.stop();
     void vscode.window.showInformationMessage('Pi remote session stopped.');
   });
@@ -2322,8 +2322,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   if (await remoteHost.restore()) {
     const active = chatTabs.getActiveContext();
     if (active) {
-      await chatTabs.setSharing(active.resource, 'your device (reconnected)');
-      await chatTabs.pushActiveSnapshotToRemote();
+      await chatTabs.remoteSharing.setSharing(active.resource, 'your device (reconnected)');
+      await chatTabs.remoteSharing.pushActiveSnapshotToRemote();
     }
   }
 
