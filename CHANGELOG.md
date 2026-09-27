@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.0.289
+
+- **Rebuilt Agentic Mode Phase 1 properly, per the original approved design** — the previous version (0.0.288) shipped two separate, near-duplicate tree sections stacked above the full chat, which was genuinely confusing and never should have shipped without a real look at it first.
+  - **Found the actual root cause of the duplication**: both old tree providers drew from the exact same `recentSessions` array (just different slice limits) — there was never a real distinct "currently open" data source behind the "Open Chats" section. Fixed by wiring in the real one (`ChatTabManager.listOpenChats()`, with a new `onDidChangeOpenChats` event) and deduping "Recent" against it by session file path, so nothing shows twice.
+  - **One consolidated list**, not two stacked views — "Open" and "Recent" are sections within a single `piRpc.openChatList` tree, matching the originally-approved mockup.
+  - **Mutually exclusive with the full chat, not stacked with it** — new `piRpc.sidebarMode` setting (`agentic`/`chat`, default `agentic`) drives `when` clauses so exactly one of "chat list" or "full chat" is ever visible, switchable via a toolbar button on either view. This was the real fix for "chat squeezed to a sliver" — the list was never supposed to coexist with the full chat panel, only Phase 1 shipped without that boundary.
+  - Caught a real regression while rewriting the model (dropped `workspaceLabel` from the Recent rows' description) via a pre-existing integration test — fixed before it shipped.
+  - Honest limitation: this is a native VS Code tree view, not webview HTML — I can't headless-screenshot it the way CSS/menu changes get verified in this project. Verified via 6 targeted unit tests (including one specifically proving no duplication) plus real E2E activation, but an actual look from you is still the real verification here.
+
 ## 0.0.288
 
 - **Agentic Mode Phase 1: Open Chat List.** Two new native sidebar views — "Open Chats" and "Recent Chats" — above the existing chat panel. This revives code that was already fully built (`SessionsTreeProvider`/`ResumeChatTreeProvider` + their data model) but never wired to an actual view. Clicking a session opens it as a real editor tab, alongside your files — reusing `piRpc.switchSession`, which already does exactly that by default, so no new open-a-chat behavior was needed, only the view registration. Added alongside the existing chat panel, not replacing it yet — the mode switch (showing only one or the other) is a later phase. Verified every command these views reference is actually registered before wiring anything up (learned that lesson from the "Prompts… does nothing" bug), plus real VS Code E2E activation, which caught and required fixing two other hardcoded manifest-shape assertions (a unit test and the E2E suite itself) that still expected the old single-view sidebar.

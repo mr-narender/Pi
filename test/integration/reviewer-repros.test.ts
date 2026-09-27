@@ -17,7 +17,7 @@ import {
   getDefaultSessionDirForWorkspace,
   readRecentSessionsIndex,
 } from '../../src/sessions/recentSessions';
-import { createResumeChatSidebarModel } from '../../src/ui/trees/sessionSidebarModel';
+import { createOpenChatListModel } from '../../src/ui/trees/sessionSidebarModel';
 import {
   ATTACH_TRIGGER_ID,
   PREVIEW_ACCEPT_BUTTON_ID,
@@ -384,18 +384,18 @@ test('reviewer repro 15: malformed session timestamps never surface NaNd ago', a
       workspaceName: 'workspace',
       workspacePath: workspace,
     });
-    const model = createResumeChatSidebarModel({
-      activeFolderName: 'workspace',
+    const model = createOpenChatListModel({
+      openChats: [],
       recent: {
         loading: false,
         filterText: '',
         items: index.sessions,
         sessionDir,
       },
-      hasDraft: false,
-      hasPendingAttachments: false,
       now: Date.UTC(2024, 0, 4, 0, 0, 0),
     });
+    // [0] = "New Chat" action, [1] = "Recent" section header (no open chats
+    // in this repro), [2] = the actual session entry under test.
     const recentNode = model[2];
 
     assert.equal(index.sessions[0]?.createdAt, fallbackTime.getTime());

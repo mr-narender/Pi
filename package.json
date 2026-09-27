@@ -2,7 +2,7 @@
   "name": "pi",
   "displayName": "Pi – this one is (y)ours",
   "description": "An unofficial, personal VS Code chat UI for the Pi coding agent (pi.dev). Not affiliated with pi.dev — shared for anyone who wants it.",
-  "version": "0.0.288",
+  "version": "0.0.289",
   "publisher": "mr-narender",
   "license": "MIT",
   "private": true,
@@ -89,17 +89,15 @@
     "views": {
       "piRpc": [
         {
-          "id": "piRpc.openSessions",
-          "name": "Open Chats"
-        },
-        {
-          "id": "piRpc.recentSessions",
-          "name": "Recent Chats"
+          "id": "piRpc.openChatList",
+          "name": "Chats",
+          "when": "piRpc.sidebarMode == 'agentic'"
         },
         {
           "id": "piRpc.chat",
           "name": "Chat",
-          "type": "webview"
+          "type": "webview",
+          "when": "piRpc.sidebarMode == 'chat'"
         }
       ]
     },
@@ -231,6 +229,12 @@
         "command": "piRpc.manageAgentInstructions",
         "title": "Manage Agent Instructions",
         "category": "Pi"
+      },
+      {
+        "command": "piRpc.toggleSidebarMode",
+        "title": "Switch Chat List / Full Chat",
+        "category": "Pi",
+        "icon": "$(arrow-swap)"
       },
       {
         "command": "piRpc.addCustomResource",
@@ -1096,6 +1100,19 @@
           "default": "open",
           "description": "Follow the agent Zed-style: a side editor shows the file π is reading or editing, live."
         },
+        "piRpc.sidebarMode": {
+          "type": "string",
+          "enum": [
+            "agentic",
+            "chat"
+          ],
+          "enumDescriptions": [
+            "Sidebar shows a compact chat list (open + recent); the actual conversation opens as a real editor tab, alongside your files.",
+            "Sidebar shows the full chat (composer + transcript) directly, like before — no separate list."
+          ],
+          "default": "agentic",
+          "description": "What the π sidebar shows: a chat list (Agentic Mode) or the full chat (Chat Mode). Switch anytime from either view’s title bar."
+        },
         "piRpc.preventSleepWhileBusy": {
           "type": "boolean",
           "default": true,
@@ -1124,6 +1141,11 @@
           "command": "piRpcInternal.openSettingsMenu",
           "when": "view == piRpc.sessions",
           "group": "navigation@1"
+        },
+        {
+          "command": "piRpc.toggleSidebarMode",
+          "when": "view == piRpc.openChatList || view == piRpc.chat",
+          "group": "navigation@0"
         }
       ],
       "editor/title": [

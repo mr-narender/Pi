@@ -37,7 +37,7 @@ import { DiagnosticsLogger } from './diagnostics/logger';
 import { redactJsonValue } from './diagnostics/redaction';
 import { ensureWorkspaceAvailable, ensureTrustedForMutation } from './security/trust';
 import { RecentSessionService } from './sessions/recentSessionService';
-import { SessionsTreeProvider, ResumeChatTreeProvider } from './ui/trees/providers';
+import { OpenChatListTreeProvider } from './ui/trees/providers';
 import { formatRelativeTimestamp } from './sessions/recentSessions';
 import { SessionRegistry } from './sessions/sessionRegistry';
 import { ExtensionUiBroker } from './ui/extensionUiBroker';
@@ -308,21 +308,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     )
   );
 
-  // Agentic Mode Phase 1: native "Open Chat List" tree views, reviving code
-  // that was already fully built (SessionsTreeProvider/ResumeChatTreeProvider
-  // + sessionSidebarModel.ts) but never registered as a view. Every list
-  // item's command is piRpc.switchSession, which already opens the chat as
-  // an editor tab by default (editorTabsEnabled) — no new click-behavior
-  // needed, just wiring the view up. Added alongside the existing chat
-  // webview, not replacing it yet — Phase 3 (mode switch) decides which
-  // surface is visible when.
-  const openSessionsTree = new SessionsTreeProvider(registry, recentSessions, uiState);
-  const resumeChatTree = new ResumeChatTreeProvider(registry, recentSessions, uiState);
+  // Agentic Mode: ONE consolidated "Open Chat List" native tree view.
+  // Real data source for "open" (ChatTabManager.listOpenChats()) instead of
+  // the earlier attempt's two views that both drew from the same
+  // recent-sessions array and showed near-duplicate content — see
+  // sessionSidebarModel.ts for the full story.
+  const openChatListTree = new OpenChatListTreeProvider(chatTabs, recentSessions);
   context.subscriptions.push(
-    openSessionsTree,
-    resumeChatTree,
-    vscode.window.registerTreeDataProvider('piRpc.openSessions', openSessionsTree),
-    vscode.window.registerTreeDataProvider('piRpc.recentSessions', resumeChatTree)
+    openChatListTree,
+    vscode.window.registerTreeDataProvider('piRpc.openChatList', openChatListTree)
   );
 
   chatTabs.setTurnReview(turnReview);
@@ -1003,6 +997,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   registrations.set('piRpc.manageAgentInstructions', async () => {
     await showInstructionManager();
   });
+  // Toggling just updates the setting — the onDidChangeConfiguration
+  // listener (registered later, near the other config-sync context keys)
+  // picks up ANY change to piRpc.sidebarMode, from this command or from
+  // manually editing settings.json, and syncs the context key either way.
+  registrations.set('piRpc.toggleSidebarMode', async () => {
+    const config = vscode.workspace.getConfiguration('piRpc');
+    const current = config.get<'agentic' | 'chat'>('sidebarMode', 'agentic');
+    const next = current === 'agentic' ? 'chat' : 'agentic';
+    await config.update('sidebarMode', next, vscode.ConfigurationTarget.Global);
+  });
   registrations.set('piRpc.addCustomResource', async () => {
     await addCustomResource();
   });
@@ -1212,6 +1216,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       },
       { requireTrust: true }
     );
+  });
+  // Open Chat List's "Open" rows: reveal an already-open chat (which may be
+  // a draft with no session file yet, so piRpc.switchSession's
+  // sessionPath-based resume flow doesn't apply here).
+  registrations.set('piRpcInternal.revealOpenChat', async (value?: unknown) => {
+    const record = asRecord(value);
+    const resourceStr = asString(record?.resource);
+    if (!resourceStr) {
+      return;
+    }
+    const uri = vscode.Uri.parse(resourceStr);
+    const context = await chatTabs.activateResource(uri, { startIfStopped: false });
+    if (context) {
+      chatTabs.revealController(context.controller);
+    }
   });
   registrations.set('piRpc.switchSession', async (value?: unknown) => {
     if (editorTabsEnabled()) {
@@ -2398,6 +2417,27 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (event.affectsConfiguration('piRpc.remote.enabled')) {
         applyRemoteEnabledContext();
         sessionsView.refresh();
+      }
+    })
+  );
+
+  // Agentic/Chat sidebar mode: drives the `when` clauses on piRpc.openChatList
+  // vs piRpc.chat in package.json, so only ONE is ever visible — never both
+  // stacked together (that's the actual bug from shipping the list without
+  // this: chat squeezed to a sliver under two redundant tree sections). The
+  // COMMAND handler is registered earlier (with the other commands, before
+  // the registration loop) — only the context-key sync lives here.
+  const applySidebarModeContext = (): void => {
+    const mode = vscode.workspace
+      .getConfiguration('piRpc')
+      .get<'agentic' | 'chat'>('sidebarMode', 'agentic');
+    void vscode.commands.executeCommand('setContext', 'piRpc.sidebarMode', mode);
+  };
+  applySidebarModeContext();
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration((event) => {
+      if (event.affectsConfiguration('piRpc.sidebarMode')) {
+        applySidebarModeContext();
       }
     })
   );

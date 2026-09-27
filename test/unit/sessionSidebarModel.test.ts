@@ -1,32 +1,51 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  createNewChatSidebarModel,
-  createResumeChatSidebarModel,
-  createSessionsSidebarModel,
-} from '../../src/ui/trees/sessionSidebarModel';
+import { createOpenChatListModel } from '../../src/ui/trees/sessionSidebarModel';
 
 const baseRecent = { loading: false, filterText: '', items: [] };
 
-test('sessions sidebar model leads with New Chat then lists existing chats', () => {
-  const model = createSessionsSidebarModel({
-    activeFolderName: 'workspace',
-    activeState: {
-      connectionState: 'ready',
-      workspaceFolderName: 'workspace',
-      state: { sessionFile: '/tmp/sessions/current.jsonl' },
-    },
+test('leads with New Chat even with nothing else to show', () => {
+  const model = createOpenChatListModel({ openChats: [], recent: baseRecent });
+  assert.equal(model[0]?.label, 'New Chat');
+  assert.equal(model[0]?.command?.command, 'piRpc.newSession');
+  assert.equal(model[1]?.label, 'No chats yet');
+});
+
+test('Open section lists real open chats, with the active one marked and check-icon', () => {
+  const model = createOpenChatListModel({
+    openChats: [
+      { resource: 'pi-chat:/a', title: 'Fix auth bug', sessionFile: '/s/a.jsonl', active: true },
+      { resource: 'pi-chat:/b', title: 'Refactor sidebar', sessionFile: '/s/b.jsonl', active: false },
+    ],
+    recent: baseRecent,
+  });
+  assert.equal(model[0]?.label, 'New Chat');
+  assert.equal(model[1]?.label, 'Open');
+  assert.equal(model[1]?.kind, 'summary');
+  assert.equal(model[2]?.label, 'Fix auth bug');
+  assert.equal(model[2]?.icon, 'check');
+  assert.equal(model[2]?.description, 'Current');
+  assert.equal(model[2]?.command?.command, 'piRpcInternal.revealOpenChat');
+  assert.deepEqual(model[2]?.command?.arguments, [{ resource: 'pi-chat:/a' }]);
+  assert.equal(model[3]?.label, 'Refactor sidebar');
+  assert.equal(model[3]?.icon, 'comment-discussion');
+  assert.equal(model[3]?.description, undefined);
+});
+
+test('THE actual fix: a session that is both open AND in recent history appears ONLY once, under Open', () => {
+  const model = createOpenChatListModel({
+    openChats: [{ resource: 'pi-chat:/a', title: 'Fix auth bug', sessionFile: '/s/a.jsonl', active: true }],
     recent: {
       loading: false,
       filterText: '',
       items: [
         {
           id: 'a',
-          path: '/tmp/sessions/current.jsonl',
-          displayName: 'Fix auth',
-          sessionName: 'Fix auth',
-          firstPromptPreview: 'Fix auth',
-          workspaceLabel: 'workspace',
+          path: '/s/a.jsonl', // SAME path as the open chat above
+          displayName: 'Fix auth bug',
+          sessionName: 'Fix auth bug',
+          firstPromptPreview: 'fix it',
+          workspaceLabel: 'ws',
           modelLabel: 'sonnet',
           modifiedAt: Date.now(),
           createdAt: Date.now(),
@@ -35,11 +54,11 @@ test('sessions sidebar model leads with New Chat then lists existing chats', () 
         },
         {
           id: 'b',
-          path: '/tmp/sessions/older.jsonl',
+          path: '/s/b.jsonl', // genuinely different, not open
           displayName: 'Older chat',
           sessionName: 'Older chat',
-          firstPromptPreview: 'Older chat',
-          workspaceLabel: 'workspace',
+          firstPromptPreview: 'older',
+          workspaceLabel: 'ws',
           modelLabel: 'sonnet',
           modifiedAt: Date.now() - 60000,
           createdAt: Date.now() - 60000,
@@ -48,94 +67,46 @@ test('sessions sidebar model leads with New Chat then lists existing chats', () 
         },
       ],
     },
-    hasDraft: false,
-    hasPendingAttachments: false,
-    now: Date.now(),
   });
-
-  assert.equal(model[0]?.label, 'New Chat');
-  assert.equal(model[0]?.command?.command, 'piRpc.newSession');
-  assert.equal(model[1]?.kind, 'session');
-  assert.equal(model[1]?.label, 'Fix auth');
-  assert.equal(model[1]?.command?.command, 'piRpc.switchSession');
-  assert.ok(String(model[1]?.description).includes('Current'));
-  assert.equal(model[2]?.label, 'Older chat');
+  const labels = model.map((n) => n.label);
+  // "Fix auth bug" appears exactly ONCE across the whole list, not twice.
+  assert.equal(labels.filter((l) => l === 'Fix auth bug').length, 1);
+  // "Older chat" (genuinely not open) still appears once, under Recent.
+  assert.equal(labels.filter((l) => l === 'Older chat').length, 1);
+  assert.ok(labels.includes('Recent'));
 });
 
-test('sessions sidebar model shows only New Chat when there are no chats', () => {
-  const model = createSessionsSidebarModel({
-    activeFolderName: 'workspace',
-    recent: baseRecent,
-    hasDraft: false,
-    hasPendingAttachments: false,
-  });
-  assert.equal(model.length, 1);
-  assert.equal(model[0]?.label, 'New Chat');
-});
-
-test('new chat sidebar model shows primary action and unsent draft warning', () => {
-  const model = createNewChatSidebarModel({
-    activeFolderName: 'workspace',
-    recent: baseRecent,
-    hasDraft: true,
-    hasPendingAttachments: true,
-  });
-
-  assert.equal(model[0]?.label, 'Start fresh with Pi in this workspace');
-  assert.equal(model[1]?.label, 'New Chat');
-  assert.equal(model[2]?.label, 'Unsent draft and attachments stay in the active chat tab.');
-});
-
-test('resume chat sidebar model renders filter state and current marker', () => {
-  const model = createResumeChatSidebarModel({
-    activeFolderName: 'workspace-a',
-    activeState: {
-      connectionState: 'ready',
-      workspaceFolderName: 'workspace-a',
-      state: {
-        sessionFile: '/tmp/sessions/current.jsonl',
-        sessionName: 'Current Session',
-        sessionId: 'sid',
-        isStreaming: false,
-        isCompacting: false,
-        model: { provider: 'mock', id: 'model' },
-        pendingMessageCount: 1,
-      },
-    },
+test('Recent rows use piRpc.switchSession (reuses an existing tab if the session is already open)', () => {
+  const model = createOpenChatListModel({
+    openChats: [],
     recent: {
       loading: false,
-      filterText: 'bug',
+      filterText: '',
       items: [
         {
-          id: 'sid',
-          path: '/tmp/sessions/current.jsonl',
-          cwd: '/tmp/workspace-a',
-          workspaceLabel: 'workspace-a',
-          displayName: 'Current Session',
-          firstPromptPreview: 'fix bug',
-          modelLabel: 'mock/model',
-          messageCount: 4,
-          modifiedAt: Date.UTC(2024, 0, 2, 11, 0, 0),
-          createdAt: Date.UTC(2024, 0, 2, 10, 0, 0),
+          id: 'a',
+          path: '/s/a.jsonl',
+          displayName: 'Some chat',
+          sessionName: 'Some chat',
+          firstPromptPreview: 'x',
+          workspaceLabel: 'ws',
+          modelLabel: 'sonnet',
+          modifiedAt: Date.now(),
+          createdAt: Date.now(),
+          cwd: '/tmp',
+          messageCount: 1,
         },
       ],
-      sessionDir: '/tmp/sessions',
     },
-    hasDraft: false,
-    hasPendingAttachments: false,
-    now: Date.UTC(2024, 0, 2, 12, 0, 0),
   });
-
-  assert.equal(model[0]?.label, 'Search: bug');
-  assert.equal(model[1]?.label, 'Refresh');
-  assert.equal(model[2]?.label, 'Clear search');
-  assert.match(model[3]?.description ?? '', /Current/);
-  assert.match(model[3]?.accessibilityLabel ?? '', /Current Session/);
+  const recentNode = model[2]; // [0]=New Chat, [1]=Recent header, [2]=entry
+  assert.equal(recentNode?.command?.command, 'piRpc.switchSession');
+  assert.deepEqual(recentNode?.command?.arguments, [{ sessionPath: '/s/a.jsonl', label: 'Some chat' }]);
 });
 
-test('resume chat sidebar model renders unknown session times without NaN labels', () => {
-  const model = createResumeChatSidebarModel({
-    activeFolderName: 'workspace-a',
+test('unknown session times render without NaN labels', () => {
+  const model = createOpenChatListModel({
+    openChats: [],
     recent: {
       loading: false,
       filterText: '',
@@ -154,30 +125,24 @@ test('resume chat sidebar model renders unknown session times without NaN labels
       ],
       sessionDir: '/tmp/sessions',
     },
-    hasDraft: false,
-    hasPendingAttachments: false,
     now: Date.UTC(2024, 0, 2, 12, 0, 0),
   });
-
   const recentNode = model[2];
-  assert.equal(recentNode?.description, 'workspace-a · Unknown');
   assert.ok(!recentNode?.description?.includes('NaN'));
   assert.match(recentNode?.tooltip ?? '', /Unknown/);
 });
 
-test('resume chat sidebar model shows loading and error states for recent chats', () => {
-  const loadingModel = createResumeChatSidebarModel({
+test('loading and error states for recent chats', () => {
+  const loadingModel = createOpenChatListModel({
+    openChats: [],
     recent: { ...baseRecent, loading: true },
-    hasDraft: false,
-    hasPendingAttachments: false,
   });
-  assert.equal(loadingModel[2]?.label, 'Loading recent chats');
+  assert.equal(loadingModel[1]?.label, 'Loading chats');
 
-  const errorModel = createResumeChatSidebarModel({
+  const errorModel = createOpenChatListModel({
+    openChats: [],
     recent: { ...baseRecent, error: 'permission denied' },
-    hasDraft: false,
-    hasPendingAttachments: false,
   });
-  assert.equal(errorModel[2]?.label, "Couldn't read recent chats");
-  assert.equal(errorModel[3]?.label, 'Try again');
+  assert.equal(errorModel[1]?.label, "Couldn't read chats");
+  assert.equal(errorModel[2]?.label, 'Try again');
 });

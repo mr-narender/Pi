@@ -323,6 +323,11 @@ export class ChatTabManager implements vscode.Disposable {
 
   private readonly cache: ChatTabStateCache;
   private readonly hosts = new Map<string, ChatHost>();
+  // Agentic Mode's "Open Chat List" needs to know when a chat opens/closes,
+  // distinct from any single controller's state changing — nothing existing
+  // covered "the SET of open chats changed."
+  private readonly openChatsEmitter = new vscode.EventEmitter<void>();
+  public readonly onDidChangeOpenChats: vscode.Event<void> = this.openChatsEmitter.event;
   /** Remote chat sharing (pairing panel / phone mirror) — own feature surface,
    * lives in its own service (A2 of the de-bloat plan). Only needs read
    * access to hosts/keyFor/renderResource/activateResource/getActiveContext,
@@ -509,6 +514,7 @@ export class ChatTabManager implements vscode.Disposable {
     }
     this.hosts.clear();
     this.cache.dispose();
+    this.openChatsEmitter.dispose();
   }
 
   public trackController(controller: SessionController): void {
@@ -526,6 +532,7 @@ export class ChatTabManager implements vscode.Disposable {
     this.hosts.get(key)?.dispose();
     const host = new ChatEditorHost(this.context.extensionUri, document, panel, this);
     this.hosts.set(key, host);
+    this.openChatsEmitter.fire();
     // resolveCustomEditor MUST NOT reject: a rejected promise here makes VS Code
     // fail the editor input resolution and surface an internal
     // "Assertion Failed: Argument is undefined or null". The webview shell is
@@ -1074,6 +1081,7 @@ export class ChatTabManager implements vscode.Disposable {
     this.sessions.unbind(resourceKey);
     if (this.hosts.get(resourceKey) === host) {
       this.hosts.delete(resourceKey);
+      this.openChatsEmitter.fire();
     }
     await this.cache.markClosed(host.resource);
     // Closing the tab tears down its dedicated Pi session (parallel-session
@@ -2036,6 +2044,7 @@ export class ChatTabManager implements vscode.Disposable {
     );
     const host = new SidebarChatHost(extensionUri, view, this, resource);
     this.hosts.set(resource.toString(), host);
+    this.openChatsEmitter.fire();
     // START the controller — rendering alone leaves it "Connecting…" forever
     // (editor tabs start via activateResource; the sidebar must too).
     await this.activateResource(resource, { startIfStopped: true });

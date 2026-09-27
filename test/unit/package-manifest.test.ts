@@ -25,21 +25,23 @@ test('coverage row inventory totals stay stable', () => {
   assert.equal((coverage.match(/\| D-\d+/g) ?? []).length, 8);
 });
 
-test('manifest contributes the Open/Recent Chats tree views + the Chat webview', () => {
+test('manifest contributes the Open Chat List tree view + the Chat webview, mutually exclusive via sidebarMode', () => {
   const view = packageJson.contributes.views.piRpc;
   assert.deepEqual(
     view.map((entry) => entry.id),
-    ['piRpc.openSessions', 'piRpc.recentSessions', 'piRpc.chat']
+    ['piRpc.openChatList', 'piRpc.chat']
   );
   const chatWebview = view.find((entry) => entry.id === 'piRpc.chat');
   assert.equal(chatWebview?.type, 'webview');
-  // The two tree views are native TreeDataProviders (Agentic Mode's "Open
-  // Chat List") — no `type` field, VS Code's manifest schema treats that
-  // as a tree view implicitly.
-  const openSessions = view.find((entry) => entry.id === 'piRpc.openSessions');
-  const recentSessions = view.find((entry) => entry.id === 'piRpc.recentSessions');
-  assert.equal(openSessions?.type, undefined);
-  assert.equal(recentSessions?.type, undefined);
+  const openChatList = view.find((entry) => entry.id === 'piRpc.openChatList');
+  // Native TreeDataProvider — no `type` field, VS Code's manifest schema
+  // treats that as a tree view implicitly.
+  assert.equal(openChatList?.type, undefined);
+  // The actual fix for "list and full chat both visible, chat squeezed to a
+  // sliver": mutually exclusive `when` clauses on the SAME context key, so
+  // exactly one of the two is ever shown.
+  assert.equal(openChatList?.when, "piRpc.sidebarMode == 'agentic'");
+  assert.equal(chatWebview?.when, "piRpc.sidebarMode == 'chat'");
   const allMenus = JSON.stringify(packageJson.contributes.menus ?? {});
   assert.ok(!allMenus.includes('piRpc.currentChat'));
 });

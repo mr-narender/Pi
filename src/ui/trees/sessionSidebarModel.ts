@@ -1,4 +1,3 @@
-import type { ControllerState } from '../../state/types';
 import { formatRelativeTimestamp, type RecentSessionRecord } from '../../sessions/recentSessions';
 import type { RecentSessionsState } from '../../sessions/recentSessionService';
 
@@ -23,96 +22,80 @@ export interface SidebarNode {
   sessionLabel?: string;
 }
 
-export interface SidebarViewInput {
-  activeFolderName?: string;
-  activeState?: Pick<ControllerState, 'connectionState' | 'workspaceFolderName' | 'state'>;
-  recent: RecentSessionsState;
-  hasDraft: boolean;
-  hasPendingAttachments: boolean;
-  showWorkspacePicker?: boolean;
-  now?: number;
-}
-
 function sessionDisplayName(session: RecentSessionRecord): string {
   return (
     session.displayName || session.sessionName || session.firstPromptPreview || 'Untitled chat'
   );
 }
 
-export function createNewChatSidebarModel(input: SidebarViewInput): SidebarNode[] {
-  const nodes: SidebarNode[] = [
-    {
-      id: 'new.info',
-      kind: 'info',
-      label: 'Start fresh with Pi in this workspace',
-      description: input.activeFolderName
-        ? `Workspace: ${input.activeFolderName}`
-        : 'Choose a workspace to begin.',
-      icon: 'add',
-    },
-    {
-      id: 'new.action',
-      kind: 'action',
-      label: 'New Chat',
-      description: 'Start fresh or continue from the current chat as parent.',
-      icon: 'add',
-      command: { command: 'piRpc.newSession', title: 'New Chat' },
-      accessibilityLabel: 'Start a new Pi chat',
-    },
-  ];
-
-  if (input.hasDraft || input.hasPendingAttachments) {
-    nodes.push({
-      id: 'new.warning',
-      kind: 'info',
-      label: 'Unsent draft and attachments stay in the active chat tab.',
-      description: "They won't be sent or copied.",
-      icon: 'warning',
-    });
-  }
-
-  return nodes;
+// --- Agentic Mode: ONE consolidated "Open Chat List" ---
+// Replaces the earlier attempt (SessionsTreeProvider + ResumeChatTreeProvider
+// as two separate stacked views) that shipped with a real, reported bug:
+// both drew from the SAME `recent.items` array with different slice limits,
+// so "Open" and "Recent" showed near-duplicate content — there was never an
+// actual distinct "currently open" data source behind it. This version uses
+// the real one (ChatTabManager.listOpenChats()) and dedupes Recent against
+// it by session file path, so nothing appears twice.
+export interface OpenChatEntry {
+  /** Resource URI as a string \u2014 stable identity for the reveal command. */
+  resource: string;
+  title: string;
+  sessionFile?: string;
+  /** The tab currently visible/focused, for the check-vs-bubble icon. */
+  active: boolean;
 }
 
-export function createSessionsSidebarModel(input: SidebarViewInput): SidebarNode[] {
+export interface OpenChatListInput {
+  openChats: OpenChatEntry[];
+  recent: RecentSessionsState;
+  now?: number;
+}
+
+export function createOpenChatListModel(input: OpenChatListInput): SidebarNode[] {
   const now = input.now ?? Date.now();
-  const currentSessionPath =
-    typeof input.activeState?.state.sessionFile === 'string'
-      ? input.activeState.state.sessionFile
-      : undefined;
   const nodes: SidebarNode[] = [
     {
-      id: 'sessions.new',
+      id: 'list.new',
       kind: 'action',
       label: 'New Chat',
-      description: 'Open a fresh Pi chat in the editor.',
       icon: 'add',
       command: { command: 'piRpc.newSession', title: 'New Chat' },
       accessibilityLabel: 'Start a new Pi chat',
     },
   ];
 
-  if (input.recent.loading) {
-    nodes.push({
-      id: 'sessions.loading',
-      kind: 'info',
-      label: 'Loading chats',
-      description: 'Reading saved Pi chats.',
-      icon: 'loading~spin',
-    });
-    return nodes;
+  if (input.openChats.length > 0) {
+    nodes.push({ id: 'list.open.header', kind: 'summary', label: 'Open' });
+    for (const chat of input.openChats) {
+      nodes.push({
+        id: `list.open.${chat.resource}`,
+        kind: 'session',
+        label: chat.title,
+        description: chat.active ? 'Current' : undefined,
+        icon: chat.active ? 'check' : 'comment-discussion',
+        contextValue: 'piRpc.openChat',
+        command: {
+          command: 'piRpcInternal.revealOpenChat',
+          title: 'Open Chat',
+          arguments: [{ resource: chat.resource }],
+        },
+        accessibilityLabel: `${chat.title}${chat.active ? '. Current' : ''}`,
+      });
+    }
   }
 
+  const openSessionFiles = new Set(
+    input.openChats.map((chat) => chat.sessionFile).filter((path): path is string => Boolean(path))
+  );
+
+  if (input.recent.loading) {
+    nodes.push({ id: 'list.recent.loading', kind: 'info', label: 'Loading chats', icon: 'loading~spin' });
+    return nodes;
+  }
   if (input.recent.error) {
+    nodes.push({ id: 'list.recent.error', kind: 'info', label: "Couldn't read chats", description: input.recent.error, icon: 'warning' });
     nodes.push({
-      id: 'sessions.error',
-      kind: 'info',
-      label: "Couldn't read chats",
-      description: input.recent.error,
-      icon: 'warning',
-    });
-    nodes.push({
-      id: 'sessions.retry',
+      id: 'list.recent.retry',
       kind: 'action',
       label: 'Try again',
       icon: 'refresh',
@@ -121,153 +104,46 @@ export function createSessionsSidebarModel(input: SidebarViewInput): SidebarNode
     return nodes;
   }
 
-  for (const session of input.recent.items.slice(0, 50)) {
-    const label = sessionDisplayName(session);
-    const description = [
-      formatRelativeTimestamp(session.modifiedAt, now),
-      session.modelLabel,
-      currentSessionPath === session.path ? 'Current' : undefined,
-    ]
-      .filter(Boolean)
-      .join(' · ');
-    nodes.push({
-      id: `sessions.${session.id}`,
-      kind: 'session',
-      label,
-      description,
-      detail:
-        session.firstPromptPreview && session.firstPromptPreview !== label
-          ? session.firstPromptPreview
-          : undefined,
-      tooltip: `${label}\n${description}\n${session.path}`,
-      icon: currentSessionPath === session.path ? 'check' : 'comment-discussion',
-      contextValue: 'piRpc.recentSession',
-      command: {
-        command: 'piRpc.switchSession',
-        title: 'Open Chat',
-        arguments: [{ sessionPath: session.path, label }],
-      },
-      sessionPath: session.path,
-      sessionLabel: label,
-      accessibilityLabel: `${label}. ${description}`,
-    });
+  const recentOnly = input.recent.items.filter((session) => !openSessionFiles.has(session.path));
+  if (recentOnly.length > 0) {
+    nodes.push({ id: 'list.recent.header', kind: 'summary', label: 'Recent' });
+    for (const session of recentOnly.slice(0, 30)) {
+      const label = sessionDisplayName(session);
+      const description = [
+        session.workspaceLabel,
+        formatRelativeTimestamp(session.modifiedAt, now),
+        session.modelLabel,
+      ]
+        .filter(Boolean)
+        .join(' · ');
+      nodes.push({
+        id: `list.recent.${session.id}`,
+        kind: 'session',
+        label,
+        description,
+        detail:
+          session.firstPromptPreview && session.firstPromptPreview !== label
+            ? session.firstPromptPreview
+            : undefined,
+        tooltip: `${label}\n${description}\n${session.path}`,
+        icon: 'history',
+        contextValue: 'piRpc.recentSession',
+        command: {
+          command: 'piRpc.switchSession',
+          title: 'Resume Chat',
+          arguments: [{ sessionPath: session.path, label }],
+        },
+        sessionPath: session.path,
+        sessionLabel: label,
+        accessibilityLabel: `${label}. ${description}`,
+      });
+    }
+  }
+
+  if (input.openChats.length === 0 && recentOnly.length === 0) {
+    nodes.push({ id: 'list.empty', kind: 'info', label: 'No chats yet', description: 'Start a new chat and it will appear here.', icon: 'comment' });
   }
 
   return nodes;
 }
 
-export function createResumeChatSidebarModel(input: SidebarViewInput): SidebarNode[] {
-  const now = input.now ?? Date.now();
-  const currentSessionPath =
-    typeof input.activeState?.state.sessionFile === 'string'
-      ? input.activeState.state.sessionFile
-      : undefined;
-  const nodes: SidebarNode[] = [
-    {
-      id: 'resume.search',
-      kind: 'action',
-      label: input.recent.filterText ? `Search: ${input.recent.filterText}` : 'Search recent chats',
-      description: input.recent.filterText
-        ? 'Change or clear the current filter.'
-        : 'Find a recent chat by title, prompt, workspace, or model.',
-      icon: 'search',
-      command: { command: 'piRpcInternal.filterRecentSessions', title: 'Search recent chats' },
-    },
-    {
-      id: 'resume.refresh',
-      kind: 'action',
-      label: 'Refresh',
-      description: 'Read the latest saved chats.',
-      icon: 'refresh',
-      command: { command: 'piRpcInternal.refreshRecentSessions', title: 'Refresh recent chats' },
-    },
-  ];
-
-  if (input.recent.filterText) {
-    nodes.push({
-      id: 'resume.clear',
-      kind: 'action',
-      label: 'Clear search',
-      description: 'Show every recent chat again.',
-      icon: 'close',
-      command: {
-        command: 'piRpcInternal.clearRecentSessionFilter',
-        title: 'Clear recent chat search',
-      },
-    });
-  }
-
-  if (input.recent.loading) {
-    nodes.push({
-      id: 'resume.loading',
-      kind: 'info',
-      label: 'Loading recent chats',
-      description: 'Reading saved Pi chats.',
-      icon: 'loading~spin',
-    });
-    return nodes;
-  }
-
-  if (input.recent.error) {
-    nodes.push({
-      id: 'resume.error',
-      kind: 'info',
-      label: "Couldn't read recent chats",
-      description: input.recent.error,
-      icon: 'warning',
-    });
-    nodes.push({
-      id: 'resume.retry',
-      kind: 'action',
-      label: 'Try again',
-      description: 'Refresh the recent chat list.',
-      icon: 'refresh',
-      command: { command: 'piRpcInternal.refreshRecentSessions', title: 'Try again' },
-    });
-    return nodes;
-  }
-
-  if (input.recent.items.length === 0) {
-    nodes.push({
-      id: 'resume.empty',
-      kind: 'info',
-      label: 'No recent chats yet',
-      description: 'Start a new chat and it will appear here.',
-      icon: 'history',
-    });
-    return nodes;
-  }
-
-  for (const session of input.recent.items.slice(0, 25)) {
-    const label = sessionDisplayName(session);
-    const description = [
-      session.workspaceLabel,
-      formatRelativeTimestamp(session.modifiedAt, now),
-      session.modelLabel,
-      currentSessionPath === session.path ? 'Current' : undefined,
-    ]
-      .filter(Boolean)
-      .join(' · ');
-    nodes.push({
-      id: `resume.${session.id}`,
-      kind: 'session',
-      label,
-      description,
-      detail:
-        session.firstPromptPreview && session.firstPromptPreview !== label
-          ? session.firstPromptPreview
-          : undefined,
-      tooltip: `${label}\n${description}\n${session.path}`,
-      icon: currentSessionPath === session.path ? 'check' : 'history',
-      contextValue: 'piRpc.recentSession',
-      command: {
-        command: 'piRpc.switchSession',
-        title: 'Resume Chat',
-        arguments: [{ sessionPath: session.path, label }],
-      },
-      accessibilityLabel: `${label}. ${description}`,
-    });
-  }
-
-  return nodes;
-}

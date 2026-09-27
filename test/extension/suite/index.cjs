@@ -32,7 +32,7 @@ async function run() {
   assert.ok(all.includes('piRpc.switchSession'));
 
   const views = extension.packageJSON.contributes.views.piRpc.map((view) => view.id);
-  assert.deepEqual(views, ['piRpc.openSessions', 'piRpc.recentSessions', 'piRpc.chat']);
+  assert.deepEqual(views, ['piRpc.openChatList', 'piRpc.chat']);
 
   const customEditor = extension.packageJSON.contributes.customEditors.find(
     (item) => item.viewType === 'piRpc.chatEditor'

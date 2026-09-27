@@ -1,14 +1,7 @@
 import * as vscode from 'vscode';
 import type { RecentSessionService } from '../../sessions/recentSessionService';
-import type { SessionRegistry } from '../../sessions/sessionRegistry';
-import type { SessionController } from '../../sessions/sessionController';
-import {
-  createNewChatSidebarModel,
-  createResumeChatSidebarModel,
-  createSessionsSidebarModel,
-  type SidebarNode,
-} from './sessionSidebarModel';
-import type { ChatUiState } from '../../webview/composerState';
+import type { ChatTabManager } from '../../editorTabs/tabManager';
+import { createOpenChatListModel, type SidebarNode, type OpenChatEntry } from './sessionSidebarModel';
 
 function nodeToTreeItem(node: SidebarNode): vscode.TreeItem {
   const item = new vscode.TreeItem(node.label, vscode.TreeItemCollapsibleState.None);
@@ -28,20 +21,26 @@ function nodeToTreeItem(node: SidebarNode): vscode.TreeItem {
   return item;
 }
 
-abstract class RegistryTreeProvider
+/** Agentic Mode's "Open Chat List" — ONE consolidated view (Open + Recent
+ * sections, deduped against each other) replacing an earlier attempt that
+ * shipped two separate, near-duplicate views (see sessionSidebarModel.ts's
+ * comment for the real root cause: both drew from the same recent-sessions
+ * array, there was never a distinct "currently open" data source behind
+ * them). This one uses ChatTabManager.listOpenChats() for the real thing. */
+export class OpenChatListTreeProvider
   implements vscode.TreeDataProvider<SidebarNode>, vscode.Disposable
 {
-  protected readonly emitter = new vscode.EventEmitter<void>();
+  private readonly emitter = new vscode.EventEmitter<void>();
   private readonly subscriptions: vscode.Disposable[] = [];
 
   public constructor(
-    protected readonly registry: SessionRegistry,
-    protected readonly uiState: ChatUiState
+    private readonly chatTabs: ChatTabManager,
+    private readonly recentSessions: RecentSessionService
   ) {
-    for (const controller of registry.list()) {
-      this.track(controller);
-    }
-    this.subscriptions.push(uiState.onDidChange(() => this.refresh()));
+    this.subscriptions.push(
+      this.chatTabs.onDidChangeOpenChats(() => this.refresh()),
+      this.recentSessions.onDidChange(() => this.refresh())
+    );
   }
 
   public get onDidChangeTreeData(): vscode.Event<void> {
@@ -56,86 +55,32 @@ abstract class RegistryTreeProvider
     return nodeToTreeItem(element);
   }
 
-  public abstract getChildren(element?: SidebarNode): Promise<SidebarNode[]>;
+  public async getChildren(element?: SidebarNode): Promise<SidebarNode[]> {
+    if (element) {
+      return [];
+    }
+    const rawOpenChats = this.chatTabs.listOpenChats();
+    const openChats: OpenChatEntry[] = rawOpenChats.map((chat) => ({
+      resource: chat.resource.toString(),
+      title: chat.title,
+      sessionFile:
+        typeof chat.controller.snapshot.state.sessionFile === 'string'
+          ? chat.controller.snapshot.state.sessionFile
+          : undefined,
+      active: chat.visible,
+    }));
+    const folder = rawOpenChats[0]?.controller.folder ?? vscode.workspace.workspaceFolders?.[0];
+    if (!folder) {
+      return createOpenChatListModel({ openChats, recent: { loading: false, filterText: '', items: [] } });
+    }
+    void this.recentSessions.refresh(folder);
+    return createOpenChatListModel({ openChats, recent: this.recentSessions.getState(folder) });
+  }
 
   public dispose(): void {
     for (const disposable of this.subscriptions) {
       disposable.dispose();
     }
     this.emitter.dispose();
-  }
-
-  protected track(controller: SessionController): void {
-    this.subscriptions.push(controller.onDidChangeState(() => this.refresh()));
-  }
-
-  protected async sidebarInput(recentSessions: RecentSessionService) {
-    const active = this.registry.getActive();
-    const composer = active ? await this.uiState.getComposerState(active) : undefined;
-    return {
-      activeFolderName: active?.folder.name,
-      activeState: active?.snapshot,
-      recent: active
-        ? recentSessions.getState(active.folder)
-        : { loading: false, filterText: '', items: [] },
-      hasDraft: (composer?.draft.trim().length ?? 0) > 0,
-      hasPendingAttachments:
-        (composer?.pendingContextItems.length ?? 0) + (composer?.pendingImages.length ?? 0) > 0,
-      showWorkspacePicker: (vscode.workspace.workspaceFolders?.length ?? 0) > 1,
-    };
-  }
-}
-
-export class NewChatTreeProvider extends RegistryTreeProvider {
-  public constructor(
-    registry: SessionRegistry,
-    private readonly recentSessions: RecentSessionService,
-    uiState: ChatUiState
-  ) {
-    super(registry, uiState);
-    this.recentSessions.onDidChange(() => this.refresh());
-  }
-
-  public async getChildren(element?: SidebarNode): Promise<SidebarNode[]> {
-    if (element) {
-      return [];
-    }
-    return createNewChatSidebarModel(await this.sidebarInput(this.recentSessions));
-  }
-}
-
-export class SessionsTreeProvider extends RegistryTreeProvider {
-  public constructor(
-    registry: SessionRegistry,
-    private readonly recentSessions: RecentSessionService,
-    uiState: ChatUiState
-  ) {
-    super(registry, uiState);
-    this.recentSessions.onDidChange(() => this.refresh());
-  }
-
-  public async getChildren(element?: SidebarNode): Promise<SidebarNode[]> {
-    if (element) {
-      return [];
-    }
-    return createSessionsSidebarModel(await this.sidebarInput(this.recentSessions));
-  }
-}
-
-export class ResumeChatTreeProvider extends RegistryTreeProvider {
-  public constructor(
-    registry: SessionRegistry,
-    private readonly recentSessions: RecentSessionService,
-    uiState: ChatUiState
-  ) {
-    super(registry, uiState);
-    this.recentSessions.onDidChange(() => this.refresh());
-  }
-
-  public async getChildren(element?: SidebarNode): Promise<SidebarNode[]> {
-    if (element) {
-      return [];
-    }
-    return createResumeChatSidebarModel(await this.sidebarInput(this.recentSessions));
   }
 }
