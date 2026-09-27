@@ -73,7 +73,14 @@ export class OpenChatListTreeProvider
     if (!folder) {
       return createOpenChatListModel({ openChats, recent: { loading: false, filterText: '', items: [] } });
     }
-    void this.recentSessions.refresh(folder);
+    // NOT calling recentSessions.refresh(folder) here on purpose. getState()
+    // already refreshes ONCE, internally, the first time a folder has no
+    // cached state (see recentSessionService.ts). An explicit unconditional
+    // refresh() call here — which was the actual bug — combined with the
+    // onDidChange listener re-triggering getChildren(), created a
+    // self-sustaining loop: refresh fires `loading:true` synchronously ->
+    // listener re-fetches -> refresh again -> forever. getState() alone is
+    // the same pattern this tree's predecessor code always used.
     return createOpenChatListModel({ openChats, recent: this.recentSessions.getState(folder) });
   }
 

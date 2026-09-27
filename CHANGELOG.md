@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.290
+
+- **Fixed: "Loading chats" spinning forever, never settling** (reported immediately after 0.0.289). Real root cause: `getChildren()` called `recentSessions.refresh(folder)` explicitly on every invocation, while also listening for `onDidChange` and re-triggering `getChildren()` on it — `refresh()` fires `onDidChange` synchronously the moment it starts (`loading: true`), which re-triggered `getChildren()`, which called `refresh()` again, forever. `RecentSessionService.getState()` already has its own correct "refresh once if nothing cached yet" behavior built in — the predecessor code never called `refresh()` explicitly, only this rewrite added it. Removed the redundant call. Proved this with a real harness using the actual `RecentSessionService` class (not a mock): the buggy pattern produced a genuine stack-overflowing synchronous recursion (500,000+ calls before crashing), the fixed pattern settles at exactly 3 calls and stops.
+
 ## 0.0.289
 
 - **Rebuilt Agentic Mode Phase 1 properly, per the original approved design** — the previous version (0.0.288) shipped two separate, near-duplicate tree sections stacked above the full chat, which was genuinely confusing and never should have shipped without a real look at it first.
