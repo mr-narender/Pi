@@ -488,7 +488,15 @@ export class ChatUiState implements vscode.Disposable {
     }
     const folderPath = controller.folder.uri.fsPath;
     const relativePath = item.workspaceRelativePath;
-    const target = vscode.Uri.joinPath(controller.folder.uri, relativePath);
+    // workspaceRelativePath is absolute for files outside this chat's own
+    // folder (see attachmentCapture.ts's relativeWorkspacePath) — same
+    // isAbsolute-path pattern tabManager.ts already uses for
+    // attachFileByPath/openEditToolFile, so both attach paths resolve the
+    // same file the same way.
+    const isAbsolute = /^([a-zA-Z]:[\\/]|[\\/])/.test(relativePath);
+    const target = isAbsolute
+      ? vscode.Uri.file(relativePath)
+      : vscode.Uri.joinPath(controller.folder.uri, relativePath);
     try {
       if (item.kind === 'diagnostics') {
         const diagnostics = vscode.languages.getDiagnostics(target);

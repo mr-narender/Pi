@@ -30,6 +30,17 @@ export function makeId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
 }
 
+/** Returns a path to attach as context: relative when the file belongs to
+ * THIS chat's own folder (clean "src/foo.ts"), absolute otherwise (files
+ * outside any workspace, or — in a multi-root workspace — in a different
+ * open folder than this chat). Absolute rather than a bare relative path for
+ * the "otherwise" case is deliberate: with multiple folders open, a same-
+ * named relative path from folder B could be silently confused with folder
+ * A's file of the same name; absolute is unambiguous either way. Only
+ * unsaved/virtual documents (no real on-disk path) are still rejected
+ * (undefined) — matches the isAbsolute-path pattern tabManager.ts already
+ * uses for attachFileByPath/openEditToolFile, so revalidateContextItem's
+ * staleness re-check (composerState.ts) resolves it the same way. */
 export function relativeWorkspacePath(
   folder: vscode.WorkspaceFolder,
   uri: vscode.Uri
@@ -38,11 +49,13 @@ export function relativeWorkspacePath(
     return undefined;
   }
   const owningFolder = vscode.workspace.getWorkspaceFolder(uri);
-  if (!owningFolder || owningFolder.uri.toString() !== folder.uri.toString()) {
-    return undefined;
+  if (owningFolder && owningFolder.uri.toString() === folder.uri.toString()) {
+    const relative = vscode.workspace.asRelativePath(uri, false);
+    if (!relative.startsWith('..')) {
+      return relative.replaceAll('\\', '/');
+    }
   }
-  const relative = vscode.workspace.asRelativePath(uri, false);
-  return relative.startsWith('..') ? undefined : relative.replaceAll('\\', '/');
+  return uri.fsPath.replaceAll('\\', '/');
 }
 
 export function diagnosticSeverity(
@@ -88,12 +101,10 @@ export async function capturePickedFile(
   if (!uri) {
     return undefined;
   }
-  // Containment check first — cheap, avoids any read for out-of-workspace files.
+  // Real-on-disk check first — cheap, avoids any read for unsaved/virtual docs.
   const workspaceRelativePath = relativeWorkspacePath(controller.folder, uri);
   if (!workspaceRelativePath) {
-    void vscode.window.showWarningMessage(
-      'Only files inside the active workspace can be attached.'
-    );
+    void vscode.window.showWarningMessage('Only saved files on disk can be attached.');
     return undefined;
   }
   // Size guard BEFORE reading, so a huge/binary file cannot freeze the UI.
@@ -158,9 +169,7 @@ export async function captureFileLike(
 ): Promise<PendingContextItem | undefined> {
   const workspaceRelativePath = relativeWorkspacePath(controller.folder, document.uri);
   if (!workspaceRelativePath) {
-    void vscode.window.showWarningMessage(
-      'Only files inside the active workspace can be attached.'
-    );
+    void vscode.window.showWarningMessage('Only saved files on disk can be attached.');
     return undefined;
   }
   const content = boundFileContent(document.getText());
@@ -194,9 +203,7 @@ export async function captureSelection(
   }
   const workspaceRelativePath = relativeWorkspacePath(controller.folder, editor.document.uri);
   if (!workspaceRelativePath) {
-    void vscode.window.showWarningMessage(
-      'Only selections inside the active workspace can be attached.'
-    );
+    void vscode.window.showWarningMessage('Only a selection in a saved file can be attached.');
     return undefined;
   }
   const content = boundFileContent(editor.document.getText(editor.selection));
@@ -231,9 +238,7 @@ export async function captureDiagnostics(
   }
   const workspaceRelativePath = relativeWorkspacePath(controller.folder, editor.document.uri);
   if (!workspaceRelativePath) {
-    void vscode.window.showWarningMessage(
-      'Only diagnostics inside the active workspace can be attached.'
-    );
+    void vscode.window.showWarningMessage('Only diagnostics in a saved file can be attached.');
     return undefined;
   }
   const diagnostics = vscode.languages.getDiagnostics(editor.document.uri);

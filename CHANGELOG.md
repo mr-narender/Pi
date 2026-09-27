@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.278
+
+- Fixed: files outside the workspace (or in a different folder, in a multi-root workspace) can now be attached — file picker, active file, selection, and diagnostics all use the same shared path check. Traced the full downstream flow before changing it: files inside the chat's own folder still get a clean relative path (unchanged); anything else now gets its absolute path instead of being blocked, using the exact same isAbsolute-path pattern `tabManager.ts` already uses for the `@path`-mention attach flow — which, as a side effect, this fix also unblocks (it was resolving absolute paths but then hitting this same restriction internally). Also fixed the "stale" background re-check (composerState.ts) to resolve absolute paths the same way, so external attachments don't wrongly expire. Verified with a real harness (4 scenarios: same-folder, outside-workspace, different-open-folder in multi-root, unsaved-document-still-blocked) before shipping, not just type-checked.
+
 ## 0.0.277
 
 - Internal only, no user-facing change: extracted the file/image/selection/diagnostics attachment-capture logic out of the `tabManager.ts` god-file (2937→2679 lines) into a new standalone, pure `editorTabs/attachmentCapture.ts` (258 lines, zero dependency on chat-manager instance state). First step of a planned multi-phase de-bloat. Every extracted function's body was verified byte-identical to the original via automated diff before wiring in (not just re-read by eye) — two real transcription mistakes were caught and fixed this way before they ever ran. Full gate + real VS Code E2E activation test green, exact match against the pre-change baseline (301 unit tests, 24 integration tests) — zero regressions.
