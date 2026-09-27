@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.282
+
+- Fixed the sidebar `⋯` menu's "Extensions, skills & prompts…" item wrapping to two lines and visually overlapping with the transcript behind it. Split into three direct, short items — Extensions… / Skills… / Prompts… — jumping straight to that kind's toggle list; the menu itself is now the kind-picker instead of a redundant middle step. Verified with a real headless-Chrome render at the sidebar's actual width before shipping, not just shortened text and hoped.
+
 ## 0.0.281
 
 - **New: Extensions, Skills & Prompts manager** (Track B) — GUI over Pi's own native resource system, not a parallel one. Discovers what's really on disk (Pi's canonical `<agent-dir>/{extensions,skills,prompts}` + project `.pi/{extensions,skills,prompts}`, plus the Agent Skills spec locations `~/.agents/skills` and `.agents/skills` walked up to the repo root) and shows name + real description (parsed from each skill/prompt's own frontmatter — nothing invented). Toggle on/off with checkboxes; the underlying mechanism is Pi's own documented `-path` exclusion / plain-path inclusion syntax in settings.json (the exact pattern already proven by the approval-gate feature, generalized to all three resource kinds and both scopes) — so what you toggle here is exactly what Pi itself understands, everywhere Pi runs for the project, not just in VS Code. Add a custom extension/skill/prompt from any location via a file/folder picker. Export/import the whole configuration as JSON for backup or reuse across machines. Reachable via Command Palette (`Pi: Manage Extensions, Skills & Prompts`) or the sidebar `⋯` menu.

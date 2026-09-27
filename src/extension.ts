@@ -23,6 +23,7 @@ import {
   addCustomResource,
   exportConfiguration,
   importConfiguration,
+  manageResourceKind,
 } from './resources/resourceManager';
 import { InlineReview } from './review/inlineReview';
 import { SessionReplay } from './review/sessionReplay';
@@ -968,6 +969,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // exclusion syntax, add custom ones, export/import the configuration.
   registrations.set('piRpc.manageResources', async () => {
     await showResourceManager();
+  });
+  // Direct jumps for the sidebar ⋯ menu — three short items instead of one
+  // combined label that wrapped and broke the menu's layout.
+  registrations.set('piRpc.manageExtensions', async () => {
+    await manageResourceKind('extensions');
+  });
+  registrations.set('piRpc.manageSkills', async () => {
+    await manageResourceKind('skills');
+  });
+  registrations.set('piRpc.managePrompts', async () => {
+    await manageResourceKind('prompts');
   });
   registrations.set('piRpc.addCustomResource', async () => {
     await addCustomResource();

@@ -145,6 +145,21 @@ async function showKindPicker(kind: ResourceKind, projectRoot: string): Promise<
   void vscode.window.showInformationMessage(`π ${KIND_LABEL[kind]}: ${parts.join(', ')}.`);
 }
 
+/** Direct jump to one kind's toggle list — used by the sidebar's ⋯ menu,
+ * which shows Extensions/Skills/Prompts as three separate short items
+ * instead of one combined label. A combined "Extensions, skills &
+ * prompts…" label wrapped to two lines in the menu's fixed width and broke
+ * the panel's layout; splitting removes the wrap at the source instead of
+ * just shortening the words. */
+export async function manageResourceKind(kind: ResourceKind): Promise<void> {
+  const projectRoot = firstWorkspaceRoot();
+  if (!projectRoot) {
+    void vscode.window.showWarningMessage(`Open a folder to manage project-scoped ${kind}.`);
+    return;
+  }
+  await showKindPicker(kind, projectRoot);
+}
+
 export async function showResourceManager(): Promise<void> {
   const projectRoot = firstWorkspaceRoot();
   if (!projectRoot) {
