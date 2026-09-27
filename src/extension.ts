@@ -18,6 +18,12 @@ import {
 import { TurnReview } from './review/turnReview';
 import { syncApprovalGateForWorkspace } from './review/approvalGate';
 import { pickChatModel } from './commands/modelPicker';
+import {
+  showResourceManager,
+  addCustomResource,
+  exportConfiguration,
+  importConfiguration,
+} from './resources/resourceManager';
 import { InlineReview } from './review/inlineReview';
 import { SessionReplay } from './review/sessionReplay';
 import { SessionIndexService } from './sessions/sessionIndexService';
@@ -956,6 +962,22 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     refreshViews();
   });
   registrations.set('piRpc.selectModel', registrations.get('piRpc.showModels')!);
+  // Extensions/skills/prompts manager (Track B): discover what's already on
+  // disk in Pi's own conventional locations + the Agent Skills spec
+  // locations, toggle on/off via Pi's native settings.json -path/+path
+  // exclusion syntax, add custom ones, export/import the configuration.
+  registrations.set('piRpc.manageResources', async () => {
+    await showResourceManager();
+  });
+  registrations.set('piRpc.addCustomResource', async () => {
+    await addCustomResource();
+  });
+  registrations.set('piRpc.exportResourceConfig', async () => {
+    await exportConfiguration();
+  });
+  registrations.set('piRpc.importResourceConfig', async () => {
+    await importConfiguration();
+  });
   // Line-by-line review controls (CodeLens inside the real file).
   registrations.set('piRpcInternal.hunkKeep', async (fsPath?: unknown, index?: unknown) => {
     await inlineReview.keepHunk(String(fsPath), Number(index));

@@ -2,7 +2,7 @@
   "name": "pi",
   "displayName": "Pi – this one is (y)ours",
   "description": "An unofficial, personal VS Code chat UI for the Pi coding agent (pi.dev). Not affiliated with pi.dev — shared for anyone who wants it.",
-  "version": "0.0.280",
+  "version": "0.0.281",
   "publisher": "mr-narender",
   "license": "MIT",
   "private": true,
@@ -197,6 +197,26 @@
       {
         "command": "piRpc.showModels",
         "title": "Show Available Models",
+        "category": "Pi"
+      },
+      {
+        "command": "piRpc.manageResources",
+        "title": "Manage Extensions, Skills & Prompts",
+        "category": "Pi"
+      },
+      {
+        "command": "piRpc.addCustomResource",
+        "title": "Add Custom Extension, Skill, or Prompt",
+        "category": "Pi"
+      },
+      {
+        "command": "piRpc.exportResourceConfig",
+        "title": "Export Resource Configuration",
+        "category": "Pi"
+      },
+      {
+        "command": "piRpc.importResourceConfig",
+        "title": "Import Resource Configuration",
         "category": "Pi"
       },
       {
