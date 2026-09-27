@@ -3253,19 +3253,16 @@ body.vscode-high-contrast .composer-dock {
   overflow: auto;
 }
 
-/* Menus/popovers: near-opaque glass (readability first), explicit foreground,
-   ember hover rail instead of the harsh solid selection bar. 92% opaque
-   still let busy transcript content (colored bubbles, code) visibly ghost
-   through behind menu text — confirmed with a real render against a busy
-   background, not just a flat one. 98% removes the ghosting while keeping
-   a faint hint of the glass look. */
+/* Menus/popovers: FULLY solid, no transparency at all. The glass look kept
+   causing real readability problems in practice (92% then 98% opaque both
+   still let content behind it show through enough to be distracting/
+   confusing, worse in some real themes than the synthetic ones this was
+   verified against) — a menu is functional UI everyone needs to read
+   quickly, not a decorative surface, so it doesn't get the glass treatment
+   the rest of the app does. Ember hover rail instead of the harsh solid
+   selection bar is the only "design" touch left here on purpose. */
 .menu-panel {
-  background: color-mix(
-    in srgb,
-    var(--vscode-editorWidget-background, var(--vscode-editor-background)) 98%,
-    transparent
-  );
-  backdrop-filter: blur(6px);
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
   border: 1px solid var(--glass-line-strong);
   border-radius: 10px;
   color: var(--vscode-foreground);

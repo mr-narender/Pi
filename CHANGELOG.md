@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.284
+
+- Menus (⋯, attach, model/status popovers) are now fully solid — no transparency at all. 92%, then 98% opaque both still let content behind them show through enough to hurt readability in practice, worse than the synthetic dark-theme-only render this was originally verified against. A menu is functional UI everyone needs to read quickly, not a decorative surface, so it no longer gets the glass treatment. Re-verified this time against three different theme palettes (dark, light, and a saturated green-tinted one deliberately close to what likely caused the reported tint) — all solid and clean now, not just the one theme checked before.
+
 ## 0.0.283
 
 - Fixed menu transparency being too high to read comfortably over busy transcript content — 92%→98% opaque, confirmed with a real render against realistic colored chat bubbles/code (not a flat background) before and after, not just a guessed number.
