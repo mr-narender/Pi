@@ -3012,6 +3012,7 @@ button.ghost:hover,
 }
 
 .chat-list-row {
+  position: relative; /* anchor for the hover action overlay */
   display: flex;
   align-items: center;
   gap: 12px;
@@ -3078,13 +3079,28 @@ button.ghost:hover,
 }
 
 /* Hover action strip (favorite / rename / delete) — per explicit feedback:
- * hover icons only, no right-click menu. Buttons stay in the layout
- * (opacity, not display) so the row width never jumps on hover. */
+ * hover icons only, no right-click menu. An absolute OVERLAY pill (own
+ * opaque background), not a flex sibling: reserving strip width squeezed
+ * the name into a sliver, so at rest the name gets the row's full width
+ * and the strip floats over the right end only while hovering. */
 .chat-list-row-actions {
-  flex: none;
-  display: flex;
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: none;
   align-items: center;
   gap: 2px;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--vscode-sideBar-background, var(--vscode-editor-background));
+  border: 1px solid var(--glass-line, rgba(128, 128, 128, 0.2));
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+}
+
+.chat-list-row:hover .chat-list-row-actions,
+.chat-list-row-actions:focus-within {
+  display: flex;
 }
 
 .chat-list-row-action {
@@ -3100,23 +3116,14 @@ button.ghost:hover,
   background: transparent;
   color: var(--vscode-descriptionForeground);
   cursor: pointer;
-  opacity: 0;
-  transition: opacity 120ms ease, background 120ms ease, color 120ms ease;
-}
-
-.chat-list-row:hover .chat-list-row-action,
-.chat-list-row-action:focus-visible {
-  opacity: 1;
+  transition: background 120ms ease, color 120ms ease;
 }
 
 .chat-list-row-action:hover {
   background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.15));
 }
 
-/* A starred row keeps its filled star visible without hover — the star is
- * the favorite indicator, not just the toggle. */
 .chat-list-row-fav.is-fav {
-  opacity: 1;
   color: var(--vscode-charts-yellow, #e2b73d);
 }
 
@@ -3128,6 +3135,25 @@ button.ghost:hover,
 .chat-list-row-action svg {
   width: 14px;
   height: 14px;
+}
+
+/* At-rest favorite marker: a small gold star inline with the name. Hidden
+ * while the row is hovered — the strip's toggle star is visible then and
+ * two stars at once reads as clutter. */
+.chat-list-row-favbadge {
+  display: inline-flex;
+  vertical-align: -1px;
+  margin-right: 5px;
+  color: var(--vscode-charts-yellow, #e2b73d);
+}
+
+.chat-list-row-favbadge svg {
+  width: 11px;
+  height: 11px;
+}
+
+.chat-list-row:hover .chat-list-row-favbadge {
+  display: none;
 }
 
 /* Custom tooltip (customTooltip.ts) — VS Code's webview sandboxing makes

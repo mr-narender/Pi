@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.1 — Alpha 2 (chat list polish)
+
+- **Names get the full row width again.** 0.1.0's hover action strip reserved
+  its width permanently, squeezing every chat name into a sliver. The strip is
+  now an overlay pill that floats over the right end of the row only while
+  hovering — at rest the name uses the entire row.
+- **Hover shows the full name.** Hovering a row's text shows the complete,
+  untruncated name in a tooltip above the name — long names are readable
+  without widening the sidebar.
+- **Favorites keep a visible marker.** Since the star button now only appears
+  on hover, a starred chat shows a small inline gold star next to its name at
+  rest (it steps aside while hovering, when the toggle star is visible).
+
 ## 0.1.0 — Alpha release (Agentic Mode chat list)
 
 Alpha release of the rebuilt sidebar for multi-machine testing. Install via

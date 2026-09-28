@@ -35,10 +35,17 @@ function show(target: Element, text: string): void {
   document.body.appendChild(tip);
   const targetRect = target.getBoundingClientRect();
   const tipRect = tip.getBoundingClientRect();
-  let top = targetRect.bottom + 6;
+  // data-tooltip-pos="above" flips the preferred side (used by chat-list
+  // row names so the full name shows on top of the name, not covering the
+  // rows below it); either preference falls back to the other side when
+  // there's no room.
+  const preferAbove = target.getAttribute('data-tooltip-pos') === 'above';
+  let top = preferAbove ? targetRect.top - tipRect.height - 6 : targetRect.bottom + 6;
   let left = targetRect.left + targetRect.width / 2 - tipRect.width / 2;
   left = Math.max(4, Math.min(left, window.innerWidth - tipRect.width - 4));
-  if (top + tipRect.height > window.innerHeight - 4) {
+  if (preferAbove && top < 4) {
+    top = targetRect.bottom + 6;
+  } else if (!preferAbove && top + tipRect.height > window.innerHeight - 4) {
     top = targetRect.top - tipRect.height - 6;
   }
   tip.style.top = `${top}px`;

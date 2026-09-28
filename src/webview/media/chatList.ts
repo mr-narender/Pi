@@ -28,10 +28,16 @@ function renderRow(row: ChatListRow): string {
   // fresh never-saved draft only offers delete (which closes its tab).
   const canTarget = Boolean(row.sessionPath);
   const favTitle = row.favorite ? 'Remove from favorites' : 'Add to favorites';
+  // The action strip is a hover OVERLAY (absolute, own background), so the
+  // name always gets the row's full width; the inline star badge (hidden
+  // while hovering, when the toggle star is visible instead) is what marks
+  // a favorite at rest. The full name rides on a [title] tooltip shown
+  // ABOVE the text (data-tooltip-pos) — names longer than the sidebar are
+  // readable without widening it.
   return `<div class="chat-list-row${row.active ? ' active' : ''}${row.favorite ? ' favorite' : ''}" data-id="${esc(row.id)}">
     <span class="chat-list-row-icon">${row.active ? ICON_CHECK : ICON_CHAT}</span>
-    <span class="chat-list-row-text">
-      <span class="chat-list-row-title">${esc(row.title)}</span>
+    <span class="chat-list-row-text" title="${esc(row.title)}" data-tooltip-pos="above">
+      <span class="chat-list-row-title">${row.favorite ? `<span class="chat-list-row-favbadge">${ICON_STAR_FILLED}</span>` : ''}${esc(row.title)}</span>
       ${row.detail ? `<span class="chat-list-row-detail">${esc(row.detail)}</span>` : ''}
     </span>
     <span class="chat-list-row-actions">
