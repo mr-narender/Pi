@@ -50,9 +50,18 @@ function extractPreview(input: Record<string, unknown>): string {
 
 export default function (pi: ExtensionAPI) {
   // "Allow rest of turn" avoids re-prompting for every file in a multi-file
-  // scaffold — resets the moment the current turn settles.
+  // scaffold. Resets on `agent_end` (the whole run finishing), NOT
+  // `turn_end` — the SDK's own type definition is explicit that "a turn is
+  // ONE assistant response + any tool calls/results", not the whole
+  // multi-step task. A model that writes a file then edits it almost always
+  // does that as two separate assistant messages (tool call, wait for the
+  // result, decide the next step), which is two separate turns — so
+  // resetting on turn_end meant "Allow rest of turn" only ever covered a
+  // single message's tool calls, re-prompting on the very next one even
+  // though nothing new was actually approved. Reported as "keeps asking for
+  // permission even when all permissions are allowed".
   let allowRestOfTurn = false;
-  pi.on('turn_end', () => {
+  pi.on('agent_end', () => {
     allowRestOfTurn = false;
   });
 

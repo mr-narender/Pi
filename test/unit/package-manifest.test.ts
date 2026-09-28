@@ -25,25 +25,26 @@ test('coverage row inventory totals stay stable', () => {
   assert.equal((coverage.match(/\| D-\d+/g) ?? []).length, 8);
 });
 
-test('manifest contributes the Open Chat List tree view + the Chat webview, mutually exclusive via sidebarMode', () => {
+test('manifest contributes exactly one always-visible Chat webview; mode is content, not view visibility', () => {
+  // Superseded the native-tree-view "Open Chat List" attempt entirely — a
+  // native TreeDataProvider has no extension-facing API for row spacing,
+  // font size, or custom (non-Codicon) icons/buttons, confirmed against
+  // VS Code's own source (listView.ts row-height options are internal,
+  // never exposed to extensions) and the VS Code team's own admission that
+  // list/tree isn't a good fit for chat UI (microsoft/vscode#268858). One
+  // webview now renders EITHER the list or the full chat depending on
+  // piRpc.sidebarMode — no `when`-gated second view needed.
   const view = packageJson.contributes.views.piRpc;
   assert.deepEqual(
     view.map((entry) => entry.id),
-    ['piRpc.openChatList', 'piRpc.chat']
+    ['piRpc.chat']
   );
-  const chatWebview = view.find((entry) => entry.id === 'piRpc.chat');
+  const chatWebview = view[0];
   assert.equal(chatWebview?.type, 'webview');
-  const openChatList = view.find((entry) => entry.id === 'piRpc.openChatList');
-  // Native TreeDataProvider — no `type` field, VS Code's manifest schema
-  // treats that as a tree view implicitly.
-  assert.equal(openChatList?.type, undefined);
-  // The actual fix for "list and full chat both visible, chat squeezed to a
-  // sliver": mutually exclusive `when` clauses on the SAME context key, so
-  // exactly one of the two is ever shown.
-  assert.equal(openChatList?.when, "piRpc.sidebarMode == 'agentic'");
-  assert.equal(chatWebview?.when, "piRpc.sidebarMode == 'chat'");
+  assert.ok(!('when' in chatWebview));
   const allMenus = JSON.stringify(packageJson.contributes.menus ?? {});
   assert.ok(!allMenus.includes('piRpc.currentChat'));
+  assert.ok(!allMenus.includes('piRpc.openChatList'));
 });
 
 test('manifest exposes delete and rename chat commands for the sidebar', () => {

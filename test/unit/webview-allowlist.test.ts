@@ -14,6 +14,7 @@ function commandsEmittedByWebview(): Set<string> {
   const sources = [
     readFileSync(join(root, 'src/webview/render.ts'), 'utf8'),
     readFileSync(join(root, 'src/webview/media/chat.ts'), 'utf8'),
+    readFileSync(join(root, 'src/webview/media/chatList.ts'), 'utf8'),
   ].join('\n');
   const found = new Set<string>();
   for (const match of sources.matchAll(/data-command="([a-zA-Z.]+)"/g)) {

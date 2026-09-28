@@ -20,6 +20,21 @@ export async function syncApprovalGate(
   if (enabled) {
     await vscode.workspace.fs.createDirectory(vscode.Uri.joinPath(piDir, GATE_DIR));
     await vscode.workspace.fs.writeFile(gateFile, Buffer.from(gateSource, 'utf8'));
+  } else {
+    // The template's own header says "safe to delete: disabling the setting
+    // removes it" — that was only ever half true. Nothing here actually
+    // deleted the file when disabling; turning the setting off left the old
+    // gate file sitting in .pi/extensions untouched, no longer registered
+    // in settings.json but still a real file Pi may still load. That also
+    // meant a fixed template could never actually reach an existing
+    // workspace: sync only ever WROTE the file when enabled, so if the
+    // VS Code setting was already false, the sync ran every activation and
+    // never touched the stale file at all.
+    try {
+      await vscode.workspace.fs.delete(gateFile);
+    } catch {
+      /* never existed */
+    }
   }
 
   let existing: string | undefined;

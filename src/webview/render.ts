@@ -901,7 +901,7 @@ export function renderRichText(raw: string): string {
   return out.join('');
 }
 
-function escapeHtml(value: string): string {
+export function escapeHtml(value: string): string {
   return value
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')
@@ -972,7 +972,11 @@ function renderPermissionModeToggle(snapshot: WebviewSnapshot): string {
   const title = on
     ? `Ask Before Edits — every change needs your OK first (click for Auto Mode)${busyNote}`
     : `Auto Mode — π edits freely, no pauses (click for Ask Before Edits)${busyNote}`;
-  return `<button type="button" class="icon-button permission-toggle${on ? ' is-on' : ''}" data-command="piRpc.togglePermissionMode" title="${title}" aria-label="Toggle approval mode: Auto Mode or Ask Before Edits" aria-pressed="${on ? 'true' : 'false'}"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3 L12 3 L12 8 C12 10.5 10 12.3 8 13.5 C6 12.3 4 10.5 4 8 Z"/><path d="M5.8 8 L7.2 9.6 L10.3 6.2"/></svg></button>`;
+  // Orange = Auto Mode is active (π edits freely) — the more "live" of the
+  // two states, not the cautious one. Was backwards: the glow used to mean
+  // "Ask Before Edits is on", which reads as "orange = restricted", the
+  // opposite of how an accent color normally reads (active/energized).
+  return `<button type="button" class="icon-button permission-toggle${!on ? ' is-auto' : ''}" data-command="piRpc.togglePermissionMode" title="${title}" aria-label="Toggle approval mode: Auto Mode or Ask Before Edits" aria-pressed="${on ? 'true' : 'false'}"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3 L12 3 L12 8 C12 10.5 10 12.3 8 13.5 C6 12.3 4 10.5 4 8 Z"/><path d="M5.8 8 L7.2 9.6 L10.3 6.2"/></svg></button>`;
 }
 
 function renderFollowToggle(snapshot: WebviewSnapshot): string {

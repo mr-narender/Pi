@@ -124,7 +124,9 @@ function workspaceFolders(chatFolderUri?: string) {
 }
 
 // Commands the chat webview may invoke via the generic executeCommand message.
-// Keep in sync with data-command usages in render.ts / chat.ts — nothing else.
+// Keep in sync with data-command usages in render.ts / chat.ts — nothing
+// else. (The Agentic Mode list's own ⋯ menu moved to a native view/title
+// submenu — package.json's piRpc.chatListMore — so it no longer needs this.)
 const WEBVIEW_COMMAND_ALLOWLIST = new Set<string>([
   'piRpc.togglePermissionMode',
   'piRpcInternal.retryWithModel',
@@ -795,6 +797,26 @@ export class ChatTabManager implements vscode.Disposable {
     }
   }
 
+  /** Close a specific tab by its exact resource URI — for chats that have no
+   * session file yet (a fresh draft never sent, or sent but not yet
+   * persisted), where closeForSessionFile's path/identity matching has
+   * nothing to match against. Deleting such a chat from the Agentic Mode
+   * list has nothing on disk to remove; closing its tab is the only
+   * meaningful action, and silently doing nothing (which is what happened
+   * before this existed — reported as "delete doesn't seem to work") isn't
+   * an acceptable substitute for it. */
+  public async closeResource(resource: vscode.Uri): Promise<void> {
+    const key = resource.toString();
+    for (const group of vscode.window.tabGroups.all) {
+      for (const tab of group.tabs) {
+        const input = (tab.input ?? undefined) as { uri?: vscode.Uri; viewType?: string } | undefined;
+        if (input?.viewType === CHAT_EDITOR_VIEW_TYPE && input.uri?.toString() === key) {
+          await vscode.window.tabGroups.close(tab);
+        }
+      }
+    }
+  }
+
   public async closeForSessionFile(sessionFile: string): Promise<void> {
     for (const group of vscode.window.tabGroups.all) {
       for (const tab of group.tabs) {
@@ -1095,6 +1117,16 @@ export class ChatTabManager implements vscode.Disposable {
   }
 
   public async onHostViewStateChanged(host: ChatHost, active: boolean): Promise<void> {
+    // Which tab is "active" (the Agentic Mode list's checkmark) can change
+    // WITHOUT any host ever being added or removed — switching focus between
+    // two already-open tabs doesn't re-run resolveEditor (VS Code only calls
+    // that once per tab's lifetime), so the only place that transition is
+    // ever observable is here. Without this, the list's active state only
+    // ever reflected whatever was focused the last time a tab was actually
+    // opened or closed — reported as "multiple sessions open, but no chat
+    // seems to be opened" (the real one was open, the list just never found
+    // out focus had moved to it).
+    this.openChatsEmitter.fire();
     if (!active) {
       return;
     }
@@ -1760,6 +1792,23 @@ export class ChatTabManager implements vscode.Disposable {
           'info',
           `[edit] re-asserted model after fork: ${pickedModel.provider}/${pickedModel.id}`
         );
+        // Confirm it actually stuck rather than assuming the awaited call
+        // succeeding means the session is now on it — reported once as
+        // "still uses the old model" with no visible way to tell.
+        const appliedModel = controller.snapshot.state.model as
+          | { provider?: unknown; id?: unknown }
+          | undefined;
+        const appliedKey = appliedModel ? `${appliedModel.provider}/${appliedModel.id}` : undefined;
+        const wantedKey = `${pickedModel.provider}/${pickedModel.id}`;
+        if (appliedKey !== wantedKey) {
+          controller.log(
+            'warn',
+            `[edit] model re-assert did not stick: wanted ${wantedKey}, session reports ${appliedKey}`
+          );
+          void vscode.window.showWarningMessage(
+            `Pi: asked for ${wantedKey}, session reports ${appliedKey ?? 'unknown'} — the resend may still use the old model.`
+          );
+        }
       }
       await controller.prompt(edited, 'prompt', []);
       controller.log('info', '[edit] prompt sent to model');
@@ -1949,6 +1998,42 @@ export class ChatTabManager implements vscode.Disposable {
     }
   }
 
+  /** Agentic Mode's sidebar shows only a chat LIST — "current chat" moves to
+   * an editor tab instead. Switching modes must never leave the SAME
+   * conversation visible in both places at once (an explicit regression
+   * report) — this closes the tab when its chat becomes the sidebar's, and
+   * opens a tab when the sidebar's chat needs to become one. Scoped to
+   * chats with a real session file; a brand-new empty draft has nothing
+   * worth migrating (Agentic Mode's own New Chat button covers that). */
+  public async syncSidebarModeTransition(toMode: 'agentic' | 'chat'): Promise<void> {
+    if (toMode === 'chat') {
+      const active = this.getActiveContext();
+      const sessionFile = active?.controller.snapshot.state.sessionFile;
+      if (!active || !sessionFile) {
+        return;
+      }
+      this.sidebarTarget = {
+        workspaceFolderUri: active.controller.folder.uri.toString(),
+        kind: 'sessionFile',
+        sessionFile,
+      };
+      this.persistSidebarTarget();
+      await this.closeForSessionFile(sessionFile);
+      return;
+    }
+    const target = this.sidebarTarget;
+    if (target?.kind !== 'sessionFile' || !target.sessionFile) {
+      return;
+    }
+    const folder =
+      vscode.workspace.workspaceFolders?.find((f) => f.uri.toString() === target.workspaceFolderUri) ??
+      vscode.workspace.workspaceFolders?.[0];
+    if (!folder) {
+      return;
+    }
+    await this.openForSessionFile(this.registry.getOrCreate(folder), target.sessionFile);
+  }
+
   /** Injected: line-by-line review engine. */
   public inlineReview: { start(record: unknown, change: unknown): Promise<void> } | undefined;
   /** Injected: session replay (walk past turns' files, oldest or single). */
@@ -2049,6 +2134,29 @@ export class ChatTabManager implements vscode.Disposable {
     // (editor tabs start via activateResource; the sidebar must too).
     await this.activateResource(resource, { startIfStopped: true });
     await this.renderResource(resource, { active: true });
+  }
+
+  /** Agentic Mode takes over the SAME WebviewView to show the chat list
+   * instead (AgenticChatListHost, extension.ts) — it never calls
+   * attachSidebarChat, so this SidebarChatHost is never constructed fresh
+   * for a session already in agentic mode. But switching FROM Chat mode TO
+   * Agentic mode reuses the already-resolved view, and VS Code never fires
+   * onDidDispose just because a view's content was reassigned — so without
+   * this, the OLD SidebarChatHost stays registered in `hosts` forever,
+   * making listOpenChats() (and so the chat list itself) keep reporting a
+   * chat as "open" with no tab or view actually showing it anywhere.
+   * Deliberately NOT onHostDisposed: the underlying controller isn't being
+   * closed, just this view wrapper — the same session may still be in use
+   * via a different tab (syncSidebarModeTransition opens one for exactly
+   * this reason). */
+  public detachSidebarChatHost(): void {
+    // Same parse+toString as attachSidebarChat's own registration — URI
+    // normalization means a hand-typed string literal isn't guaranteed to
+    // match the key that was actually used to store it.
+    const key = vscode.Uri.parse('piRpcSidebar://chat/main').toString();
+    if (this.hosts.delete(key)) {
+      this.openChatsEmitter.fire();
+    }
   }
 
   private resolveTarget(resource: vscode.Uri): ChatTabTarget | undefined {

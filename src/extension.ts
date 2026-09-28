@@ -37,7 +37,7 @@ import { DiagnosticsLogger } from './diagnostics/logger';
 import { redactJsonValue } from './diagnostics/redaction';
 import { ensureWorkspaceAvailable, ensureTrustedForMutation } from './security/trust';
 import { RecentSessionService } from './sessions/recentSessionService';
-import { OpenChatListTreeProvider } from './ui/trees/providers';
+
 import { formatRelativeTimestamp } from './sessions/recentSessions';
 import { SessionRegistry } from './sessions/sessionRegistry';
 import { ExtensionUiBroker } from './ui/extensionUiBroker';
@@ -52,6 +52,7 @@ import { ChatEditorProvider } from './editorTabs/provider';
 import { ChatFileSystemProvider } from './editorTabs/fileSystemProvider';
 import { initChatUriRegistry } from './editorTabs/uriRegistry';
 import { ChatTabManager } from './editorTabs/tabManager';
+import { AgenticChatListHost } from './ui/sidebar/agenticChatListHost';
 import { AskPiCodeLensProvider, type AskSymbolArgs } from './editorTabs/askCodeLens';
 import { RemoteHostClient } from './remote/hostClient';
 import { pairingLink } from './remote/remoteConfig';
@@ -298,25 +299,60 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const state = recentSessions.getState(folder);
     return { items: state.items, others: state.others ?? [] };
   };
+  // Agentic Mode: the SAME view (piRpc.chat) renders either the chat list
+  // or the full chat, chosen by piRpc.sidebarMode — not two views gated by
+  // `when` (that was the earlier attempt; see AgenticChatListHost's own
+  // comment for why a native tree view was dropped for the list itself).
+  // VS Code calls resolveWebviewView once per view lifetime (retained
+  // across hide/show), so switching modes later needs its own explicit
+  // re-attach — sidebarModeChanged below does that.
+  const sidebarMode = (): 'agentic' | 'chat' =>
+    vscode.workspace.getConfiguration('piRpc').get<'agentic' | 'chat'>('sidebarMode', 'agentic');
+  let agenticListHost: AgenticChatListHost | undefined;
+  let attachedSidebarView: vscode.WebviewView | undefined;
+  // Which host currently owns the ONE WebviewView instance. VS Code never
+  // fires onDidDispose just because a view's content is reassigned to a
+  // different host, so switching modes must explicitly tear down whichever
+  // host owned it before — otherwise the old one stays registered forever
+  // (a stale SidebarChatHost kept reporting a chat as "open" with no tab or
+  // view actually showing it — the exact bug this fixes) and, separately,
+  // a stale message listener would keep firing alongside the new one
+  // (vscode.Event supports multiple subscribers; it doesn't replace one).
+  let attachedSidebarKind: 'agentic' | 'chat' | undefined;
+  const attachSidebarForCurrentMode = (view: vscode.WebviewView): void => {
+    attachedSidebarView = view;
+    const folder = vscode.workspace.workspaceFolders?.[0];
+    const nextKind: 'agentic' | 'chat' = sidebarMode() === 'agentic' && folder ? 'agentic' : 'chat';
+    if (attachedSidebarKind && attachedSidebarKind !== nextKind) {
+      if (attachedSidebarKind === 'chat') {
+        chatTabs.detachSidebarChatHost();
+      } else {
+        agenticListHost?.detach();
+      }
+    }
+    attachedSidebarKind = nextKind;
+    if (nextKind === 'agentic') {
+      if (!agenticListHost) {
+        agenticListHost = new AgenticChatListHost(
+          context.extensionUri,
+          chatTabs,
+          recentSessions,
+          folder!,
+          context.globalState
+        );
+        context.subscriptions.push(agenticListHost);
+      }
+      agenticListHost.attach(view);
+      return;
+    }
+    void chatTabs.attachSidebarChat(context.extensionUri, view);
+  };
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(
       'piRpc.chat',
-      {
-        resolveWebviewView: (view) => chatTabs.attachSidebarChat(context.extensionUri, view),
-      },
+      { resolveWebviewView: (view) => attachSidebarForCurrentMode(view) },
       { webviewOptions: { retainContextWhenHidden: true } }
     )
-  );
-
-  // Agentic Mode: ONE consolidated "Open Chat List" native tree view.
-  // Real data source for "open" (ChatTabManager.listOpenChats()) instead of
-  // the earlier attempt's two views that both drew from the same
-  // recent-sessions array and showed near-duplicate content — see
-  // sessionSidebarModel.ts for the full story.
-  const openChatListTree = new OpenChatListTreeProvider(chatTabs, recentSessions);
-  context.subscriptions.push(
-    openChatListTree,
-    vscode.window.registerTreeDataProvider('piRpc.openChatList', openChatListTree)
   );
 
   chatTabs.setTurnReview(turnReview);
@@ -2421,23 +2457,33 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     })
   );
 
-  // Agentic/Chat sidebar mode: drives the `when` clauses on piRpc.openChatList
-  // vs piRpc.chat in package.json, so only ONE is ever visible — never both
-  // stacked together (that's the actual bug from shipping the list without
-  // this: chat squeezed to a sliver under two redundant tree sections). The
-  // COMMAND handler is registered earlier (with the other commands, before
-  // the registration loop) — only the context-key sync lives here.
+  // Agentic/Chat sidebar mode: the piRpc.chat view's context key (used by a
+  // couple of `when` clauses elsewhere, e.g. the mode-toggle button itself
+  // needing to know which icon to show). The COMMAND handler is registered
+  // earlier (with the other commands, before the registration loop).
+  let lastKnownSidebarMode = sidebarMode();
   const applySidebarModeContext = (): void => {
-    const mode = vscode.workspace
-      .getConfiguration('piRpc')
-      .get<'agentic' | 'chat'>('sidebarMode', 'agentic');
-    void vscode.commands.executeCommand('setContext', 'piRpc.sidebarMode', mode);
+    void vscode.commands.executeCommand('setContext', 'piRpc.sidebarMode', sidebarMode());
   };
   applySidebarModeContext();
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((event) => {
       if (event.affectsConfiguration('piRpc.sidebarMode')) {
         applySidebarModeContext();
+        const mode = sidebarMode();
+        if (mode !== lastKnownSidebarMode) {
+          lastKnownSidebarMode = mode;
+          // Never leave the same chat visible in the sidebar AND an editor
+          // tab at once — move it (close the tab it came from, or open the
+          // tab it's going to) BEFORE re-rendering the sidebar's content,
+          // so a switch to Chat mode shows the chat that just closed, not
+          // whatever the sidebar last happened to have.
+          void chatTabs.syncSidebarModeTransition(mode).then(() => {
+            if (attachedSidebarView) {
+              attachSidebarForCurrentMode(attachedSidebarView);
+            }
+          });
+        }
       }
     })
   );

@@ -1,5 +1,109 @@
 # Changelog
 
+## 0.1.0 — Alpha release (Agentic Mode chat list)
+
+Alpha release of the rebuilt sidebar for multi-machine testing. Install via
+“Install Pre-Release Version” on the Marketplace extension page. What this
+alpha brings, by phase:
+
+- **Phase 1 — One consolidated chat list.** A single webview list replaces the
+  old stacked tree views: your open chats and your history in one place, backed
+  by the real open-tabs data source (no more near-duplicate “Open”/“Recent”
+  rows), deduped by session file, with New Chat and the toolbar menus intact.
+- **Phase 2 — Newest-first everywhere.** Open chats sit as one block on top,
+  ordered by last activity (newest first); history below follows the same
+  order. Brand-new sessions float straight to the top.
+- **Phase 3 — Real names instead of “Session 36”.** Rows now show your first
+  prompt as the chat's name whenever the stored name is just the
+  auto-generated “Session N”. A chat you renamed yourself keeps its custom
+  name. Display-only — stored session names are untouched.
+- **Phase 4 — Hover actions: favorite / rename / delete.** Hovering a row
+  reveals the three action icons (no right-click menu). Favorites persist
+  across restarts and machines' windows, float to the top of their block with
+  a filled star, and can never age out of the visible list. Rename and delete
+  behave exactly as before — delete still hides the row instantly.
+- **Also in this alpha** (from the 0.0.30x line): working hover tooltips
+  everywhere in the list (custom tooltip, since the native one never showed
+  inside the webview), no reload-flash when clicking chats, and instant
+  optimistic delete.
+
+## 0.0.309
+
+- **Chat list: open chats now sort newest-first too.** Open tabs stay as one block above history, but within the block they're ordered by session last-modified time (descending), same as the history below — so the whole list reads newest-first, with your open chats on top. Brand-new sessions (no timestamp yet) sort to the very top. Titles, icons, dedup, and the 20-item history cap are unchanged.
+
+## 0.0.308
+
+- **Fixed: hover tooltips genuinely didn't show at all.** Confirmed by hovering a real button in the real, running extension and waiting — no tooltip ever appeared, despite the `title` attribute being present and correct. VS Code's webview sandboxing makes the native browser tooltip unreliable; other VS Code extensions have hit this exact thing and solved it the same way. Built a small custom tooltip (matches VS Code's own hover-widget theme colors) delegated at the document level, so it covers every button with a `title` — present and future — without needing per-element wiring.
+
+## 0.0.307
+
+- **Flipped the permission toggle's orange glow to mean Auto Mode, not Ask Before Edits.** It was backwards — the accent color lit up for the more cautious/restricted state, when an accent normally reads as "active/live". Orange now means π is editing freely; the plain (unlit) icon means it's pausing for your OK.
+
+## 0.0.306
+
+- **Fixed the actual reason 0.0.304's approval-gate fix couldn't reach an already-set-up workspace, and a real bug in its own right**: `syncApprovalGate` only ever WROTE the gate file when the setting was enabled — there was no corresponding delete when disabling it. Turning `piRpc.requireApprovalForEdits` off left the old file sitting in `.pi/extensions` untouched, no longer registered in `.pi/settings.json` but still a real file Pi could still load — silently contradicting the setting saying it was off, and contradicting the template's own header comment ("safe to delete: disabling the setting removes it"), which was only ever half true. This is also why the `agent_end` fix in 0.0.304 couldn't reach a workspace whose VS Code-level setting already reads `false`: sync runs every activation regardless, but only ever touches the file on the `enabled` branch. Fixed by actually deleting the gate file when disabling. Net effect for anyone in this exact situation (gate file present, setting already off): the stale gate will correctly disappear on the next reload, matching what the setting already says — re-enable `piRpc.requireApprovalForEdits` to get the fixed version back.
+
+## 0.0.305
+
+- **Fixed a race condition introduced by 0.0.304's own fix**: caught it live before shipping, not by the user. `act()` fire-and-forgets its call to open a followed file, and the (deliberately long, ~2 minute) retry-for-approval window means several can genuinely be in flight at once. Each one deciding fresh where to open, independently, meant two concurrent calls could both see "no follow-files group exists yet" and each split their own — multiple separate groups instead of one shared pane, the same file sometimes scattered across them. Fixed by caching the decided group once created and sharing the in-flight creation itself, so every concurrent caller converges on the exact same group.
+
+## 0.0.304
+
+- **Fixed: "Allow rest of turn" kept re-prompting anyway.** Checked the Pi SDK's own type definitions rather than guessing: `turn_end`'s doc comment is explicit — "a turn is one assistant response + any tool calls/results", not the whole multi-step task. A model that writes a file then edits it almost always does that as two separate assistant messages (tool call, wait for the result, decide the next step) — two separate turns. Resetting the "allow" flag on `turn_end` meant it only ever covered a single message's tool calls, re-prompting on the very next one even though nothing new needed approving. Reset on `agent_end` instead (the whole run finishing) — matches what "rest of turn" actually means to a person asking for a multi-step change. Takes effect automatically on the next reload — the gate file is unconditionally resynced from this template on every activation when the setting is on, no manual step needed.
+- **Explained (not a bug): why followed files opened below the chat instead of beside it.** Traced directly to your own `workbench.editor.openSideBySideDirection: "down"` setting — `vscode.ViewColumn.Beside` (what the previous fix used) respects that setting, and it's a real, valid, deliberate preference for everyday file splitting, confirmed by the comment already next to it in your settings. Changed follow specifically to force a group to the right (`workbench.action.newGroupRight`) regardless of that setting — the four-region layout this feature implements is explicitly horizontal (chat and followed files side by side), which is a property of this specific feature, not something that should ride on a general editor-splitting preference.
+
+## 0.0.303
+
+- **Fixed a second, separate cause of the same "file-following not working" report**: found while live-testing 0.0.302's fix. `readWithRetry` (waits for a fresh write to actually land on disk before opening it) only retried for ~3 seconds total, assuming writes land near-instantly — true without `piRpc.requireApprovalForEdits`, but that setting gates the real write behind a human clicking Allow first, which can easily take longer than 3 seconds. The pane gave up before the approved write ever landed — indistinguishable from "not working" (the status bar still updated; the pane itself just quit too early). Extended to ~2 minutes of gradually-backing-off retries — costs nothing in the fast, ungated case (the very first attempt still succeeds immediately), gives a real approval delay room to actually complete.
+
+## 0.0.302
+
+- **Fixed: agent file-following wasn't opening files at all.** Root cause found in `showInSidePane`'s own comment: it skipped opening the followed file entirely whenever a π chat tab owned the active editor group, reasoning "with the sidebar chat the center is always free" — true when chat lived in the sidebar webview, but `editorTabsEnabled()` has been the default for a while (chat itself is an editor tab). In the common single-group layout, the chat tab *is* the active tab in the only group whenever you're looking at it — so that guard fired every single time, and follow silently never opened anything. Not a timing issue, not a setting — it was refusing to run at all. Fixed by redirecting instead of skipping: reuse an existing non-chat editor group if one's already open, otherwise open a new one beside the chat. That new group then naturally becomes the reused target for every subsequent followed file (its own active tab is a real file, not a chat), so this doesn't re-split on every edit — one dedicated group, populated once, reused after.
+
+## 0.0.301
+
+- **Fixed: deleting a chat took a while to actually disappear from the list.** Root cause: `piRpcInternal.deleteSession` deletes the file immediately, but the row only actually vanishes once a full sessions-directory rescan completes and reports the shorter list — and that rescan is deliberately never awaited (blocking the UI on a full directory scan would be worse), so the stale row visibly lingered until it finished in the background. Fixed by hiding it optimistically the instant delete is clicked — we already know it's gone — with a self-healing mechanism: confirmed gone by the real rescan → stop tracking it; still showing after 5 seconds → un-hide it rather than have it vanish from view forever with no explanation if the delete actually failed.
+- **Added: rename a chat from the list** — right-click → Rename…, reusing the existing rename command (same prompt, same behavior as before this list existed). Only shown for chats that have an actual session file — a brand-new, never-saved draft has nothing to write a name into yet.
+
+## 0.0.300
+
+- **Fixed: the list's "which chat is open/active" display went stale after switching focus between already-open tabs.** Root cause, found by reproducing live rather than guessing: VS Code only calls `resolveCustomEditor` once per tab's entire lifetime — switching focus between two tabs that are BOTH already open never re-runs it, so the one place that normally notifies the list of a change (`this.hosts.set/delete`, on open/close) never fires for a focus-only change. The list's active checkmark was frozen at whatever was true the last time a tab was actually opened or closed, not whatever's actually focused now — reported as "multiple sessions opened, but no chat seems to be opened" (the chat *was* open, the list just never learned focus had moved to it). Fixed at the actual point that DOES fire on every focus change (`onDidChangeViewState`/`onDidChangeVisibility`, already wired for other reasons) by notifying the same listeners tab open/close already does.
+- Verified live against a real running VS Code window (not just the test suite): opened a fresh chat, opened a second existing one, confirmed the active checkmark correctly followed which tab was actually focused — including the concrete case that was broken before this fix.
+
+## 0.0.299
+
+- **Fixed: deleting a chat with no session file yet silently did nothing at all.** A brand-new chat that's open but hasn't been saved to a `.jsonl` file yet has no `sessionPath` — the delete action required one and had no fallback, so clicking Delete on a chat like that produced literally no message, no error, nothing. Now falls back to closing the tab directly (there's nothing on disk to remove for a chat that was never saved) via a new `ChatTabManager.closeResource()`. Verified against the real built bundle for all three delete paths (context menu, hover icon, both with and without a session file) — a lesson from the last release: hand-copied reproductions in a test script don't catch what the real bundle does.
+- Caught and fixed a real build break while making that fix: `chatList.ts` (the browser-side list bundle) needed to import a real function from the file shared with the extension host for the first time, which — unlike importing only types, which TypeScript erases before esbuild ever sees them — forced esbuild to bundle that file's own `node:fs`/`node:readline` dependency into a browser-target build, and it failed outright. Split the shared logic into a new `chatListShared.ts` with zero node dependencies; the extension-host-only parts (needing session-file scanning) stay in `chatListData.ts`. Caught by `npm run test:extension`, which builds for real — `npm run gate` (typecheck/lint/unit/integration) never runs the actual bundler, so it can't catch this class of break on its own.
+
+## 0.0.298
+
+- **Fixed: the delete icon was structurally invisible, not just easy to miss.** Real cause, found by testing the actual built bundle (not a hand-reproduced copy in a test script, which is what let this slip through earlier): a global `button { padding: 6px 12px }` reset in `chat.css` applied to the 26×26px delete button too, since nothing there ever overrode it. That squeezed its inner content area down to exactly 2×14px — the icon wasn't hidden, it was being rendered at 2 pixels wide. Every other icon-only button (`⋯`, "New Chat") already explicitly overrides padding; this one never did. Traced with Chrome DevTools Protocol directly against the real `dist/chat.css` (bypasses a `file://` CORS restriction that blocks normal `document.styleSheets` inspection) rather than guessing from computed values alone.
+- **Moved the Chat/Configure/System menu to the native toolbar, next to the mode-flip button** — a real `view/title` submenu now, not built inside the webview. Reuses the exact same 8 commands (so nothing about what's reachable changes), grouped the same way (Chat / Configure / System), only visible in Agentic mode (Chat mode's webview keeps its own in-content `⋯`, avoiding a redundant second one). One honest platform difference worth knowing: native menus don't support text group headers, only visual dividers between groups — VS Code has no API for a labeled section inside a submenu.
+
+## 0.0.297
+
+- **Fixed: the chat list showed a chat as "open" (checkmark, highlighted row) even with zero editor tabs actually open.** Root cause: switching the sidebar from Chat mode to Agentic mode reuses the SAME WebviewView VS Code already resolved — it doesn't tear it down and hand back a fresh one, and VS Code never fires a view's dispose event just because its content was reassigned to something else. The old Chat-mode host (bound to whatever chat was last shown there) stayed registered as "open" forever after that, with no tab or view anywhere actually representing it — because nothing ever explicitly told it to let go. Fixed by having each mode-switch direction explicitly release whichever host owned the view before switching to the other. Also closes a related gap in the same spot: `webview.onDidReceiveMessage` supports multiple independent subscribers rather than replacing a previous one, so without this fix a second, unrelated mode-switch could have left two message listeners answering the same webview at once.
+
+## 0.0.296
+
+- **"Different model…" now shows the current model name**, matching the composer's own status chip (which shows `model.id` directly) instead of a generic action label — click behavior unchanged, still opens the picker.
+- **Investigated "changing the model doesn't apply, it still uses the old model" with a real Pi CLI, not just code reading.** Wrote a test that spawns the actual `pi` binary, calls `setModel()` to a different provider, confirms `getState()` reflects it, then sends a real `prompt()` and inspects the resulting message events — the API call was genuinely attributed to the newly-selected model, not the old one. The mechanism works correctly. Also traced "Region is missing" to its source: it's an AWS SDK error (confirmed in `@aws-sdk/nested-clients`), specific to Amazon Bedrock's region configuration — not model-specific. If the repeated retries were all Bedrock models (amazon-bedrock sorts early, alphabetically, in the picker), the same error would recur regardless of which specific Bedrock model was picked, because the problem is the provider's region config, not which model. Added defensive checks regardless: `pickChatModel` now catches a `selectModel()` failure and shows it directly instead of leaving the caller to guess why nothing changed, and both this and the fork-and-resend path now compare the resulting model against what was picked and warn if they don't match — turning a theoretical silent mismatch into a visible one if it ever happens.
+- **Fixed: the chat list's delete action was too easy to miss** — it existed (hover-reveal trash icon, shipped in 0.0.294) but hover-only discovery in a sidebar list is easy to never find. Added a right-click context menu per row (Open / Delete) — also replaces the browser's default cut/copy/paste menu, which never made sense on a list of buttons. Caught a real bug before shipping: the reused `.menu-panel` class defaults to `display: none`, only shown inside an *open* `<details>` element — the standalone context menu (not inside one) would have rendered completely invisible without an explicit override. Verified rendering correctly, including the delete item's hover state, with a real screenshot.
+
+## 0.0.295
+
+- **Fixed: opening a chat still visibly reloaded the list.** Real cause, confirmed by reading `RecentSessionService.refresh()` itself: it fires its change event TWICE per call — once with `loading: true`, once with the actual result — and opening a Recent chat calls `refresh()` explicitly. The list was blanking to "Loading chats…" on that intermediate tick even with real rows already on screen, then repainting — which is exactly what read as "the list reloaded". Now only the true first-ever load (before anything has rendered) shows a loading state; every later refresh keeps the current rows on screen until the fresh ones are ready. The decision logic is a pure, directly unit-tested function (`decideSnapshotPush`), with a test that reproduces the exact bug sequence (real data shown → a loading tick arrives → must not push).
+- **Fixed: the Chat/Configure/System menu was missing entirely.** Real cause: it was attached to the tree view's `view/title` menu, which got removed along with the tree view itself in 0.0.294 — an unintentional side effect, not a deliberate cut. Restored inside the list webview itself instead (same `⋯` button pattern, same 8 items, same 3 groups, same wording as the full chat view's own menu) rather than as a native toolbar menu, since the list is now a webview too. Reuses the exact same command allowlist the full chat webview already enforces (`WEBVIEW_COMMAND_ALLOWLIST`, exported and shared, not duplicated) and the same `.menu-panel`/`.menu-group` styling — verified rendering all 8 items correctly with a real headless-browser screenshot before shipping.
+
+## 0.0.294
+
+- **Replaced the native tree view with a real webview for the Agentic Mode chat list — the previous architecture couldn't deliver what was actually being asked for.** Researched this properly rather than asserting it: `vscode.TreeItem.iconPath` does accept custom SVG icons (that part of the earlier claim was wrong), but row spacing and font size come from VS Code's internal list renderer and are never exposed to extensions (verified against VS Code's own `listView.ts`) — and the VS Code team itself has an open issue questioning whether list/tree widgets are the right fit for chat UI at all (`microsoft/vscode#268858`). A webview has none of those ceilings. One small, dedicated bundle (`chatList.ts`, ~3.5KB, separate from the ~2000-line chat runtime) renders the list now; `chat.css`'s existing ember/glass tokens are reused directly, not reinvented.
+- **"New Chat" is a big orange button again**, same ember gradient + glow as the send button, not a toolbar icon.
+- **Icons are consistent now**: exactly two states — a check mark for the active chat, one chat-bubble icon for every other row. The earlier three-icon mix (check / comment-discussion / history) is gone.
+- **Added the missing delete/trash icon** — hover-reveal per row, reuses the existing no-confirmation delete command (unchanged prior decision).
+- **Fixed: switching modes could leave the same chat open in two places at once.** Switching to Chat mode now closes the editor tab for whatever chat was active and shows that same chat in the sidebar (not whatever the sidebar last happened to have); switching to Agentic mode opens the sidebar's current chat as an editor tab instead of leaving it stranded. Scoped to real, saved chats — a brand-new empty draft has nothing worth migrating.
+- List spacing, font size, and row backgrounds are now plain CSS — no more platform ceiling to report.
+
 ## 0.0.293
 
 - **Fixed: clicking a chat still visibly reloaded the list (for real this time).** The 0.0.292 diff-guard compared the fully-rendered list, which includes "5m ago"-style relative-time text — that text can legitimately drift between two calls purely from wall-clock time passing, even when nothing about the actual data changed, which could defeat the comparison. Switched to comparing stable identity (which chats are open, which is active, which session ids are listed) instead of rendered text.

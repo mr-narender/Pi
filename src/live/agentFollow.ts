@@ -7,6 +7,7 @@ import { spawn } from 'node:child_process';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
+import { chooseFollowViewColumn } from './followViewColumn';
 import { predictNextFiles } from './importScan';
 import {
   anchorNeedle,
@@ -450,10 +451,79 @@ export class AgentFollowService implements vscode.Disposable {
     void this.showInSidePane(kind, absolute, chatTitle, args, post);
   }
 
-  /** Zed follow: the CENTER editor area shows the real file π is on — one
-   * preview slot cycling file-to-file, ember glow on the edited region.
-   * Skipped when a π chat tab owns the active group (editor-tab layout keeps
-   * the transcript in front); with the sidebar chat the center is always free. */
+  private isChatTab(tab: vscode.Tab | undefined): boolean {
+    return tab?.input instanceof vscode.TabInputCustom && tab.input.viewType.startsWith('piRpc.');
+  }
+
+  /** Remembers the dedicated follow-files group once created, so every
+   * subsequent call reuses the exact same one. */
+  private followGroupViewColumn: vscode.ViewColumn | undefined;
+  /** In-flight "create the group" work, shared by concurrent callers. */
+  private creatingFollowGroup: Promise<vscode.ViewColumn> | undefined;
+
+  /** Which editor group the followed file should open in. Never REPLACES a
+   * π chat tab in its own group (still the point of the original guard) —
+   * but redirects to a real files group instead of just giving up, which is
+   * what a straight skip amounted to whenever the chat tab owned the only
+   * group open (the common, default single-group layout — see
+   * followViewColumn.ts for the actual story).
+   *
+   * The 'beside' case explicitly creates a group to the RIGHT
+   * (workbench.action.newGroupRight) rather than using
+   * vscode.ViewColumn.Beside, which follows the user's own
+   * workbench.editor.openSideBySideDirection setting — if that's set to
+   * "down" (a real, valid, and fairly common preference for normal file
+   * splitting), Beside would stack the followed-files group under the chat
+   * instead of beside it. The four-region layout this feature implements is
+   * explicitly horizontal — chat and followed files side by side — which is
+   * a property of THIS feature, not something that should follow a setting
+   * that governs unrelated, everyday file splitting.
+   *
+   * act() calls showInSidePane fire-and-forget (never awaited), and the
+   * extended readWithRetry window means several can genuinely be in flight
+   * at once. Deciding fresh from vscode.window.tabGroups on every call is a
+   * real race: two concurrent calls can each see "no files group exists
+   * yet" before either has finished creating one, and each splits its own
+   * — multiple groups, the same file scattered across them, instead of one
+   * shared pane. Caching the column once decided, and sharing the in-flight
+   * creation itself via `creatingFollowGroup`, makes every concurrent
+   * caller converge on the same single group. */
+  private async followTargetViewColumn(): Promise<vscode.ViewColumn> {
+    if (
+      this.followGroupViewColumn !== undefined &&
+      vscode.window.tabGroups.all.some((group) => group.viewColumn === this.followGroupViewColumn)
+    ) {
+      return this.followGroupViewColumn;
+    }
+    const activeGroup = vscode.window.tabGroups.activeTabGroup;
+    const otherGroups = vscode.window.tabGroups.all.filter((group) => group !== activeGroup);
+    const choice = chooseFollowViewColumn(
+      this.isChatTab(activeGroup.activeTab),
+      otherGroups.map((group) => ({ isChatOwned: this.isChatTab(group.activeTab) }))
+    );
+    if (choice.kind === 'active') {
+      return vscode.ViewColumn.Active;
+    }
+    if (choice.kind === 'reuse') {
+      const column = otherGroups[choice.groupIndex]!.viewColumn;
+      this.followGroupViewColumn = column;
+      return column;
+    }
+    if (!this.creatingFollowGroup) {
+      this.creatingFollowGroup = (async () => {
+        await vscode.commands.executeCommand('workbench.action.newGroupRight');
+        const column = vscode.window.tabGroups.activeTabGroup.viewColumn;
+        this.followGroupViewColumn = column;
+        return column;
+      })().finally(() => {
+        this.creatingFollowGroup = undefined;
+      });
+    }
+    return this.creatingFollowGroup;
+  }
+
+  /** Zed follow: a REAL editor group shows the file π is on — persistent
+   * tabs (not a cycling preview slot), ember glow on the edited region. */
   private async showInSidePane(
     kind: 'editing' | 'reading',
     absolute: string,
@@ -461,14 +531,7 @@ export class AgentFollowService implements vscode.Disposable {
     args: string | undefined,
     _post?: (payload: unknown) => void
   ): Promise<void> {
-    const activeTab = vscode.window.tabGroups.activeTabGroup.activeTab;
-    if (
-      activeTab?.input instanceof vscode.TabInputCustom &&
-      activeTab.input.viewType.startsWith('piRpc.')
-    ) {
-      this.logger?.info('[follow] center skipped: a π chat tab is active in this group');
-      return;
-    }
+    const viewColumn = await this.followTargetViewColumn();
     const content = await this.readWithRetry(absolute);
     if (content === undefined) {
       this.logger?.info(`[follow] ${absolute} not on disk after retries`);
@@ -481,7 +544,7 @@ export class AgentFollowService implements vscode.Disposable {
         // slot) so you can flip back through the whole session's files.
         preview: false,
         preserveFocus: true,
-        viewColumn: vscode.ViewColumn.Active,
+        viewColumn,
       });
       this.logger?.info(`[follow] center showing ${absolute}`);
       this.predictAndPrewarm(absolute, doc.languageId);
@@ -564,9 +627,22 @@ export class AgentFollowService implements vscode.Disposable {
     }
   }
 
-  /** Fresh writes land on disk AFTER the tool call streams — retry briefly. */
+  /** Fresh writes land on disk AFTER the tool call streams — retry.
+   *
+   * The ~3s window this used to have (0/800/2200ms) assumed writes land
+   * near-instantly, true WITHOUT piRpc.requireApprovalForEdits — but that
+   * setting gates the actual write behind a human clicking Allow, which can
+   * legitimately take far longer than 3 seconds. Giving up that fast meant
+   * the followed file simply never opened whenever approval gating was on
+   * and the user took a normal amount of time to respond — indistinguishable
+   * from "not working" (this is the reported bug: act() ran, the status bar
+   * updated, but the pane itself gave up before the approved write landed).
+   * ~2 minutes of gradually-backing-off retries costs nothing in the fast,
+   * ungated case (the very first attempt still succeeds immediately) and
+   * gives a real human-approval delay room to actually complete. */
   private async readWithRetry(absolute: string): Promise<string | undefined> {
-    for (const delay of [0, 800, 2200]) {
+    const delays = [0, 300, 700, 1500, 3000, 5000, 8000, 12000, 20000, 30000, 40000];
+    for (const delay of delays) {
       if (delay > 0) {
         await new Promise((resolve) => setTimeout(resolve, delay));
       }

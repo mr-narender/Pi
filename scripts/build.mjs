@@ -45,6 +45,19 @@ await build({
   legalComments: 'none',
 });
 
+// Agentic Mode's chat list — its own small bundle, not the chat.ts runtime.
+await build({
+  entryPoints: ['src/webview/media/chatList.ts'],
+  outfile: 'dist/chatList.js',
+  bundle: true,
+  platform: 'browser',
+  format: 'iife',
+  target: 'es2022',
+  define,
+  sourcemap: false,
+  legalComments: 'none',
+});
+
 if (existsSync('src/webview/media/chat.css')) {
   await copyFile('src/webview/media/chat.css', 'dist/chat.css');
 }

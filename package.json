@@ -2,7 +2,7 @@
   "name": "pi",
   "displayName": "Pi – this one is (y)ours",
   "description": "An unofficial, personal VS Code chat UI for the Pi coding agent (pi.dev). Not affiliated with pi.dev — shared for anyone who wants it.",
-  "version": "0.0.293",
+  "version": "0.1.0",
   "publisher": "mr-narender",
   "license": "MIT",
   "private": true,
@@ -89,15 +89,9 @@
     "views": {
       "piRpc": [
         {
-          "id": "piRpc.openChatList",
-          "name": "Chats",
-          "when": "piRpc.sidebarMode == 'agentic'"
-        },
-        {
           "id": "piRpc.chat",
           "name": "Chat",
-          "type": "webview",
-          "when": "piRpc.sidebarMode == 'chat'"
+          "type": "webview"
         }
       ]
     },
@@ -1152,54 +1146,13 @@
         },
         {
           "command": "piRpc.toggleSidebarMode",
-          "when": "view == piRpc.openChatList || view == piRpc.chat",
+          "when": "view == piRpc.chat",
           "group": "navigation@0"
         },
         {
-          "command": "piRpc.newSession",
-          "when": "view == piRpc.openChatList",
-          "group": "navigation@1",
-          "icon": "$(add)"
-        },
-        {
-          "command": "piRpc.reviewLastTurn",
-          "when": "view == piRpc.openChatList",
-          "group": "1_chat@1"
-        },
-        {
-          "command": "piRpc.showChatVersions",
-          "when": "view == piRpc.openChatList",
-          "group": "1_chat@2"
-        },
-        {
-          "command": "piRpc.exportHtml",
-          "when": "view == piRpc.openChatList",
-          "group": "1_chat@3"
-        },
-        {
-          "command": "piRpc.manageExtensions",
-          "when": "view == piRpc.openChatList",
-          "group": "2_configure@1"
-        },
-        {
-          "command": "piRpc.manageSkills",
-          "when": "view == piRpc.openChatList",
-          "group": "2_configure@2"
-        },
-        {
-          "command": "piRpc.managePrompts",
-          "when": "view == piRpc.openChatList",
-          "group": "2_configure@3"
-        },
-        {
-          "command": "piRpc.manageAgentInstructions",
-          "when": "view == piRpc.openChatList",
-          "group": "2_configure@4"
-        },
-        {
-          "command": "piRpcInternal.restart",
-          "when": "view == piRpc.openChatList",
-          "group": "3_system@1"
+          "submenu": "piRpc.chatListMore",
+          "when": "view == piRpc.chat && piRpc.sidebarMode == 'agentic'",
+          "group": "navigation@1"
         }
       ],
       "editor/title": [
@@ -1331,6 +1284,40 @@
           "command": "piRpc.refactorSelection",
           "group": "1_ask@3"
         }
+      ],
+      "piRpc.chatListMore": [
+        {
+          "command": "piRpc.reviewLastTurn",
+          "group": "1_chat@1"
+        },
+        {
+          "command": "piRpc.showChatVersions",
+          "group": "1_chat@2"
+        },
+        {
+          "command": "piRpc.exportHtml",
+          "group": "1_chat@3"
+        },
+        {
+          "command": "piRpc.manageExtensions",
+          "group": "2_configure@1"
+        },
+        {
+          "command": "piRpc.manageSkills",
+          "group": "2_configure@2"
+        },
+        {
+          "command": "piRpc.managePrompts",
+          "group": "2_configure@3"
+        },
+        {
+          "command": "piRpc.manageAgentInstructions",
+          "group": "2_configure@4"
+        },
+        {
+          "command": "piRpcInternal.restart",
+          "group": "3_system@1"
+        }
       ]
     },
     "keybindings": [
@@ -1367,6 +1354,11 @@
           "light": "media/tab-icon.svg",
           "dark": "media/tab-icon.svg"
         }
+      },
+      {
+        "id": "piRpc.chatListMore",
+        "label": "More",
+        "icon": "$(ellipsis)"
       }
     ]
   },

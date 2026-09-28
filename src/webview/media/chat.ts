@@ -7,10 +7,12 @@ declare function acquireVsCodeApi(): {
 import morphdom from 'morphdom';
 import { deriveScreenChanges } from '../editToolPath';
 import type { WebviewSnapshot } from '../../state/types';
+import { installCustomTooltips } from './customTooltip';
 import {
   COMPOSER_FIELD_ID,
   PREVIEW_DIALOG_ID,
   SEND_BUTTON_ID,
+  escapeHtml,
   focusTargetFromSnapshot,
   nextPreviewTrapTarget,
   planChipRemovalFocus,
@@ -22,6 +24,7 @@ import {
 const vscode = acquireVsCodeApi();
 const root = document.getElementById('app');
 let currentSnapshot: WebviewSnapshot | undefined;
+installCustomTooltips();
 
 // Wiring guard for morphdom: renderNow re-runs the event wiring on every render,
 // but morphdom REUSES DOM nodes, so their listeners persist. bindOnce binds each
@@ -1163,8 +1166,12 @@ function renderNow(snapshot: WebviewSnapshot): void {
       ta.value = original;
       const hint = document.createElement('div');
       hint.className = 'inline-edit-hint';
-      hint.innerHTML =
-        '<span>Enter to save &amp; resend \u00b7 Esc to cancel</span><button type="button" class="inline-edit-model-btn">\ud83d\udd00 Different model\u2026</button>';
+      // Shows the CURRENT model, same as the composer's own status chip
+      // (renderStatusChip: snapshot.model?.id) — was a generic "Different
+      // model…" label, inconsistent with how the rest of the UI always
+      // shows what's actually selected rather than a vague action name.
+      const currentModelId = currentSnapshot?.model?.id ? String(currentSnapshot.model.id) : 'model';
+      hint.innerHTML = `<span>Enter to save &amp; resend \u00b7 Esc to cancel</span><button type="button" class="inline-edit-model-btn" title="Resend with a different model (currently ${escapeHtml(currentModelId)})">\ud83d\udd00 ${escapeHtml(currentModelId)}</button>`;
       editor.append(ta, hint);
 
       const actions = article.querySelector('.msg-actions') as HTMLElement | null;

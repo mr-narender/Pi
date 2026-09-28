@@ -17,7 +17,7 @@ import {
   getDefaultSessionDirForWorkspace,
   readRecentSessionsIndex,
 } from '../../src/sessions/recentSessions';
-import { createOpenChatListModel } from '../../src/ui/trees/sessionSidebarModel';
+import { buildChatListModel } from '../../src/webview/chatListData';
 import {
   ATTACH_TRIGGER_ID,
   PREVIEW_ACCEPT_BUTTON_ID,
@@ -384,7 +384,7 @@ test('reviewer repro 15: malformed session timestamps never surface NaNd ago', a
       workspaceName: 'workspace',
       workspacePath: workspace,
     });
-    const model = createOpenChatListModel({
+    const model = buildChatListModel({
       openChats: [],
       recent: {
         loading: false,
@@ -394,14 +394,12 @@ test('reviewer repro 15: malformed session timestamps never surface NaNd ago', a
       },
       now: Date.UTC(2024, 0, 4, 0, 0, 0),
     });
-    // [0] = "New Chat" action, [1] = the actual session entry under test
-    // (no open chats in this repro, no section header row).
-    const recentNode = model[1];
+    const recentRow = model.rows[0];
 
     assert.equal(index.sessions[0]?.createdAt, fallbackTime.getTime());
     assert.equal(index.sessions[0]?.modifiedAt, fallbackTime.getTime());
-    assert.equal(recentNode?.description, 'workspace · 1d ago');
-    assert.ok(!recentNode?.description?.includes('NaN'));
+    assert.equal(recentRow?.detail, 'workspace · 1d ago');
+    assert.ok(!recentRow?.detail?.includes('NaN'));
   } finally {
     if (previous === undefined) {
       delete process.env.PI_CODING_AGENT_DIR;

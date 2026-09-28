@@ -162,7 +162,28 @@ export async function pickChatModel(
   }
   const provider = String(modelPick.model.provider ?? '');
   const id = String(modelPick.model.id ?? '');
-  await controller.selectModel(provider, id);
+  try {
+    await controller.selectModel(provider, id);
+  } catch (error) {
+    // Surfaced, not swallowed: a caller (e.g. "retry with a different
+    // model") comparing before/after model keys would otherwise have no
+    // idea WHY nothing changed and silently keep the old model.
+    const detail = error instanceof Error ? error.message : String(error);
+    void vscode.window.showErrorMessage(`Pi: couldn't switch to ${provider}/${id} — ${detail}`);
+    return undefined;
+  }
+  // Confirm the switch actually took, rather than assuming selectModel()
+  // resolving means it applied. If the session reports something other
+  // than what was just picked, surface that instead of silently
+  // proceeding as if the pick worked — reported once as "it still uses
+  // the old model" with no visible way to tell whether that was true.
+  const applied = asRecord(controller.snapshot.state.model);
+  const appliedKey = applied ? `${asString(applied.provider)}/${asString(applied.id)}` : undefined;
+  if (appliedKey && appliedKey !== `${provider}/${id}`) {
+    void vscode.window.showWarningMessage(
+      `Pi: asked for ${provider}/${id}, session reports ${appliedKey} — the switch may not have applied.`
+    );
+  }
 
   if (modelPick.model.reasoning) {
     const levelPick = await vscode.window.showQuickPick(
