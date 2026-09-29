@@ -648,10 +648,18 @@ export class ChatTabManager implements vscode.Disposable {
     filePath: string,
     diff: boolean
   ): Promise<void> {
-    const isAbsolute = /^([a-zA-Z]:[\\/]|[\\/])/.test(filePath);
+    // Prose file mentions arrive as "path:line" or "path:line:col"
+    // (linkifyFileMentions in render.ts) — split the suffix off and jump
+    // there. The Windows drive prefix (C:\…) never matches: the line part
+    // requires the colon to be followed by digits AND end the string.
+    const lineMatch = /^(.*?):(\d{1,6})(?::(\d{1,6}))?$/.exec(filePath);
+    const cleanPath = lineMatch ? lineMatch[1]! : filePath;
+    const line = lineMatch ? Number.parseInt(lineMatch[2]!, 10) : undefined;
+    const column = lineMatch?.[3] ? Number.parseInt(lineMatch[3], 10) : undefined;
+    const isAbsolute = /^([a-zA-Z]:[\\/]|[\\/])/.test(cleanPath);
     const target = isAbsolute
-      ? vscode.Uri.file(filePath)
-      : vscode.Uri.joinPath(context.controller.folder.uri, filePath);
+      ? vscode.Uri.file(cleanPath)
+      : vscode.Uri.joinPath(context.controller.folder.uri, cleanPath);
     if (diff) {
       try {
         await vscode.commands.executeCommand('git.openChange', target);
@@ -661,9 +669,18 @@ export class ChatTabManager implements vscode.Disposable {
       }
     }
     try {
-      await vscode.window.showTextDocument(target, { preview: !diff });
+      const selection =
+        line !== undefined
+          ? new vscode.Range(
+              Math.max(0, line - 1),
+              Math.max(0, (column ?? 1) - 1),
+              Math.max(0, line - 1),
+              Math.max(0, (column ?? 1) - 1)
+            )
+          : undefined;
+      await vscode.window.showTextDocument(target, { preview: !diff, selection });
     } catch {
-      void vscode.window.showWarningMessage(`Could not open ${filePath}.`);
+      void vscode.window.showWarningMessage(`Could not open ${cleanPath}.`);
     }
   }
 

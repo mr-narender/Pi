@@ -3011,6 +3011,18 @@ button.ghost:hover,
   gap: 6px;
 }
 
+/* Clickable file mentions in prose (linkifyFileMentions) — same delegated
+ * [data-file-open] wiring as the tool-card buttons. */
+.file-link {
+  cursor: pointer;
+}
+
+code.inline-code.file-link:hover,
+a.md-link.file-link:hover {
+  text-decoration: underline;
+  color: var(--vscode-textLink-activeForeground, var(--vscode-textLink-foreground));
+}
+
 .chat-list-search {
   width: 100%;
   padding: 7px 10px;

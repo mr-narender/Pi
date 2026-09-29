@@ -607,7 +607,43 @@ function renderInlineMarkdown(text: string): string {
   html = html.replace(/(?<![\w_])_(?!\s)([^\n_]+?)_(?![\w_])/g, '<em>$1</em>');
   // Strikethrough ~~text~~ (GFM).
   html = html.replace(/~~(?!\s)([^\n~]+?)~~/g, '<del>$1</del>');
-  return html;
+  return linkifyFileMentions(html);
+}
+
+// A workspace-relative path with an extension, at least one slash, and an
+// optional :line(:col) suffix — the shape agents write constantly ("see
+// `src/webview/render.ts:611`"). Deliberately strict (slash + extension
+// required) so plain prose like "3:1" or npm names never match.
+const FILE_MENTION = /(?:[\w.@-]+\/)+[\w.@-]+\.\w{1,8}(?::\d{1,6}(?::\d{1,6})?)?/;
+const CODE_SPAN_FILE_RE = new RegExp(
+  `<code class="inline-code">(${FILE_MENTION.source})</code>`,
+  'g'
+);
+// Bare (un-backticked) mentions must carry :line — higher precision, since
+// prose contains many harmless path-shaped fragments. Preceded by start/
+// whitespace/paren (never a quote → can't match inside a tag attribute;
+// same guard the bare-URL autolink pass above relies on).
+const BARE_FILE_RE = new RegExp(
+  `(^|[\\s(])((?:[\\w.@-]+\\/)+[\\w.@-]+\\.\\w{1,8}:\\d{1,6}(?::\\d{1,6})?)(?=$|[\\s).,;:!?])`,
+  'gm'
+);
+
+/** Make file mentions in prose clickable — backticked paths (with or
+ * without :line) and bare path:line tokens become [data-file-open] targets,
+ * handled by the SAME delegated click wiring as the tool-card "Open file"
+ * buttons. Exported for unit tests. */
+export function linkifyFileMentions(html: string): string {
+  let out = html.replace(
+    CODE_SPAN_FILE_RE,
+    (_m, path: string) =>
+      `<code class="inline-code file-link" data-file-open="${path}" title="Open ${path}">${path}</code>`
+  );
+  out = out.replace(
+    BARE_FILE_RE,
+    (_m, pre: string, path: string) =>
+      `${pre}<a class="md-link file-link" data-file-open="${path}" title="Open ${path}">${path}</a>`
+  );
+  return out;
 }
 
 // --- lists (nested + GFM task lists) --------------------------------------
