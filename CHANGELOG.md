@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.1 — Alpha 3 hotfix
+
+- **Pasted images now show a visible thumbnail in the composer.** The preview
+  existed but was hidden until you expanded the chip — reported from live
+  testing ("I don't see pasted image preview in the input box"). The chip row
+  itself now carries a mini thumbnail; click still expands the full preview.
+
 ## 0.2.0 — Alpha 3 (UI quality-of-life, tested end-to-end)
 
 Five stages, each landed behind the full gate (typecheck + lint + 412 unit +

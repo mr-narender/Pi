@@ -1315,7 +1315,7 @@ function renderImageChip(snapshot: WebviewSnapshot): string {
       (item) => `
         <div class="chip-shell" role="listitem" data-chip-id="${escapeHtml(item.itemId)}" data-chip-kind="image">
           <details class="chip-details${item.requiresReselect ? ' chip-stale' : ''}">
-            <summary>${escapeHtml(item.requiresReselect ? `Reselect image: ${item.name}` : `Image: ${item.name}`)}</summary>
+            <summary>${item.previewDataUrl && !item.requiresReselect ? `<img class="chip-thumb" src="${escapeHtml(item.previewDataUrl)}" alt="" aria-hidden="true" />` : ''}${escapeHtml(item.requiresReselect ? `Reselect image: ${item.name}` : `Image: ${item.name}`)}</summary>
             <div class="detail-stack">
               <div class="muted">${escapeHtml(item.mimeType)} · ${item.sizeBytes} bytes</div>
               <div class="muted">Local image · sent on next message only</div>
