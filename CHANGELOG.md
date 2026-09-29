@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.2.0 — Alpha 3 (UI quality-of-life, tested end-to-end)
+
+Five stages, each landed behind the full gate (typecheck + lint + 412 unit +
+integration + extension-host suite) with zero regressions against the 381-test
+baseline. UI-only by principle: the extension renders what pi already knows —
+nothing agentic was bolted on.
+
+- **Golden-snapshot net for the chat list.** Every chat-list row state (active,
+  favorite, draft, hostile-input escaping, loading/error/empty, full shell) is
+  now pinned as golden HTML — the 0.1.0 name-squeeze class of regression fails
+  the gate instead of shipping.
+- **Chat list: search, keyboard, live times.** A search box filters your FULL
+  history (not just the visible 20) plus open chats; rows are keyboard-first
+  (↑↓/Home/End/Enter, focus rings, real listbox semantics); “5m ago” now
+  refreshes by itself — timestamps are painted client-side and repaint every
+  minute.
+- **Paste previews in the composer.** Pasting big text becomes a
+  “Pasted text · N lines” chip with click-to-expand preview instead of
+  flooding the input (small pastes stay ordinary text); pasting file URIs
+  attaches them like drag-drop; pasted images keep their thumbnails.
+- **Clickable file:line mentions.** Backticked paths and bare `path.ts:123`
+  mentions in any assistant message open the file at that line — same wiring
+  as the tool-card “Open file” buttons.
+- **Context gauge + session-size warnings.** The status chip's context %
+  turns amber at 70% and red at 85% (“context N% full” on hover); chat-list
+  rows warn (⚠ 113 MB) when a session file crosses 50 MB — oversized sessions
+  are visible weeks before they refuse to resume.
+- **Auto-compaction defaults to 75%.** `piRpc.autoCompact.percent` (still
+  configurable, `piRpc.autoCompact.mode` to disable) now defaults to 75 —
+  matching pi's own compaction reserve so compaction always has room to run.
+- **Test infrastructure:** the extension-host suite now launches its fixture
+  workspace with trust pre-granted (`--disable-workspace-trust`), so
+  trust-gated paths are exercised for real.
+
 ## 0.1.1 — Alpha 2 (chat list polish)
 
 - **Names get the full row width again.** 0.1.0's hover action strip reserved

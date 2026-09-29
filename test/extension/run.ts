@@ -10,7 +10,11 @@ async function main(): Promise<void> {
   await runTests({
     extensionDevelopmentPath,
     extensionTestsPath,
-    launchArgs: [testWorkspace, '--disable-extensions'],
+    // --disable-workspace-trust: the fixture workspace opens fully TRUSTED
+    // (the trust service reports isTrusted=true when the feature is off),
+    // so trust-gated paths (context-item revalidation, activation) run for
+    // real instead of silently testing the restricted mode.
+    launchArgs: [testWorkspace, '--disable-extensions', '--disable-workspace-trust'],
   });
 }
 
