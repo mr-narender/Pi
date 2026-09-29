@@ -54,19 +54,90 @@ const ROW_ACTIONS: Record<string, (row: ChatListRow) => void> = {
 };
 
 let currentModel: ChatListModel = { rows: [], loading: true };
+let filterText = '';
+let filterDebounce: ReturnType<typeof setTimeout> | undefined;
+
+function rowElements(): HTMLElement[] {
+  return Array.from(document.querySelectorAll<HTMLElement>('.chat-list-row'));
+}
+
+function focusRow(delta: number): void {
+  const rowEls = rowElements();
+  if (rowEls.length === 0) {
+    return;
+  }
+  const current = rowEls.indexOf(document.activeElement as HTMLElement);
+  const next =
+    current === -1
+      ? delta > 0
+        ? 0
+        : rowEls.length - 1
+      : Math.max(0, Math.min(rowEls.length - 1, current + delta));
+  rowEls[next]?.focus();
+}
 
 function render(): void {
+  // innerHTML replacement nukes focus and the search input's caret —
+  // capture and restore both so background snapshot pushes never eat a
+  // keystroke mid-typing or drop keyboard-navigation focus.
+  const activeId = (document.activeElement as HTMLElement | null)?.dataset?.id;
+  const searchEl = document.getElementById('chat-list-search') as HTMLInputElement | null;
+  const searchHadFocus = document.activeElement === searchEl;
+  const caret = searchHadFocus ? searchEl?.selectionStart ?? null : null;
+
   // All markup comes from chatListRowHtml.ts (pure, golden-tested) — this
   // file only wires events onto it.
-  app.innerHTML = renderChatListShell(renderChatListBody(currentModel));
+  app.innerHTML = renderChatListShell(
+    renderChatListBody(currentModel, { filterActive: filterText.trim().length > 0 }),
+    filterText
+  );
 
   document.getElementById('new-chat-btn')?.addEventListener('click', () => {
     vscode.postMessage({ type: 'newChat' });
   });
 
+  const search = document.getElementById('chat-list-search') as HTMLInputElement | null;
+  search?.addEventListener('input', () => {
+    filterText = search.value;
+    if (filterDebounce) {
+      clearTimeout(filterDebounce);
+    }
+    // Local repaint now (empty-state message + input value are webview
+    // state); host round-trip debounced — it re-filters the full history,
+    // not just the visible rows.
+    filterDebounce = setTimeout(() => {
+      vscode.postMessage({ type: 'filterChats', text: filterText });
+    }, 150);
+  });
+  search?.addEventListener('keydown', (event: KeyboardEvent) => {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      rowElements()[0]?.focus();
+    } else if (event.key === 'Escape' && filterText) {
+      event.stopPropagation();
+      filterText = '';
+      vscode.postMessage({ type: 'filterChats', text: '' });
+      render();
+      (document.getElementById('chat-list-search') as HTMLInputElement | null)?.focus();
+    }
+  });
+
+  if (searchHadFocus && search) {
+    search.focus();
+    if (caret !== null) {
+      search.setSelectionRange(caret, caret);
+    }
+  }
+
   for (const row of currentModel.rows) {
-    const el = document.querySelector(`[data-id="${row.id.replace(/"/g, '\\"')}"]`);
+    const el = document.querySelector<HTMLElement>(`[data-id="${row.id.replace(/"/g, '\\"')}"]`);
     el?.addEventListener('click', () => openChat(row));
+    el?.addEventListener('keydown', (event: KeyboardEvent) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        openChat(row);
+      }
+    });
     const actionButtons = el
       ? Array.from(el.querySelectorAll<HTMLElement>('.chat-list-row-action[data-act]'))
       : [];
@@ -80,7 +151,31 @@ function render(): void {
       }
     }
   }
+
+  if (activeId) {
+    document.querySelector<HTMLElement>(`[data-id="${activeId.replace(/"/g, '\\"')}"]`)?.focus();
+  }
 }
+
+// Arrow-key navigation over the whole list (delegated — survives re-renders).
+document.addEventListener('keydown', (event) => {
+  const target = event.target as HTMLElement | null;
+  if (target?.id === 'chat-list-search') {
+    return; // the input has its own handler (ArrowDown hands off to rows)
+  }
+  if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+    if (target?.classList.contains('chat-list-row')) {
+      event.preventDefault();
+      focusRow(event.key === 'ArrowDown' ? 1 : -1);
+    }
+  } else if (event.key === 'Home' && target?.classList.contains('chat-list-row')) {
+    event.preventDefault();
+    rowElements()[0]?.focus();
+  } else if (event.key === 'End' && target?.classList.contains('chat-list-row')) {
+    event.preventDefault();
+    rowElements().at(-1)?.focus();
+  }
+});
 
 window.addEventListener('message', (event) => {
   const message = event.data as { type?: string; model?: ChatListModel };
@@ -89,6 +184,14 @@ window.addEventListener('message', (event) => {
     render();
   }
 });
+
+// Keep "5m ago" fresh: relative time is formatted at paint time from
+// row.modifiedAt, so a periodic repaint is all it takes — no host push.
+setInterval(() => {
+  if (!currentModel.loading && currentModel.rows.some((row) => row.modifiedAt)) {
+    render();
+  }
+}, 60_000);
 
 render();
 vscode.postMessage({ type: 'requestListSnapshot' });

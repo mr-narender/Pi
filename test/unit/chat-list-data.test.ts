@@ -296,3 +296,58 @@ test('buildChatListModel: a favorited recent survives the 20-row cap', () => {
   assert.deepEqual(model.rows[0] && [model.rows[0].title, model.rows[0].favorite], ['Chat 24', true]);
   assert.equal(model.rows[1]?.title, 'Chat 0');
 });
+
+test('buildChatListModel: recents carry raw modifiedAt + label-only detail (renderer owns time text)', () => {
+  const model = buildChatListModel({
+    openChats: [],
+    recent: {
+      ...baseRecent,
+      items: [
+        { id: '1', path: '/s/a.jsonl', modifiedAt: 1234, createdAt: 1000, workspaceLabel: 'ws' } as never,
+      ],
+    },
+  });
+  assert.equal(model.rows[0]?.detail, 'ws');
+  assert.equal(model.rows[0]?.modifiedAt, 1234);
+});
+
+test('buildChatListModel: filterText hides non-matching OPEN rows by their displayed title', () => {
+  const model = buildChatListModel({
+    openChats: [
+      { resource: 'a', title: 'Session 9', active: true, sessionFile: '/s/a.jsonl' },
+      { resource: 'b', title: 'deploy pipeline chat', active: false, sessionFile: '/s/b.jsonl' },
+    ],
+    recent: {
+      ...baseRecent,
+      filterText: 'login',
+      items: [
+        {
+          id: '1',
+          path: '/s/a.jsonl',
+          modifiedAt: 100,
+          createdAt: 100,
+          sessionName: 'Session 9',
+          displayName: 'Session 9',
+          firstPromptPreview: 'fix the login redirect',
+        } as never,
+      ],
+    },
+  });
+  // Open row 'a' displays the preview ("fix the login redirect") → matches.
+  // Open row 'b' ("deploy pipeline chat") does not.
+  assert.deepEqual(
+    model.rows.map((r) => r.title),
+    ['fix the login redirect']
+  );
+});
+
+test('buildChatListModel: empty filterText leaves every open row visible', () => {
+  const model = buildChatListModel({
+    openChats: [
+      { resource: 'a', title: 'Alpha', active: false },
+      { resource: 'b', title: 'Beta', active: true },
+    ],
+    recent: baseRecent,
+  });
+  assert.equal(model.rows.length, 2);
+});

@@ -1,4 +1,4 @@
-import { formatRelativeTimestamp, type RecentSessionRecord } from '../sessions/recentSessions';
+import type { RecentSessionRecord } from '../sessions/recentSessions';
 import type { RecentSessionsState } from '../sessions/recentSessionService';
 import type { ChatListModel, ChatListRow } from './chatListShared';
 
@@ -82,6 +82,11 @@ export function buildChatListModel(input: ChatListInput): ChatListModel {
     // Same "known timestamp" rule as recentSessions.ts (finite and > 0).
     return t !== undefined && Number.isFinite(t) && t > 0 ? t : Number.MAX_SAFE_INTEGER;
   };
+  // Search filter: the recents in input.recent.items arrive PRE-filtered by
+  // RecentSessionService (setFilter → filterRecentSessions over name/preview/
+  // workspace/model/id), so only the open block needs filtering here — by
+  // the same title the row will actually display.
+  const query = input.recent.filterText.trim().toLowerCase();
   const sortedOpenChats = [...input.openChats].sort(
     (a, b) =>
       favoriteRank(b.sessionFile) - favoriteRank(a.sessionFile) ||
@@ -93,9 +98,14 @@ export function buildChatListModel(input: ChatListInput): ChatListModel {
     // the record can't produce anything better.
     const record = chat.sessionFile ? recordBySessionPath.get(chat.sessionFile) : undefined;
     const resolved = record ? sessionDisplayName(record) : undefined;
+    const title = resolved && resolved !== 'Untitled chat' ? resolved : chat.title;
+    if (query && !title.toLowerCase().includes(query)) {
+      continue;
+    }
     rows.push({
       id: `open:${chat.resource}`,
-      title: resolved && resolved !== 'Untitled chat' ? resolved : chat.title,
+      title,
+      modifiedAt: record?.modifiedAt,
       active: chat.active,
       isOpen: true,
       favorite: favoriteRank(chat.sessionFile) === 1,
@@ -111,7 +121,6 @@ export function buildChatListModel(input: ChatListInput): ChatListModel {
     return { rows, loading: false, error: input.recent.error };
   }
 
-  const now = input.now ?? Date.now();
   const openSessionFiles = new Set(
     input.openChats.map((chat) => chat.sessionFile).filter((path): path is string => Boolean(path))
   );
@@ -124,13 +133,13 @@ export function buildChatListModel(input: ChatListInput): ChatListModel {
     .slice(0, 20);
   for (const session of visibleRecents) {
     const title = sessionDisplayName(session);
-    const detail = [session.workspaceLabel, formatRelativeTimestamp(session.modifiedAt, now)]
-      .filter(Boolean)
-      .join(' · ');
     rows.push({
       id: `recent:${session.id}`,
       title,
-      detail,
+      // Relative time is NOT baked in here — the renderer formats
+      // modifiedAt at paint time so "5m ago" can refresh client-side.
+      detail: session.workspaceLabel || undefined,
+      modifiedAt: session.modifiedAt,
       active: false,
       isOpen: false,
       favorite: favoriteRank(session.path) === 1,

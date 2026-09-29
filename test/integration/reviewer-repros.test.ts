@@ -11,6 +11,7 @@ import { RpcClient } from '../../src/rpc/client';
 import { createInitialControllerState } from '../../src/state/types';
 import { reduceEvent, reduceExtensionUiRequest } from '../../src/state/reducer';
 import { createRedactedDiagnosticsExport } from '../../src/diagnostics/export';
+import { renderChatListRow } from '../../src/webview/chatListRowHtml';
 import { parseWebviewMessage } from '../../src/webview/messages';
 import { canonicalizeSessionPath } from '../../src/sessions/paths';
 import {
@@ -398,8 +399,14 @@ test('reviewer repro 15: malformed session timestamps never surface NaNd ago', a
 
     assert.equal(index.sessions[0]?.createdAt, fallbackTime.getTime());
     assert.equal(index.sessions[0]?.modifiedAt, fallbackTime.getTime());
-    assert.equal(recentRow?.detail, 'workspace · 1d ago');
-    assert.ok(!recentRow?.detail?.includes('NaN'));
+    // Contract change (stage C): the model carries the raw timestamp and a
+    // label-only detail; the RENDERER composes "workspace · 1d ago" at paint
+    // time so it can refresh client-side. Assert the full painted pipeline.
+    assert.equal(recentRow?.detail, 'workspace');
+    assert.equal(recentRow?.modifiedAt, fallbackTime.getTime());
+    const painted = renderChatListRow(recentRow!, Date.UTC(2024, 0, 4, 0, 0, 0));
+    assert.ok(painted.includes('workspace · 1d ago'), `painted detail missing: ${painted}`);
+    assert.ok(!painted.includes('NaN'));
   } finally {
     if (previous === undefined) {
       delete process.env.PI_CODING_AGENT_DIR;

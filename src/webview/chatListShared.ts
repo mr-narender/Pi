@@ -19,6 +19,12 @@ export interface ChatListRow {
   id: string;
   title: string;
   detail?: string;
+  /** Last-activity epoch ms. The RENDERER turns this into "5m ago" at paint
+   * time (and repaints on an interval) — the host must NOT bake relative
+   * time into `detail`, or the text goes stale between snapshots. Kept OUT
+   * of the snapshot identity for the same reason detail's old timestamp
+   * was: the active session's file mtime moves constantly. */
+  modifiedAt?: number;
   active: boolean;
   isOpen: boolean;
   /** Starred by the user (hover star icon); favorites float to the top of
@@ -55,6 +61,35 @@ export function buildDeleteMessage(row: ChatListRow): DeleteChatMessage | undefi
     return { type: 'deleteChat', resource: row.openCommand.resource };
   }
   return undefined;
+}
+
+const UNKNOWN_RELATIVE_TIME = 'Unknown';
+
+/** Browser-safe relative-time formatter — canonical home (the webview bundle
+ * must render timestamps itself so they can refresh without a host push).
+ * recentSessions.ts re-exports this as formatRelativeTimestamp for the
+ * node-side consumers. */
+export function formatRelativeTime(value: number, now = Date.now()): string {
+  if (!Number.isFinite(value) || value <= 0 || !Number.isFinite(now)) {
+    return UNKNOWN_RELATIVE_TIME;
+  }
+  const delta = Math.max(0, now - value);
+  if (!Number.isFinite(delta)) {
+    return UNKNOWN_RELATIVE_TIME;
+  }
+  const minute = 60_000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+  if (delta < minute) {
+    return 'just now';
+  }
+  if (delta < hour) {
+    return `${Math.floor(delta / minute)}m ago`;
+  }
+  if (delta < day) {
+    return `${Math.floor(delta / hour)}h ago`;
+  }
+  return `${Math.floor(delta / day)}d ago`;
 }
 
 export interface PendingDeletion {

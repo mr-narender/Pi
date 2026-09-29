@@ -152,6 +152,13 @@ export class AgenticChatListHost implements vscode.Disposable {
         }
         return;
       }
+      case 'filterChats': {
+        // Full-history search: RecentSessionService applies the filter over
+        // name/preview/workspace/model/id BEFORE our 20-row cap, and fires
+        // its change event → scheduleRefresh → push. Empty text clears.
+        this.recentSessions.setFilter(this.folder, asString(record.text) ?? '');
+        return;
+      }
       case 'toggleFavoriteChat': {
         const sessionPath = asString(record.sessionPath);
         if (sessionPath) {

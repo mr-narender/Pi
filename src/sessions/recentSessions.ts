@@ -16,7 +16,6 @@ const MAX_PROMPT_CHARS = 96;
 const CONTROL_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g;
 const MIN_PLAUSIBLE_TIMESTAMP_MS = Date.UTC(2000, 0, 1);
 const MAX_FUTURE_SKEW_MS = 5 * 60_000;
-const UNKNOWN_RELATIVE_TIMESTAMP = 'Unknown';
 
 export interface SessionWorkspaceContext {
   workspaceName: string;
@@ -597,25 +596,7 @@ export function filterRecentSessions(
   );
 }
 
-export function formatRelativeTimestamp(value: number, now = Date.now()): string {
-  if (!Number.isFinite(value) || value <= 0 || !Number.isFinite(now)) {
-    return UNKNOWN_RELATIVE_TIMESTAMP;
-  }
-  const delta = Math.max(0, now - value);
-  if (!Number.isFinite(delta)) {
-    return UNKNOWN_RELATIVE_TIMESTAMP;
-  }
-  const minute = 60_000;
-  const hour = 60 * minute;
-  const day = 24 * hour;
-  if (delta < minute) {
-    return 'just now';
-  }
-  if (delta < hour) {
-    return `${Math.floor(delta / minute)}m ago`;
-  }
-  if (delta < day) {
-    return `${Math.floor(delta / hour)}h ago`;
-  }
-  return `${Math.floor(delta / day)}d ago`;
-}
+// Canonical implementation moved to webview/chatListShared.ts (browser-safe)
+// so the chat-list webview can re-render "5m ago" on an interval without a
+// host push; re-exported here to keep this module's existing public API.
+export { formatRelativeTime as formatRelativeTimestamp } from '../webview/chatListShared';

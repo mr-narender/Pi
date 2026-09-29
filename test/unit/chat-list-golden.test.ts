@@ -60,10 +60,15 @@ test('golden: chat-list row — active open chat', () => {
   );
 });
 
-test('golden: chat-list row — favorite with detail (badge + filled star)', () => {
+const NOW = Date.UTC(2024, 0, 4, 12, 0, 0);
+
+test('golden: chat-list row — favorite with detail (badge + filled star + paint-time "5m ago")', () => {
   checkGolden(
     'chat-list-row-favorite',
-    renderChatListRow(row({ favorite: true, detail: 'workspace · 5m ago' }))
+    renderChatListRow(
+      row({ favorite: true, detail: 'workspace', modifiedAt: NOW - 5 * 60_000 }),
+      NOW
+    )
   );
 });
 
@@ -88,8 +93,10 @@ test('golden: chat-list row — hostile title is escaped everywhere it appears',
     renderChatListRow(
       row({
         title: `<img src=x onerror=alert(1)> & "quoted" 'single'`,
-        detail: '<b>ws</b> · 1m ago',
-      })
+        detail: '<b>ws</b>',
+        modifiedAt: NOW - 60_000,
+      }),
+      NOW
     )
   );
 });
@@ -103,15 +110,39 @@ test('golden: chat-list body — loading / error / empty states', () => {
   checkGolden('chat-list-body-empty', renderChatListBody({ rows: [], loading: false }));
 });
 
-test('golden: chat-list shell wrapping a populated body', () => {
-  const body = renderChatListBody({
-    rows: [
-      row({ id: 'open:pi-chat://one', title: 'OpenChat', active: true, isOpen: true }),
-      row({ favorite: true, detail: 'workspace · 2h ago' }),
-    ],
-    loading: false,
-  });
+test('golden: chat-list shell wrapping a populated body (with search box)', () => {
+  const body = renderChatListBody(
+    {
+      rows: [
+        row({ id: 'open:pi-chat://one', title: 'OpenChat', active: true, isOpen: true }),
+        row({ favorite: true, detail: 'workspace', modifiedAt: NOW - 2 * 60 * 60_000 }),
+      ],
+      loading: false,
+    },
+    { now: NOW }
+  );
   checkGolden('chat-list-shell-populated', renderChatListShell(body));
+});
+
+test('golden: chat-list body — empty while a search filter is active', () => {
+  checkGolden(
+    'chat-list-body-filtered-empty',
+    renderChatListBody({ rows: [], loading: false }, { filterActive: true })
+  );
+});
+
+test('chat-list shell: filter text is escaped into the search input value', () => {
+  const html = renderChatListShell('<div></div>', `"><script>alert(1)</script>`);
+  assert.ok(!html.includes('<script>'), 'raw script must not appear');
+  assert.ok(html.includes('value="&quot;&gt;&lt;script&gt;'), 'escaped value expected');
+});
+
+test('chat-list row: stale/invalid modifiedAt renders no time fragment at all', () => {
+  const nan = renderChatListRow(row({ detail: 'workspace', modifiedAt: Number.NaN }), NOW);
+  assert.ok(!nan.includes('NaN') && !nan.includes('Unknown'));
+  assert.ok(nan.includes('>workspace<'), 'label alone survives');
+  const zero = renderChatListRow(row({ modifiedAt: 0 }), NOW);
+  assert.ok(!zero.includes('chat-list-row-detail'), 'no detail span when nothing to show');
 });
 
 test('chat-list row: hover strip carries exactly the expected actions in order', () => {
