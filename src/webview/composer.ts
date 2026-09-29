@@ -338,6 +338,34 @@ export function buildSendPreview(
   };
 }
 
+export interface BeginSendResult {
+  preview: SendPreviewState;
+  accepted: AcceptedSendSnapshot;
+}
+
+/**
+ * Atomically begin a send: capture the outgoing message (preview + accepted
+ * snapshot) and clear the composer — draft, context chips, AND image chips —
+ * in one step, so nothing sent ever lingers into the next message. Throws
+ * without mutating state when there is nothing to send.
+ */
+export function beginSend(
+  command: 'prompt' | 'follow_up' | 'steer',
+  state: ComposerSessionState
+): BeginSendResult {
+  const preview = buildSendPreview(command, state); // throws before any mutation
+  const accepted = acceptedSnapshotFromPreview(preview, state.pendingContextItems);
+  state.draft = '';
+  state.pendingContextItems = [];
+  state.pendingImages = [];
+  state.preview = undefined;
+  state.recovery = undefined;
+  state.acceptedSendSnapshot = accepted;
+  state.composerResetSeq = (state.composerResetSeq ?? 0) + 1;
+  state.focus = 'composer';
+  return { preview, accepted };
+}
+
 export function acceptedSnapshotFromPreview(
   preview: SendPreviewState,
   contextItems: PendingContextItem[]
@@ -426,66 +454,7 @@ export function chipPrivacyLabel(item: PendingContextItem): string {
   }
 }
 
-let pastedTextSeq = 0;
-
-/** Turn a big paste into a self-contained context item. No file behind it —
- * the bounded content lives in the persisted ref itself, so restore never
- * needs disk access and the item can never go stale. Content is trimmed to
- * the same FILE bounds the send-envelope enforces, so capture can never
- * produce an item that send later rejects as too large. Lives here (not
- * attachmentCapture.ts) because it is fully pure — no vscode dependency. */
-export function capturePastedText(
-  workspaceFolder: string,
-  text: string
-): PendingContextItem | undefined {
-  const normalized = normalizeCapturedText(text);
-  if (!normalized.trim()) {
-    return undefined;
-  }
-  const content = boundFileContent(normalized);
-  const lines = content.split('\n').length;
-  pastedTextSeq += 1;
-  const label = `Pasted text ${pastedTextSeq}`;
-  return {
-    kind: 'pastedText',
-    itemId: `paste-${Date.now().toString(36)}-${pastedTextSeq}`,
-    workspaceFolder,
-    workspaceRelativePath: label,
-    lineStart: 1,
-    lineEnd: lines,
-    languageId: 'plaintext',
-    sanitizedContent: content,
-    capturedAt: new Date().toISOString(),
-    persistedRef: {
-      workspaceRelativePath: label,
-      lineStart: 1,
-      lineEnd: lines,
-      languageId: 'plaintext',
-      contentFingerprint: fingerprint(content),
-      content,
-    },
-  };
-}
-
-export const PASTE_CHIP_MIN_CHARS = 1500;
-export const PASTE_CHIP_MIN_LINES = 15;
-
-/** Big pastes become a preview-able chip instead of flooding the textarea
- * (Claude Code / Cursor behavior); small pastes stay ordinary text. The
- * thresholds are deliberately conservative — a chip you didn't expect is
- * worse than a long paste you did. */
-export function shouldAttachPastedText(text: string): boolean {
-  if (text.length >= PASTE_CHIP_MIN_CHARS) {
-    return true;
-  }
-  let lines = 1;
-  for (let index = 0; index < text.length; index += 1) {
-    if (text.charCodeAt(index) === 10) {
-      lines += 1;
-      if (lines >= PASTE_CHIP_MIN_LINES) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
+// NOTE: text pastes deliberately stay plain text in the composer (no
+// "pastedText" chip capture). The 'pastedText' PendingContextItem kind and its
+// persisted-ref handling remain for restoring chips persisted by older
+// versions — they render, remove, and send fine; we just never create new ones.

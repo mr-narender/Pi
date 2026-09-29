@@ -1087,12 +1087,19 @@
             "off"
           ],
           "enumDescriptions": [
-            "π's live screen: every file the agent reads or edits opens in a side editor group (one reused preview tab, focus never moves); edited regions glow with chat attribution.",
+            "π's live screen: every file the agent EDITS opens in a side editor group (bounded by piRpc.followMaxTabs, focus never moves); edited regions glow with chat attribution. Reads narrate in the status bar.",
             "Only show live read/edit activity in the status bar.",
             "No live activity."
           ],
           "default": "open",
-          "description": "Follow the agent Zed-style: a side editor shows the file π is reading or editing, live."
+          "description": "Follow the agent Zed-style: a side editor shows the file π is editing, live (reads narrate in the status bar only)."
+        },
+        "piRpc.followMaxTabs": {
+          "type": "number",
+          "default": 10,
+          "minimum": 1,
+          "maximum": 100,
+          "description": "Maximum number of editor tabs the follow pane keeps open. Opening more closes the oldest follow-opened tab — tabs you opened, pinned, edited, or are viewing are never closed."
         },
         "piRpc.sidebarMode": {
           "type": "string",

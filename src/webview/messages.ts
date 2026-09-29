@@ -53,7 +53,6 @@ export type WebviewInboundMessage =
   | { type: 'requestFileMentions'; query: string }
   | { type: 'requestSlashCommands' }
   | { type: 'pasteImage'; data: string; mimeType: string }
-  | { type: 'pasteText'; text: string }
   | { type: 'respondUi'; id: string; value?: string; confirmed?: boolean };
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
@@ -212,10 +211,8 @@ export function parseWebviewMessage(value: unknown): WebviewInboundMessage | und
       return typeof record.data === 'string' && typeof record.mimeType === 'string'
         ? { type: 'pasteImage', data: record.data, mimeType: record.mimeType }
         : undefined;
-    case 'pasteText':
-      return typeof record.text === 'string' && record.text.length > 0
-        ? { type: 'pasteText', text: record.text }
-        : undefined;
+    // 'pasteText' intentionally removed: pasted text stays plain text in the
+    // composer — only images (and file URIs) become chips.
     case 'respondUi': {
       if (typeof record.id !== 'string') {
         return undefined;

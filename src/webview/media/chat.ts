@@ -5,7 +5,6 @@ declare function acquireVsCodeApi(): {
 };
 
 import morphdom from 'morphdom';
-import { shouldAttachPastedText } from '../composer';
 import { deriveScreenChanges } from '../editToolPath';
 import type { WebviewSnapshot } from '../../state/types';
 import { installCustomTooltips } from './customTooltip';
@@ -793,9 +792,9 @@ function renderNow(snapshot: WebviewSnapshot): void {
       }
     });
     // Paste routing: images attach as thumbnail chips; file URIs (copied
-    // from the Explorer / OS) attach via the same path as drag-drop; BIG
-    // text becomes a preview-able "Pasted text" chip instead of flooding
-    // the textarea. Small text pastes stay ordinary text (no preventDefault).
+    // from the Explorer / OS) attach via the same path as drag-drop. Text
+    // pastes of ANY size stay ordinary text in the textarea (no chip, no
+    // preventDefault) — what you paste is what you send.
     bindOnce(textarea, 'paste', (event) => {
       const clipboard = event.clipboardData;
       if (!clipboard) {
@@ -838,11 +837,6 @@ function renderNow(snapshot: WebviewSnapshot): void {
           }
           return;
         }
-      }
-      const text = clipboard.getData('text/plain');
-      if (text && shouldAttachPastedText(text)) {
-        event.preventDefault();
-        vscode.postMessage({ type: 'pasteText', text });
       }
     });
     // #9 — drag a file from the Explorer onto the composer to attach it.
@@ -1198,7 +1192,9 @@ function renderNow(snapshot: WebviewSnapshot): void {
       // (renderStatusChip: snapshot.model?.id) — was a generic "Different
       // model…" label, inconsistent with how the rest of the UI always
       // shows what's actually selected rather than a vague action name.
-      const currentModelId = currentSnapshot?.model?.id ? String(currentSnapshot.model.id) : 'model';
+      const currentModelId = currentSnapshot?.model?.id
+        ? String(currentSnapshot.model.id)
+        : 'model';
       hint.innerHTML = `<span>Enter to save &amp; resend \u00b7 Esc to cancel</span><button type="button" class="inline-edit-model-btn" title="Resend with a different model (currently ${escapeHtml(currentModelId)})">\ud83d\udd00 ${escapeHtml(currentModelId)}</button>`;
       editor.append(ta, hint);
 

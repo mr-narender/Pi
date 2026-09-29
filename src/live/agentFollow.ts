@@ -1,13 +1,15 @@
 // Follow the agent, Zed-style: a SIDE EDITOR acts as π's live screen. Every
-// file the agent reads or edits appears there as it happens — one reused
-// preview tab cycling file-to-file (chat on one side, π's working file on the
-// other), with the edited region glowing ember and hover attribution of WHICH
-// chat did it. Modes (piRpc.followAgent): 'open' (default) | 'status' | 'off'.
+// file the agent EDITS appears there as it happens (chat on one side, π's
+// working file on the other), with the edited region glowing ember and hover
+// attribution of WHICH chat did it. Reads narrate in the status bar only.
+// Tabs the pane opens are bounded by piRpc.followMaxTabs (oldest evicted).
+// Modes (piRpc.followAgent): 'open' (default) | 'status' | 'off'.
 import { spawn } from 'node:child_process';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { chooseFollowViewColumn } from './followViewColumn';
+import { planFollowDelta, planTabEviction } from './followPlan';
 import { predictNextFiles } from './importScan';
 import {
   anchorNeedle,
@@ -29,10 +31,11 @@ export class AgentFollowService implements vscode.Disposable {
   public logger: FollowLogger;
   /** callId → last seen args length: streaming args re-reveal as they grow. */
   private readonly seen = new Map<string, Map<string, number>>();
-  /** When each chat key was first seen — history backfill lands inside this
-   * window; everything after is genuinely live (NO count-based guessing:
-   * fast agents legitimately emit 3–5 calls per streamed snapshot). */
-  private readonly keyBornAt = new Map<string, number>();
+  /** Per chat: messages already scanned — snapshots re-scan only the tail. */
+  private readonly messageHwm = new Map<string, number>();
+  /** Tabs the follow pane itself opened (absolute path → opened-at), oldest
+   * evicted past piRpc.followMaxTabs; user-touched tabs leave this list. */
+  private readonly followOpenedTabs = new Map<string, number>();
   private lastEditCall: string | undefined;
   private lastActivity:
     | {
@@ -118,90 +121,58 @@ export class AgentFollowService implements vscode.Disposable {
       }
     }
     let seen = this.seen.get(key);
+    const seeded = seen !== undefined;
     if (!seen) {
       seen = new Map();
       this.seen.set(key, seen);
-      this.keyBornAt.set(key, Date.now());
-      // First snapshot of a chat = history, not live activity. Mark, don't act.
-      for (const message of snapshot.messages) {
-        for (const block of message.blocks ?? []) {
-          if (block.kind === 'tool' && block.callId) {
-            seen.set(block.callId, (block.args ?? '').length);
-          }
-        }
-      }
-      return;
     }
-    // History backfill (chat switch/reload: empty snapshot, then the full
-    // transcript) lands within moments of the key being born — absorb inside
-    // that grace window. AFTER it, every unseen call is genuinely live and
-    // follows, no matter how many arrive per streamed snapshot (a count
-    // threshold here once swallowed real scaffolding work).
-    const absorbHistory = Date.now() - (this.keyBornAt.get(key) ?? 0) < 1500;
-    if (absorbHistory) {
-      let unseen = 0;
-      for (const message of snapshot.messages) {
-        for (const block of message.blocks ?? []) {
-          if (block.kind === 'tool' && block.callId && !seen.has(block.callId)) {
-            unseen += 1;
-          }
-        }
-      }
-      if (unseen > 0) {
-        this.logger?.info(`[follow] absorbed ${unseen} historical tool calls (grace window)`);
-      }
+    // Structural history detection — no wall clocks. First snapshot, transcript
+    // replacement/shrink, not-busy arrivals, and per-tick bursts are all
+    // history: marked seen, never acted on. Only the transcript tail past the
+    // high-water mark is scanned, so huge resumed sessions cost O(delta)/tick.
+    const plan = planFollowDelta(
+      snapshot.messages,
+      seen,
+      this.messageHwm.get(key) ?? 0,
+      busy === true,
+      seeded
+    );
+    this.messageHwm.set(key, plan.hwm);
+    if (plan.absorbed > 0) {
+      this.logger?.info(`[follow] absorbed ${plan.absorbed} historical tool calls`);
     }
-    for (const message of snapshot.messages) {
-      for (const block of message.blocks ?? []) {
-        if (block.kind !== 'tool' || !block.callId) {
+    for (const candidate of plan.act) {
+      if (candidate.activity.kind === 'editing') {
+        this.lastEditCall = candidate.callId;
+      }
+      this.act(
+        candidate.activity.kind,
+        candidate.activity.path,
+        chatTitle,
+        isActiveChat,
+        workspaceRoot,
+        candidate.args,
+        post,
+        key
+      );
+    }
+    if (isActiveChat && this.mode() === 'open') {
+      for (const growth of plan.grown) {
+        if (growth.callId !== this.lastEditCall) {
           continue;
         }
-        const argsLen = (block.args ?? '').length;
-        const prior = seen.get(block.callId);
-        if (prior === undefined) {
-          seen.set(block.callId, argsLen);
-          if (absorbHistory) {
-            continue;
-          }
-          const activity = toolActivity(block.name, block.args);
-          if (activity) {
-            if (activity.kind === 'editing') {
-              this.lastEditCall = block.callId;
-            }
-            this.act(
-              activity.kind,
-              activity.path,
-              chatTitle,
-              isActiveChat,
-              workspaceRoot,
-              block.args,
-              post,
-              key
-            );
-          }
-        } else if (
-          argsLen > prior &&
-          block.callId === this.lastEditCall &&
-          isActiveChat &&
-          this.mode() === 'open'
-        ) {
-          // The followed edit's args are still streaming — keep tracking the
-          // line the agent is writing, Zed-cursor style (throttled).
-          seen.set(block.callId, argsLen);
-          const now = Date.now();
-          if (now - this.lastReveal > 450) {
-            this.lastReveal = now;
-            const activity = toolActivity(block.name, block.args);
-            if (activity?.kind === 'editing') {
-              void this.showInSidePane(
-                'editing',
-                this.resolve(activity.path, workspaceRoot),
-                chatTitle,
-                block.args,
-                post
-              );
-            }
-          }
+        // The followed edit's args are still streaming — keep tracking the
+        // line the agent is writing, Zed-cursor style (throttled).
+        const now = Date.now();
+        if (now - this.lastReveal > 450) {
+          this.lastReveal = now;
+          void this.showInSidePane(
+            'editing',
+            this.resolve(growth.activity.path, workspaceRoot),
+            chatTitle,
+            growth.args,
+            post
+          );
         }
       }
     }
@@ -232,12 +203,17 @@ export class AgentFollowService implements vscode.Disposable {
       return;
     }
     this.liveThrottleAt = now;
-    // Newest tool block that targets a file.
+    // Newest tool block that targets a file. Bounded reverse scan: on huge
+    // transcripts an unbounded walk (with JSON-parsing per block) can peg the
+    // extension host every tick — if the last ~40 blocks touch no file, the
+    // caret simply stays where it was.
     let focus: { name?: string; args?: string } | undefined;
-    for (let m = snapshot.messages.length - 1; m >= 0 && !focus; m -= 1) {
+    let examined = 0;
+    for (let m = snapshot.messages.length - 1; m >= 0 && !focus && examined < 40; m -= 1) {
       const blocks = snapshot.messages[m]?.blocks ?? [];
-      for (let b = blocks.length - 1; b >= 0; b -= 1) {
+      for (let b = blocks.length - 1; b >= 0 && examined < 40; b -= 1) {
         const block = blocks[b]!;
+        examined += 1;
         if (block.kind === 'tool' && toolActivity(block.name, block.args)) {
           focus = block;
           break;
@@ -439,9 +415,13 @@ export class AgentFollowService implements vscode.Disposable {
       kind === 'editing' ? 9000 : 5000
     );
 
-    // The side pane follows READS and EDITS — but only for the chat you're
-    // looking at; parallel background chats narrate in the status bar only.
+    // The side pane opens ONLY files the agent actually CHANGES — reads and
+    // searches narrate in the status bar without opening tabs. And only for
+    // the chat you're looking at; background chats stay in the status bar.
     const followForced = key !== undefined && this.followOnceKeys.has(key);
+    if (kind !== 'editing') {
+      return;
+    }
     if ((this.mode() !== 'open' && !followForced) || !isActiveChat) {
       this.logger?.info(
         `[follow] pane skipped: ${this.mode() !== 'open' ? `mode=${this.mode()}` : 'chat not visible'}`
@@ -538,15 +518,23 @@ export class AgentFollowService implements vscode.Disposable {
       return;
     }
     try {
+      // Only tabs the follow pane itself opens are eviction candidates — a
+      // file the user already has open is theirs, never tracked, never closed.
+      const preExisting = this.findTabForPath(absolute) !== undefined;
       const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(absolute));
       const editor = await vscode.window.showTextDocument(doc, {
-        // Persistent tabs: every file π opens/edits stays open (no cycling
-        // slot) so you can flip back through the whole session's files.
+        // Persistent tabs (not the cycling preview slot) so recent files stay
+        // reachable — but bounded: oldest follow-opened tabs are closed past
+        // piRpc.followMaxTabs.
         preview: false,
         preserveFocus: true,
         viewColumn,
       });
       this.logger?.info(`[follow] center showing ${absolute}`);
+      if (!preExisting) {
+        this.followOpenedTabs.set(absolute, Date.now());
+      }
+      this.enforceTabCap();
       this.predictAndPrewarm(absolute, doc.languageId);
       if (kind === 'reading') {
         const line = Math.max(0, (readStartLine(args) ?? 1) - 1);
@@ -565,6 +553,51 @@ export class AgentFollowService implements vscode.Disposable {
       this.logger?.info(
         `[follow] center open failed: ${error instanceof Error ? error.message : String(error)}`
       );
+    }
+  }
+
+  /** Find the editor tab showing this file (any group), if one exists. */
+  private findTabForPath(absolute: string): vscode.Tab | undefined {
+    for (const group of vscode.window.tabGroups.all) {
+      for (const tab of group.tabs) {
+        if (tab.input instanceof vscode.TabInputText && tab.input.uri.fsPath === absolute) {
+          return tab;
+        }
+      }
+    }
+    return undefined;
+  }
+
+  /** Bound the follow pane's managed tabs to piRpc.followMaxTabs: close the
+   * oldest follow-opened tabs; pinned/dirty/active tabs (and user-closed ones)
+   * just leave the managed list — the user owns them now. */
+  private enforceTabCap(): void {
+    const cap = vscode.workspace.getConfiguration('piRpc').get<number>('followMaxTabs', 10);
+    const tracked = Array.from(this.followOpenedTabs.entries()).map(([trackedPath, openedAt]) => ({
+      path: trackedPath,
+      openedAt,
+    }));
+    const plan = planTabEviction(tracked, cap, (candidate) => {
+      const tab = this.findTabForPath(candidate);
+      if (!tab) {
+        return { exists: false };
+      }
+      return {
+        exists: true,
+        pinned: tab.isPinned,
+        dirty: tab.isDirty,
+        active: tab.isActive,
+      };
+    });
+    for (const trackedPath of plan.untrack) {
+      this.followOpenedTabs.delete(trackedPath);
+    }
+    for (const trackedPath of plan.close) {
+      const tab = this.findTabForPath(trackedPath);
+      if (tab) {
+        this.logger?.info(`[follow] tab cap: closing ${trackedPath}`);
+        void vscode.window.tabGroups.close(tab, true);
+      }
     }
   }
 

@@ -1,5 +1,27 @@
 # Changelog
 
+## Unreleased
+
+- **Pasted text stays text.** Text pastes of any size go straight into the
+  input box — the "Pasted text" chip capture is gone (images and file URIs
+  still attach as chips). Chips persisted by older versions still restore,
+  render, and send.
+- **Submit clears the whole composer atomically.** Draft, context chips, and
+  image chips are captured into the outgoing message and cleared in one step
+  (`beginSend`) — nothing sent can linger into the next message. Cancelling
+  session creation restores exactly what was cleared.
+- **Follow-agent can no longer freeze the window on open/resume.** History
+  detection is structural (message high-water mark + busy-only + burst
+  absorption) instead of a 1.5s wall-clock grace window — a slow-hydrating
+  large session can never be mistaken for live activity and storm editor
+  opens. Snapshot scans are incremental (O(delta) per tick) and the live-caret
+  reverse scan is bounded.
+- **Follow opens only files the agent actually edits.** Reads/searches narrate
+  in the status bar without opening tabs.
+- **`piRpc.followMaxTabs` (default 10).** The follow pane keeps a bounded list
+  of tabs it opened; the oldest is closed past the cap. Tabs you opened,
+  pinned, edited, or are viewing are never touched.
+
 ## 0.2.1 — Alpha 3 hotfix
 
 - **Pasted images now show a visible thumbnail in the composer.** The preview

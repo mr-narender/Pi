@@ -15,7 +15,14 @@ import type { TurnReview } from '../review/turnReview';
 import { SessionIndex } from './sessionIndex';
 import { notifier } from '../ui/notifier';
 import { parseWebviewMessage } from '../webview/messages';
-import { type PendingImageItem, acceptedSnapshotFromPreview, buildSendPreview, capturePastedText, createEmptyComposerState } from '../webview/composer';
+import {
+  type AcceptedSendSnapshot,
+  type PendingImageItem,
+  acceptedSnapshotFromPreview,
+  beginSend,
+  createEmptyComposerState,
+  restoreEditableStateFromAcceptedSnapshot,
+} from '../webview/composer';
 import {
   IMAGE_MIME_BY_EXTENSION,
   makeId,
@@ -821,7 +828,9 @@ export class ChatTabManager implements vscode.Disposable {
     const key = resource.toString();
     for (const group of vscode.window.tabGroups.all) {
       for (const tab of group.tabs) {
-        const input = (tab.input ?? undefined) as { uri?: vscode.Uri; viewType?: string } | undefined;
+        const input = (tab.input ?? undefined) as
+          | { uri?: vscode.Uri; viewType?: string }
+          | undefined;
         if (input?.viewType === CHAT_EDITOR_VIEW_TYPE && input.uri?.toString() === key) {
           await vscode.window.tabGroups.close(tab);
         }
@@ -1214,8 +1223,6 @@ export class ChatTabManager implements vscode.Disposable {
         return this.handlePickImages(context, host.resource);
       case 'pasteImage':
         return this.handlePasteImage(context, host.resource, parsed.data, parsed.mimeType);
-      case 'pasteText':
-        return this.handlePasteText(context, host.resource, parsed.text);
       case 'clearAttachments':
         return this.handleClearAttachments(context, host.resource);
       case 'appendActiveFile':
@@ -1676,18 +1683,6 @@ export class ChatTabManager implements vscode.Disposable {
     }
   }
 
-  private async handlePasteText(
-    context: ChatTabContext,
-    resource: vscode.Uri,
-    text: string
-  ): Promise<void> {
-    const item = capturePastedText(context.controller.folder.name, text);
-    if (item) {
-      await this.uiState.addContextItemForIdentity(context.controller, context.target, item);
-      await this.renderResource(resource);
-    }
-  }
-
   private async handleAppendDiagnostics(
     context: ChatTabContext,
     resource: vscode.Uri
@@ -1862,24 +1857,40 @@ export class ChatTabManager implements vscode.Disposable {
     let state = await this.uiState.getComposerStateForIdentity(context.controller, context.target);
     state.recovery = undefined;
     state.preview = undefined;
+    const origin = { controller: context.controller, target: context.target };
     try {
-      const preview = buildSendPreview(command, state);
       // Images/context items send IMMEDIATELY with the message — no confirmation
-      // popup. (The old preview step also skipped the optimistic clear + reset-seq
-      // bump, which is why pasted-image sends left the text in the input.)
-      // Clear the draft NOW (before preparePromptContext, which renders): the
-      // preview already captured the text, so no intermediate render should ever
-      // show the sent text again. sendPreview() clears again defensively.
-      state.draft = '';
-      state.composerResetSeq = (state.composerResetSeq ?? 0) + 1;
+      // popup. beginSend captures the outgoing message and clears the WHOLE
+      // composer (draft + context chips + image chips) in one step, BEFORE the
+      // async session work below: nothing sent may linger into the next message,
+      // and the draft→session identity promotion copies an already-clean state.
+      const { preview, accepted } = beginSend(command, state);
       context.controller.setDraft('');
       await this.uiState.setComposerStateForIdentity(context.controller, context.target, state);
       context = await this.preparePromptContext(resource);
       if (!context) {
+        // Session creation cancelled — put back exactly what was cleared.
+        const current = await this.uiState.getComposerStateForIdentity(
+          origin.controller,
+          origin.target
+        );
+        Object.assign(current, restoreEditableStateFromAcceptedSnapshot(accepted));
+        current.acceptedSendSnapshot = undefined;
+        current.composerResetSeq = (current.composerResetSeq ?? 0) + 1;
+        origin.controller.setDraft(current.draft);
+        await this.uiState.setComposerStateForIdentity(origin.controller, origin.target, current);
+        await this.renderResource(resource);
         return;
       }
       state = await this.uiState.getComposerStateForIdentity(context.controller, context.target);
-      await this.sendPreview(context.resource, context.controller, context.target, state, preview);
+      await this.sendPreview(
+        context.resource,
+        context.controller,
+        context.target,
+        state,
+        preview,
+        accepted
+      );
     } catch (error) {
       if (!context) {
         return;
@@ -1933,9 +1944,15 @@ export class ChatTabManager implements vscode.Disposable {
     controller: SessionController,
     target: ChatTabTarget,
     state: Awaited<ReturnType<ChatUiState['getComposerStateForIdentity']>>,
-    preview: NonNullable<Awaited<ReturnType<ChatUiState['getComposerStateForIdentity']>>['preview']>
+    preview: NonNullable<
+      Awaited<ReturnType<ChatUiState['getComposerStateForIdentity']>>['preview']
+    >,
+    acceptedFromBegin?: AcceptedSendSnapshot
   ): Promise<void> {
-    const accepted = acceptedSnapshotFromPreview(preview, state.pendingContextItems);
+    // beginSend already cleared the chips, so rebuilding the accepted snapshot
+    // from state here would lose them — use the one captured at begin time.
+    const accepted =
+      acceptedFromBegin ?? acceptedSnapshotFromPreview(preview, state.pendingContextItems);
     state.acceptedSendSnapshot = accepted;
     state.preview = undefined;
     state.pendingContextItems = [];
@@ -2052,8 +2069,9 @@ export class ChatTabManager implements vscode.Disposable {
       return;
     }
     const folder =
-      vscode.workspace.workspaceFolders?.find((f) => f.uri.toString() === target.workspaceFolderUri) ??
-      vscode.workspace.workspaceFolders?.[0];
+      vscode.workspace.workspaceFolders?.find(
+        (f) => f.uri.toString() === target.workspaceFolderUri
+      ) ?? vscode.workspace.workspaceFolders?.[0];
     if (!folder) {
       return;
     }
@@ -2823,7 +2841,6 @@ export class ChatTabManager implements vscode.Disposable {
     await this.uiState.addImageItemsForIdentity(controller, target, selected);
     await this.renderResource(resource);
   }
-
 }
 
 /** Normalize chat tab labels. VS Code sizes tabs by label text, so uneven
