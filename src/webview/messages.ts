@@ -53,6 +53,7 @@ export type WebviewInboundMessage =
   | { type: 'requestFileMentions'; query: string }
   | { type: 'requestSlashCommands' }
   | { type: 'pasteImage'; data: string; mimeType: string }
+  | { type: 'pasteText'; text: string }
   | { type: 'respondUi'; id: string; value?: string; confirmed?: boolean };
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
@@ -210,6 +211,10 @@ export function parseWebviewMessage(value: unknown): WebviewInboundMessage | und
     case 'pasteImage':
       return typeof record.data === 'string' && typeof record.mimeType === 'string'
         ? { type: 'pasteImage', data: record.data, mimeType: record.mimeType }
+        : undefined;
+    case 'pasteText':
+      return typeof record.text === 'string' && record.text.length > 0
+        ? { type: 'pasteText', text: record.text }
         : undefined;
     case 'respondUi': {
       if (typeof record.id !== 'string') {

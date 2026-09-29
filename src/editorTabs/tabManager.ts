@@ -15,12 +15,7 @@ import type { TurnReview } from '../review/turnReview';
 import { SessionIndex } from './sessionIndex';
 import { notifier } from '../ui/notifier';
 import { parseWebviewMessage } from '../webview/messages';
-import {
-  acceptedSnapshotFromPreview,
-  buildSendPreview,
-  createEmptyComposerState,
-  type PendingImageItem,
-} from '../webview/composer';
+import { type PendingImageItem, acceptedSnapshotFromPreview, buildSendPreview, capturePastedText, createEmptyComposerState } from '../webview/composer';
 import {
   IMAGE_MIME_BY_EXTENSION,
   makeId,
@@ -1202,6 +1197,8 @@ export class ChatTabManager implements vscode.Disposable {
         return this.handlePickImages(context, host.resource);
       case 'pasteImage':
         return this.handlePasteImage(context, host.resource, parsed.data, parsed.mimeType);
+      case 'pasteText':
+        return this.handlePasteText(context, host.resource, parsed.text);
       case 'clearAttachments':
         return this.handleClearAttachments(context, host.resource);
       case 'appendActiveFile':
@@ -1656,6 +1653,18 @@ export class ChatTabManager implements vscode.Disposable {
     resource: vscode.Uri
   ): Promise<void> {
     const item = await captureSelection(context.controller);
+    if (item) {
+      await this.uiState.addContextItemForIdentity(context.controller, context.target, item);
+      await this.renderResource(resource);
+    }
+  }
+
+  private async handlePasteText(
+    context: ChatTabContext,
+    resource: vscode.Uri,
+    text: string
+  ): Promise<void> {
+    const item = capturePastedText(context.controller.folder.name, text);
     if (item) {
       await this.uiState.addContextItemForIdentity(context.controller, context.target, item);
       await this.renderResource(resource);

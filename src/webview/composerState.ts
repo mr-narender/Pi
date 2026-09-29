@@ -479,6 +479,12 @@ export class ChatUiState implements vscode.Disposable {
     controller: SessionController,
     item: PendingContextItem
   ): Promise<PendingContextItem> {
+    if (item.kind === 'pastedText') {
+      // Self-contained: the bounded content lives in the persisted ref —
+      // nothing on disk to re-read, nothing to go stale, and no workspace
+      // access, so it's exempt from the trust gate below too.
+      return { ...item, sanitizedContent: item.persistedRef.content, stale: false, staleReason: undefined };
+    }
     if (!vscode.workspace.isTrusted) {
       return {
         ...item,

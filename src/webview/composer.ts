@@ -19,6 +19,14 @@ export interface PersistedFileContextRef extends PersistedContextRefBase {
   contentFingerprint: string;
 }
 
+export interface PersistedPastedTextRef extends PersistedContextRefBase {
+  languageId: string;
+  contentFingerprint: string;
+  /** Pasted text has no file to re-read on restore — the (bounded, ≤16KB)
+   * content itself is the persisted source of truth. */
+  content: string;
+}
+
 export interface PersistedDiagnosticsContextRef extends PersistedContextRefBase {
   severity: 'error' | 'warning' | 'info' | 'hint' | 'mixed';
   issueCount: number;
@@ -80,6 +88,21 @@ export type PendingContextItem =
       sanitizedContent: string;
       capturedAt: string;
       persistedRef: PersistedDiagnosticsContextRef;
+      stale?: boolean;
+      staleReason?: string;
+    }
+  | {
+      kind: 'pastedText';
+      itemId: string;
+      workspaceFolder: string;
+      /** Synthetic display label ("Pasted text 3") — no file behind it. */
+      workspaceRelativePath: string;
+      lineStart: number;
+      lineEnd: number;
+      languageId: string;
+      sanitizedContent: string;
+      capturedAt: string;
+      persistedRef: PersistedPastedTextRef;
       stale?: boolean;
       staleReason?: string;
     };
@@ -383,6 +406,8 @@ export function summarizeChip(item: PendingContextItem): string {
       return `Selection: ${item.workspaceRelativePath} L${item.lineStart}-L${item.lineEnd}`;
     case 'diagnostics':
       return `Diagnostics: ${item.workspaceRelativePath} · ${item.issueCount} issues`;
+    case 'pastedText':
+      return `${item.workspaceRelativePath} · ${item.lineEnd} lines`;
   }
 }
 
@@ -396,5 +421,71 @@ export function chipPrivacyLabel(item: PendingContextItem): string {
       return 'Selected text only';
     case 'diagnostics':
       return 'Active-file diagnostics snapshot';
+    case 'pastedText':
+      return 'Pasted clipboard text';
   }
+}
+
+let pastedTextSeq = 0;
+
+/** Turn a big paste into a self-contained context item. No file behind it —
+ * the bounded content lives in the persisted ref itself, so restore never
+ * needs disk access and the item can never go stale. Content is trimmed to
+ * the same FILE bounds the send-envelope enforces, so capture can never
+ * produce an item that send later rejects as too large. Lives here (not
+ * attachmentCapture.ts) because it is fully pure — no vscode dependency. */
+export function capturePastedText(
+  workspaceFolder: string,
+  text: string
+): PendingContextItem | undefined {
+  const normalized = normalizeCapturedText(text);
+  if (!normalized.trim()) {
+    return undefined;
+  }
+  const content = boundFileContent(normalized);
+  const lines = content.split('\n').length;
+  pastedTextSeq += 1;
+  const label = `Pasted text ${pastedTextSeq}`;
+  return {
+    kind: 'pastedText',
+    itemId: `paste-${Date.now().toString(36)}-${pastedTextSeq}`,
+    workspaceFolder,
+    workspaceRelativePath: label,
+    lineStart: 1,
+    lineEnd: lines,
+    languageId: 'plaintext',
+    sanitizedContent: content,
+    capturedAt: new Date().toISOString(),
+    persistedRef: {
+      workspaceRelativePath: label,
+      lineStart: 1,
+      lineEnd: lines,
+      languageId: 'plaintext',
+      contentFingerprint: fingerprint(content),
+      content,
+    },
+  };
+}
+
+export const PASTE_CHIP_MIN_CHARS = 1500;
+export const PASTE_CHIP_MIN_LINES = 15;
+
+/** Big pastes become a preview-able chip instead of flooding the textarea
+ * (Claude Code / Cursor behavior); small pastes stay ordinary text. The
+ * thresholds are deliberately conservative — a chip you didn't expect is
+ * worse than a long paste you did. */
+export function shouldAttachPastedText(text: string): boolean {
+  if (text.length >= PASTE_CHIP_MIN_CHARS) {
+    return true;
+  }
+  let lines = 1;
+  for (let index = 0; index < text.length; index += 1) {
+    if (text.charCodeAt(index) === 10) {
+      lines += 1;
+      if (lines >= PASTE_CHIP_MIN_LINES) {
+        return true;
+      }
+    }
+  }
+  return false;
 }

@@ -5,6 +5,7 @@ declare function acquireVsCodeApi(): {
 };
 
 import morphdom from 'morphdom';
+import { shouldAttachPastedText } from '../composer';
 import { deriveScreenChanges } from '../editToolPath';
 import type { WebviewSnapshot } from '../../state/types';
 import { installCustomTooltips } from './customTooltip';
@@ -791,19 +792,24 @@ function renderNow(snapshot: WebviewSnapshot): void {
         updateMentionMenu();
       }
     });
-    // Image paste: pasting a screenshot/image into the composer attaches it.
+    // Paste routing: images attach as thumbnail chips; file URIs (copied
+    // from the Explorer / OS) attach via the same path as drag-drop; BIG
+    // text becomes a preview-able "Pasted text" chip instead of flooding
+    // the textarea. Small text pastes stay ordinary text (no preventDefault).
     bindOnce(textarea, 'paste', (event) => {
-      const items = event.clipboardData?.items;
-      if (!items) {
+      const clipboard = event.clipboardData;
+      if (!clipboard) {
         return;
       }
-      for (const entry of Array.from(items)) {
+      let handledImage = false;
+      for (const entry of Array.from(clipboard.items)) {
         if (entry.kind === 'file' && entry.type.startsWith('image/')) {
           const file = entry.getAsFile();
           if (!file) {
             continue;
           }
           event.preventDefault();
+          handledImage = true;
           const reader = new FileReader();
           reader.onload = () => {
             const result = typeof reader.result === 'string' ? reader.result : '';
@@ -815,6 +821,28 @@ function renderNow(snapshot: WebviewSnapshot): void {
           };
           reader.readAsDataURL(file);
         }
+      }
+      if (handledImage) {
+        return;
+      }
+      const uriList = clipboard.getData('text/uri-list');
+      if (uriList) {
+        const uris = uriList
+          .split(/\r?\n/)
+          .map((value) => value.trim())
+          .filter((value) => value && value[0] !== '#');
+        if (uris.length > 0) {
+          event.preventDefault();
+          for (const uri of uris) {
+            vscode.postMessage({ type: 'attachFile', path: uri });
+          }
+          return;
+        }
+      }
+      const text = clipboard.getData('text/plain');
+      if (text && shouldAttachPastedText(text)) {
+        event.preventDefault();
+        vscode.postMessage({ type: 'pasteText', text });
       }
     });
     // #9 — drag a file from the Explorer onto the composer to attach it.
