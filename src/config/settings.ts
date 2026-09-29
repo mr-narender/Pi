@@ -103,7 +103,10 @@ export function getSettings(): PiRpcSettings {
     // autoCompact.percent of it; 'off' = never auto-compact (Pi still
     // compacts when nearly full).
     autoCompactMode: config.get<'auto' | 'off'>('autoCompact.mode', 'auto'),
-    autoCompactPercent: config.get<number>('autoCompact.percent', 65),
+    // 75 matches the pi-side compaction reserve (trigger at 75% of the
+    // window) — leaves a quarter of the context free so compaction itself
+    // always has room to run.
+    autoCompactPercent: config.get<number>('autoCompact.percent', 75),
     autoCompactResumeTask: config.get<boolean>('autoCompact.resumeTask', true),
     codeLensEnabled: config.get<boolean>('codeLensEnabled', true),
     restartOnCrash: config.get<boolean>('restartOnCrash', true),

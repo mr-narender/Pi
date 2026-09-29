@@ -106,6 +106,7 @@ export function buildChatListModel(input: ChatListInput): ChatListModel {
       id: `open:${chat.resource}`,
       title,
       modifiedAt: record?.modifiedAt,
+      sizeBytes: record?.sizeBytes,
       active: chat.active,
       isOpen: true,
       favorite: favoriteRank(chat.sessionFile) === 1,
@@ -140,6 +141,7 @@ export function buildChatListModel(input: ChatListInput): ChatListModel {
       // modifiedAt at paint time so "5m ago" can refresh client-side.
       detail: session.workspaceLabel || undefined,
       modifiedAt: session.modifiedAt,
+      sizeBytes: session.sizeBytes,
       active: false,
       isOpen: false,
       favorite: favoriteRank(session.path) === 1,

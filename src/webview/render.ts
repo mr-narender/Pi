@@ -1105,8 +1105,23 @@ function renderStatusChip(snapshot: WebviewSnapshot): string {
   const model = snapshot.model?.id ? snapshot.model.id : 'model';
   const usage = snapshot.usage ? formatUsageChip(snapshot.usage) : '';
   const thinking = typeof snapshot.thinkingLevel === 'string' ? snapshot.thinkingLevel : '';
-  const summaryParts = [model, usage, thinking].filter(Boolean);
-  return `<button type="button" class="composer-status" id="status-chip" data-command="piRpc.chatSettings" title="Model: ${escapeHtml(modelLabel(snapshot))} · thinking: ${escapeHtml(thinking || 'default')} — click to change either" aria-label="Chat settings: model and thinking level"><span class="model-dot"></span>${escapeHtml(summaryParts.join(' · '))}</button>`;
+  // Context-fill gauge: amber approaching the auto-compact trigger, red
+  // past it — the number was already there, but an uncolored "82%" reads
+  // as trivia, not as "compaction is imminent".
+  const percent = snapshot.usage?.contextPercent;
+  const usageClass =
+    typeof percent === 'number' && percent >= 85
+      ? ' usage-hot'
+      : typeof percent === 'number' && percent >= 70
+        ? ' usage-warn'
+        : '';
+  const usageHtml = usage
+    ? `<span class="usage-part${usageClass}">${escapeHtml(usage)}</span>`
+    : '';
+  const parts = [escapeHtml(model), usageHtml, escapeHtml(thinking)].filter(Boolean);
+  const usageTitle =
+    typeof percent === 'number' ? ` · context ${Math.round(percent)}% full` : '';
+  return `<button type="button" class="composer-status" id="status-chip" data-command="piRpc.chatSettings" title="Model: ${escapeHtml(modelLabel(snapshot))} · thinking: ${escapeHtml(thinking || 'default')}${usageTitle} — click to change either" aria-label="Chat settings: model and thinking level"><span class="model-dot"></span>${parts.join(' · ')}</button>`;
 }
 
 // Chat header ("sidecar" top bar): per-chat overflow actions live here.

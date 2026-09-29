@@ -1021,7 +1021,7 @@
         },
         "piRpc.autoCompact.percent": {
           "type": "number",
-          "default": 65,
+          "default": 75,
           "minimum": 10,
           "maximum": 95,
           "description": "When mode is 'auto', compact once context usage reaches this percent of the current model's auto-detected maximum context window."

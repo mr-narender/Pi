@@ -29,6 +29,15 @@ export function escapeChatListHtml(text: string): string {
 
 const esc = escapeChatListHtml;
 
+/** Sessions past this size resume slowly or hit context/tooling limits —
+ * surface it while it's still just a warning (a real 113MB session was
+ * fully unresumable). */
+export const SIZE_WARN_BYTES = 50 * 1024 * 1024;
+
+function formatMegabytes(bytes: number): string {
+  return `${Math.round(bytes / (1024 * 1024))} MB`;
+}
+
 function rowDetailText(row: ChatListRow, now: number): string | undefined {
   // Relative time is composed at PAINT time (not baked in by the host) so
   // the webview can repaint "5m ago" on an interval without a snapshot
@@ -38,6 +47,16 @@ function rowDetailText(row: ChatListRow, now: number): string | undefined {
   const parts = [row.detail, hasTime ? formatRelativeTime(row.modifiedAt!, now) : undefined];
   const text = parts.filter(Boolean).join(' · ');
   return text || undefined;
+}
+
+function rowSizeWarning(row: ChatListRow): string {
+  const oversized =
+    typeof row.sizeBytes === 'number' && Number.isFinite(row.sizeBytes) && row.sizeBytes >= SIZE_WARN_BYTES;
+  if (!oversized) {
+    return '';
+  }
+  const label = `Large session file (${formatMegabytes(row.sizeBytes!)}) — may resume slowly; consider starting a fresh chat`;
+  return `<span class="chat-list-row-size-warn" title="${esc(label)}" aria-label="${esc(label)}">⚠ ${esc(formatMegabytes(row.sizeBytes!))}</span>`;
 }
 
 export function renderChatListRow(row: ChatListRow, now = Date.now()): string {
@@ -59,7 +78,7 @@ export function renderChatListRow(row: ChatListRow, now = Date.now()): string {
     <span class="chat-list-row-icon">${row.active ? ICON_CHECK : ICON_CHAT}</span>
     <span class="chat-list-row-text" title="${esc(row.title)}" data-tooltip-pos="above">
       <span class="chat-list-row-title">${row.favorite ? `<span class="chat-list-row-favbadge">${ICON_STAR_FILLED}</span>` : ''}${esc(row.title)}</span>
-      ${detail ? `<span class="chat-list-row-detail">${esc(detail)}</span>` : ''}
+      ${detail || rowSizeWarning(row) ? `<span class="chat-list-row-detail">${detail ? esc(detail) : ''}${rowSizeWarning(row) ? `${detail ? ' · ' : ''}${rowSizeWarning(row)}` : ''}</span>` : ''}
     </span>
     <span class="chat-list-row-actions">
       ${canTarget ? `<button class="chat-list-row-action chat-list-row-fav${row.favorite ? ' is-fav' : ''}" data-act="favorite" title="${favTitle}" aria-label="${favTitle}">${row.favorite ? ICON_STAR_FILLED : ICON_STAR}</button>` : ''}

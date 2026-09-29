@@ -25,6 +25,9 @@ export interface ChatListRow {
    * of the snapshot identity for the same reason detail's old timestamp
    * was: the active session's file mtime moves constantly. */
   modifiedAt?: number;
+  /** Session file size (bytes) — rows past SIZE_WARN_BYTES paint a warning
+   * so a 113MB unresumable session is visible weeks before it hurts. */
+  sizeBytes?: number;
   active: boolean;
   isOpen: boolean;
   /** Starred by the user (hover star icon); favorites float to the top of

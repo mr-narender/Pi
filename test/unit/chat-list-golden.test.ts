@@ -10,6 +10,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import {
+  SIZE_WARN_BYTES,
   renderChatListBody,
   renderChatListRow,
   renderChatListShell,
@@ -135,6 +136,23 @@ test('chat-list shell: filter text is escaped into the search input value', () =
   const html = renderChatListShell('<div></div>', `"><script>alert(1)</script>`);
   assert.ok(!html.includes('<script>'), 'raw script must not appear');
   assert.ok(html.includes('value="&quot;&gt;&lt;script&gt;'), 'escaped value expected');
+});
+
+test('golden: chat-list row — oversized session paints the size warning', () => {
+  checkGolden(
+    'chat-list-row-oversized',
+    renderChatListRow(
+      row({ detail: 'workspace', modifiedAt: NOW - 60_000, sizeBytes: 113 * 1024 * 1024 }),
+      NOW
+    )
+  );
+});
+
+test('chat-list row: sizes under the warning threshold stay silent', () => {
+  const html = renderChatListRow(row({ sizeBytes: SIZE_WARN_BYTES - 1, modifiedAt: NOW - 60_000 }), NOW);
+  assert.ok(!html.includes('size-warn'));
+  const exact = renderChatListRow(row({ sizeBytes: SIZE_WARN_BYTES, modifiedAt: NOW - 60_000 }), NOW);
+  assert.ok(exact.includes('size-warn') && exact.includes('50 MB'));
 });
 
 test('chat-list row: stale/invalid modifiedAt renders no time fragment at all', () => {

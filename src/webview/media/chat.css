@@ -3023,6 +3023,23 @@ a.md-link.file-link:hover {
   color: var(--vscode-textLink-activeForeground, var(--vscode-textLink-foreground));
 }
 
+/* Context-fill gauge on the status chip (renderStatusChip): amber nearing
+ * the auto-compact trigger, red past it. */
+.composer-status .usage-part.usage-warn {
+  color: var(--vscode-charts-yellow, #e2b73d);
+  font-weight: 600;
+}
+
+.composer-status .usage-part.usage-hot {
+  color: var(--vscode-charts-red, #e05252);
+  font-weight: 600;
+}
+
+/* Oversized-session warning in a chat-list row's detail line. */
+.chat-list-row-size-warn {
+  color: var(--vscode-charts-yellow, #e2b73d);
+}
+
 .chat-list-search {
   width: 100%;
   padding: 7px 10px;

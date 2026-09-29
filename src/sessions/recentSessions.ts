@@ -35,6 +35,9 @@ export interface RecentSessionRecord {
   messageCount: number;
   modifiedAt: number;
   createdAt: number;
+  /** Session file size on disk — oversized sessions (100MB+) resume slowly
+   * or not at all; the chat list surfaces a warning from this. */
+  sizeBytes?: number;
   parentSessionPath?: string;
 }
 
@@ -344,6 +347,7 @@ async function buildRecentSessionRecord(
       messageCount,
       modifiedAt,
       createdAt,
+      sizeBytes: typeof stats?.size === 'number' && Number.isFinite(stats.size) ? stats.size : undefined,
       parentSessionPath:
         typeof header.parentSession === 'string' ? resolve(header.parentSession) : undefined,
     };

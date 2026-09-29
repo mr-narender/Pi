@@ -429,8 +429,13 @@ test('#5 usage chip renders in header when stats present', () => {
   assert.match(html, /composer-status/); // percent lives in the status chip summary
   assert.doesNotMatch(html, /class="usage-chip"/);
   // Chip is model · percent · thinking now — tokens/cost were crowding out
-  // the model name and forcing truncation.
-  assert.match(html, /class="model-dot"><\/span>model \u00b7 6% \u00b7 medium<\/button>/);
+  // the model name and forcing truncation. The percent rides in a gauge
+  // span (stage D) that turns amber/red near the auto-compact trigger; at
+  // 6% it carries no threshold class.
+  assert.match(
+    html,
+    /class="model-dot"><\/span>model \u00b7 <span class="usage-part">6%<\/span> \u00b7 medium<\/button>/
+  );
   assert.doesNotMatch(html, /12k tok/);
   assert.doesNotMatch(html, /\$0\.023/);
   const bare = renderChatApp(snapshot({}));
