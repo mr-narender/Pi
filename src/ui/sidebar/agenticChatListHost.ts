@@ -12,7 +12,6 @@ import {
 } from '../../webview/chatListShared';
 import { renderChatListWebviewHtml } from '../../webview/chatListHtml';
 import { isChatActionCommand } from '../../webview/chatActionsMenu';
-import { AGENTIC_THEMES, asAgenticTheme, type AgenticTheme } from '../../webview/agenticTheme';
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -58,15 +57,7 @@ export class AgenticChatListHost implements vscode.Disposable {
   ) {
     this.disposables.push(
       chatTabs.onDidChangeOpenChats(() => this.scheduleRefresh()),
-      recentSessions.onDidChange(() => this.scheduleRefresh()),
-      vscode.workspace.onDidChangeConfiguration((event) => {
-        if (event.affectsConfiguration('piRpc.agenticTheme')) {
-          const theme = asAgenticTheme(
-            vscode.workspace.getConfiguration('piRpc').get('agenticTheme')
-          );
-          void this.view?.webview.postMessage({ type: 'agenticTheme', theme });
-        }
-      })
+      recentSessions.onDidChange(() => this.scheduleRefresh())
     );
   }
 
@@ -231,48 +222,6 @@ export class AgenticChatListHost implements vscode.Disposable {
       case 'switchSidebarMode':
         await vscode.commands.executeCommand('piRpc.toggleSidebarMode');
         return;
-      case 'chooseAgenticTheme': {
-        const config = vscode.workspace.getConfiguration('piRpc');
-        const current = asAgenticTheme(config.get('agenticTheme'));
-        const picker = vscode.window.createQuickPick<
-          vscode.QuickPickItem & { value: AgenticTheme }
-        >();
-        picker.placeholder = 'Agentic theme · ↑/↓ to preview · Enter to save · Esc to cancel';
-        picker.items = AGENTIC_THEMES.map((theme) => ({
-          label: theme.label,
-          description: theme.value === current ? 'Current' : undefined,
-          value: theme.value,
-        }));
-        picker.activeItems = picker.items.filter((item) => item.value === current);
-        let committed = false;
-        picker.onDidChangeActive(([item]) => {
-          if (item)
-            void this.view?.webview.postMessage({ type: 'agenticTheme', theme: item.value });
-        });
-        picker.onDidAccept(() => {
-          const selected = picker.activeItems[0] ?? picker.selectedItems[0];
-          if (!selected) return;
-          committed = true;
-          picker.hide();
-          void this.view?.webview.postMessage({ type: 'agenticTheme', theme: selected.value });
-          void config
-            .update('agenticTheme', selected.value, vscode.ConfigurationTarget.Global)
-            .then(undefined, (error: unknown) => {
-              const theme = asAgenticTheme(config.get('agenticTheme'));
-              void this.view?.webview.postMessage({ type: 'agenticTheme', theme });
-              void vscode.window.showErrorMessage(`Could not save Agentic theme: ${String(error)}`);
-            });
-        });
-        picker.onDidHide(() => {
-          if (!committed) {
-            const theme = asAgenticTheme(config.get('agenticTheme'));
-            void this.view?.webview.postMessage({ type: 'agenticTheme', theme });
-          }
-          picker.dispose();
-        });
-        picker.show();
-        return;
-      }
       case 'showChatChanges':
         if (typeof record.rowId === 'string') await this.showChatChanges(record.rowId);
         return;

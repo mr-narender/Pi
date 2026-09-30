@@ -1,6 +1,5 @@
 import { buildDeleteMessage, type ChatListModel, type ChatListRow } from '../chatListShared';
 import { isChatActionCommand } from '../chatActionsMenu';
-import { asAgenticTheme } from '../agenticTheme';
 import { renderChatListBody, renderChatListShell } from '../chatListRowHtml';
 import { installCustomTooltips } from './customTooltip';
 
@@ -89,7 +88,6 @@ function render(): void {
   const caret = searchHadFocus ? (searchEl?.selectionStart ?? null) : null;
   const menuWasOpen = Boolean(document.querySelector('.chat-list-toolbar .sb-more[open]'));
   const focusedMenuCommand = (document.activeElement as HTMLElement | null)?.dataset.command;
-  const themeHadFocus = document.activeElement?.hasAttribute('data-agentic-theme') ?? false;
   const switchHadFocus = document.activeElement?.hasAttribute('data-switch-chat') ?? false;
   const menuSummaryHadFocus =
     document.activeElement?.matches('.chat-list-toolbar summary') ?? false;
@@ -111,8 +109,6 @@ function render(): void {
   }
   if (menuSummaryHadFocus) {
     menu?.querySelector('summary')?.focus();
-  } else if (themeHadFocus) {
-    menu?.querySelector<HTMLElement>('[data-agentic-theme]')?.focus();
   } else if (switchHadFocus) {
     menu?.querySelector<HTMLElement>('[data-switch-chat]')?.focus();
   } else if (focusedMenuCommand && isChatActionCommand(focusedMenuCommand)) {
@@ -123,12 +119,6 @@ function render(): void {
     ?.addEventListener('click', () => {
       menu.open = false;
       vscode.postMessage({ type: 'switchSidebarMode' });
-    });
-  menu
-    ?.querySelector<HTMLButtonElement>('button[data-agentic-theme]')
-    ?.addEventListener('click', () => {
-      menu.open = false;
-      vscode.postMessage({ type: 'chooseAgenticTheme' });
     });
   menu?.querySelectorAll<HTMLButtonElement>('button[data-command]').forEach((button) => {
     button.addEventListener('click', () => {
@@ -236,12 +226,10 @@ document.addEventListener('keydown', (event) => {
 });
 
 window.addEventListener('message', (event) => {
-  const message = event.data as { type?: string; model?: ChatListModel; theme?: unknown };
+  const message = event.data as { type?: string; model?: ChatListModel };
   if (message?.type === 'listSnapshot' && message.model) {
     currentModel = message.model;
     render();
-  } else if (message?.type === 'agenticTheme') {
-    document.body.dataset.agenticTheme = asAgenticTheme(message.theme);
   }
 });
 

@@ -1,5 +1,4 @@
 import * as vscode from 'vscode';
-import { asAgenticTheme } from './agenticTheme';
 
 // Agentic Mode chat list — a small, dedicated webview bundle (chatList.js),
 // deliberately NOT sharing the chat.ts runtime. The list is simple enough
@@ -36,7 +35,7 @@ export function renderChatListWebviewHtml(
     <link rel="stylesheet" href="${styleUri}" />
     <title>Chats</title>
   </head>
-  <body class="chat-list-view" data-agentic-theme="${asAgenticTheme(vscode.workspace.getConfiguration('piRpc').get('agenticTheme'))}">
+  <body class="chat-list-view">
     <div id="app"></div>
     <script nonce="${nonce}" src="${scriptUri}"></script>
   </body>

@@ -140,13 +140,26 @@ test('golden: chat-list body — empty while a search filter is active', () => {
 test('Agentic menu shares Chat mode markup and accepts only its eight actions', () => {
   const menu = renderChatActionsMenu(true);
   assert.ok(renderChatListShell('').includes(menu), 'Agentic shell uses the shared dropdown');
-  assert.ok(menu.includes('data-agentic-theme'), 'theme picker appears in Agentic only');
-  assert.ok(menu.includes('data-switch-chat'), 'mode switch is in Agentic menu');
+  assert.ok(!menu.includes('data-agentic-theme'), 'Agentic menu follows VS Code theme');
+  assert.match(
+    menu,
+    /data-switch-chat><svg[^>]*aria-hidden="true"[^>]*>.*<\/svg>Switch to full chat<\/button>/,
+    'mode switch has icon and text in Agentic menu'
+  );
   assert.ok(!renderChatActionsMenu().includes('data-switch-chat'), 'Chat menu is unchanged');
   const toolbar = renderChatListShell('').split('</div>')[0]!;
   assert.ok(!toolbar.includes('id="switch-chat-btn"'), 'mode switch is not in the toolbar');
   assert.ok(toolbar.indexOf('id="new-chat-btn"') < toolbar.indexOf('class="menu-details sb-more"'));
   assert.ok(!renderChatActionsMenu().includes('data-agentic-theme'), 'Chat mode is unchanged');
+  assert.ok(
+    !readFileSync(join(process.cwd(), 'src/webview/media/chat.css'), 'utf8').includes(
+      'data-agentic-theme'
+    )
+  );
+  assert.ok(
+    !JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf8')).contributes.configuration
+      .properties['piRpc.agenticTheme']
+  );
   assert.deepEqual(
     [...menu.matchAll(/class="menu-group">([^<]+)/g)].map((m) => m[1]),
     ['Chat', 'Configure', 'System']

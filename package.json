@@ -2,7 +2,7 @@
   "name": "pi",
   "displayName": "Pi – this one is (y)ours",
   "description": "An unofficial, personal VS Code chat UI for the Pi coding agent (pi.dev). Not affiliated with pi.dev — shared for anyone who wants it.",
-  "version": "0.2.12",
+  "version": "0.2.13",
   "publisher": "mr-narender",
   "license": "MIT",
   "private": true,
@@ -1107,25 +1107,6 @@
           "minimum": 1,
           "maximum": 100,
           "description": "Maximum number of editor tabs the follow pane keeps open. Opening more closes the oldest follow-opened tab — tabs you opened, pinned, edited, or are viewing are never closed."
-        },
-        "piRpc.agenticTheme": {
-          "type": "string",
-          "enum": [
-            "system",
-            "lime-mint",
-            "orange",
-            "dark",
-            "light"
-          ],
-          "enumDescriptions": [
-            "Follow your VS Code color theme (recommended).",
-            "Dark forest palette with a mint accent.",
-            "Dark warm palette with an orange accent.",
-            "Neutral dark palette with a blue accent.",
-            "Neutral light palette with a contrast-safe blue accent."
-          ],
-          "default": "system",
-          "description": "Color theme for the Agentic chat list only. High-contrast VS Code themes always take precedence."
         },
         "piRpc.sidebarMode": {
           "type": "string",

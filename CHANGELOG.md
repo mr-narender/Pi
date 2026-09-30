@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.13 — local test build (PR #2)
+
+- Removed Agentic theme presets and Theme… menu; the sidebar follows the VS Code
+  color theme again. Kept New Chat → More and the mode switch (icon + text)
+  inside More.
+
 ## 0.2.12 — local test build (PR #2)
 
 - Agentic theme picker now previews as you navigate with keyboard or mouse;

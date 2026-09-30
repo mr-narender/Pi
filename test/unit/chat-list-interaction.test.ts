@@ -60,19 +60,11 @@ test('Agentic menu dismisses outside/Escape and row actions target trusted row I
   assert.equal(document.querySelector('#switch-chat-btn'), null);
   document.querySelector<HTMLButtonElement>('[data-switch-chat]')!.click();
   document.querySelector<HTMLButtonElement>('[data-act="changes"]')!.click();
-  document.querySelector<HTMLButtonElement>('[data-agentic-theme]')!.click();
-  assert.deepEqual(posted.slice(-4), [
+  assert.equal(document.querySelector('[data-agentic-theme]'), null);
+  assert.deepEqual(posted.slice(-3), [
     { type: 'newChat' },
     { type: 'switchSidebarMode' },
     { type: 'showChatChanges', rowId: 'recent:one' },
-    { type: 'chooseAgenticTheme' },
   ]);
-  dom.window.dispatchEvent(
-    new MessageEvent('message', { data: { type: 'agenticTheme', theme: 'lime-mint' } })
-  );
-  assert.equal(document.body.dataset.agenticTheme, 'lime-mint');
-  dom.window.dispatchEvent(
-    new MessageEvent('message', { data: { type: 'agenticTheme', theme: '<script>' } })
-  );
-  assert.equal(document.body.dataset.agenticTheme, 'system');
+  assert.equal(document.body.hasAttribute('data-agentic-theme'), false);
 });
