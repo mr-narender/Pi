@@ -10,6 +10,7 @@ import {
   type SnapshotDecisionState,
 } from '../../webview/chatListShared';
 import { renderChatListWebviewHtml } from '../../webview/chatListHtml';
+import { isChatActionCommand } from '../../webview/chatActionsMenu';
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -94,7 +95,9 @@ export class AgenticChatListHost implements vscode.Disposable {
   private favorites(): Set<string> {
     const stored = this.globalState.get<unknown>(FAVORITES_KEY);
     return new Set(
-      Array.isArray(stored) ? stored.filter((entry): entry is string => typeof entry === 'string') : []
+      Array.isArray(stored)
+        ? stored.filter((entry): entry is string => typeof entry === 'string')
+        : []
     );
   }
 
@@ -124,7 +127,10 @@ export class AgenticChatListHost implements vscode.Disposable {
     }
     const model = this.buildModel();
     const decision = decideSnapshotPush(model, this.snapshotState);
-    this.snapshotState = { lastIdentity: decision.lastIdentity, hasShownRealData: decision.hasShownRealData };
+    this.snapshotState = {
+      lastIdentity: decision.lastIdentity,
+      hasShownRealData: decision.hasShownRealData,
+    };
     if (!decision.push) {
       return;
     }
@@ -138,6 +144,11 @@ export class AgenticChatListHost implements vscode.Disposable {
         return this.pushSnapshot();
       case 'newChat':
         await vscode.commands.executeCommand('piRpc.newSession');
+        return;
+      case 'executeCommand':
+        if (isChatActionCommand(record.command)) {
+          await vscode.commands.executeCommand(record.command);
+        }
         return;
       case 'openChat': {
         const resource = asString(record.resource);

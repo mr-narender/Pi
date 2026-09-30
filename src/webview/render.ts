@@ -1,4 +1,5 @@
 import type { WebviewSnapshot } from '../state/types';
+import { renderChatActionsMenu } from './chatActionsMenu';
 import { friendlyApiStatus, parseProviderError } from './apiError';
 import { formatKey } from './codeFormat';
 import { highlightCode } from './highlight';
@@ -1055,7 +1056,7 @@ function renderSidebarHeader(snapshot: WebviewSnapshot): string {
   // (composer-actions-right) — they were duplicated here in the top deck too,
   // which cluttered it for no reason since they're already one click away at
   // the input. Top deck stays to session-level actions only.
-  return `<header class="sb-deck"><button type="button" class="sb-btn" data-action="toggleChatList" title="All chats" aria-label="All chats">☰</button>${label}<span class="sb-spacer"></span>${review}<button type="button" class="sb-btn" data-action="newChatSession" title="New chat" aria-label="New chat">✚</button><details class="menu-details sb-more"><summary class="sb-btn" title="More" aria-label="More actions">⋯</summary><div class="menu-panel" role="menu"><div class="menu-group">Chat</div><button type="button" class="menu-item" data-command="piRpc.reviewLastTurn">Review last turn</button><button type="button" class="menu-item" data-command="piRpc.showChatVersions">Chat versions</button><button type="button" class="menu-item" data-command="piRpc.exportHtml">Export chat</button><div class="menu-group">Configure</div><button type="button" class="menu-item" data-command="piRpc.manageExtensions">Extensions…</button><button type="button" class="menu-item" data-command="piRpc.manageSkills">Skills…</button><button type="button" class="menu-item" data-command="piRpc.managePrompts">Prompts…</button><button type="button" class="menu-item" data-command="piRpc.manageAgentInstructions">Agent instructions…</button><div class="menu-group">System</div><button type="button" class="menu-item" data-command="piRpcInternal.restart">Restart π</button></div></details></header>`;
+  return `<header class="sb-deck"><button type="button" class="sb-btn" data-action="toggleChatList" title="All chats" aria-label="All chats">☰</button>${label}<span class="sb-spacer"></span>${review}<button type="button" class="sb-btn" data-action="newChatSession" title="New chat" aria-label="New chat">✚</button>${renderChatActionsMenu()}</header>`;
 }
 
 function renderPlanStrip(snapshot: WebviewSnapshot): string {

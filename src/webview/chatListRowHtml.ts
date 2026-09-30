@@ -5,6 +5,7 @@
 // media/chatList.ts owns wiring (postMessage, listeners) and MUST render
 // through these functions only — new markup goes here, with a golden.
 import { formatRelativeTime, type ChatListModel, type ChatListRow } from './chatListShared';
+import { renderChatActionsMenu } from './chatActionsMenu';
 
 const ICON_PLUS =
   '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 2v12M2 8h12"/></svg>';
@@ -43,7 +44,8 @@ function rowDetailText(row: ChatListRow, now: number): string | undefined {
   // the webview can repaint "5m ago" on an interval without a snapshot
   // push. Unknown/invalid timestamps are omitted entirely rather than
   // showing "Unknown".
-  const hasTime = typeof row.modifiedAt === 'number' && Number.isFinite(row.modifiedAt) && row.modifiedAt > 0;
+  const hasTime =
+    typeof row.modifiedAt === 'number' && Number.isFinite(row.modifiedAt) && row.modifiedAt > 0;
   const parts = [row.detail, hasTime ? formatRelativeTime(row.modifiedAt!, now) : undefined];
   const text = parts.filter(Boolean).join(' · ');
   return text || undefined;
@@ -51,7 +53,9 @@ function rowDetailText(row: ChatListRow, now: number): string | undefined {
 
 function rowSizeWarning(row: ChatListRow): string {
   const oversized =
-    typeof row.sizeBytes === 'number' && Number.isFinite(row.sizeBytes) && row.sizeBytes >= SIZE_WARN_BYTES;
+    typeof row.sizeBytes === 'number' &&
+    Number.isFinite(row.sizeBytes) &&
+    row.sizeBytes >= SIZE_WARN_BYTES;
   if (!oversized) {
     return '';
   }
@@ -95,7 +99,10 @@ export interface ChatListBodyOptions {
   now?: number;
 }
 
-export function renderChatListBody(model: ChatListModel, options: ChatListBodyOptions = {}): string {
+export function renderChatListBody(
+  model: ChatListModel,
+  options: ChatListBodyOptions = {}
+): string {
   const now = options.now ?? Date.now();
   return model.loading
     ? `<div class="chat-list-loading">Loading chats…</div>`
@@ -109,12 +116,12 @@ export function renderChatListBody(model: ChatListModel, options: ChatListBodyOp
 }
 
 export function renderChatListShell(bodyHtml: string, filterText = ''): string {
-  // The Chat/Configure/System menu moved to the native toolbar (package.json
-  // view/title → piRpc.chatListMore submenu), next to the mode-flip button —
-  // no longer built here at all.
   return `
     <div class="chat-list-shell">
-      <button class="chat-list-new-btn" id="new-chat-btn">${ICON_PLUS} New Chat</button>
+      <div class="chat-list-toolbar">
+        <button class="chat-list-new-btn" id="new-chat-btn">${ICON_PLUS} New Chat</button>
+        ${renderChatActionsMenu()}
+      </div>
       <input class="chat-list-search" id="chat-list-search" type="text" placeholder="Search chats…" aria-label="Search chats" value="${esc(filterText)}" />
       <div class="chat-list-scroll" role="listbox" aria-label="Chats">${bodyHtml}</div>
     </div>

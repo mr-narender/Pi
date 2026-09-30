@@ -1607,37 +1607,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   registrations.set('piRpcInternal.increaseChatFont', () => adjustChatFont(1));
   registrations.set('piRpcInternal.decreaseChatFont', () => adjustChatFont(-1));
 
-  // Agentic sidebar “…” menu. Native submenus render group boundaries as bare
-  // separator LINES — group ids like `2_configure` never display — so the old
-  // in-webview menu's labeled sections (Chat / Configure / System) were lost
-  // when the toolbar went native. A QuickPick brings the labeled headers back
-  // (same items, same order as the old piRpc.chatListMore submenu).
-  registrations.set('piRpc.chatListMenu', async () => {
-    const items: Array<vscode.QuickPickItem & { command: string }> = [
-      { label: 'Chat', kind: vscode.QuickPickItemKind.Separator, command: '' },
-      { label: '$(checklist) Review last turn', command: 'piRpc.reviewLastTurn' },
-      { label: '$(history) Chat versions', command: 'piRpc.showChatVersions' },
-      { label: '$(export) Export chat as HTML', command: 'piRpc.exportHtml' },
-      { label: 'Configure', kind: vscode.QuickPickItemKind.Separator, command: '' },
-      { label: '$(extensions) Extensions…', command: 'piRpc.manageExtensions' },
-      { label: '$(rocket) Skills…', command: 'piRpc.manageSkills' },
-      { label: '$(edit) Prompts…', command: 'piRpc.managePrompts' },
-      {
-        label: '$(book) Agent instructions (AGENTS.md)…',
-        command: 'piRpc.manageAgentInstructions',
-      },
-      { label: 'System', kind: vscode.QuickPickItemKind.Separator, command: '' },
-      { label: '$(debug-restart) Restart Pi', command: 'piRpcInternal.restart' },
-    ];
-    const pick = await vscode.window.showQuickPick(items, {
-      title: 'Pi — Chat Menu',
-      placeHolder: 'Choose an action',
-    });
-    if (pick?.command) {
-      await vscode.commands.executeCommand(pick.command);
-    }
-  });
-
   // The Settings gear (top of the sidebar) opens this menu of global/app + system
   // actions. Per-chat actions live in the chat header “…” menu instead.
   registrations.set('piRpcInternal.openSettingsMenu', async () => {

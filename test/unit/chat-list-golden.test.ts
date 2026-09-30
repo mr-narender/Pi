@@ -16,6 +16,11 @@ import {
   renderChatListShell,
 } from '../../src/webview/chatListRowHtml';
 import type { ChatListRow } from '../../src/webview/chatListShared';
+import {
+  CHAT_ACTION_COMMANDS,
+  isChatActionCommand,
+  renderChatActionsMenu,
+} from '../../src/webview/chatActionsMenu';
 
 const goldenDir = join(process.cwd(), 'test', 'unit', '__golden__');
 
@@ -132,6 +137,25 @@ test('golden: chat-list body — empty while a search filter is active', () => {
   );
 });
 
+test('Agentic menu shares Chat mode markup and accepts only its eight actions', () => {
+  const menu = renderChatActionsMenu();
+  assert.ok(
+    renderChatListShell('').includes(menu),
+    'Agentic shell uses the shared anchored dropdown'
+  );
+  assert.deepEqual(
+    [...menu.matchAll(/class="menu-group">([^<]+)/g)].map((m) => m[1]),
+    ['Chat', 'Configure', 'System']
+  );
+  assert.deepEqual(
+    [...menu.matchAll(/data-command="([^"]+)"/g)].map((m) => m[1]),
+    CHAT_ACTION_COMMANDS
+  );
+  for (const command of CHAT_ACTION_COMMANDS) assert.ok(isChatActionCommand(command));
+  assert.equal(isChatActionCommand('piRpcInternal.deleteSession'), false);
+  assert.equal(isChatActionCommand(undefined), false);
+});
+
 test('chat-list shell: filter text is escaped into the search input value', () => {
   const html = renderChatListShell('<div></div>', `"><script>alert(1)</script>`);
   assert.ok(!html.includes('<script>'), 'raw script must not appear');
@@ -149,9 +173,15 @@ test('golden: chat-list row — oversized session paints the size warning', () =
 });
 
 test('chat-list row: sizes under the warning threshold stay silent', () => {
-  const html = renderChatListRow(row({ sizeBytes: SIZE_WARN_BYTES - 1, modifiedAt: NOW - 60_000 }), NOW);
+  const html = renderChatListRow(
+    row({ sizeBytes: SIZE_WARN_BYTES - 1, modifiedAt: NOW - 60_000 }),
+    NOW
+  );
   assert.ok(!html.includes('size-warn'));
-  const exact = renderChatListRow(row({ sizeBytes: SIZE_WARN_BYTES, modifiedAt: NOW - 60_000 }), NOW);
+  const exact = renderChatListRow(
+    row({ sizeBytes: SIZE_WARN_BYTES, modifiedAt: NOW - 60_000 }),
+    NOW
+  );
   assert.ok(exact.includes('size-warn') && exact.includes('50 MB'));
 });
 
@@ -166,7 +196,8 @@ test('chat-list row: stale/invalid modifiedAt renders no time fragment at all', 
 test('chat-list row: hover strip carries exactly the expected actions in order', () => {
   // Structural guard independent of the golden bytes: favorite → rename →
   // delete for a persisted row; delete alone for a draft.
-  const acts = (html: string): string[] => [...html.matchAll(/data-act="([a-z]+)"/g)].map((m) => m[1]!);
+  const acts = (html: string): string[] =>
+    [...html.matchAll(/data-act="([a-z]+)"/g)].map((m) => m[1]!);
   assert.deepEqual(acts(renderChatListRow(row())), ['favorite', 'rename', 'delete']);
   assert.deepEqual(
     acts(renderChatListRow(row({ sessionPath: undefined, openCommand: { resource: 'r' } }))),

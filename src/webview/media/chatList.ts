@@ -1,4 +1,5 @@
 import { buildDeleteMessage, type ChatListModel, type ChatListRow } from '../chatListShared';
+import { isChatActionCommand } from '../chatActionsMenu';
 import { renderChatListBody, renderChatListShell } from '../chatListRowHtml';
 import { installCustomTooltips } from './customTooltip';
 
@@ -83,7 +84,11 @@ function render(): void {
   const activeId = (document.activeElement as HTMLElement | null)?.dataset?.id;
   const searchEl = document.getElementById('chat-list-search') as HTMLInputElement | null;
   const searchHadFocus = document.activeElement === searchEl;
-  const caret = searchHadFocus ? searchEl?.selectionStart ?? null : null;
+  const caret = searchHadFocus ? (searchEl?.selectionStart ?? null) : null;
+  const menuWasOpen = Boolean(document.querySelector('.chat-list-toolbar .sb-more[open]'));
+  const focusedMenuCommand = (document.activeElement as HTMLElement | null)?.dataset.command;
+  const menuSummaryHadFocus =
+    document.activeElement?.matches('.chat-list-toolbar summary') ?? false;
 
   // All markup comes from chatListRowHtml.ts (pure, golden-tested) — this
   // file only wires events onto it.
@@ -94,6 +99,24 @@ function render(): void {
 
   document.getElementById('new-chat-btn')?.addEventListener('click', () => {
     vscode.postMessage({ type: 'newChat' });
+  });
+
+  const menu = document.querySelector<HTMLDetailsElement>('.chat-list-toolbar .sb-more');
+  if (menuWasOpen && menu) {
+    menu.open = true;
+  }
+  if (menuSummaryHadFocus) {
+    menu?.querySelector('summary')?.focus();
+  } else if (focusedMenuCommand && isChatActionCommand(focusedMenuCommand)) {
+    menu?.querySelector<HTMLElement>(`[data-command="${focusedMenuCommand}"]`)?.focus();
+  }
+  menu?.querySelectorAll<HTMLButtonElement>('button[data-command]').forEach((button) => {
+    button.addEventListener('click', () => {
+      menu.open = false;
+      if (isChatActionCommand(button.dataset.command)) {
+        vscode.postMessage({ type: 'executeCommand', command: button.dataset.command });
+      }
+    });
   });
 
   const search = document.getElementById('chat-list-search') as HTMLInputElement | null;

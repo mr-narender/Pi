@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.9 — local test build (PR #2)
+
+- **Agentic now has Chat's anchored “…” dropdown.** The Chat / Configure /
+  System headings and all eight actions render in the sidebar webview instead
+  of opening a separate QuickPick. Commands are allowlisted in the webview and
+  again by the extension host; list refreshes preserve menu state and focus.
+
 ## 0.2.8 — local test build (PR #2)
 
 - **Agentic sidebar "…" menu got its labeled sections back.** Chat /

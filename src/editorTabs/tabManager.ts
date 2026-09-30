@@ -130,8 +130,8 @@ function workspaceFolders(chatFolderUri?: string) {
 
 // Commands the chat webview may invoke via the generic executeCommand message.
 // Keep in sync with data-command usages in render.ts / chat.ts — nothing
-// else. (The Agentic Mode list's own ⋯ menu moved to a native view/title
-// submenu — package.json's piRpc.chatListMore — so it no longer needs this.)
+// else. The Agentic Mode list has its own narrower allowlist in
+// agenticChatListHost.ts for the same shared Chat/Configure/System menu.
 const WEBVIEW_COMMAND_ALLOWLIST = new Set<string>([
   'piRpc.togglePermissionMode',
   'piRpcInternal.retryWithModel',

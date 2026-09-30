@@ -13,6 +13,7 @@ const root = process.cwd();
 function commandsEmittedByWebview(): Set<string> {
   const sources = [
     readFileSync(join(root, 'src/webview/render.ts'), 'utf8'),
+    readFileSync(join(root, 'src/webview/chatActionsMenu.ts'), 'utf8'),
     readFileSync(join(root, 'src/webview/media/chat.ts'), 'utf8'),
     readFileSync(join(root, 'src/webview/media/chatList.ts'), 'utf8'),
   ].join('\n');

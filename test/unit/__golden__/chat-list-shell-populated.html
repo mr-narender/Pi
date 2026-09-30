@@ -1,6 +1,9 @@
 
     <div class="chat-list-shell">
-      <button class="chat-list-new-btn" id="new-chat-btn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 2v12M2 8h12"/></svg> New Chat</button>
+      <div class="chat-list-toolbar">
+        <button class="chat-list-new-btn" id="new-chat-btn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 2v12M2 8h12"/></svg> New Chat</button>
+        <details class="menu-details sb-more"><summary class="sb-btn" title="More" aria-label="More actions">⋯</summary><div class="menu-panel" role="menu"><div class="menu-group">Chat</div><button type="button" class="menu-item" data-command="piRpc.reviewLastTurn">Review last turn</button><button type="button" class="menu-item" data-command="piRpc.showChatVersions">Chat versions</button><button type="button" class="menu-item" data-command="piRpc.exportHtml">Export chat</button><div class="menu-group">Configure</div><button type="button" class="menu-item" data-command="piRpc.manageExtensions">Extensions…</button><button type="button" class="menu-item" data-command="piRpc.manageSkills">Skills…</button><button type="button" class="menu-item" data-command="piRpc.managePrompts">Prompts…</button><button type="button" class="menu-item" data-command="piRpc.manageAgentInstructions">Agent instructions…</button><div class="menu-group">System</div><button type="button" class="menu-item" data-command="piRpcInternal.restart">Restart π</button></div></details>
+      </div>
       <input class="chat-list-search" id="chat-list-search" type="text" placeholder="Search chats…" aria-label="Search chats" value="" />
       <div class="chat-list-scroll" role="listbox" aria-label="Chats"><div class="chat-list-row active" data-id="open:pi-chat://one" role="option" tabindex="-1" aria-selected="true" aria-label="OpenChat">
     <span class="chat-list-row-icon"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.2 3.2L13 4.5"/></svg></span>
