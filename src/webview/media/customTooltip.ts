@@ -19,7 +19,7 @@ let activeTarget: Element | undefined;
 function findTitled(start: Element | null): Element | undefined {
   let node: Element | null = start;
   while (node && node !== document.body) {
-    const title = node.getAttribute('title');
+    const title = node.getAttribute('data-tooltip') ?? node.getAttribute('title');
     if (title) {
       return node;
     }
@@ -74,7 +74,11 @@ export function installCustomTooltips(): void {
         return;
       }
       activeTarget = target;
-      const text = target.getAttribute('title')!;
+      const text = target.getAttribute('data-tooltip') ?? target.getAttribute('title')!;
+      if (target.classList.contains('chat-list-row-text')) {
+        const name = target.querySelector('.chat-list-row-title');
+        if (name && name.scrollWidth <= name.clientWidth) return;
+      }
       showTimer = setTimeout(() => show(target, text), 350);
     },
     true

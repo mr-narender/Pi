@@ -2,7 +2,7 @@
   "name": "pi",
   "displayName": "Pi – this one is (y)ours",
   "description": "An unofficial, personal VS Code chat UI for the Pi coding agent (pi.dev). Not affiliated with pi.dev — shared for anyone who wants it.",
-  "version": "0.2.9",
+  "version": "0.2.10",
   "publisher": "mr-narender",
   "license": "MIT",
   "private": true,
@@ -1093,8 +1093,8 @@
             "Only show live read/edit activity in the status bar.",
             "No live activity."
           ],
-          "default": "open",
-          "description": "Follow the agent Zed-style: a side editor shows the file π is editing, live (reads narrate in the status bar only)."
+          "default": "off",
+          "description": "Follow the agent Zed-style when enabled: a side editor shows the file π is editing, live (reads narrate in the status bar only)."
         },
         "piRpc.formatCodeBlocks": {
           "type": "boolean",
@@ -1160,7 +1160,7 @@
         },
         {
           "command": "piRpc.toggleSidebarMode",
-          "when": "view == piRpc.chat",
+          "when": "view == piRpc.chat && piRpc.sidebarMode == chat",
           "group": "navigation@0"
         }
       ],

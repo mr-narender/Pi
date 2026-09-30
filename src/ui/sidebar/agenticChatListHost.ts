@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import * as path from 'node:path';
 import type { ChatTabManager } from '../../editorTabs/tabManager';
 import type { RecentSessionService } from '../../sessions/recentSessionService';
 import { buildChatListModel } from '../../webview/chatListData';
@@ -137,6 +138,79 @@ export class AgenticChatListHost implements vscode.Disposable {
     await this.view.webview.postMessage({ type: 'listSnapshot', model });
   }
 
+  private async showChatChanges(rowId: string): Promise<void> {
+    // Resolve the folder from our own model, never from a webview-supplied path.
+    const row = this.buildModel().rows.find((item) => item.id === rowId);
+    if (!row) return;
+    const open = row.isOpen
+      ? this.chatTabs.listOpenChats().find((chat) => `open:${chat.resource.toString()}` === rowId)
+      : undefined;
+    const recent = row.sessionPath
+      ? this.recentSessions
+          .getState(this.folder)
+          .items.find((item) => item.path === row.sessionPath)
+      : undefined;
+    const folderPath = open?.controller.folder.uri.fsPath || recent?.cwd || this.folder.uri.fsPath;
+    type Change = { uri: vscode.Uri };
+    type Repo = {
+      rootUri: vscode.Uri;
+      state: { workingTreeChanges: Change[]; indexChanges: Change[]; mergeChanges: Change[] };
+    };
+    const extension = vscode.extensions.getExtension('vscode.git');
+    let repos: Repo[] = [];
+    try {
+      const git =
+        extension &&
+        ((await extension.activate()) as
+          | {
+              getAPI(version: 1): { repositories: Repo[] };
+            }
+          | undefined);
+      repos = git?.getAPI(1).repositories ?? [];
+    } catch {
+      // Git extension unavailable: treat it like a folder without a repository.
+    }
+    const inside = (root: string, file: string): boolean => {
+      const relative = path.relative(root, file);
+      return (
+        relative === '' ||
+        (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative))
+      );
+    };
+    const repo = repos
+      .filter((candidate) => inside(candidate.rootUri.fsPath, folderPath))
+      .sort((a, b) => b.rootUri.fsPath.length - a.rootUri.fsPath.length)[0];
+    if (!repo) {
+      void vscode.window.showInformationMessage('No Git repository found for this chat folder.');
+      return;
+    }
+    const changes = new Map<string, vscode.Uri>();
+    for (const change of [
+      ...repo.state.workingTreeChanges,
+      ...repo.state.indexChanges,
+      ...repo.state.mergeChanges,
+    ]) {
+      if (inside(folderPath, change.uri.fsPath)) changes.set(change.uri.toString(), change.uri);
+    }
+    if (!changes.size) {
+      void vscode.window.showInformationMessage('No Git changes in this chat folder.');
+      return;
+    }
+    const picked = await vscode.window.showQuickPick(
+      [...changes.values()].map((uri) => ({
+        label: path.relative(folderPath, uri.fsPath),
+        uri,
+      })),
+      { placeHolder: `Git changes · ${path.basename(repo.rootUri.fsPath)}` }
+    );
+    if (!picked) return;
+    try {
+      await vscode.commands.executeCommand('git.openChange', picked.uri);
+    } catch {
+      await vscode.commands.executeCommand('vscode.open', picked.uri);
+    }
+  }
+
   private async onMessage(message: unknown): Promise<void> {
     const record = asRecord(message);
     switch (record?.type) {
@@ -144,6 +218,12 @@ export class AgenticChatListHost implements vscode.Disposable {
         return this.pushSnapshot();
       case 'newChat':
         await vscode.commands.executeCommand('piRpc.newSession');
+        return;
+      case 'switchSidebarMode':
+        await vscode.commands.executeCommand('piRpc.toggleSidebarMode');
+        return;
+      case 'showChatChanges':
+        if (typeof record.rowId === 'string') await this.showChatChanges(record.rowId);
         return;
       case 'executeCommand':
         if (isChatActionCommand(record.command)) {

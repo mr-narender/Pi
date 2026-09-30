@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.10 — local test build (PR #2)
+
+- **Compact Agentic toolbar:** Switch, More, and New Chat are matching icons. The
+  anchored More menu closes on outside click or Escape.
+- **Git changes per chat folder:** the row's diff icon lists current unstaged,
+  staged, and conflicted files in its Git folder; selecting a file opens its diff.
+- Chat rows are shorter, the list inherits the OS scrollbar setting, and row
+  tips use one custom tooltip rather than both custom and native tips.
+- Follow agent now defaults to off; explicit existing preferences are preserved.
+
 ## 0.2.9 — local test build (PR #2)
 
 - **Agentic now has Chat's anchored “…” dropdown.** The Chat / Configure /

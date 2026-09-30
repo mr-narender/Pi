@@ -3,7 +3,7 @@
 // working file on the other), with the edited region glowing ember and hover
 // attribution of WHICH chat did it. Reads narrate in the status bar only.
 // Tabs the pane opens are bounded by piRpc.followMaxTabs (oldest evicted).
-// Modes (piRpc.followAgent): 'open' (default) | 'status' | 'off'.
+// Modes (piRpc.followAgent): 'off' (default) | 'open' | 'status'.
 import { spawn } from 'node:child_process';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -88,8 +88,8 @@ export class AgentFollowService implements vscode.Disposable {
   }
 
   private mode(): 'open' | 'status' | 'off' {
-    const raw = vscode.workspace.getConfiguration('piRpc').get<string>('followAgent', 'open');
-    return raw === 'status' || raw === 'off' ? raw : 'open';
+    const raw = vscode.workspace.getConfiguration('piRpc').get<string>('followAgent', 'off');
+    return raw === 'status' || raw === 'open' ? raw : 'off';
   }
 
   /** Feed every rendered snapshot through here; new tool calls become activity. */

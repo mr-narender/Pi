@@ -1083,7 +1083,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // Zed-style follow mode: cycle open → status → off from the palette.
   registrations.set('piRpc.toggleFollowAgent', async () => {
     const config = vscode.workspace.getConfiguration('piRpc');
-    const current = config.get<string>('followAgent', 'open');
+    const current = config.get<string>('followAgent', 'off');
     const next = current === 'open' ? 'status' : current === 'status' ? 'off' : 'open';
     await config.update('followAgent', next, vscode.ConfigurationTarget.Global);
     void vscode.window.showInformationMessage(

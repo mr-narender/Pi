@@ -26,6 +26,20 @@ const vscode = acquireVsCodeApi();
 const root = document.getElementById('app');
 let currentSnapshot: WebviewSnapshot | undefined;
 installCustomTooltips();
+// The shared More menu should dismiss the same way in Chat and Agentic modes.
+document.addEventListener('pointerdown', (event) => {
+  const menu = document.querySelector<HTMLDetailsElement>('.sb-more[open]');
+  if (menu && event.target instanceof Node && !menu.contains(event.target)) menu.open = false;
+});
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape') return;
+  const menu = document.querySelector<HTMLDetailsElement>('.sb-more[open]');
+  if (menu) {
+    event.preventDefault();
+    menu.open = false;
+    menu.querySelector('summary')?.focus();
+  }
+});
 
 // Wiring guard for morphdom: renderNow re-runs the event wiring on every render,
 // but morphdom REUSES DOM nodes, so their listeners persist. bindOnce binds each

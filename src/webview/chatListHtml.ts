@@ -35,7 +35,7 @@ export function renderChatListWebviewHtml(
     <link rel="stylesheet" href="${styleUri}" />
     <title>Chats</title>
   </head>
-  <body>
+  <body class="chat-list-view">
     <div id="app"></div>
     <script nonce="${nonce}" src="${scriptUri}"></script>
   </body>

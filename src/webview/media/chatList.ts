@@ -49,6 +49,7 @@ function toggleFavorite(row: ChatListRow): void {
 // custom context menu (Open/Rename/Delete) was removed — every action now
 // lives in the hover-revealed .chat-list-row-actions strip.
 const ROW_ACTIONS: Record<string, (row: ChatListRow) => void> = {
+  changes: (row) => vscode.postMessage({ type: 'showChatChanges', rowId: row.id }),
   favorite: toggleFavorite,
   rename: renameChat,
   delete: deleteChat,
@@ -99,6 +100,9 @@ function render(): void {
 
   document.getElementById('new-chat-btn')?.addEventListener('click', () => {
     vscode.postMessage({ type: 'newChat' });
+  });
+  document.getElementById('switch-chat-btn')?.addEventListener('click', () => {
+    vscode.postMessage({ type: 'switchSidebarMode' });
   });
 
   const menu = document.querySelector<HTMLDetailsElement>('.chat-list-toolbar .sb-more');
@@ -179,6 +183,21 @@ function render(): void {
     document.querySelector<HTMLElement>(`[data-id="${activeId.replace(/"/g, '\\"')}"]`)?.focus();
   }
 }
+
+// Delegated: the menu is replaced on every snapshot repaint.
+document.addEventListener('pointerdown', (event) => {
+  const menu = document.querySelector<HTMLDetailsElement>('.chat-list-toolbar .sb-more[open]');
+  if (menu && event.target instanceof Node && !menu.contains(event.target)) menu.open = false;
+});
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape') return;
+  const menu = document.querySelector<HTMLDetailsElement>('.chat-list-toolbar .sb-more[open]');
+  if (menu) {
+    event.preventDefault();
+    menu.open = false;
+    menu.querySelector('summary')?.focus();
+  }
+});
 
 // Arrow-key navigation over the whole list (delegated — survives re-renders).
 document.addEventListener('keydown', (event) => {

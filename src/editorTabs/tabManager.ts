@@ -1326,7 +1326,7 @@ export class ChatTabManager implements vscode.Disposable {
 
   private async handleToggleFollow(resource: vscode.Uri): Promise<void> {
     const config = vscode.workspace.getConfiguration('piRpc');
-    const next = config.get<string>('followAgent', 'open') === 'open' ? 'off' : 'open';
+    const next = config.get<string>('followAgent', 'off') === 'open' ? 'off' : 'open';
     await config.update('followAgent', next, vscode.ConfigurationTarget.Global);
     await this.renderResource(resource);
     if (next === 'open') {
@@ -2550,7 +2550,7 @@ export class ChatTabManager implements vscode.Disposable {
     snapshot.reviewCount = this.turnReview?.history.length ?? 0;
     snapshot.followMode = vscode.workspace
       .getConfiguration('piRpc')
-      .get<'open' | 'status' | 'off'>('followAgent', 'open');
+      .get<'open' | 'status' | 'off'>('followAgent', 'off');
     snapshot.requireApprovalForEdits = vscode.workspace
       .getConfiguration('piRpc')
       .get<boolean>('requireApprovalForEdits', false);

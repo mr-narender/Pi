@@ -7,8 +7,12 @@
 import { formatRelativeTime, type ChatListModel, type ChatListRow } from './chatListShared';
 import { renderChatActionsMenu } from './chatActionsMenu';
 
-const ICON_PLUS =
-  '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 2v12M2 8h12"/></svg>';
+const ICON_NEW_CHAT =
+  '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 6V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h1v2l3-2h1"/><path d="M12 9v5M9.5 11.5h5"/></svg>';
+const ICON_SWITCH =
+  '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 5h11m-3-3 3 3-3 3M13.5 11h-11m3-3-3 3 3 3"/></svg>';
+const ICON_DIFF =
+  '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="2" y="2" width="12" height="12" rx="2"/><path d="M8 2v12M4 6h2m-1-1v2m5 4h2"/></svg>';
 const ICON_CHECK =
   '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.2 3.2L13 4.5"/></svg>';
 const ICON_CHAT =
@@ -60,7 +64,7 @@ function rowSizeWarning(row: ChatListRow): string {
     return '';
   }
   const label = `Large session file (${formatMegabytes(row.sizeBytes!)}) — may resume slowly; consider starting a fresh chat`;
-  return `<span class="chat-list-row-size-warn" title="${esc(label)}" aria-label="${esc(label)}">⚠ ${esc(formatMegabytes(row.sizeBytes!))}</span>`;
+  return `<span class="chat-list-row-size-warn" data-tooltip="${esc(label)}" aria-label="${esc(label)}">⚠ ${esc(formatMegabytes(row.sizeBytes!))}</span>`;
 }
 
 export function renderChatListRow(row: ChatListRow, now = Date.now()): string {
@@ -73,21 +77,22 @@ export function renderChatListRow(row: ChatListRow, now = Date.now()): string {
   // The action strip is a hover OVERLAY (absolute, own background), so the
   // name always gets the row's full width; the inline star badge (hidden
   // while hovering, when the toggle star is visible instead) is what marks
-  // a favorite at rest. The full name rides on a [title] tooltip shown
+  // a favorite at rest. The full name rides on a custom tooltip shown
   // ABOVE the text (data-tooltip-pos) — names longer than the sidebar are
   // readable without widening it. role=option + tabindex=-1 make rows
   // keyboard-focusable targets for the listbox arrow-key navigation wired
   // in media/chatList.ts.
   return `<div class="chat-list-row${row.active ? ' active' : ''}${row.favorite ? ' favorite' : ''}" data-id="${esc(row.id)}" role="option" tabindex="-1" aria-selected="${row.active ? 'true' : 'false'}" aria-label="${esc(row.title)}">
     <span class="chat-list-row-icon">${row.active ? ICON_CHECK : ICON_CHAT}</span>
-    <span class="chat-list-row-text" title="${esc(row.title)}" data-tooltip-pos="above">
+    <span class="chat-list-row-text" data-tooltip="${esc(row.title)}" data-tooltip-pos="above">
       <span class="chat-list-row-title">${row.favorite ? `<span class="chat-list-row-favbadge">${ICON_STAR_FILLED}</span>` : ''}${esc(row.title)}</span>
       ${detail || rowSizeWarning(row) ? `<span class="chat-list-row-detail">${detail ? esc(detail) : ''}${rowSizeWarning(row) ? `${detail ? ' · ' : ''}${rowSizeWarning(row)}` : ''}</span>` : ''}
     </span>
     <span class="chat-list-row-actions">
-      ${canTarget ? `<button class="chat-list-row-action chat-list-row-fav${row.favorite ? ' is-fav' : ''}" data-act="favorite" title="${favTitle}" aria-label="${favTitle}">${row.favorite ? ICON_STAR_FILLED : ICON_STAR}</button>` : ''}
-      ${canTarget ? `<button class="chat-list-row-action" data-act="rename" title="Rename chat" aria-label="Rename chat">${ICON_PENCIL}</button>` : ''}
-      <button class="chat-list-row-action chat-list-row-delete" data-act="delete" title="Delete chat" aria-label="Delete chat">${ICON_TRASH}</button>
+      <button class="chat-list-row-action" data-act="changes" data-tooltip="Git changes in chat folder" aria-label="Git changes in chat folder">${ICON_DIFF}</button>
+      ${canTarget ? `<button class="chat-list-row-action chat-list-row-fav${row.favorite ? ' is-fav' : ''}" data-act="favorite" data-tooltip="${favTitle}" aria-label="${favTitle}">${row.favorite ? ICON_STAR_FILLED : ICON_STAR}</button>` : ''}
+      ${canTarget ? `<button class="chat-list-row-action" data-act="rename" data-tooltip="Rename chat" aria-label="Rename chat">${ICON_PENCIL}</button>` : ''}
+      <button class="chat-list-row-action chat-list-row-delete" data-act="delete" data-tooltip="Delete chat" aria-label="Delete chat">${ICON_TRASH}</button>
     </span>
   </div>`;
 }
@@ -119,8 +124,10 @@ export function renderChatListShell(bodyHtml: string, filterText = ''): string {
   return `
     <div class="chat-list-shell">
       <div class="chat-list-toolbar">
-        <button class="chat-list-new-btn" id="new-chat-btn">${ICON_PLUS} New Chat</button>
+        <span class="chat-list-heading">Chats</span>
+        <button class="sb-btn" id="switch-chat-btn" type="button" aria-label="Switch to full chat" data-tooltip="Switch to full chat">${ICON_SWITCH}</button>
         ${renderChatActionsMenu()}
+        <button class="sb-btn chat-list-new-btn" id="new-chat-btn" type="button" aria-label="New chat" data-tooltip="New chat">${ICON_NEW_CHAT}</button>
       </div>
       <input class="chat-list-search" id="chat-list-search" type="text" placeholder="Search chats…" aria-label="Search chats" value="${esc(filterText)}" />
       <div class="chat-list-scroll" role="listbox" aria-label="Chats">${bodyHtml}</div>

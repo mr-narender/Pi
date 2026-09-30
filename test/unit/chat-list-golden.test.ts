@@ -194,13 +194,16 @@ test('chat-list row: stale/invalid modifiedAt renders no time fragment at all', 
 });
 
 test('chat-list row: hover strip carries exactly the expected actions in order', () => {
-  // Structural guard independent of the golden bytes: favorite → rename →
-  // delete for a persisted row; delete alone for a draft.
+  // Structural guard independent of the golden bytes: changes → favorite →
+  // rename → delete for a persisted row; changes → delete for a draft.
   const acts = (html: string): string[] =>
     [...html.matchAll(/data-act="([a-z]+)"/g)].map((m) => m[1]!);
-  assert.deepEqual(acts(renderChatListRow(row())), ['favorite', 'rename', 'delete']);
+  assert.deepEqual(acts(renderChatListRow(row())), ['changes', 'favorite', 'rename', 'delete']);
   assert.deepEqual(
     acts(renderChatListRow(row({ sessionPath: undefined, openCommand: { resource: 'r' } }))),
-    ['delete']
+    ['changes', 'delete']
   );
+  const html = renderChatListRow(row({ title: 'Chat name' }));
+  assert.ok(html.includes('data-tooltip="Chat name"'));
+  assert.ok(!html.includes('title="Chat name"'), 'avoid native + custom duplicate tooltip');
 });

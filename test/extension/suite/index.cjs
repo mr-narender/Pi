@@ -33,6 +33,8 @@ async function run() {
 
   const views = extension.packageJSON.contributes.views.piRpc.map((view) => view.id);
   assert.deepEqual(views, ['piRpc.chat']);
+  assert.equal(extension.packageJSON.contributes.configuration.properties['piRpc.followAgent'].default, 'off');
+  assert.ok(commands.includes('piRpc.toggleSidebarMode'));
 
   const customEditor = extension.packageJSON.contributes.customEditors.find(
     (item) => item.viewType === 'piRpc.chatEditor'
