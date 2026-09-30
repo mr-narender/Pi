@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.14 — local test build (PR #2)
+
+- Moved Agentic New Chat and More into the native π: Chat view header; removed
+  the redundant Chats heading. More uses the native anchored menu, with a
+  labeled switch action and the same chat, configuration, and system actions.
+
 ## 0.2.13 — local test build (PR #2)
 
 - Removed Agentic theme presets and Theme… menu; the sidebar follows the VS Code

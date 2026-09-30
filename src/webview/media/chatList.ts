@@ -1,5 +1,4 @@
 import { buildDeleteMessage, type ChatListModel, type ChatListRow } from '../chatListShared';
-import { isChatActionCommand } from '../chatActionsMenu';
 import { renderChatListBody, renderChatListShell } from '../chatListRowHtml';
 import { installCustomTooltips } from './customTooltip';
 
@@ -86,48 +85,12 @@ function render(): void {
   const searchEl = document.getElementById('chat-list-search') as HTMLInputElement | null;
   const searchHadFocus = document.activeElement === searchEl;
   const caret = searchHadFocus ? (searchEl?.selectionStart ?? null) : null;
-  const menuWasOpen = Boolean(document.querySelector('.chat-list-toolbar .sb-more[open]'));
-  const focusedMenuCommand = (document.activeElement as HTMLElement | null)?.dataset.command;
-  const switchHadFocus = document.activeElement?.hasAttribute('data-switch-chat') ?? false;
-  const menuSummaryHadFocus =
-    document.activeElement?.matches('.chat-list-toolbar summary') ?? false;
-
   // All markup comes from chatListRowHtml.ts (pure, golden-tested) — this
   // file only wires events onto it.
   app.innerHTML = renderChatListShell(
     renderChatListBody(currentModel, { filterActive: filterText.trim().length > 0 }),
     filterText
   );
-
-  document.getElementById('new-chat-btn')?.addEventListener('click', () => {
-    vscode.postMessage({ type: 'newChat' });
-  });
-
-  const menu = document.querySelector<HTMLDetailsElement>('.chat-list-toolbar .sb-more');
-  if (menuWasOpen && menu) {
-    menu.open = true;
-  }
-  if (menuSummaryHadFocus) {
-    menu?.querySelector('summary')?.focus();
-  } else if (switchHadFocus) {
-    menu?.querySelector<HTMLElement>('[data-switch-chat]')?.focus();
-  } else if (focusedMenuCommand && isChatActionCommand(focusedMenuCommand)) {
-    menu?.querySelector<HTMLElement>(`[data-command="${focusedMenuCommand}"]`)?.focus();
-  }
-  menu
-    ?.querySelector<HTMLButtonElement>('button[data-switch-chat]')
-    ?.addEventListener('click', () => {
-      menu.open = false;
-      vscode.postMessage({ type: 'switchSidebarMode' });
-    });
-  menu?.querySelectorAll<HTMLButtonElement>('button[data-command]').forEach((button) => {
-    button.addEventListener('click', () => {
-      menu.open = false;
-      if (isChatActionCommand(button.dataset.command)) {
-        vscode.postMessage({ type: 'executeCommand', command: button.dataset.command });
-      }
-    });
-  });
 
   const search = document.getElementById('chat-list-search') as HTMLInputElement | null;
   search?.addEventListener('input', () => {
@@ -189,21 +152,6 @@ function render(): void {
     document.querySelector<HTMLElement>(`[data-id="${activeId.replace(/"/g, '\\"')}"]`)?.focus();
   }
 }
-
-// Delegated: the menu is replaced on every snapshot repaint.
-document.addEventListener('pointerdown', (event) => {
-  const menu = document.querySelector<HTMLDetailsElement>('.chat-list-toolbar .sb-more[open]');
-  if (menu && event.target instanceof Node && !menu.contains(event.target)) menu.open = false;
-});
-document.addEventListener('keydown', (event) => {
-  if (event.key !== 'Escape') return;
-  const menu = document.querySelector<HTMLDetailsElement>('.chat-list-toolbar .sb-more[open]');
-  if (menu) {
-    event.preventDefault();
-    menu.open = false;
-    menu.querySelector('summary')?.focus();
-  }
-});
 
 // Arrow-key navigation over the whole list (delegated — survives re-renders).
 document.addEventListener('keydown', (event) => {

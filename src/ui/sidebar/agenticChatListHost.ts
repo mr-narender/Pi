@@ -11,7 +11,6 @@ import {
   type SnapshotDecisionState,
 } from '../../webview/chatListShared';
 import { renderChatListWebviewHtml } from '../../webview/chatListHtml';
-import { isChatActionCommand } from '../../webview/chatActionsMenu';
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -216,19 +215,8 @@ export class AgenticChatListHost implements vscode.Disposable {
     switch (record?.type) {
       case 'requestListSnapshot':
         return this.pushSnapshot();
-      case 'newChat':
-        await vscode.commands.executeCommand('piRpc.newSession');
-        return;
-      case 'switchSidebarMode':
-        await vscode.commands.executeCommand('piRpc.toggleSidebarMode');
-        return;
       case 'showChatChanges':
         if (typeof record.rowId === 'string') await this.showChatChanges(record.rowId);
-        return;
-      case 'executeCommand':
-        if (isChatActionCommand(record.command)) {
-          await vscode.commands.executeCommand(record.command);
-        }
         return;
       case 'openChat': {
         const resource = asString(record.resource);

@@ -1043,6 +1043,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const next = current === 'agentic' ? 'chat' : 'agentic';
     await config.update('sidebarMode', next, vscode.ConfigurationTarget.Global);
   });
+  registrations.set('piRpcInternal.switchToFullChat', async () => {
+    if (sidebarMode() === 'agentic') {
+      await vscode.commands.executeCommand('piRpc.toggleSidebarMode');
+    }
+  });
   registrations.set('piRpc.addCustomResource', async () => {
     await addCustomResource();
   });

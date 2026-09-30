@@ -2,7 +2,7 @@
   "name": "pi",
   "displayName": "Pi – this one is (y)ours",
   "description": "An unofficial, personal VS Code chat UI for the Pi coding agent (pi.dev). Not affiliated with pi.dev — shared for anyone who wants it.",
-  "version": "0.2.13",
+  "version": "0.2.14",
   "publisher": "mr-narender",
   "license": "MIT",
   "private": true,
@@ -156,7 +156,7 @@
         "command": "piRpc.newSession",
         "title": "New Chat",
         "category": "Pi",
-        "icon": "$(add)"
+        "icon": "$(comment-add)"
       },
       {
         "command": "piRpc.refreshState",
@@ -229,6 +229,12 @@
       {
         "command": "piRpc.toggleSidebarMode",
         "title": "Switch Chat List / Full Chat",
+        "category": "Pi",
+        "icon": "$(arrow-swap)"
+      },
+      {
+        "command": "piRpcInternal.switchToFullChat",
+        "title": "Switch to full chat",
         "category": "Pi",
         "icon": "$(arrow-swap)"
       },
@@ -1162,6 +1168,16 @@
           "command": "piRpc.toggleSidebarMode",
           "when": "view == piRpc.chat && piRpc.sidebarMode == chat",
           "group": "navigation@0"
+        },
+        {
+          "command": "piRpc.newSession",
+          "when": "view == piRpc.chat && piRpc.sidebarMode == agentic",
+          "group": "navigation@1"
+        },
+        {
+          "submenu": "piRpc.agenticActions",
+          "when": "view == piRpc.chat && piRpc.sidebarMode == agentic",
+          "group": "navigation@2"
         }
       ],
       "editor/title": [
@@ -1179,6 +1195,44 @@
           "submenu": "piRpc.chatActions",
           "when": "activeCustomEditorId == 'piRpc.chatEditor'",
           "group": "navigation@0"
+        }
+      ],
+      "piRpc.agenticActions": [
+        {
+          "command": "piRpcInternal.switchToFullChat",
+          "group": "1_chat@1"
+        },
+        {
+          "command": "piRpc.reviewLastTurn",
+          "group": "1_chat@2"
+        },
+        {
+          "command": "piRpc.showChatVersions",
+          "group": "1_chat@3"
+        },
+        {
+          "command": "piRpc.exportHtml",
+          "group": "1_chat@4"
+        },
+        {
+          "command": "piRpc.manageExtensions",
+          "group": "2_configure@1"
+        },
+        {
+          "command": "piRpc.manageSkills",
+          "group": "2_configure@2"
+        },
+        {
+          "command": "piRpc.managePrompts",
+          "group": "2_configure@3"
+        },
+        {
+          "command": "piRpc.manageAgentInstructions",
+          "group": "2_configure@4"
+        },
+        {
+          "command": "piRpcInternal.restart",
+          "group": "3_system@1"
         }
       ],
       "piRpc.chatActions": [
@@ -1321,6 +1375,11 @@
         "id": "piRpc.ask",
         "label": "Ask Pi",
         "icon": "$(sparkle)"
+      },
+      {
+        "id": "piRpc.agenticActions",
+        "label": "More actions",
+        "icon": "$(ellipsis)"
       },
       {
         "id": "piRpc.chatActions",

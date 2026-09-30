@@ -3007,51 +3007,6 @@ button.ghost:hover,
   box-sizing: border-box;
 }
 
-.chat-list-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  position: relative;
-  z-index: 60;
-}
-
-.chat-list-heading {
-  margin-right: auto;
-  font-size: 15px;
-  font-weight: 600;
-}
-
-.chat-list-toolbar .sb-btn,
-.chat-list-toolbar .sb-more > summary.sb-btn {
-  width: 29px;
-  height: 29px;
-  flex: none;
-}
-
-.chat-list-toolbar .sb-btn svg {
-  width: 16px;
-  height: 16px;
-}
-
-.chat-list-toolbar .chat-list-new-btn {
-  color: var(--ember);
-}
-
-.chat-list-toolbar .chat-list-new-btn:hover {
-  background: var(--ember-soft);
-}
-.chat-list-toolbar .menu-panel {
-  min-width: 0;
-  width: min(260px, calc(100vw - 56px));
-}
-
-.chat-list-toolbar .menu-panel [data-switch-chat] svg {
-  width: 16px;
-  height: 16px;
-  flex: none;
-  margin-right: 8px;
-}
-
 .chat-list-scroll {
   flex: 1;
   min-width: 0;

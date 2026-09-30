@@ -16,11 +16,7 @@ import {
   renderChatListShell,
 } from '../../src/webview/chatListRowHtml';
 import type { ChatListRow } from '../../src/webview/chatListShared';
-import {
-  CHAT_ACTION_COMMANDS,
-  isChatActionCommand,
-  renderChatActionsMenu,
-} from '../../src/webview/chatActionsMenu';
+import { renderChatActionsMenu } from '../../src/webview/chatActionsMenu';
 
 const goldenDir = join(process.cwd(), 'test', 'unit', '__golden__');
 
@@ -137,40 +133,67 @@ test('golden: chat-list body — empty while a search filter is active', () => {
   );
 });
 
-test('Agentic menu shares Chat mode markup and accepts only its eight actions', () => {
-  const menu = renderChatActionsMenu(true);
-  assert.ok(renderChatListShell('').includes(menu), 'Agentic shell uses the shared dropdown');
-  assert.ok(!menu.includes('data-agentic-theme'), 'Agentic menu follows VS Code theme');
-  assert.match(
-    menu,
-    /data-switch-chat><svg[^>]*aria-hidden="true"[^>]*>.*<\/svg>Switch to full chat<\/button>/,
-    'mode switch has icon and text in Agentic menu'
+test('Agentic New Chat and More sit beside π: Chat in the native view header', () => {
+  const shell = renderChatListShell('');
+  assert.ok(!shell.includes('chat-list-toolbar'));
+  assert.ok(!shell.includes('>Chats</span>'));
+  assert.ok(!shell.includes('id="new-chat-btn"'));
+  assert.ok(!shell.includes('sb-more'));
+  const manifest = JSON.parse(
+    readFileSync(join(process.cwd(), 'package.json'), 'utf8')
+  ).contributes;
+  const when = 'view == piRpc.chat && piRpc.sidebarMode == agentic';
+  assert.deepEqual(
+    manifest.menus['view/title'].filter((item: { when: string }) => item.when === when),
+    [
+      { command: 'piRpc.newSession', when, group: 'navigation@1' },
+      { submenu: 'piRpc.agenticActions', when, group: 'navigation@2' },
+    ]
   );
-  assert.ok(!renderChatActionsMenu().includes('data-switch-chat'), 'Chat menu is unchanged');
-  const toolbar = renderChatListShell('').split('</div>')[0]!;
-  assert.ok(!toolbar.includes('id="switch-chat-btn"'), 'mode switch is not in the toolbar');
-  assert.ok(toolbar.indexOf('id="new-chat-btn"') < toolbar.indexOf('class="menu-details sb-more"'));
-  assert.ok(!renderChatActionsMenu().includes('data-agentic-theme'), 'Chat mode is unchanged');
-  assert.ok(
-    !readFileSync(join(process.cwd(), 'src/webview/media/chat.css'), 'utf8').includes(
-      'data-agentic-theme'
-    )
-  );
-  assert.ok(
-    !JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf8')).contributes.configuration
-      .properties['piRpc.agenticTheme']
+  assert.equal(
+    manifest.commands.find((item: { command: string }) => item.command === 'piRpc.newSession').icon,
+    '$(comment-add)'
   );
   assert.deepEqual(
-    [...menu.matchAll(/class="menu-group">([^<]+)/g)].map((m) => m[1]),
-    ['Chat', 'Configure', 'System']
+    manifest.menus['piRpc.agenticActions'].map(
+      (item: { group: string }) => item.group.split('@')[0]
+    ),
+    [
+      '1_chat',
+      '1_chat',
+      '1_chat',
+      '1_chat',
+      '2_configure',
+      '2_configure',
+      '2_configure',
+      '2_configure',
+      '3_system',
+    ]
   );
   assert.deepEqual(
-    [...menu.matchAll(/data-command="([^"]+)"/g)].map((m) => m[1]),
-    CHAT_ACTION_COMMANDS
+    manifest.menus['piRpc.agenticActions'].map((item: { command: string }) => item.command),
+    [
+      'piRpcInternal.switchToFullChat',
+      'piRpc.reviewLastTurn',
+      'piRpc.showChatVersions',
+      'piRpc.exportHtml',
+      'piRpc.manageExtensions',
+      'piRpc.manageSkills',
+      'piRpc.managePrompts',
+      'piRpc.manageAgentInstructions',
+      'piRpcInternal.restart',
+    ]
   );
-  for (const command of CHAT_ACTION_COMMANDS) assert.ok(isChatActionCommand(command));
-  assert.equal(isChatActionCommand('piRpcInternal.deleteSession'), false);
-  assert.equal(isChatActionCommand(undefined), false);
+  const more = manifest.submenus.find((item: { id: string }) => item.id === 'piRpc.agenticActions');
+  assert.equal(more.label, 'More actions');
+  assert.equal(more.icon, '$(ellipsis)');
+  const switchMode = manifest.commands.find(
+    (item: { command: string }) => item.command === 'piRpcInternal.switchToFullChat'
+  );
+  assert.equal(switchMode.title, 'Switch to full chat');
+  assert.equal(switchMode.icon, '$(arrow-swap)');
+  assert.ok(renderChatActionsMenu().includes('class="menu-group">Chat'), 'full Chat menu stays');
+  assert.ok(!manifest.configuration.properties['piRpc.agenticTheme']);
 });
 
 test('chat-list shell: filter text is escaped into the search input value', () => {
