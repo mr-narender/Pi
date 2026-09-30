@@ -9,8 +9,6 @@ import { renderChatActionsMenu } from './chatActionsMenu';
 
 const ICON_NEW_CHAT =
   '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 6V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h1v2l3-2h1"/><path d="M12 9v5M9.5 11.5h5"/></svg>';
-const ICON_SWITCH =
-  '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 5h11m-3-3 3 3-3 3M13.5 11h-11m3-3-3 3 3 3"/></svg>';
 const ICON_DIFF =
   '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="2" y="2" width="12" height="12" rx="2"/><path d="M8 2v12M4 6h2m-1-1v2m5 4h2"/></svg>';
 const ICON_CHECK =
@@ -125,9 +123,8 @@ export function renderChatListShell(bodyHtml: string, filterText = ''): string {
     <div class="chat-list-shell">
       <div class="chat-list-toolbar">
         <span class="chat-list-heading">Chats</span>
-        <button class="sb-btn" id="switch-chat-btn" type="button" aria-label="Switch to full chat" data-tooltip="Switch to full chat">${ICON_SWITCH}</button>
-        ${renderChatActionsMenu(true)}
         <button class="sb-btn chat-list-new-btn" id="new-chat-btn" type="button" aria-label="New chat" data-tooltip="New chat">${ICON_NEW_CHAT}</button>
+        ${renderChatActionsMenu(true)}
       </div>
       <input class="chat-list-search" id="chat-list-search" type="text" placeholder="Search chats…" aria-label="Search chats" value="${esc(filterText)}" />
       <div class="chat-list-scroll" role="listbox" aria-label="Chats">${bodyHtml}</div>

@@ -90,6 +90,7 @@ function render(): void {
   const menuWasOpen = Boolean(document.querySelector('.chat-list-toolbar .sb-more[open]'));
   const focusedMenuCommand = (document.activeElement as HTMLElement | null)?.dataset.command;
   const themeHadFocus = document.activeElement?.hasAttribute('data-agentic-theme') ?? false;
+  const switchHadFocus = document.activeElement?.hasAttribute('data-switch-chat') ?? false;
   const menuSummaryHadFocus =
     document.activeElement?.matches('.chat-list-toolbar summary') ?? false;
 
@@ -103,9 +104,6 @@ function render(): void {
   document.getElementById('new-chat-btn')?.addEventListener('click', () => {
     vscode.postMessage({ type: 'newChat' });
   });
-  document.getElementById('switch-chat-btn')?.addEventListener('click', () => {
-    vscode.postMessage({ type: 'switchSidebarMode' });
-  });
 
   const menu = document.querySelector<HTMLDetailsElement>('.chat-list-toolbar .sb-more');
   if (menuWasOpen && menu) {
@@ -115,9 +113,17 @@ function render(): void {
     menu?.querySelector('summary')?.focus();
   } else if (themeHadFocus) {
     menu?.querySelector<HTMLElement>('[data-agentic-theme]')?.focus();
+  } else if (switchHadFocus) {
+    menu?.querySelector<HTMLElement>('[data-switch-chat]')?.focus();
   } else if (focusedMenuCommand && isChatActionCommand(focusedMenuCommand)) {
     menu?.querySelector<HTMLElement>(`[data-command="${focusedMenuCommand}"]`)?.focus();
   }
+  menu
+    ?.querySelector<HTMLButtonElement>('button[data-switch-chat]')
+    ?.addEventListener('click', () => {
+      menu.open = false;
+      vscode.postMessage({ type: 'switchSidebarMode' });
+    });
   menu
     ?.querySelector<HTMLButtonElement>('button[data-agentic-theme]')
     ?.addEventListener('click', () => {

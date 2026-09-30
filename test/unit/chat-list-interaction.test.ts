@@ -57,7 +57,8 @@ test('Agentic menu dismisses outside/Escape and row actions target trusted row I
   document.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
   assert.equal(menu.open, false);
   document.querySelector<HTMLButtonElement>('#new-chat-btn')!.click();
-  document.querySelector<HTMLButtonElement>('#switch-chat-btn')!.click();
+  assert.equal(document.querySelector('#switch-chat-btn'), null);
+  document.querySelector<HTMLButtonElement>('[data-switch-chat]')!.click();
   document.querySelector<HTMLButtonElement>('[data-act="changes"]')!.click();
   document.querySelector<HTMLButtonElement>('[data-agentic-theme]')!.click();
   assert.deepEqual(posted.slice(-4), [

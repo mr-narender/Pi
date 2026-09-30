@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.12 — local test build (PR #2)
+
+- Agentic theme picker now previews as you navigate with keyboard or mouse;
+  Enter saves the preference and Escape restores the previous theme.
+- Agentic toolbar now shows New Chat then More; Switch to full chat moved
+  into the Chat section of More. Full Chat mode is unchanged.
+
 ## 0.2.11 — local test build (PR #2)
 
 - Agentic sidebar's More → Configure → Theme… now offers Follow VS Code,
