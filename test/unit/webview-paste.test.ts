@@ -109,11 +109,16 @@ interface FakeClipboardItem {
   getAsFile: () => File | null;
 }
 
-function pasteEvent(items: FakeClipboardItem[], data: Record<string, string>): Event {
+function pasteEvent(
+  items: FakeClipboardItem[],
+  data: Record<string, string>,
+  files: File[] = []
+): Event {
   const event = new dom.window.Event('paste', { bubbles: true, cancelable: true });
   Object.defineProperty(event, 'clipboardData', {
     value: {
       items,
+      files,
       getData: (type: string) => data[type] ?? '',
     },
   });
@@ -171,7 +176,36 @@ test('webview paste: pasted TEXT stays native — no chip message, default not p
   });
   findComposer().dispatchEvent(event);
   assert.equal(event.defaultPrevented, false, 'text paste must fall through to the textarea');
-  assert.equal(posted.length, 0, 'no host message for text pastes of any size');
+  const content = posted.filter((message) => message.type !== 'diag');
+  assert.equal(content.length, 0, 'no content message for text pastes of any size');
+});
+
+test('webview paste: image arriving ONLY via clipboard.files still chips (Electron delivers files with empty items)', async () => {
+  posted.length = 0;
+  const bytes = Uint8Array.from([137, 80, 78, 71, 13, 10, 26, 10]);
+  const file = new dom.window.File([bytes], 'files-only.png', { type: 'image/png' });
+  const event = pasteEvent([], {}, [file]);
+  findComposer().dispatchEvent(event);
+  assert.equal(event.defaultPrevented, true, 'files-only image paste must be intercepted');
+  await waitFor(
+    () => posted.some((message) => message.type === 'pasteImage'),
+    'pasteImage message from clipboard.files fallback'
+  );
+  const message = posted.find((entry) => entry.type === 'pasteImage')!;
+  assert.equal(message.mimeType, 'image/png');
+  assert.equal(message.data, Buffer.from(bytes).toString('base64'));
+});
+
+test('webview paste: every paste posts a diag breadcrumb naming clipboard kinds (live debuggability)', async () => {
+  posted.length = 0;
+  const event = pasteEvent([{ kind: 'string', type: 'text/plain', getAsFile: () => null }], {
+    'text/plain': 'hello',
+  });
+  findComposer().dispatchEvent(event);
+  const diag = posted.find((message) => message.type === 'diag');
+  assert.ok(diag, 'paste must post a diag breadcrumb');
+  assert.equal(diag!.scope, 'paste');
+  assert.match(String(diag!.detail), /string:text\/plain/);
 });
 
 test('webview paste: file URIs still attach as file chips', () => {

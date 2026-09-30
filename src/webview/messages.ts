@@ -53,6 +53,7 @@ export type WebviewInboundMessage =
   | { type: 'requestFileMentions'; query: string }
   | { type: 'requestSlashCommands' }
   | { type: 'pasteImage'; data: string; mimeType: string }
+  | { type: 'diag'; scope: string; detail: string }
   | { type: 'respondUi'; id: string; value?: string; confirmed?: boolean };
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
@@ -213,6 +214,12 @@ export function parseWebviewMessage(value: unknown): WebviewInboundMessage | und
         : undefined;
     // 'pasteText' intentionally removed: pasted text stays plain text in the
     // composer — only images (and file URIs) become chips.
+    case 'diag':
+      // Webview-side breadcrumbs (e.g. what a paste delivered) — log-only,
+      // bounded so a hostile payload can't flood the output channel.
+      return typeof record.scope === 'string' && typeof record.detail === 'string'
+        ? { type: 'diag', scope: record.scope.slice(0, 64), detail: record.detail.slice(0, 2000) }
+        : undefined;
     case 'respondUi': {
       if (typeof record.id !== 'string') {
         return undefined;

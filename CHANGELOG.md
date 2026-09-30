@@ -1,6 +1,12 @@
 # Changelog
 
-## 0.2.2 — local test build (PR #2)
+## 0.2.3 — local test build (PR #2)
+
+- **Image paste fallback:** images arriving only via `clipboard.files` (empty
+  `items` — how Electron/VS Code can deliver them) now attach as chips too.
+- **Paste breadcrumbs:** every paste logs what the clipboard delivered to the
+  Pi output channel (`[webview:paste]`) — one line pinpoints any future
+  clipboard-flavor issue.
 
 - **Pasted text stays text.** Text pastes of any size go straight into the
   input box — the "Pasted text" chip capture is gone (images and file URIs

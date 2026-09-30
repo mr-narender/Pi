@@ -800,8 +800,31 @@ function renderNow(snapshot: WebviewSnapshot): void {
       if (!clipboard) {
         return;
       }
+      // Breadcrumb for live debugging ("image paste does nothing"): one line in
+      // the Pi output channel names exactly what the clipboard delivered.
+      const itemKinds = Array.from(clipboard.items ?? []).map(
+        (entry) => `${entry.kind}:${entry.type}`
+      );
+      const fileKinds = Array.from(clipboard.files ?? []).map((file) => `file:${file.type}`);
+      vscode.postMessage({
+        type: 'diag',
+        scope: 'paste',
+        detail: JSON.stringify({ items: itemKinds, files: fileKinds }),
+      });
+      const attachImage = (file: File): void => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = typeof reader.result === 'string' ? reader.result : '';
+          const comma = result.indexOf(',');
+          const data = comma >= 0 ? result.slice(comma + 1) : '';
+          if (data) {
+            vscode.postMessage({ type: 'pasteImage', data, mimeType: file.type });
+          }
+        };
+        reader.readAsDataURL(file);
+      };
       let handledImage = false;
-      for (const entry of Array.from(clipboard.items)) {
+      for (const entry of Array.from(clipboard.items ?? [])) {
         if (entry.kind === 'file' && entry.type.startsWith('image/')) {
           const file = entry.getAsFile();
           if (!file) {
@@ -809,16 +832,19 @@ function renderNow(snapshot: WebviewSnapshot): void {
           }
           event.preventDefault();
           handledImage = true;
-          const reader = new FileReader();
-          reader.onload = () => {
-            const result = typeof reader.result === 'string' ? reader.result : '';
-            const comma = result.indexOf(',');
-            const data = comma >= 0 ? result.slice(comma + 1) : '';
-            if (data) {
-              vscode.postMessage({ type: 'pasteImage', data, mimeType: file.type });
-            }
-          };
-          reader.readAsDataURL(file);
+          attachImage(file);
+        }
+      }
+      // Electron/VS Code can deliver pasted images with EMPTY clipboard.items
+      // but a populated clipboard.files — without this fallback the paste
+      // silently does nothing (reported live).
+      if (!handledImage) {
+        for (const file of Array.from(clipboard.files ?? [])) {
+          if (file.type.startsWith('image/')) {
+            event.preventDefault();
+            handledImage = true;
+            attachImage(file);
+          }
         }
       }
       if (handledImage) {

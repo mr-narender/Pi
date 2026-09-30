@@ -97,6 +97,20 @@ test('pasted text stays text: the pasteText webview message is gone from the pro
   );
 });
 
+test('diag breadcrumbs parse (bounded) so webview paste issues are debuggable live', () => {
+  assert.deepEqual(parseWebviewMessage({ type: 'diag', scope: 'paste', detail: '{"items":[]}' }), {
+    type: 'diag',
+    scope: 'paste',
+    detail: '{"items":[]}',
+  });
+  const oversized = parseWebviewMessage({ type: 'diag', scope: 'paste', detail: 'x'.repeat(5000) });
+  assert.ok(
+    oversized && (oversized as { detail: string }).detail.length <= 2000,
+    'diag detail must be bounded'
+  );
+  assert.equal(parseWebviewMessage({ type: 'diag', scope: 42 }), undefined);
+});
+
 test('pasteImage protocol survives the pasteText removal (image chips must keep working)', () => {
   assert.deepEqual(
     parseWebviewMessage({ type: 'pasteImage', data: 'aGk=', mimeType: 'image/png' }),

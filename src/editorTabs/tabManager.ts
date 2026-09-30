@@ -1223,6 +1223,9 @@ export class ChatTabManager implements vscode.Disposable {
         return this.handlePickImages(context, host.resource);
       case 'pasteImage':
         return this.handlePasteImage(context, host.resource, parsed.data, parsed.mimeType);
+      case 'diag':
+        this.logger?.info(`[webview:${parsed.scope}] ${parsed.detail}`);
+        return;
       case 'clearAttachments':
         return this.handleClearAttachments(context, host.resource);
       case 'appendActiveFile':
