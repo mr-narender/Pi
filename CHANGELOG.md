@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.15 — local test build (PR #2)
+
+- Added visible disabled Chat / Configure / System label rows to the native
+  Agentic More menu; actions remain in the native view header. Menu density is
+  controlled by VS Code; theme controls remain removed.
+- Shift+Tab in the composer cycles native model-supported thinking levels,
+  scoped to the source chat.
+
 ## 0.2.14 — local test build (PR #2)
 
 - Moved Agentic New Chat and More into the native π: Chat view header; removed

@@ -910,6 +910,23 @@ function renderNow(snapshot: WebviewSnapshot): void {
       }
     });
     bindOnce(textarea, 'keydown', (event) => {
+      // Handle composer-only thinking before Tab can accept a completion.
+      if (event.key === 'Tab' && event.shiftKey) {
+        if (event.ctrlKey || event.metaKey || event.altKey || event.isComposing) {
+          return;
+        }
+        event.preventDefault();
+        if (
+          !event.repeat &&
+          currentSnapshot?.bindingState === 'current' &&
+          !currentSnapshot.switchingSession &&
+          (currentSnapshot.connectionState === 'ready' ||
+            currentSnapshot.connectionState === 'busy')
+        ) {
+          vscode.postMessage({ type: 'executeCommand', command: 'piRpc.cycleThinkingLevel' });
+        }
+        return;
+      }
       // #6/#9 — slash and mention menu navigation take priority when open.
       if (handleSlashKeydown(event) || handleMentionKeydown(event)) {
         return;

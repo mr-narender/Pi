@@ -163,24 +163,30 @@ test('Agentic New Chat and More sit beside π: Chat in the native view header', 
       '1_chat',
       '1_chat',
       '1_chat',
+      '1_chat',
       '2_configure',
       '2_configure',
       '2_configure',
       '2_configure',
+      '2_configure',
+      '3_system',
       '3_system',
     ]
   );
   assert.deepEqual(
     manifest.menus['piRpc.agenticActions'].map((item: { command: string }) => item.command),
     [
+      'piRpcInternal.agenticChatHeading',
       'piRpcInternal.switchToFullChat',
       'piRpc.reviewLastTurn',
       'piRpc.showChatVersions',
       'piRpc.exportHtml',
+      'piRpcInternal.agenticConfigureHeading',
       'piRpc.manageExtensions',
       'piRpc.manageSkills',
       'piRpc.managePrompts',
       'piRpc.manageAgentInstructions',
+      'piRpcInternal.agenticSystemHeading',
       'piRpcInternal.restart',
     ]
   );
@@ -194,6 +200,41 @@ test('Agentic New Chat and More sit beside π: Chat in the native view header', 
   assert.equal(switchMode.icon, '$(arrow-swap)');
   assert.ok(renderChatActionsMenu().includes('class="menu-group">Chat'), 'full Chat menu stays');
   assert.ok(!manifest.configuration.properties['piRpc.agenticTheme']);
+});
+
+test('Agentic native section labels are disabled, flat, first in each group, and palette-hidden', () => {
+  const manifest = JSON.parse(
+    readFileSync(join(process.cwd(), 'package.json'), 'utf8')
+  ).contributes;
+  const headings = [
+    ['piRpcInternal.agenticChatHeading', 'Chat', '1_chat@0'],
+    ['piRpcInternal.agenticConfigureHeading', 'Configure', '2_configure@0'],
+    ['piRpcInternal.agenticSystemHeading', 'System', '3_system@0'],
+  ];
+  const items = manifest.menus['piRpc.agenticActions'];
+  assert.ok(
+    items.every((item: { submenu?: string }) => !item.submenu),
+    'no nested submenus'
+  );
+  for (const [id, title, group] of headings) {
+    const command = manifest.commands.find((item: { command: string }) => item.command === id);
+    assert.ok(command, `${title} label must be contributed`);
+    assert.equal(command.title, title);
+    assert.equal(command.enablement, 'false', 'label must never be selectable');
+    assert.equal(command.icon, undefined);
+    assert.deepEqual(
+      items.find((item: { group: string }) => item.group.startsWith(group!.split('@')[0]!)),
+      { command: id, group }
+    );
+    assert.ok(
+      manifest.menus.commandPalette.some(
+        (item: { command: string; when: string }) => item.command === id && item.when === 'false'
+      ),
+      'label must not become a palette action'
+    );
+  }
+  assert.ok(!JSON.stringify(manifest.menus['piRpc.chatActions']).includes('Heading'));
+  assert.equal(manifest.views.piRpc[0].name, 'Chat', 'π: Chat view title stays unchanged');
 });
 
 test('chat-list shell: filter text is escaped into the search input value', () => {

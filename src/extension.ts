@@ -587,6 +587,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   const registrations = new Map<string, (...args: unknown[]) => Promise<unknown>>();
 
+  // Native menus have no section-heading API. These disabled, palette-hidden
+  // labels only restore the names of Agentic More's existing flat groups.
+  registrations.set('piRpcInternal.agenticChatHeading', async () => undefined);
+  registrations.set('piRpcInternal.agenticConfigureHeading', async () => undefined);
+  registrations.set('piRpcInternal.agenticSystemHeading', async () => undefined);
+
   registrations.set('piRpcInternal.selectWorkspaceFolder', async (folderUri?: unknown) => {
     const selected =
       typeof folderUri === 'string'

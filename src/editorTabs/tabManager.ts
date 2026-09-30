@@ -139,6 +139,7 @@ const WEBVIEW_COMMAND_ALLOWLIST = new Set<string>([
   'piRpc.commandPalette',
   'piRpc.remote.stop',
   'piRpc.chatSettings',
+  'piRpc.cycleThinkingLevel',
   'piRpc.reviewLastTurn',
   'piRpc.showChatVersions',
   'piRpc.exportHtml',
@@ -1230,7 +1231,7 @@ export class ChatTabManager implements vscode.Disposable {
       case 'setFocus':
         return this.uiState.setFocusForIdentity(context.controller, context.target, parsed.focus);
       case 'executeCommand':
-        return this.handleExecuteCommand(parsed.command, parsed.argument);
+        return this.handleExecuteCommand(parsed.command, parsed.argument, context.controller);
       case 'pickImages':
         return this.handlePickImages(context, host.resource);
       case 'pasteImage':
@@ -1340,7 +1341,11 @@ export class ChatTabManager implements vscode.Disposable {
     await live?.controller.abort();
   }
 
-  private async handleExecuteCommand(command: string, argument: unknown): Promise<void> {
+  private async handleExecuteCommand(
+    command: string,
+    argument: unknown,
+    controller: SessionController
+  ): Promise<void> {
     // SECURITY: the webview may only invoke this fixed allowlist. Without it,
     // any HTML-escaping slip in the renderer would escalate to arbitrary
     // VS Code command execution (terminal writes, file ops, …).
@@ -1349,7 +1354,13 @@ export class ChatTabManager implements vscode.Disposable {
       return;
     }
     try {
-      await vscode.commands.executeCommand(command, argument);
+      // A shortcut message belongs to its originating chat even if VS Code
+      // has focused another tab before asynchronous RPC work finishes.
+      if (command === 'piRpc.cycleThinkingLevel') {
+        await controller.cycleThinkingLevel();
+      } else {
+        await vscode.commands.executeCommand(command, argument);
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       void vscode.window

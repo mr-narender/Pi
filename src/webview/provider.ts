@@ -257,7 +257,11 @@ export class ChatPanelProvider implements vscode.Disposable {
         await this.uiState.setFocus(controller, parsed.focus);
         return;
       case 'executeCommand':
-        await vscode.commands.executeCommand(parsed.command, parsed.argument);
+        if (parsed.command === 'piRpc.cycleThinkingLevel') {
+          await controller.cycleThinkingLevel();
+        } else {
+          await vscode.commands.executeCommand(parsed.command, parsed.argument);
+        }
         return;
       case 'debugLog':
         controller.log('info', `[webview] ${parsed.text}`);
