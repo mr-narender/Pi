@@ -3019,7 +3019,8 @@ button.ghost:hover,
   font-weight: 600;
 }
 
-.chat-list-toolbar .sb-btn {
+.chat-list-toolbar .sb-btn,
+.chat-list-toolbar .sb-more > summary.sb-btn {
   width: 29px;
   height: 29px;
   flex: none;
