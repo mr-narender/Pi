@@ -12,6 +12,7 @@ import {
 } from '../../webview/chatListShared';
 import { renderChatListWebviewHtml } from '../../webview/chatListHtml';
 import { isChatActionCommand } from '../../webview/chatActionsMenu';
+import { AGENTIC_THEMES, asAgenticTheme } from '../../webview/agenticTheme';
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -57,7 +58,15 @@ export class AgenticChatListHost implements vscode.Disposable {
   ) {
     this.disposables.push(
       chatTabs.onDidChangeOpenChats(() => this.scheduleRefresh()),
-      recentSessions.onDidChange(() => this.scheduleRefresh())
+      recentSessions.onDidChange(() => this.scheduleRefresh()),
+      vscode.workspace.onDidChangeConfiguration((event) => {
+        if (event.affectsConfiguration('piRpc.agenticTheme')) {
+          const theme = asAgenticTheme(
+            vscode.workspace.getConfiguration('piRpc').get('agenticTheme')
+          );
+          void this.view?.webview.postMessage({ type: 'agenticTheme', theme });
+        }
+      })
     );
   }
 
@@ -222,6 +231,21 @@ export class AgenticChatListHost implements vscode.Disposable {
       case 'switchSidebarMode':
         await vscode.commands.executeCommand('piRpc.toggleSidebarMode');
         return;
+      case 'chooseAgenticTheme': {
+        const config = vscode.workspace.getConfiguration('piRpc');
+        const current = asAgenticTheme(config.get('agenticTheme'));
+        const selected = await vscode.window.showQuickPick(
+          AGENTIC_THEMES.map((theme) => ({
+            label: theme.label,
+            description: theme.value === current ? 'Current' : undefined,
+            value: theme.value,
+          })),
+          { placeHolder: 'Agentic theme · high contrast always follows VS Code' }
+        );
+        if (selected)
+          await config.update('agenticTheme', selected.value, vscode.ConfigurationTarget.Global);
+        return;
+      }
       case 'showChatChanges':
         if (typeof record.rowId === 'string') await this.showChatChanges(record.rowId);
         return;

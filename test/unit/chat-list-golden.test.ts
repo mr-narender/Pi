@@ -138,11 +138,10 @@ test('golden: chat-list body — empty while a search filter is active', () => {
 });
 
 test('Agentic menu shares Chat mode markup and accepts only its eight actions', () => {
-  const menu = renderChatActionsMenu();
-  assert.ok(
-    renderChatListShell('').includes(menu),
-    'Agentic shell uses the shared anchored dropdown'
-  );
+  const menu = renderChatActionsMenu(true);
+  assert.ok(renderChatListShell('').includes(menu), 'Agentic shell uses the shared dropdown');
+  assert.ok(menu.includes('data-agentic-theme'), 'theme picker appears in Agentic only');
+  assert.ok(!renderChatActionsMenu().includes('data-agentic-theme'), 'Chat mode is unchanged');
   assert.deepEqual(
     [...menu.matchAll(/class="menu-group">([^<]+)/g)].map((m) => m[1]),
     ['Chat', 'Configure', 'System']

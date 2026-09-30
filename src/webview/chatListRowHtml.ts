@@ -126,7 +126,7 @@ export function renderChatListShell(bodyHtml: string, filterText = ''): string {
       <div class="chat-list-toolbar">
         <span class="chat-list-heading">Chats</span>
         <button class="sb-btn" id="switch-chat-btn" type="button" aria-label="Switch to full chat" data-tooltip="Switch to full chat">${ICON_SWITCH}</button>
-        ${renderChatActionsMenu()}
+        ${renderChatActionsMenu(true)}
         <button class="sb-btn chat-list-new-btn" id="new-chat-btn" type="button" aria-label="New chat" data-tooltip="New chat">${ICON_NEW_CHAT}</button>
       </div>
       <input class="chat-list-search" id="chat-list-search" type="text" placeholder="Search chats…" aria-label="Search chats" value="${esc(filterText)}" />

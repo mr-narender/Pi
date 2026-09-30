@@ -1,5 +1,6 @@
 import { buildDeleteMessage, type ChatListModel, type ChatListRow } from '../chatListShared';
 import { isChatActionCommand } from '../chatActionsMenu';
+import { asAgenticTheme } from '../agenticTheme';
 import { renderChatListBody, renderChatListShell } from '../chatListRowHtml';
 import { installCustomTooltips } from './customTooltip';
 
@@ -88,6 +89,7 @@ function render(): void {
   const caret = searchHadFocus ? (searchEl?.selectionStart ?? null) : null;
   const menuWasOpen = Boolean(document.querySelector('.chat-list-toolbar .sb-more[open]'));
   const focusedMenuCommand = (document.activeElement as HTMLElement | null)?.dataset.command;
+  const themeHadFocus = document.activeElement?.hasAttribute('data-agentic-theme') ?? false;
   const menuSummaryHadFocus =
     document.activeElement?.matches('.chat-list-toolbar summary') ?? false;
 
@@ -111,9 +113,17 @@ function render(): void {
   }
   if (menuSummaryHadFocus) {
     menu?.querySelector('summary')?.focus();
+  } else if (themeHadFocus) {
+    menu?.querySelector<HTMLElement>('[data-agentic-theme]')?.focus();
   } else if (focusedMenuCommand && isChatActionCommand(focusedMenuCommand)) {
     menu?.querySelector<HTMLElement>(`[data-command="${focusedMenuCommand}"]`)?.focus();
   }
+  menu
+    ?.querySelector<HTMLButtonElement>('button[data-agentic-theme]')
+    ?.addEventListener('click', () => {
+      menu.open = false;
+      vscode.postMessage({ type: 'chooseAgenticTheme' });
+    });
   menu?.querySelectorAll<HTMLButtonElement>('button[data-command]').forEach((button) => {
     button.addEventListener('click', () => {
       menu.open = false;
@@ -220,10 +230,12 @@ document.addEventListener('keydown', (event) => {
 });
 
 window.addEventListener('message', (event) => {
-  const message = event.data as { type?: string; model?: ChatListModel };
+  const message = event.data as { type?: string; model?: ChatListModel; theme?: unknown };
   if (message?.type === 'listSnapshot' && message.model) {
     currentModel = message.model;
     render();
+  } else if (message?.type === 'agenticTheme') {
+    document.body.dataset.agenticTheme = asAgenticTheme(message.theme);
   }
 });
 

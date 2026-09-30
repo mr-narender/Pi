@@ -2999,6 +2999,8 @@ button.ghost:hover,
 .chat-list-shell {
   display: flex;
   flex-direction: column;
+  width: 100%;
+  min-width: 0;
   height: 100%;
   padding: 14px 12px;
   gap: 12px;
@@ -3045,6 +3047,8 @@ button.ghost:hover,
 
 .chat-list-scroll {
   flex: 1;
+  min-width: 0;
+  overflow-x: hidden;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -4608,4 +4612,98 @@ body.vscode-high-contrast #review-overlay {
 .api-error-actions {
   font-size: 11.5px;
   opacity: 0.9;
+}
+
+/* Agentic-only opt-in palettes. Default and VS Code high-contrast modes keep
+   the editor's own tokens; no theme setting alters the full Chat view. */
+body.chat-list-view:not(.vscode-high-contrast):not(.vscode-high-contrast-light):is(
+    [data-agentic-theme='lime-mint'],
+    [data-agentic-theme='orange'],
+    [data-agentic-theme='dark'],
+    [data-agentic-theme='light']
+  ) {
+  background: var(--vscode-editor-background);
+  color: var(--vscode-foreground);
+  --vscode-menu-background: var(--vscode-editorWidget-background);
+  --vscode-menu-foreground: var(--vscode-foreground);
+  --vscode-menu-border: var(--vscode-panel-border);
+  --glass-1: color-mix(in srgb, var(--vscode-foreground) 5%, transparent);
+  --glass-2: color-mix(in srgb, var(--vscode-foreground) 8%, transparent);
+  --glass-line: color-mix(in srgb, var(--vscode-foreground) 18%, transparent);
+  --glass-line-strong: color-mix(in srgb, var(--vscode-foreground) 30%, transparent);
+  --ember-soft: color-mix(in srgb, var(--ember) 13%, transparent);
+  --ember-line: color-mix(in srgb, var(--ember) 48%, transparent);
+  --ember-glow: color-mix(in srgb, var(--ember) 45%, transparent);
+}
+
+body.chat-list-view:not(.vscode-high-contrast):not(
+    .vscode-high-contrast-light
+  )[data-agentic-theme='lime-mint'] {
+  --vscode-editor-background: #14231c;
+  --vscode-editorWidget-background: #20352b;
+  --vscode-foreground: #f0fbf4;
+  --vscode-descriptionForeground: #c3ddcb;
+  --vscode-input-background: #20352b;
+  --vscode-input-foreground: #f0fbf4;
+  --vscode-input-border: #779c85;
+  --vscode-panel-border: #779c85;
+  --vscode-focusBorder: #a1efca;
+  --vscode-button-background: #175b45;
+  --vscode-button-foreground: #ffffff;
+  --vscode-button-hoverBackground: #206f55;
+  --ember: #a1efca;
+}
+
+body.chat-list-view:not(.vscode-high-contrast):not(
+    .vscode-high-contrast-light
+  )[data-agentic-theme='orange'] {
+  --vscode-editor-background: #231a17;
+  --vscode-editorWidget-background: #352823;
+  --vscode-foreground: #fff2e8;
+  --vscode-descriptionForeground: #e2c8b8;
+  --vscode-input-background: #352823;
+  --vscode-input-foreground: #fff2e8;
+  --vscode-input-border: #ac826f;
+  --vscode-panel-border: #ac826f;
+  --vscode-focusBorder: #ffb386;
+  --vscode-button-background: #9c3d00;
+  --vscode-button-foreground: #ffffff;
+  --vscode-button-hoverBackground: #b64d0b;
+  --ember: #ffb386;
+}
+
+body.chat-list-view:not(.vscode-high-contrast):not(
+    .vscode-high-contrast-light
+  )[data-agentic-theme='dark'] {
+  --vscode-editor-background: #181b21;
+  --vscode-editorWidget-background: #292e38;
+  --vscode-foreground: #eef2f8;
+  --vscode-descriptionForeground: #bcc7d7;
+  --vscode-input-background: #292e38;
+  --vscode-input-foreground: #eef2f8;
+  --vscode-input-border: #8996a9;
+  --vscode-panel-border: #8996a9;
+  --vscode-focusBorder: #a9cdfc;
+  --vscode-button-background: #315787;
+  --vscode-button-foreground: #ffffff;
+  --vscode-button-hoverBackground: #3f689d;
+  --ember: #a9cdfc;
+}
+
+body.chat-list-view:not(.vscode-high-contrast):not(
+    .vscode-high-contrast-light
+  )[data-agentic-theme='light'] {
+  --vscode-editor-background: #fafbfc;
+  --vscode-editorWidget-background: #ffffff;
+  --vscode-foreground: #1d2730;
+  --vscode-descriptionForeground: #475563;
+  --vscode-input-background: #ffffff;
+  --vscode-input-foreground: #1d2730;
+  --vscode-input-border: #687589;
+  --vscode-panel-border: #687589;
+  --vscode-focusBorder: #154fa3;
+  --vscode-button-background: #175495;
+  --vscode-button-foreground: #ffffff;
+  --vscode-button-hoverBackground: #256ab4;
+  --ember: #154fa3;
 }

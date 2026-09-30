@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.11 — local test build (PR #2)
+
+- Agentic sidebar's More → Configure → Theme… now offers Follow VS Code,
+  Lime Mint, Orange, Dark, and Light. The choice persists in VS Code settings
+  and updates the list without a reload; Chat mode is unchanged.
+- All four presets have contrast-tested text, controls, and focus colors.
+  VS Code high-contrast themes override these palettes. The More icon is
+  unchanged pending the separate icon-choice discussion.
+
 ## 0.2.10 — local test build (PR #2)
 
 - **Compact Agentic toolbar:** Switch, More, and New Chat are matching icons. The
