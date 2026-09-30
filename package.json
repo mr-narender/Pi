@@ -2,7 +2,7 @@
   "name": "pi",
   "displayName": "Pi – this one is (y)ours",
   "description": "An unofficial, personal VS Code chat UI for the Pi coding agent (pi.dev). Not affiliated with pi.dev — shared for anyone who wants it.",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "publisher": "mr-narender",
   "license": "MIT",
   "private": true,
@@ -789,6 +789,12 @@
         "title": "Pi Settings",
         "category": "Pi",
         "icon": "$(gear)"
+      },
+      {
+        "command": "piRpc.chatListMenu",
+        "title": "Chat Menu",
+        "category": "Pi",
+        "icon": "$(ellipsis)"
       }
     ],
     "configuration": {
@@ -1164,7 +1170,7 @@
           "group": "navigation@0"
         },
         {
-          "submenu": "piRpc.chatListMore",
+          "command": "piRpc.chatListMenu",
           "when": "view == piRpc.chat && piRpc.sidebarMode == 'agentic'",
           "group": "navigation@1"
         }
@@ -1298,40 +1304,6 @@
           "command": "piRpc.refactorSelection",
           "group": "1_ask@3"
         }
-      ],
-      "piRpc.chatListMore": [
-        {
-          "command": "piRpc.reviewLastTurn",
-          "group": "1_chat@1"
-        },
-        {
-          "command": "piRpc.showChatVersions",
-          "group": "1_chat@2"
-        },
-        {
-          "command": "piRpc.exportHtml",
-          "group": "1_chat@3"
-        },
-        {
-          "command": "piRpc.manageExtensions",
-          "group": "2_configure@1"
-        },
-        {
-          "command": "piRpc.manageSkills",
-          "group": "2_configure@2"
-        },
-        {
-          "command": "piRpc.managePrompts",
-          "group": "2_configure@3"
-        },
-        {
-          "command": "piRpc.manageAgentInstructions",
-          "group": "2_configure@4"
-        },
-        {
-          "command": "piRpcInternal.restart",
-          "group": "3_system@1"
-        }
       ]
     },
     "keybindings": [
@@ -1368,11 +1340,6 @@
           "light": "media/tab-icon.svg",
           "dark": "media/tab-icon.svg"
         }
-      },
-      {
-        "id": "piRpc.chatListMore",
-        "label": "More",
-        "icon": "$(ellipsis)"
       }
     ]
   },

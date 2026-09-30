@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.8 — local test build (PR #2)
+
+- **Agentic sidebar "…" menu got its labeled sections back.** Chat /
+  Configure / System headers were lost when the menu moved from the
+  in-webview dropdown to a native submenu (native menus render group ids as
+  bare separator lines — labels can't display). The "…" button now opens a
+  QuickPick with the same items under visible Chat / Configure / System
+  headers.
+
 ## 0.2.7 — local test build (PR #2)
 
 - **Hover icons centered.** The code-card copy button still carried its old
