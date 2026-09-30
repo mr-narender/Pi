@@ -96,3 +96,15 @@ test('pasted text stays text: the pasteText webview message is gone from the pro
     'text pastes must not round-trip to the host as chip requests'
   );
 });
+
+test('pasteImage protocol survives the pasteText removal (image chips must keep working)', () => {
+  assert.deepEqual(
+    parseWebviewMessage({ type: 'pasteImage', data: 'aGk=', mimeType: 'image/png' }),
+    {
+      type: 'pasteImage',
+      data: 'aGk=',
+      mimeType: 'image/png',
+    }
+  );
+  assert.equal(parseWebviewMessage({ type: 'pasteImage', data: 42 }), undefined);
+});
