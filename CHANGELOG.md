@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.2 — local test build (PR #2)
 
 - **Pasted text stays text.** Text pastes of any size go straight into the
   input box — the "Pasted text" chip capture is gone (images and file URIs
