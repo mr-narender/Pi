@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.6 — local test build (PR #2)
+
+- **Image chips: the thumbnail IS the chip.** Capsule removed when a preview
+  exists — just the 48px thumbnail with the remove × overlaid on its corner.
+- **Code blocks auto-format for readability.** Fenced code in the chat is
+  formatted through your installed VS Code formatters (any language with a
+  formatter registered — TypeScript, Python, Go, …). Display-only and
+  best-effort: the stored conversation never changes; no formatter or a slow
+  one (>0.8s) just leaves the block as-is. Toggle: `piRpc.formatCodeBlocks`.
+- **Copy is an icon now.** The code-card COPY text label became a copy icon
+  with a ✓ confirmation state.
+
 ## 0.2.5 — local test build (PR #2)
 
 - **Image chips are now just the thumbnail, enlarged (48px).** No filename

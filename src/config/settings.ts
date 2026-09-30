@@ -27,6 +27,7 @@ export interface PiRpcSettings {
   autoStart: boolean;
   editorTabsEnabled: boolean;
   workingAnimation: string;
+  formatCodeBlocks: boolean;
   chatFontFamily: string;
   chatFontSize: number;
   notifyOnComplete: boolean;
@@ -94,6 +95,7 @@ export function getSettings(): PiRpcSettings {
     maxImageBytes: config.get<number>('maxImageBytes', 3145728),
     maxImagesPerPrompt: config.get<number>('maxImagesPerPrompt', 4),
     workingAnimation: config.get<string>('workingAnimation', 'braille'),
+    formatCodeBlocks: config.get<boolean>('formatCodeBlocks', true),
     chatFontFamily: config.get<string>('chatFontFamily', ''),
     chatFontSize: config.get<number>('chatFontSize', 0),
     notifyOnComplete: config.get<boolean>('notifyOnComplete', true),

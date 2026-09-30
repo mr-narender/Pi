@@ -2,7 +2,7 @@
   "name": "pi",
   "displayName": "Pi – this one is (y)ours",
   "description": "An unofficial, personal VS Code chat UI for the Pi coding agent (pi.dev). Not affiliated with pi.dev — shared for anyone who wants it.",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "publisher": "mr-narender",
   "license": "MIT",
   "private": true,
@@ -1095,6 +1095,11 @@
           ],
           "default": "open",
           "description": "Follow the agent Zed-style: a side editor shows the file π is editing, live (reads narrate in the status bar only)."
+        },
+        "piRpc.formatCodeBlocks": {
+          "type": "boolean",
+          "default": true,
+          "description": "Format code blocks in the chat for readability using your installed VS Code formatters (display only — the conversation text itself is never changed)."
         },
         "piRpc.followMaxTabs": {
           "type": "number",

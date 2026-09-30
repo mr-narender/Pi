@@ -1,5 +1,6 @@
 import type { WebviewSnapshot } from '../state/types';
 import { friendlyApiStatus, parseProviderError } from './apiError';
+import { formatKey } from './codeFormat';
 import { highlightCode } from './highlight';
 import { chipPrivacyLabel, summarizeChip, type PendingContextItem } from './composer';
 import { formatUsageChip } from './usageSummary';
@@ -578,6 +579,16 @@ function renderMetaBlock(block: MessageBlock): string {
  */
 // Inline Markdown: escape first, then code / links / bold / italic. Order
 // matters so ** inside `code` isn't bolded.
+/** Copy-to-clipboard icon (inline SVG — the webview loads no icon font). */
+export const COPY_ICON_SVG =
+  '<svg class="i-copy" width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5" stroke="currentColor"/><path d="M10.5 3.5v-0.5a1.5 1.5 0 0 0-1.5-1.5H4a1.5 1.5 0 0 0-1.5 1.5V9a1.5 1.5 0 0 0 1.5 1.5h0.5" stroke="currentColor"/></svg>';
+
+/** Copied-confirmation icon (swapped in by the webview after a copy). */
+export const COPIED_ICON_SVG =
+  '<svg class="i-copy" width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8.5 6.5 12 13 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+let formattedCodeLookup: Record<string, string> = {};
+
 function renderInlineMarkdown(text: string): string {
   let html = escapeHtml(text);
   // Inline code first so its contents aren't transformed by later passes.
@@ -908,9 +919,13 @@ export function renderRichText(raw: string): string {
         out.push(renderJsonBlock(jsonValue, codeText));
         continue;
       }
+      // Display-time formatting: the host formats blocks through the user's
+      // registered VS Code formatters (async, cached); when a result exists
+      // for this exact block, render the readable version instead.
+      const displayText = formattedCodeLookup[formatKey(language, codeText)] ?? codeText;
       // Syntax-highlight the block (falls back to plain escaped text). The
       // resolved language (explicit or auto-detected) drives the label + class.
-      const highlighted = highlightCode(codeText, language, escapeHtml);
+      const highlighted = highlightCode(displayText, language, escapeHtml);
       const labelLang = language.trim() || highlighted.language || '';
       // Fenced code renders as its OWN block with a Copy button. Only show a
       // language label for a REAL language — never a generic "text"/"code".
@@ -926,7 +941,7 @@ export function renderRichText(raw: string): string {
         // Code blocks carry COPY only — file changes happen through the agent's
         // edit tool (whose cards have Open file / Open changes). Insert/New-file
         // buttons on every snippet were noise on normal responses.
-        `<div class="code-wrap" data-lang="${escapeHtml(language)}"><div class="code-lang">${langSlot}<div class="code-actions"><button type="button" class="code-btn code-copy" aria-label="Copy code">Copy</button></div></div><pre class="code-block"><code class="${codeClass}">${highlighted.html}</code></pre></div>`
+        `<div class="code-wrap" data-lang="${escapeHtml(language)}"><div class="code-lang">${langSlot}<div class="code-actions"><button type="button" class="code-btn code-copy" aria-label="Copy code" title="Copy code">${COPY_ICON_SVG}</button></div></div><pre class="code-block"><code class="${codeClass}">${highlighted.html}</code></pre></div>`
       );
     } else {
       buffer.push(lines[index] ?? '');
@@ -1447,6 +1462,7 @@ function renderQueueTray(snapshot: WebviewSnapshot): string {
 }
 
 export function renderChatApp(snapshot: WebviewSnapshot): string {
+  formattedCodeLookup = snapshot.formattedCode ?? {};
   const busy = snapshot.isStreaming || snapshot.connectionState === 'busy';
   const interactive = snapshot.connectionState === 'ready' || snapshot.connectionState === 'busy';
   const faulted = snapshot.connectionState === 'faulted';

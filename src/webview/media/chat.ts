@@ -10,6 +10,7 @@ import type { WebviewSnapshot } from '../../state/types';
 import { installCustomTooltips } from './customTooltip';
 import {
   COMPOSER_FIELD_ID,
+  COPIED_ICON_SVG,
   PREVIEW_DIALOG_ID,
   SEND_BUTTON_ID,
   escapeHtml,
@@ -1156,12 +1157,14 @@ function renderNow(snapshot: WebviewSnapshot): void {
       void navigator.clipboard
         ?.writeText(text)
         .then(() => {
-          const previous = button.textContent;
-          button.textContent = 'Copied';
+          const previous = button.innerHTML;
+          button.innerHTML = COPIED_ICON_SVG;
           button.classList.add('is-copied');
+          button.setAttribute('aria-label', 'Copied');
           setTimeout(() => {
-            button.textContent = previous ?? 'Copy';
+            button.innerHTML = previous;
             button.classList.remove('is-copied');
+            button.setAttribute('aria-label', 'Copy code');
           }, 1200);
         })
         .catch(() => undefined);

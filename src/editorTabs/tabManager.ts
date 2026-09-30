@@ -4,6 +4,8 @@ import { existsSync } from 'node:fs';
 import { getSettings, tabTitleSettings } from '../config/settings';
 import { pickChatModel } from '../commands/modelPicker';
 import { AgentFollowService } from '../live/agentFollow';
+import { CodeFormatService } from './codeFormatService';
+import { type FencedBlock, collectCodeFences } from '../webview/codeFormat';
 import { sharedPiHostActiveSessionCount } from '../process/sharedPiHost';
 import { RemoteSharingService } from '../remote/sharingService';
 import { ensureTrustedForMutation } from '../security/trust';
@@ -371,6 +373,13 @@ export class ChatTabManager implements vscode.Disposable {
       getActiveContext: () => this.getActiveContext(),
     });
     this.sessions = new SessionIndex(context.workspaceState);
+    // Display-time code formatting: when a background format lands, re-render
+    // open chats so the block upgrades in place (debounced by renderResource).
+    this.codeFormat = new CodeFormatService(() => {
+      for (const host of this.hosts.values()) {
+        void this.renderResource(host.resource);
+      }
+    });
     for (const controller of registry.list()) {
       this.trackController(controller);
     }
@@ -390,6 +399,8 @@ export class ChatTabManager implements vscode.Disposable {
     this.reapTimer = setInterval(() => void this.reapIdleSessions(), 5 * 60_000);
     this.reapTimer.unref?.();
   }
+
+  private readonly codeFormat: CodeFormatService;
 
   // WeakMaps: closed chats must not pin their dead controllers (and their full
   // message state) in memory for the window's lifetime (#1, review round 2).
@@ -2517,6 +2528,24 @@ export class ChatTabManager implements vscode.Disposable {
       snapshot.sharing = sharingInfo;
     }
     snapshot.surface = resource.scheme === 'piRpcSidebar' ? 'sidebar' : 'tab';
+
+    // Best-effort display formatting for fenced code in the visible tail of
+    // the transcript (user pastes crammed one-liners; assistants emit minified
+    // snippets). Uses the user's own registered formatters; results arrive
+    // async and upgrade the block on the next render.
+    if (getSettings().formatCodeBlocks) {
+      const recent = snapshot.messages.slice(-30);
+      const fences: FencedBlock[] = [];
+      for (const message of recent) {
+        if (typeof message.text === 'string' && message.text.includes('```')) {
+          fences.push(...collectCodeFences(message.text));
+        }
+      }
+      if (fences.length > 0) {
+        this.codeFormat.request(fences);
+      }
+      snapshot.formattedCode = this.codeFormat.snapshotMap();
+    }
 
     snapshot.reviewCount = this.turnReview?.history.length ?? 0;
     snapshot.followMode = vscode.workspace

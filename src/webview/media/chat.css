@@ -3039,9 +3039,40 @@ button.ghost:hover,
   width: 48px;
   height: 48px;
   object-fit: cover;
-  border-radius: 6px;
+  border-radius: 8px;
   display: block;
   border: 1px solid var(--glass-line, rgba(128, 128, 128, 0.25));
+}
+
+/* Image chips with a live thumbnail: NO capsule — the thumbnail IS the chip,
+ * and the remove × overlays its top-right corner. (Reselect-state image
+ * chips keep the text capsule.) */
+.chip-shell[data-chip-kind='image']:has(.chip-thumb) {
+  padding: 0;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  max-width: none;
+  gap: 0;
+}
+.chip-shell[data-chip-kind='image']:has(.chip-thumb) .chip-details > summary {
+  padding: 0;
+  max-width: none;
+}
+.chip-shell[data-chip-kind='image']:has(.chip-thumb) .chip-remove-button {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  z-index: 5;
+  width: 16px;
+  height: 16px;
+  font-size: 11px;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.55);
+}
+.chip-shell[data-chip-kind='image']:has(.chip-thumb) .chip-remove-button:hover {
+  background: rgba(0, 0, 0, 0.8);
+  color: #fff;
 }
 
 /* Clickable file mentions in prose (linkifyFileMentions) — same delegated
@@ -3420,6 +3451,14 @@ body.vscode-high-contrast .send-button {
 .code-btn {
   border-radius: 6px;
   transition: color 120ms ease;
+}
+
+/* Icon-only copy button on code cards (was a "Copy" text label). */
+.code-btn .i-copy {
+  display: block;
+}
+.code-btn.is-copied {
+  color: var(--vscode-testing-iconPassed, #4ec9b0);
 }
 
 .code-btn:hover {
