@@ -1119,8 +1119,7 @@ function renderStatusChip(snapshot: WebviewSnapshot): string {
     ? `<span class="usage-part${usageClass}">${escapeHtml(usage)}</span>`
     : '';
   const parts = [escapeHtml(model), usageHtml, escapeHtml(thinking)].filter(Boolean);
-  const usageTitle =
-    typeof percent === 'number' ? ` · context ${Math.round(percent)}% full` : '';
+  const usageTitle = typeof percent === 'number' ? ` · context ${Math.round(percent)}% full` : '';
   return `<button type="button" class="composer-status" id="status-chip" data-command="piRpc.chatSettings" title="Model: ${escapeHtml(modelLabel(snapshot))} · thinking: ${escapeHtml(thinking || 'default')}${usageTitle} — click to change either" aria-label="Chat settings: model and thinking level"><span class="model-dot"></span>${parts.join(' · ')}</button>`;
 }
 
@@ -1315,7 +1314,7 @@ function renderImageChip(snapshot: WebviewSnapshot): string {
       (item) => `
         <div class="chip-shell" role="listitem" data-chip-id="${escapeHtml(item.itemId)}" data-chip-kind="image">
           <details class="chip-details${item.requiresReselect ? ' chip-stale' : ''}">
-            <summary>${item.previewDataUrl && !item.requiresReselect ? `<img class="chip-thumb" src="${escapeHtml(item.previewDataUrl)}" alt="" aria-hidden="true" />` : ''}${escapeHtml(item.requiresReselect ? `Reselect image: ${item.name}` : `Image: ${item.name}`)}</summary>
+            <summary aria-label="${escapeHtml(item.requiresReselect ? `Reselect image: ${item.name}` : `Image: ${item.name}`)}" title="${escapeHtml(item.name)}">${item.previewDataUrl && !item.requiresReselect ? `<img class="chip-thumb" src="${escapeHtml(item.previewDataUrl)}" alt="" aria-hidden="true" />` : escapeHtml(item.requiresReselect ? `Reselect image: ${item.name}` : `Image: ${item.name}`)}</summary>
             <div class="detail-stack">
               <div class="muted">${escapeHtml(item.mimeType)} · ${item.sizeBytes} bytes</div>
               <div class="muted">Local image · sent on next message only</div>

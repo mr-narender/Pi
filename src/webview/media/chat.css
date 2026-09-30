@@ -2241,6 +2241,18 @@ button.ghost:hover,
   padding: 0;
 }
 
+/* Glassy code cards inside message bubbles (reported live: an OPAQUE gray
+ * slab sat inside the tinted user card). Translucent surface lets the
+ * bubble tint breathe through; the COPY bar is a hairline, not a band. */
+#messages .message-body .code-wrap {
+  background: color-mix(in srgb, var(--vscode-editor-background) 30%, transparent);
+  border: 1px solid var(--glass-line, rgba(128, 128, 128, 0.22));
+}
+#messages .message-body .code-wrap .code-lang {
+  background: transparent;
+  border-bottom: 1px solid var(--glass-line, rgba(128, 128, 128, 0.18));
+}
+
 /* ================= Meta sections: thinking / tool / result / image =========
    De-emphasized callouts, distinguished by a colored LEFT RAIL + icon + label.
    No fills. Icon + word label => never color-only. */
@@ -3020,17 +3032,15 @@ button.ghost:hover,
   gap: 6px;
 }
 
-/* Always-visible mini thumbnail in an image chip's summary row — the full
- * preview stays in the expanded details, but a pasted image must LOOK like
- * an image at a glance, not a text label (reported: "I don't see pasted
- * image preview in the input box"). */
+/* Thumbnail-ONLY image chip summary — an enlarged preview IS the chip (no
+ * visible filename; the name lives in aria-label/title). Full preview stays
+ * in the expanded details. */
 .chip-details summary .chip-thumb {
-  width: 22px;
-  height: 22px;
+  width: 48px;
+  height: 48px;
   object-fit: cover;
-  border-radius: 4px;
-  margin-right: 6px;
-  vertical-align: -6px;
+  border-radius: 6px;
+  display: block;
   border: 1px solid var(--glass-line, rgba(128, 128, 128, 0.25));
 }
 
@@ -3093,7 +3103,9 @@ a.md-link.file-link:hover {
   border: 1px solid transparent;
   cursor: pointer;
   background: var(--glass-1);
-  transition: background 120ms ease, border-color 120ms ease;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease;
 }
 
 .chat-list-row:hover {
@@ -3188,7 +3200,9 @@ a.md-link.file-link:hover {
   background: transparent;
   color: var(--vscode-descriptionForeground);
   cursor: pointer;
-  transition: background 120ms ease, color 120ms ease;
+  transition:
+    background 120ms ease,
+    color 120ms ease;
 }
 
 .chat-list-row-action:hover {

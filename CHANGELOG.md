@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.5 — local test build (PR #2)
+
+- **Image chips are now just the thumbnail, enlarged (48px).** No filename
+  text in the chip — the name stays on hover and for screen readers; click
+  still expands the full preview.
+- **Glassy code cards inside message bubbles.** The code block surface is
+  translucent (bubble tint shows through) instead of an opaque gray slab;
+  the COPY bar is a hairline, not a band.
+
 ## 0.2.4 — local test build (PR #2)
 
 - **Image chip thumbnails actually reach the webview.** Root cause of "no

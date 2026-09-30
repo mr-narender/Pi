@@ -38,7 +38,7 @@ function snapshot(image: Record<string, unknown>): WebviewSnapshot {
 
 const dataUrl = 'data:image/png;base64,iVBORw0KGgo=';
 
-test('image chip: pasted image shows an always-visible thumbnail in the summary row', () => {
+test('image chip: thumbnail-ONLY summary — enlarged preview, no visible name (name stays accessible)', () => {
   const html = renderChatApp(
     snapshot({
       itemId: 'img-1',
@@ -49,7 +49,12 @@ test('image chip: pasted image shows an always-visible thumbnail in the summary 
     })
   );
   assert.ok(html.includes('class="chip-thumb"'), 'summary thumbnail missing');
-  assert.ok(html.indexOf('chip-thumb') < html.indexOf('Image: pasted-123.png'), 'thumb precedes label');
+  assert.ok(
+    !/chip-thumb[^>]*\/>\s*Image: pasted-123\.png/.test(html),
+    'no visible name text next to the thumbnail'
+  );
+  assert.match(html, /aria-label="Image: pasted-123\.png"/, 'name must remain accessible');
+  assert.match(html, /title="pasted-123\.png"/, 'name available on hover');
   assert.ok(html.includes('class="image-preview"'), 'expanded full preview stays');
 });
 
