@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.7 — local test build (PR #2)
+
+- **Hover icons centered.** The code-card copy button still carried its old
+  text-label padding (`2px 8px`), skewing the icon; it's now a fixed 22px
+  square with the icon dead-center. The message-hover pencil/copy pill is
+  inset 4px from the bubble corner and its icons are hard-centered
+  (block-level SVG, zero padding/line-height).
+
 ## 0.2.6 — local test build (PR #2)
 
 - **Image chips: the thumbnail IS the chip.** Capsule removed when a preview

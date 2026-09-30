@@ -1708,8 +1708,10 @@ button.ghost:hover,
  * on hover, so they never take vertical space in the transcript. */
 #messages .msg-actions {
   position: absolute;
-  top: 0;
-  right: 0;
+  /* Inset from the bubble's rounded corner so the pill (and the icons in it)
+   * reads centered against the card edge instead of clipped-right. */
+  top: 4px;
+  right: 4px;
   display: flex;
   gap: 4px;
   padding: 2px;
@@ -1729,11 +1731,17 @@ button.ghost:hover,
   place-items: center;
   width: 30px;
   height: 30px;
+  padding: 0;
+  line-height: 0;
   border: 1px solid transparent;
   border-radius: 6px;
   background: transparent;
   color: var(--vscode-descriptionForeground, var(--vscode-foreground));
   cursor: pointer;
+}
+#messages .msg-copy svg,
+#messages .msg-edit svg {
+  display: block;
 }
 #messages .msg-copy:hover,
 #messages .msg-edit:hover {
@@ -2149,16 +2157,20 @@ button.ghost:hover,
 }
 #messages .code-copy,
 #messages .code-btn {
+  /* Icon button (was a text label): fixed square, icon dead-center. */
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
   border: 1px solid transparent;
   background: transparent;
   color: var(--vscode-descriptionForeground, var(--vscode-foreground));
-  font: inherit;
-  font-size: 9.5px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  padding: 2px 8px;
   border-radius: 6px;
   cursor: pointer;
+}
+#messages .code-btn svg {
+  display: block;
 }
 #messages .code-copy:hover,
 #messages .code-btn:hover {
