@@ -22,6 +22,7 @@ import {
   beginSend,
   createEmptyComposerState,
   restoreEditableStateFromAcceptedSnapshot,
+  toSnapshotPendingImages,
 } from '../webview/composer';
 import {
   IMAGE_MIME_BY_EXTENSION,
@@ -2647,15 +2648,9 @@ export class ChatTabManager implements vscode.Disposable {
         uiMode: this.uiState.getMode(),
         draft: composer.draft,
         pendingContextItems: composer.pendingContextItems,
-        pendingImages: composer.pendingImages.map((item) => ({
-          itemId: item.itemId,
-          name: item.name,
-          mimeType: item.mimeType,
-          sizeBytes: item.sizeBytes,
-          width: item.width,
-          height: item.height,
-          requiresReselect: true,
-        })),
+        // stale=true: images without live bytes demand reselect, but a fresh
+        // paste in a cached-binding tab keeps its bytes AND its thumbnail.
+        pendingImages: toSnapshotPendingImages(composer.pendingImages, true),
         focus: active ? composer.focus : 'none',
         isTrusted: vscode.workspace.isTrusted,
         folders,
@@ -2692,15 +2687,7 @@ export class ChatTabManager implements vscode.Disposable {
       model: undefined,
       thinkingLevel: undefined,
       pendingContextItems: composer.pendingContextItems,
-      pendingImages: composer.pendingImages.map((item) => ({
-        itemId: item.itemId,
-        name: item.name,
-        mimeType: item.mimeType,
-        sizeBytes: item.sizeBytes,
-        width: item.width,
-        height: item.height,
-        requiresReselect: item.requiresReselect,
-      })),
+      pendingImages: toSnapshotPendingImages(composer.pendingImages, false),
       focus: active ? composer.focus : 'none',
       preview: composer.preview,
       acceptedSendSnapshot: composer.acceptedSendSnapshot,

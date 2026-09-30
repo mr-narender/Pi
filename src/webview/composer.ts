@@ -338,6 +338,43 @@ export function buildSendPreview(
   };
 }
 
+export interface SnapshotPendingImageItem {
+  itemId: string;
+  name: string;
+  mimeType: string;
+  sizeBytes: number;
+  width?: number;
+  height?: number;
+  previewDataUrl?: string;
+  requiresReselect?: boolean;
+}
+
+/**
+ * Shape composer images for a webview snapshot: keep the preview thumbnail
+ * (data URL — the chip must LOOK like an image), never the raw send bytes.
+ * `stale` marks snapshots built from cache/reload: an image whose in-memory
+ * bytes are gone must demand reselect, but a freshly pasted image in the same
+ * tab stays fully usable. (Live bug: both fallback snapshot builders stripped
+ * previewDataUrl, so pasted images rendered as text-only chips.)
+ */
+export function toSnapshotPendingImages(
+  items: PendingImageItem[],
+  stale: boolean
+): SnapshotPendingImageItem[] {
+  return items.map((item) => ({
+    itemId: item.itemId,
+    name: item.name,
+    mimeType: item.mimeType,
+    sizeBytes: item.sizeBytes,
+    width: item.width,
+    height: item.height,
+    previewDataUrl: item.previewDataUrl,
+    requiresReselect: stale
+      ? item.requiresReselect === true || !item.inMemoryBase64
+      : item.requiresReselect,
+  }));
+}
+
 export interface BeginSendResult {
   preview: SendPreviewState;
   accepted: AcceptedSendSnapshot;

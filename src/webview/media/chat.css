@@ -2232,6 +2232,15 @@ button.ghost:hover,
   color: var(--pi-tool-accent, #4ec9b0);
 }
 
+/* The bare <code> inside fenced blocks inherits VS Code's default webview
+ * `code { background }` — with pre-wrap that paints a gray box PER LINE
+ * inside the code card (reported live). The card (.code-wrap) is the only
+ * surface; the code element itself stays transparent. */
+#messages .code-block code {
+  background: transparent;
+  padding: 0;
+}
+
 /* ================= Meta sections: thinking / tool / result / image =========
    De-emphasized callouts, distinguished by a colored LEFT RAIL + icon + label.
    No fills. Icon + word label => never color-only. */

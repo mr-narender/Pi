@@ -4,6 +4,7 @@ import {
   beginSend,
   createEmptyComposerState,
   restoreEditableStateFromAcceptedSnapshot,
+  toSnapshotPendingImages,
   type PendingContextItem,
   type PendingImageItem,
 } from '../../src/webview/composer';
@@ -95,6 +96,27 @@ test('pasted text stays text: the pasteText webview message is gone from the pro
     undefined,
     'text pastes must not round-trip to the host as chip requests'
   );
+});
+
+test('snapshot images keep previewDataUrl — the chip thumbnail must survive to the webview (reported live)', () => {
+  const fresh = imageChip();
+  const [mapped] = toSnapshotPendingImages([fresh], false);
+  assert.equal(mapped!.previewDataUrl, fresh.previewDataUrl, 'live path keeps the thumbnail');
+  assert.equal(mapped!.requiresReselect, undefined);
+  assert.equal(
+    (mapped as unknown as Record<string, unknown>).inMemoryBase64,
+    undefined,
+    'raw bytes never ride in snapshots'
+  );
+
+  // Stale (cached/reloaded) snapshots: an image with live bytes stays usable
+  // WITH its thumbnail; one without bytes demands reselect.
+  const [staleFresh] = toSnapshotPendingImages([fresh], true);
+  assert.equal(staleFresh!.requiresReselect, false);
+  assert.equal(staleFresh!.previewDataUrl, fresh.previewDataUrl);
+  const dead = { ...imageChip(), inMemoryBase64: undefined };
+  const [staleDead] = toSnapshotPendingImages([dead], true);
+  assert.equal(staleDead!.requiresReselect, true);
 });
 
 test('diag breadcrumbs parse (bounded) so webview paste issues are debuggable live', () => {

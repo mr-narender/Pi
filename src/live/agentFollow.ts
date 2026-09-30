@@ -9,7 +9,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { chooseFollowViewColumn } from './followViewColumn';
-import { planFollowDelta, planTabEviction } from './followPlan';
+import { isInsideRoot, planFollowDelta, planTabEviction } from './followPlan';
 import { predictNextFiles } from './importScan';
 import {
   anchorNeedle,
@@ -357,7 +357,7 @@ export class AgentFollowService implements vscode.Disposable {
           fsPath,
           attribution.title,
           attribution.visible,
-          undefined,
+          attribution.root,
           undefined,
           undefined
         );
@@ -420,6 +420,12 @@ export class AgentFollowService implements vscode.Disposable {
     // the chat you're looking at; background chats stay in the status bar.
     const followForced = key !== undefined && this.followOnceKeys.has(key);
     if (kind !== 'editing') {
+      return;
+    }
+    // Agents also edit /tmp scratch files and out-of-tree paths — status bar
+    // narrates them, but only files inside the chat's workspace auto-open.
+    if (!isInsideRoot(absolute, workspaceRoot)) {
+      this.logger?.info(`[follow] pane skipped: ${absolute} outside workspace root`);
       return;
     }
     if ((this.mode() !== 'open' && !followForced) || !isActiveChat) {

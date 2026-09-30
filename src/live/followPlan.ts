@@ -104,6 +104,23 @@ export function planFollowDelta(
   return { act: candidates, grown, absorbed, reset, hwm: messages.length };
 }
 
+/**
+ * Pane containment: the follow pane only auto-opens files INSIDE the chat's
+ * workspace root. Agents also touch /tmp scratch files, home-dir configs, and
+ * other out-of-tree paths — those narrate in the status bar but never open
+ * editors (reported live: "opened an editor window but there was no need").
+ */
+export function isInsideRoot(absolute: string, root: string | undefined): boolean {
+  if (!absolute || !root) {
+    return false;
+  }
+  const normalRoot = root.endsWith('/') || root.endsWith('\\') ? root.slice(0, -1) : root;
+  if (absolute === normalRoot || absolute === `${normalRoot}/`) {
+    return true;
+  }
+  return absolute.startsWith(`${normalRoot}/`) || absolute.startsWith(`${normalRoot}\\`);
+}
+
 export interface FollowTabState {
   exists: boolean;
   pinned?: boolean;

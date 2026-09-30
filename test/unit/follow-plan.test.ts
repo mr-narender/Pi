@@ -4,6 +4,7 @@ import {
   FOLLOW_BURST_ABSORB_THRESHOLD,
   type FollowMessageLike,
   type FollowTabState,
+  isInsideRoot,
   planFollowDelta,
   planTabEviction,
 } from '../../src/live/followPlan';
@@ -203,6 +204,16 @@ test('follow-plan eviction: tabs the user already closed are untracked without c
   );
   assert.deepEqual(plan.close, []);
   assert.deepEqual(plan.untrack, ['/w/gone.ts']);
+});
+
+test('follow-plan: pane containment — only workspace files may auto-open', () => {
+  assert.equal(isInsideRoot('/w/project/src/a.ts', '/w/project'), true);
+  assert.equal(isInsideRoot('/w/project', '/w/project'), true, 'root itself counts');
+  assert.equal(isInsideRoot('/w/project/', '/w/project'), true);
+  assert.equal(isInsideRoot('/tmp/scratch.txt', '/w/project'), false, 'outside root never opens');
+  assert.equal(isInsideRoot('/w/project-sibling/a.ts', '/w/project'), false, 'prefix sibling');
+  assert.equal(isInsideRoot('/w/project/a.ts', undefined), false, 'no root, no pane');
+  assert.equal(isInsideRoot('', '/w/project'), false);
 });
 
 test('follow-plan eviction: cap is clamped to at least 1', () => {

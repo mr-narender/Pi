@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.2.4 — local test build (PR #2)
+
+- **Image chip thumbnails actually reach the webview.** Root cause of "no
+  thumbnail preview": both fallback snapshot builders stripped
+  `previewDataUrl` before posting to the webview (tests fed the renderer
+  directly, hiding it). Snapshot mapping is now a shared tested helper —
+  fresh pastes keep their thumbnail even in cached/draft tabs, and only
+  images whose bytes are truly gone demand reselect.
+- **Code blocks: per-line gray boxes removed.** The bare `code` element inside
+  fenced blocks inherited VS Code's default webview background, painting a box
+  per wrapped line inside the code card. Now transparent — the card is the
+  only surface.
+- **Follow pane: workspace containment.** Only files inside the chat's
+  workspace root auto-open; /tmp scratch files and other out-of-tree edits
+  narrate in the status bar instead of popping editors.
+
 ## 0.2.3 — local test build (PR #2)
 
 - **Image paste fallback:** images arriving only via `clipboard.files` (empty
