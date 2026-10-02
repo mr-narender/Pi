@@ -28,3 +28,10 @@ coverage/**
 *.log
 **/.DS_Store
 graphify-out/**
+prettier.config.mjs
+compact-correction-status.md
+compact-correction2-status.md
+debug-correction-status.md
+debug-status.md
+settings-correction-native-control-matrix.md
+settings-correction-status.md
