@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.16 — LOCAL TEST preview (GUI commands)
+
+- Development implementations of 27 command paths; NOT release-ready.
+  Held-Enter duplicate submission, replacement composer/image mismatch,
+  applied-auth completion and startup empty-catalog recovery remain open;
+  current feature acceptance is not green.
+- Local preview only: historical auth regression chronology remains open; physical
+  GUI, real OAuth/accounts/uploads and paid providers remain user-led and unverified.
+  No native HTML/Radius share viewer, optional tree summaries or universal hook guarantee.
+  Migration issue remains open; inherited formatting/native fingerprint debt retained.
+
 ## 0.2.15 — local test build (PR #2)
 
 - Added visible disabled Chat / Configure / System label rows to the native
