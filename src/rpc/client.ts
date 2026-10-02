@@ -1,4 +1,10 @@
 import { createRequestId, RpcTransport } from './transport';
+import { parsePreferencesSnapshot, type PreferenceValue } from './preferences';
+import {
+  parseScopedModelsSnapshot,
+  type ScopedModelsSnapshot,
+  type ScopedModelRef,
+} from './protocol';
 import type {
   ExtensionUiRequest,
   JsonObject,
@@ -66,6 +72,72 @@ export class RpcClient {
     await this.command('abort', {}, 'short');
   }
 
+  public async replaceChat(
+    name: 'new' | 'resume' | 'fork' | 'clone' | 'import',
+    target: string | undefined,
+    origin: JsonObject
+  ): Promise<JsonObject | undefined> {
+    return this.command(
+      name === 'new'
+        ? 'new_session'
+        : name === 'resume'
+          ? 'switch_session'
+          : name === 'import'
+            ? 'import_session'
+            : name,
+      {
+        guiLifecycle: true,
+        origin,
+        nonce: name === 'import' ? target : undefined,
+        entryId: name === 'fork' ? target : undefined,
+        sessionPath: name === 'resume' ? target : undefined,
+      },
+      'long'
+    );
+  }
+
+  public async closeChat(origin?: JsonObject): Promise<JsonObject | undefined> {
+    const caps = await this.command('get_capabilities', {}, 'short');
+    if (
+      caps?.protocol !== 1 ||
+      !['0.99.1', '0.99.2', '1.0.0'].includes(caps.sdkVersion as string) ||
+      caps.closeChat !== true
+    )
+      throw new Error(
+        'This backend has no acknowledged per-chat disposal API; chat was not closed.'
+      );
+    return this.command('close_chat', { origin, guiLifecycle: !!origin }, 'long');
+  }
+
+  /** GUI SDK bridge, never sent optimistically to stock RPC. */
+  public async engineCommand(
+    type:
+      | 'navigate_tree'
+      | 'get_project_trust'
+      | 'set_project_trust'
+      | 'reload_session'
+      | 'auth_providers'
+      | 'auth_logout'
+      | 'auth_login'
+      | 'auth_poll'
+      | 'auth_response'
+      | 'delivery_payload'
+      | 'import_prepare',
+    origin: JsonObject,
+    payload: JsonObject = {}
+  ): Promise<JsonObject | undefined> {
+    const caps = await this.command('get_capabilities', {}, 'short');
+    const engine = caps?.engineCommands as JsonObject | undefined;
+    if (
+      caps?.protocol !== 1 ||
+      !['0.99.1', '0.99.2', '1.0.0'].includes(caps.sdkVersion as string) ||
+      engine?.contract !== 1 ||
+      engine[type] !== true
+    )
+      throw new Error(`This backend does not support ${type}; nothing was applied.`);
+    return this.command(type, { ...payload, origin, guiLifecycle: true }, 'long');
+  }
+
   public async newSession(parentSession?: string): Promise<JsonObject | undefined> {
     return this.command('new_session', { parentSession }, 'long');
   }
@@ -90,8 +162,115 @@ export class RpcClient {
     return this.command('get_available_models', {}, 'short');
   }
 
-  public async setThinkingLevel(level: string): Promise<void> {
-    await this.command('set_thinking_level', { level }, 'short');
+  public async getPreferences() {
+    let caps: JsonObject | undefined;
+    try {
+      caps = await this.command('get_capabilities', {}, 'short');
+    } catch {
+      throw new Error(
+        '/settings engine preferences are unsupported by this backend; select a resolved Pi SDK 0.99.1, 0.99.2 or 1.0.0 installation.'
+      );
+    }
+    const preference = caps?.preferences as JsonObject | undefined;
+    if (
+      caps?.protocol !== 1 ||
+      !['0.99.1', '0.99.2', '1.0.0'].includes(caps.sdkVersion as string) ||
+      preference?.contract !== 1 ||
+      preference.read !== true ||
+      preference.saveGlobal !== true
+    )
+      throw new Error('/settings engine preferences are unsupported by this backend.');
+    return parsePreferencesSnapshot(await this.command('get_preferences', {}, 'short'));
+  }
+
+  public async savePreference(
+    key: string,
+    value: PreferenceValue,
+    expectedRevision: string,
+    confirmPaid: boolean
+  ) {
+    return parsePreferencesSnapshot(
+      await this.command(
+        'save_preference',
+        { key, value, expectedRevision, confirmGlobal: true, confirmPaid },
+        'short'
+      )
+    );
+  }
+
+  public async getScopedModels(): Promise<ScopedModelsSnapshot> {
+    let caps: JsonObject | undefined;
+    try {
+      caps = await this.command('get_capabilities', {}, 'short');
+    } catch {
+      throw new Error(
+        '/scoped-models is unsupported by this backend. Select a resolvable Pi SDK 0.99.1, 0.99.2 or 1.0.0 JavaScript installation; ordinary stock RPC operations remain available.'
+      );
+    }
+    const scope = caps?.scopedModels as JsonObject | undefined;
+    if (
+      caps?.protocol !== 1 ||
+      !['0.99.1', '0.99.2', '1.0.0'].includes(caps?.sdkVersion as string) ||
+      !scope?.read ||
+      !scope?.set ||
+      !scope?.saveGlobal
+    )
+      throw new Error('The backend does not advertise supported scoped-model operations.');
+    return parseScopedModelsSnapshot(await this.command('get_scoped_models', {}, 'short'));
+  }
+
+  public async setScopedModels(
+    refs: ScopedModelRef[],
+    expectedRevision: string,
+    saveGlobal: boolean,
+    replaceUnavailable = false
+  ): Promise<ScopedModelsSnapshot> {
+    return parseScopedModelsSnapshot(
+      await this.command(
+        saveGlobal ? 'save_scoped_models_default' : 'set_scoped_models',
+        { refs, expectedRevision, replaceUnavailable },
+        'short'
+      )
+    );
+  }
+
+  public async getThinkingCapabilities(): Promise<{ levels: string[]; revision: string }> {
+    let caps: JsonObject | undefined;
+    try {
+      caps = await this.command('get_capabilities', {}, 'short');
+    } catch {
+      throw new Error(
+        '/thinking is unsupported by this backend; use a resolved Pi SDK 0.99.1, 0.99.2 or 1.0.0 installation.'
+      );
+    }
+    const thinking = caps?.thinking as JsonObject | undefined;
+    if (
+      caps?.protocol !== 1 ||
+      !['0.99.1', '0.99.2', '1.0.0'].includes(caps?.sdkVersion as string) ||
+      thinking?.contract !== 1 ||
+      thinking.read !== true ||
+      thinking.strictSet !== true
+    )
+      throw new Error('Backend thinking capabilities are unsupported.');
+    const data = await this.command('get_available_thinking_levels', {}, 'short');
+    const known = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
+    if (
+      !Array.isArray(data?.levels) ||
+      !data.levels.length ||
+      data.levels.some((l) => typeof l !== 'string' || !known.includes(l)) ||
+      new Set(data.levels).size !== data.levels.length ||
+      typeof data.revision !== 'string'
+    )
+      throw new Error('Invalid native thinking capabilities.');
+    return { levels: data.levels as string[], revision: data.revision };
+  }
+
+  public async setThinkingLevel(level: string, expectedRevision?: string): Promise<void> {
+    await this.command(
+      'set_thinking_level',
+      { level, ...(expectedRevision ? { expectedRevision } : {}) },
+      'short'
+    );
   }
 
   public async cycleThinkingLevel(): Promise<JsonObject | undefined> {
@@ -136,8 +315,34 @@ export class RpcClient {
     return this.command('get_session_stats', {}, timeout);
   }
 
-  public async exportHtml(outputPath?: string): Promise<JsonObject | undefined> {
-    return this.command('export_html', { outputPath }, 'long');
+  public async exportHtml(
+    outputPath?: string,
+    origin?: JsonObject
+  ): Promise<JsonObject | undefined> {
+    return this.command('export_html', { outputPath, ...(origin ? { origin } : {}) }, 'long');
+  }
+
+  public async exportJsonl(
+    outputPath: string,
+    origin?: JsonObject,
+    valid: () => boolean = () => true
+  ): Promise<JsonObject | undefined> {
+    let caps: JsonObject | undefined;
+    try {
+      caps = await this.command('get_capabilities', {}, 'short');
+    } catch {
+      throw new Error(
+        'This backend supports HTML export only; JSONL requires the native SDK host.'
+      );
+    }
+    if (
+      caps?.protocol !== 1 ||
+      !['0.99.1', '0.99.2', '1.0.0'].includes(caps.sdkVersion as string) ||
+      (caps.exports as JsonObject | undefined)?.jsonl !== true
+    )
+      throw new Error('Native JSONL export capability is unavailable.');
+    if (!valid()) throw new Error('The originating chat changed; export cancelled.');
+    return this.command('export_jsonl', { outputPath, origin }, 'long');
   }
 
   public async switchSession(sessionPath: string): Promise<JsonObject | undefined> {
@@ -180,11 +385,36 @@ export class RpcClient {
     await this.transport.notify({ type: 'extension_ui_response', ...response });
   }
 
+  private activeMutations = 0;
+  private compactPending = false;
+  public get hasCompactionConflict(): boolean {
+    return this.compactPending || this.activeMutations > 0;
+  }
+
   private async command<T extends JsonObject | undefined>(
     type: RpcCommandType,
     extra: JsonObject,
     timeoutClass: 'short' | 'long'
   ): Promise<T> {
+    const mutation = new Set<string>([
+      'prompt',
+      'steer',
+      'follow_up',
+      'bash',
+      'navigate_tree',
+      'switch_session',
+      'new_session',
+      'fork',
+      'set_model',
+      'set_scoped_models',
+      'save_scoped_models_default',
+      'set_thinking_level',
+    ]).has(type);
+    if (type === 'compact' && this.hasCompactionConflict)
+      throw new Error('Compaction requires an idle session.');
+    if (mutation && this.compactPending) throw new Error('Compaction is in progress.');
+    if (type === 'compact') this.compactPending = true;
+    if (mutation) this.activeMutations = (this.activeMutations || 0) + 1;
     const id = createRequestId(this.generation, ++this.counter);
     const timeoutMs =
       timeoutClass === 'short' ? this.options.shortTimeoutMs : this.options.longTimeoutMs;
@@ -207,6 +437,8 @@ export class RpcClient {
       }
       return response.data as T;
     } finally {
+      if (type === 'compact') this.compactPending = false;
+      if (mutation) this.activeMutations--;
       if (timer) {
         clearTimeout(timer);
       }

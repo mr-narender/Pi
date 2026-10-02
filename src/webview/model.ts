@@ -439,6 +439,8 @@ export function createWebviewSnapshot(
     },
     queue: state.queue,
     draft: extra.composer.draft,
+    localCommandAck: extra.composer.localCommandAck,
+    localCommandConsumed: extra.composer.localCommandConsumed,
     composerResetSeq: extra.composer.composerResetSeq ?? 0,
     retry: state.retry
       ? {
@@ -453,6 +455,7 @@ export function createWebviewSnapshot(
     model: state.state.model,
     thinkingLevel:
       typeof state.state.thinkingLevel === 'string' ? state.state.thinkingLevel : undefined,
+    availableThinkingLevels: state.state.availableThinkingLevels,
     plan: derivePlan(foldedMessages),
     usage: summarizeUsage(state.lastSessionStats),
     approvals: state.pendingUi

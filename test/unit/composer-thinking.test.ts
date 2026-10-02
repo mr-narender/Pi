@@ -114,6 +114,21 @@ test('composer Shift+Tab posts only the existing native command, including while
   );
   assert.ok(!posted.some((m) => m.type === 'requestSend'));
 });
+test('thinking dynamic discovery, completion Enter and local execution retain owned text', () => {
+  composer().value = '/thi';
+  composer().dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  message({
+    type: 'slashCommands',
+    items: [{ name: 'thinking', description: 'Session thinking', source: 'builtin' }],
+  });
+  press(composer(), { key: 'Enter', shiftKey: false });
+  assert.equal(composer().value, '');
+  assert.equal(posted.filter((m) => m.type === 'requestSend').length, 1);
+  press(composer(), { key: 'Enter', shiftKey: false });
+  assert.equal(posted.filter((m) => m.type === 'requestSend').length, 1);
+  assert.equal(composer().value.trim(), '');
+});
+
 test('Shift+Tab precedes completion; plain Tab still accepts slash and mention', () => {
   composer().value = '/he';
   composer().dispatchEvent(new dom.window.Event('input', { bubbles: true }));

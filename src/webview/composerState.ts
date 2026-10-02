@@ -93,6 +93,10 @@ export class ChatUiState implements vscode.Disposable {
     return next;
   }
 
+  public captureIdentity(controller: SessionController): ChatTabTarget {
+    return currentIdentity(controller);
+  }
+
   public async getComposerState(controller: SessionController): Promise<ComposerSessionState> {
     return this.getComposerStateForIdentity(controller, currentIdentity(controller));
   }
@@ -135,12 +139,23 @@ export class ChatUiState implements vscode.Disposable {
     controller: SessionController,
     identity: ChatTabTarget,
     state: ComposerSessionState,
-    options?: { silent?: boolean }
+    options?: { silent?: boolean; expectedCommandRevision?: number }
   ): Promise<void> {
     const key = sessionStateKeyForIdentity(identity);
+    const revision = this.composerStates.get(key)?.commandRevision ?? 0;
+    if (
+      options?.expectedCommandRevision !== undefined &&
+      options.expectedCommandRevision !== revision
+    )
+      return;
+    state.commandRevision = revision + 1;
     this.composerStates.set(key, cloneComposerState(state));
     await this.persist();
-    if (sessionStateKeyForIdentity(currentIdentity(controller)) === key) {
+    if (
+      sessionStateKeyForIdentity(currentIdentity(controller)) === key &&
+      (options?.expectedCommandRevision === undefined ||
+        this.composerStates.get(key)?.commandRevision === state.commandRevision)
+    ) {
       // silent (draft typing): update the controller draft WITHOUT firing a
       // state change, which would re-render the whole chat on every keystroke.
       controller.setDraft(state.draft, options?.silent ? { silent: true } : undefined);
@@ -483,7 +498,12 @@ export class ChatUiState implements vscode.Disposable {
       // Self-contained: the bounded content lives in the persisted ref —
       // nothing on disk to re-read, nothing to go stale, and no workspace
       // access, so it's exempt from the trust gate below too.
-      return { ...item, sanitizedContent: item.persistedRef.content, stale: false, staleReason: undefined };
+      return {
+        ...item,
+        sanitizedContent: item.persistedRef.content,
+        stale: false,
+        staleReason: undefined,
+      };
     }
     if (!vscode.workspace.isTrusted) {
       return {

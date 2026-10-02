@@ -1,4 +1,7 @@
 import * as vscode from 'vscode';
+import { assertNotCoreSlashPrompt } from '../commands/coreSlash';
+import { captureLocalCommandOrigin, handleLocalCommand } from '../commands/localCommand';
+import { mergeLifecycleComposer } from '../commands/lifecycleCommand';
 import { getSettings } from '../config/settings';
 import { ensureTrustedForMutation } from '../security/trust';
 import { SessionRegistry } from '../sessions/sessionRegistry';
@@ -215,7 +218,7 @@ export class ChatPanelProvider implements vscode.Disposable {
     }
     switch (parsed.type) {
       case 'requestSend':
-        await this.handleRequestSend(controller, parsed.command);
+        await this.handleRequestSend(controller, parsed.command, parsed.submissionId);
         return;
       case 'acceptPreview':
         await this.acceptPreview(controller);
@@ -336,12 +339,89 @@ export class ChatPanelProvider implements vscode.Disposable {
 
   private async handleRequestSend(
     controller: SessionController,
-    command: 'prompt' | 'follow_up' | 'steer'
+    command: 'prompt' | 'follow_up' | 'steer',
+    submissionId?: string
   ): Promise<void> {
     ensureTrustedForMutation();
-    const state = await this.uiState.getComposerState(controller);
+    const identity = { ...this.uiState.captureIdentity(controller) };
+    const panel = this.panel;
+    const controllerValid = captureLocalCommandOrigin(controller);
+    const lifecycleIntent = controller.captureLifecycleIntent?.();
+    const engineIntent = controller.captureEngineIntent?.();
+    const originValid = () => {
+      const current = this.uiState.captureIdentity(controller);
+      return (
+        controllerValid() &&
+        this.panel === panel &&
+        (!this.registry || this.registry.getActive() === controller) &&
+        current.kind === identity.kind &&
+        current.workspaceFolderUri === identity.workspaceFolderUri &&
+        current.sessionId === identity.sessionId &&
+        current.sessionFile === identity.sessionFile &&
+        current.draftId === identity.draftId
+      );
+    };
+    const state = await this.uiState.getComposerStateForIdentity(controller, identity);
+    if (!originValid()) return;
     state.recovery = undefined;
     state.preview = undefined;
+    if (
+      await handleLocalCommand(
+        controller,
+        state,
+        () => this.uiState.getComposerStateForIdentity(controller, identity),
+        (next, revision) =>
+          this.uiState.setComposerStateForIdentity(controller, identity, next, {
+            expectedCommandRevision: revision,
+          }),
+        () => this.postSnapshot(controller),
+        submissionId,
+        originValid,
+        {
+          intent: lifecycleIntent,
+          engineIntent,
+          valid: () =>
+            this.panel === panel && (!this.registry || this.registry.getActive() === controller),
+          resume: async () => {
+            const files = await vscode.window.showOpenDialog({
+              title: 'Resume a Pi session in this chat',
+              canSelectMany: false,
+              filters: { 'Pi session': ['jsonl'] },
+            });
+            const selected = files?.[0]?.fsPath;
+            if (
+              selected &&
+              this.registry
+                ?.list()
+                .some(
+                  (other) => other !== controller && other.snapshot.state.sessionFile === selected
+                )
+            )
+              throw new Error(
+                'That session is open in another Pi chat; switch to its tab instead.'
+              );
+            return selected;
+          },
+          replace: async (_replacement, next) => {
+            const target = this.uiState.captureIdentity(controller);
+            const saved = await this.uiState.getComposerStateForIdentity(controller, target);
+            await this.uiState.setComposerStateForIdentity(
+              controller,
+              target,
+              mergeLifecycleComposer(saved, next),
+              { expectedCommandRevision: saved.commandRevision ?? 0 }
+            );
+          },
+          close: async () => {
+            await controller.stop();
+            panel?.dispose();
+            await this.postSnapshot(controller);
+          },
+        }
+      )
+    )
+      return;
+    if (!originValid()) return;
     try {
       const preview = buildSendPreview(command, state);
       if (state.pendingContextItems.length > 0 || state.pendingImages.length > 0) {
@@ -381,6 +461,9 @@ export class ChatPanelProvider implements vscode.Disposable {
     state: Awaited<ReturnType<ChatUiState['getComposerState']>>,
     preview: NonNullable<Awaited<ReturnType<ChatUiState['getComposerState']>>['preview']>
   ): Promise<void> {
+    // Restored/legacy previews must not bypass local interception.
+    assertNotCoreSlashPrompt(preview.draft);
+    assertNotCoreSlashPrompt(preview.rpcMessage);
     const accepted = acceptedSnapshotFromPreview(preview, state.pendingContextItems);
     state.acceptedSendSnapshot = accepted;
     state.preview = undefined;

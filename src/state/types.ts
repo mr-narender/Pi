@@ -233,11 +233,15 @@ export interface WebviewSnapshot {
   // (send-clear, copy-to-composer, restore). The webview uses a change in this
   // value to overwrite the textarea; otherwise it preserves the live text and
   // caret while the user types.
+  localCommandAck?: string;
+  /** Correlated invoking text consumption, not native action success. */
+  localCommandConsumed?: string;
   composerResetSeq?: number;
   statuses: Record<string, string>;
   widgets: WidgetState[];
   model?: ModelInfo | null;
   thinkingLevel?: string;
+  availableThinkingLevels?: string[];
   // Compact usage summary for the header (tokens / context% / cost).
   usage?: { totalTokens: number; contextPercent?: number; cost?: number };
   // Inline approval prompts (extension UI select/confirm dialogs).

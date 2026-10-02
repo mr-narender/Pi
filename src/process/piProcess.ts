@@ -7,6 +7,8 @@ import type { Readable, Writable } from 'node:stream';
 // Both expose the same JSONL stdio the RpcTransport speaks, so the rest of the
 // stack is identical.
 export interface PiProcessHandle {
+  /** Actual selected engine package, when verified; never inferred from a later setting. */
+  readonly sdkRoot?: string;
   stdin: Writable;
   stdout: Readable;
   stderr: Readable;
@@ -16,6 +18,7 @@ export interface PiProcessHandle {
 }
 
 export interface SubprocessOptions {
+  sdkRoot?: string;
   command: string;
   args: string[];
   cwd: string;
@@ -32,6 +35,7 @@ export function spawnSubprocessPi(opts: SubprocessOptions): PiProcessHandle {
     stdio: 'pipe',
   });
   return {
+    sdkRoot: opts.sdkRoot,
     stdin: child.stdin,
     stdout: child.stdout,
     stderr: child.stderr,
@@ -57,6 +61,7 @@ export function spawnSubprocessPi(opts: SubprocessOptions): PiProcessHandle {
 }
 
 export interface WorkerOptions {
+  sdkRoot?: string;
   cliPath: string;
   args: string[];
   cwd: string;
@@ -90,6 +95,7 @@ export function spawnWorkerPi(opts: WorkerOptions): PiProcessHandle {
   });
   const stdin = worker.stdin as Writable;
   return {
+    sdkRoot: opts.sdkRoot,
     stdin,
     stdout: worker.stdout,
     stderr: worker.stderr,

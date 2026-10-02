@@ -218,3 +218,116 @@ test('webview paste: file URIs still attach as file chips', () => {
   const attached = posted.filter((message) => message.type === 'attachFile');
   assert.equal(attached.length, 2);
 });
+
+test('model frontend: IME does not execute; acknowledged command preserves newer text', () => {
+  const textarea = findComposer();
+  textarea.value = '/model';
+  posted.length = 0;
+  textarea.dispatchEvent(
+    new dom.window.KeyboardEvent('keydown', { key: 'Enter', isComposing: true, bubbles: true })
+  );
+  assert.equal(posted.filter((m) => m.type === 'requestSend').length, 0);
+  textarea.dispatchEvent(
+    new dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
+  );
+  assert.equal(textarea.value, '');
+  textarea.value = 'newer input';
+  dom.window.dispatchEvent(
+    new dom.window.MessageEvent('message', {
+      data: { type: 'snapshot', snapshot: snapshot({ draft: '', composerResetSeq: 1 }) },
+    })
+  );
+  assert.equal(findComposer().value, 'newer input');
+});
+
+test('model frontend: completion first Enter selects; second Enter executes locally', () => {
+  posted.length = 0;
+  const textarea = findComposer();
+  textarea.value = '/mod';
+  textarea.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  dom.window.dispatchEvent(
+    new dom.window.MessageEvent('message', {
+      data: { type: 'slashCommands', items: [{ name: 'model', description: 'Select a model' }] },
+    })
+  );
+  textarea.dispatchEvent(
+    new dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
+  );
+  assert.equal(textarea.value.trim(), '');
+  assert.equal(posted.filter((m) => m.type === 'requestSend').length, 1);
+  textarea.dispatchEvent(
+    new dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
+  );
+  assert.equal(posted.filter((m) => m.type === 'requestSend').length, 1);
+  assert.equal(textarea.value.trim(), '');
+});
+
+test('model frontend: identical retype and out-of-order correlated acknowledgements preserve edit intent', () => {
+  const textarea = findComposer();
+  const input = (text: string) => {
+    textarea.value = text;
+    textarea.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  };
+  const submit = () => {
+    textarea.dispatchEvent(
+      new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })
+    );
+    textarea.dispatchEvent(
+      new dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
+    );
+    return posted.filter((m) => m.type === 'requestSend').at(-1)!.submissionId as string;
+  };
+  const ack = (id: string, seq: number) =>
+    dom.window.dispatchEvent(
+      new dom.window.MessageEvent('message', {
+        data: {
+          type: 'snapshot',
+          snapshot: snapshot({ draft: '', composerResetSeq: seq, localCommandAck: id }),
+        },
+      })
+    );
+  input('/model');
+  const old = submit();
+  input('');
+  input('/model');
+  ack(old, 20);
+  assert.equal(findComposer().value, '/model');
+  const newer = submit();
+  ack(old, 21);
+  assert.equal(findComposer().value, '');
+  ack(newer, 22);
+  assert.equal(findComposer().value, '');
+  input('newer text');
+  ack(old, 23);
+  assert.equal(findComposer().value, 'newer text');
+});
+
+test('webview core safety: Enter retains a local command; ordinary prompts still clear', () => {
+  const textarea = findComposer();
+  for (const draft of ['/model', '/scoped-models', '/thinking high', '/quit']) {
+    posted.length = 0;
+    textarea.value = draft;
+    textarea.dispatchEvent(
+      new dom.window.KeyboardEvent('keydown', {
+        key: 'Enter',
+        bubbles: true,
+        cancelable: true,
+      })
+    );
+    assert.equal(
+      textarea.value,
+      ['/model', '/scoped-models'].includes(draft) ? '' : draft,
+      'only bare menus consume invoking text'
+    );
+    assert.equal(posted.filter((message) => message.type === 'requestSend').length, 1);
+  }
+  textarea.value = 'ordinary prompt';
+  textarea.dispatchEvent(
+    new dom.window.KeyboardEvent('keydown', {
+      key: 'Enter',
+      bubbles: true,
+      cancelable: true,
+    })
+  );
+  assert.equal(textarea.value, '', 'normal prompt atomic clear is unchanged');
+});

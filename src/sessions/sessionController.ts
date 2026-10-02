@@ -1,4 +1,12 @@
 import * as vscode from 'vscode';
+import { assertNotCoreSlashPrompt } from '../commands/coreSlash';
+import {
+  waitForModelOperations,
+  cancelModelOperations,
+  hasModelOperation,
+} from '../commands/modelOperations';
+import { mergeLocalCommands } from '../commands/localCommand';
+import { projectSessionInfo } from './sessionInfo';
 import { getSettings } from '../config/settings';
 import type { PiRpcSettings } from '../config/settings';
 import { DiagnosticsLogger } from '../diagnostics/logger';
@@ -39,6 +47,7 @@ export class SessionController implements vscode.Disposable {
   private restartAttempts = 0;
   private startInProgress = false;
   private stopping = false;
+  private authDisposed = false;
   private lastLoggedConnectionState?: ControllerState['connectionState'];
   // When this controller last wrote to its own session file (generating,
   // renaming, etc.). Used to ignore filesystem-watcher events caused by our own
@@ -119,11 +128,469 @@ export class SessionController implements vscode.Disposable {
     return this.extensionUiEmitter.event;
   }
 
+  public get sdkRoot(): string | undefined {
+    return this.supervisor.sdkRoot;
+  }
+
   public get generation(): number {
     return this.supervisor.currentGeneration;
   }
 
+  /** Capture even offline chats without starting a client or reading native state. */
+  public captureLocalCommandOrigin(): () => boolean {
+    const client = this.supervisor.currentClient;
+    const generation = this.generation;
+    const { sessionId, sessionFile } = this.state.state;
+    return () =>
+      this.supervisor.currentClient === client &&
+      this.generation === generation &&
+      this.state.state.sessionId === sessionId &&
+      this.state.state.sessionFile === sessionFile;
+  }
+
+  /** Typed lifecycle capability. Identity changes are admitted only by this result,
+   * never by the ordinary command-origin guard. No abort/queue clearing here. */
+  public captureLifecycleIntent() {
+    const client = this.supervisor.currentClient;
+    const generation = this.generation;
+    const origin = { ...this.state.state };
+    const leaf = this.state.leafId;
+    const stableHost = () =>
+      this.supervisor.currentClient === client && this.generation === generation;
+    const valid = () =>
+      stableHost() &&
+      this.state.state.sessionId === origin.sessionId &&
+      this.state.state.sessionFile === origin.sessionFile &&
+      this.state.leafId === leaf;
+    const idle = async () => {
+      this.assertNoManualCompaction();
+      if (hasModelOperation(this)) throw new Error('Wait for pending preference/model changes.');
+      if (!client) throw new Error('Pi is not running for this originating chat.');
+      const native = await client.getState();
+      if (
+        !valid() ||
+        !native ||
+        native.sessionId !== origin.sessionId ||
+        native.sessionFile !== origin.sessionFile
+      )
+        throw new Error('The originating chat changed; lifecycle command cancelled.');
+      if (
+        this.state.connectionState !== 'ready' ||
+        this.state.retry ||
+        this.state.tools.some((t) => !t.endedAt) ||
+        this.state.queue.steering.length ||
+        this.state.queue.followUp.length ||
+        native.isStreaming ||
+        native.isCompacting ||
+        native.isRetrying ||
+        native.isBashRunning ||
+        native.hasPendingBashMessages ||
+        native.pendingMessageCount ||
+        native.isIdle === false
+      )
+        throw new Error(
+          'Wait for this chat and its queued work to finish. Nothing was aborted or discarded.'
+        );
+    };
+    return {
+      valid,
+      prepareImport: async (path: string) => {
+        await idle();
+        const preview = await client!.engineCommand(
+          'import_prepare',
+          { sessionId: origin.sessionId, sessionFile: origin.sessionFile, leafId: leaf },
+          { sessionPath: path }
+        );
+        if (!valid() || !preview)
+          throw new Error('Import preview unavailable for the originating chat.');
+        return preview;
+      },
+      forkMessages: () =>
+        (client
+          ? client.getForkMessages()
+          : Promise.reject(new Error('Pi is not running for this originating chat.'))
+        ).then((data) => (Array.isArray(data?.messages) ? (data.messages as JsonObject[]) : [])),
+      run: async (
+        name: 'new' | 'resume' | 'fork' | 'clone' | 'quit' | 'import',
+        target: string | undefined,
+        surfaceValid: () => boolean
+      ) => {
+        await idle();
+        if (!surfaceValid() || !valid()) throw new Error('The originating chat changed.');
+        this.assertNoManualCompaction();
+        this.lifecyclePending = true;
+        let nativeAttempted = false;
+        try {
+          if (name === 'resume')
+            target = await canonicalizeSessionPath(this.folder.uri.fsPath, target!);
+          if (!surfaceValid() || !valid()) throw new Error('The originating chat changed.');
+          nativeAttempted = true;
+          const capturedIdentity = {
+            sessionId: origin.sessionId,
+            sessionFile: origin.sessionFile,
+            leafId: leaf,
+          };
+          const result =
+            name === 'quit'
+              ? await client!.closeChat(capturedIdentity)
+              : await client!.replaceChat(name, target, capturedIdentity);
+          if (!result || result.cancelled === true) return { cancelled: true, valid };
+          if (!stableHost()) throw new Error('The originating native host changed.');
+          if (name === 'quit') {
+            if (result.closed !== true)
+              throw new Error('Native chat disposal was not acknowledged.');
+            return { cancelled: false, valid: stableHost };
+          }
+          const replacement = await client!.getState();
+          if (!stableHost() || !replacement?.sessionId)
+            throw new Error('Native replacement identity unavailable.');
+          this.state = {
+            ...resetControllerProjection(this.state),
+            state: replacement,
+            draft: this.state.draft,
+          };
+          await this.refreshMessages();
+          await this.refreshEntries();
+          this.selfWriteAt = Date.now();
+          await this.syncFileReadOffset();
+          this.armSessionFileWatcher();
+          this.fire();
+          return {
+            cancelled: false,
+            replacementIdentity: replacement as JsonObject,
+            editorText: typeof result.text === 'string' ? result.text : undefined,
+            valid: () =>
+              stableHost() &&
+              this.state.state.sessionId === replacement.sessionId &&
+              this.state.state.sessionFile === replacement.sessionFile,
+          };
+        } catch (error) {
+          // A runtime can fail after invalidating its old session. Do not allow
+          // later sends into an uncertain native identity; retain saved draft for recovery.
+          if (nativeAttempted) {
+            this.state = { ...this.state, connectionState: 'faulted' };
+            this.fire();
+          }
+          throw error;
+        } finally {
+          this.lifecyclePending = false;
+        }
+      },
+    };
+  }
+
+  public captureDeliveryIntent() {
+    const client = this.supervisor.currentClient;
+    const originValid = this.captureLocalCommandOrigin();
+    const leaf = this.state.leafId;
+    const valid = () => originValid() && this.state.leafId === leaf;
+    const origin = {
+      sessionId: this.state.state.sessionId,
+      sessionFile: this.state.state.sessionFile,
+      leafId: this.state.leafId,
+    };
+    return {
+      valid,
+      payload: async (share: boolean) => {
+        if (!client || !valid()) throw new Error('The originating chat changed or is offline.');
+        const result = await client.engineCommand('delivery_payload', origin, { share });
+        if (!valid() || typeof result?.jsonl !== 'string')
+          throw new Error('Payload unavailable for this originating branch.');
+        return { jsonl: result.jsonl };
+      },
+    };
+  }
+
+  public captureAuthIntent() {
+    const client = this.supervisor.currentClient;
+    const originValid = this.captureLocalCommandOrigin();
+    const leaf = this.state.leafId;
+    const valid = () => !this.authDisposed && originValid() && this.state.leafId === leaf;
+    const origin = {
+      sessionId: this.state.state.sessionId,
+      sessionFile: this.state.state.sessionFile,
+      leafId: this.state.leafId,
+    };
+    const required = () => {
+      if (!client || !valid()) throw new Error('The originating chat changed or is offline.');
+      return client;
+    };
+    return {
+      valid,
+      providers: async () => {
+        const data = await required().engineCommand('auth_providers', origin);
+        if (!valid()) throw new Error('The originating chat changed.');
+        return Array.isArray(data?.providers) ? (data.providers as JsonObject[]) : [];
+      },
+      run: async (
+        name: 'logout' | 'login',
+        providerId: string,
+        authType?: string,
+        interact?: (data: JsonObject, token?: vscode.CancellationToken) => Promise<string | null>,
+        surfaceValid: () => boolean = valid,
+        signal?: AbortSignal
+      ) => {
+        this.assertNoManualCompaction();
+        if (name === 'logout') {
+          const result = await required().engineCommand('auth_logout', origin, { providerId });
+          if (!valid()) return false;
+          await this.refreshState();
+          return valid() && result?.applied === true;
+        }
+        const captured = required();
+        const start = await captured.engineCommand('auth_login', origin, { providerId, authType });
+        const nonce = start?.nonce;
+        if (typeof nonce !== 'string') throw new Error('Authentication could not start.');
+        let completed = false;
+        const ui = new vscode.CancellationTokenSource();
+        let stopped = false;
+        let abortRequest: Promise<unknown> | undefined;
+        let release!: () => void;
+        const interrupted = new Promise<null>((resolve) => {
+          release = () => resolve(null);
+        });
+        const stop = () => {
+          if (stopped || completed) return;
+          stopped = true;
+          // Bypass the login/preference queue: native cancellation must not wait
+          // for a UI promise or a provider's parallel callback.
+          abortRequest = captured
+            .engineCommand('auth_response', origin, { nonce, value: null })
+            .catch(() => {});
+          ui.cancel();
+          release();
+        };
+        const check = () => {
+          if (signal?.aborted || !valid() || !surfaceValid()) stop();
+        };
+        signal?.addEventListener('abort', stop, { once: true });
+        const changes = this.onDidChangeState?.(check);
+        // Surface identity (panel/sidebar resource/disposal) belongs to the caller.
+        // Its existing captured guard is also observed while native UI is open.
+        const timer = setInterval(check, 25);
+        const deferredEvents: import('../rpc/protocol').JsonValue[] = [];
+        const interaction = async (data: JsonObject) => {
+          let polling = false;
+          const nativeTimer = setInterval(() => {
+            if (polling || stopped) return;
+            polling = true;
+            void captured
+              .engineCommand('auth_poll', origin, { nonce })
+              .then((result) => {
+                if (Array.isArray(result?.events)) deferredEvents.push(...result.events);
+                if (result?.status === 'cancelled' || result?.status === 'failed') stop();
+              })
+              .catch(stop)
+              .finally(() => {
+                polling = false;
+              });
+          }, 100);
+          try {
+            return await Promise.race([Promise.resolve(interact?.(data, ui.token)), interrupted]);
+          } finally {
+            clearInterval(nativeTimer);
+          }
+        };
+        try {
+          check();
+          while (!stopped && valid() && surfaceValid()) {
+            const data = await captured.engineCommand('auth_poll', origin, { nonce });
+            check();
+            if (stopped || !valid() || !surfaceValid() || !data) return false;
+            if (data.status !== 'pending') {
+              completed = true;
+              if (data.status === 'applied') {
+                await this.refreshState();
+                return valid() && surfaceValid();
+              }
+              if (data.status === 'cancelled') return false;
+              throw new Error(
+                data.status === 'changed_sync_failed'
+                  ? 'Credential changed, but model catalog synchronization failed. Review provider status before retrying.'
+                  : 'Authentication failed. No credential details are displayed.'
+              );
+            }
+            for (const event of [
+              ...deferredEvents.splice(0),
+              ...(Array.isArray(data.events) ? data.events : []),
+            ]) {
+              if (!valid() || !surfaceValid()) return false;
+              if (event && typeof event === 'object' && !Array.isArray(event))
+                await interaction({ event });
+            }
+            if (data.prompt && typeof data.prompt === 'object' && !Array.isArray(data.prompt)) {
+              const prompt = data.prompt;
+              const value = (await interaction({ prompt })) ?? null;
+              check();
+              if (stopped || !valid() || !surfaceValid()) return false;
+              await captured.engineCommand('auth_response', origin, {
+                nonce,
+                promptNonce: prompt.nonce,
+                value,
+              });
+              if (value === null) return false;
+            }
+            await new Promise((resolve) => setTimeout(resolve, 100));
+          }
+          return false;
+        } finally {
+          clearInterval(timer);
+          changes?.dispose();
+          signal?.removeEventListener('abort', stop);
+          if (!completed) stop();
+          ui.cancel();
+          ui.dispose();
+          await abortRequest;
+          if (stopped) {
+            // Cancellation cannot revoke a credential committed before native
+            // cancellation arrived. Do not promise rollback, even on stale UI.
+            const result = await captured
+              .engineCommand('auth_poll', origin, { nonce })
+              .catch(() => undefined);
+            if (result?.status === 'applied' || result?.status === 'changed_sync_failed')
+              throw new Error(
+                'Authentication may already have stored credentials globally. Review provider status; use /logout if you want to remove them. Cancellation does not revoke account tokens.'
+              );
+          }
+        }
+      },
+    };
+  }
+
+  /** Capture the native origin before any composer/UI read. A successful tree move
+   * admits only its exact returned leaf; normal origin guards remain unchanged. */
+  public captureEngineIntent() {
+    const client = this.supervisor.currentClient;
+    const generation = this.generation;
+    const origin = {
+      sessionId: this.state.state.sessionId,
+      sessionFile: this.state.state.sessionFile,
+      leafId: this.state.leafId,
+    };
+    const stable = () =>
+      this.supervisor.currentClient === client &&
+      this.generation === generation &&
+      this.state.state.sessionId === origin.sessionId &&
+      this.state.state.sessionFile === origin.sessionFile;
+    const valid = () => stable() && this.state.leafId === origin.leafId;
+    const required = () => {
+      if (!client || !valid())
+        throw new Error('The originating native chat changed or is offline.');
+      return client;
+    };
+    return {
+      valid,
+      tree: () => required().getTree(),
+      trust: () => required().engineCommand('get_project_trust', origin),
+      run: async (
+        name: 'tree' | 'trust' | 'reload',
+        payload: JsonObject,
+        surfaceValid: () => boolean
+      ) => {
+        this.assertNoManualCompaction();
+        if (hasModelOperation(this)) throw new Error('Wait for pending model/preferences changes.');
+        const captured = required();
+        const native = await captured.getState();
+        if (
+          !native ||
+          !valid() ||
+          !surfaceValid() ||
+          native.sessionId !== origin.sessionId ||
+          native.sessionFile !== origin.sessionFile
+        )
+          throw new Error('The originating chat changed.');
+        if (
+          this.state.connectionState !== 'ready' ||
+          this.bashPending ||
+          this.state.retry ||
+          this.state.queue.steering.length ||
+          this.state.queue.followUp.length ||
+          this.state.tools.some((tool) => !tool.endedAt) ||
+          native.isStreaming ||
+          native.isCompacting ||
+          native.isRetrying ||
+          native.isBashRunning ||
+          native.hasPendingBashMessages ||
+          native.pendingMessageCount ||
+          native.isIdle === false
+        )
+          throw new Error(
+            'Wait for this chat and its queued work; nothing was aborted or discarded.'
+          );
+        this.assertNoManualCompaction();
+        this.lifecyclePending = true;
+        let applied = false;
+        try {
+          const result = await captured.engineCommand(
+            name === 'tree'
+              ? 'navigate_tree'
+              : name === 'trust'
+                ? 'set_project_trust'
+                : 'reload_session',
+            origin,
+            payload
+          );
+          applied = !!result && result.cancelled !== true && result.aborted !== true;
+          if (!stable() || !surfaceValid())
+            throw new Error('The originating chat changed during the native operation.');
+          if (!result || result.cancelled === true || result.aborted === true)
+            return { cancelled: true, valid };
+          const check = () => {
+            if (!stable() || !surfaceValid())
+              throw new Error('The originating chat changed during native completion.');
+          };
+          if (name === 'tree' || name === 'reload') {
+            // Incremental refreshEntries ignores leaf-only moves. Collect on the
+            // captured client and validate each wait BEFORE changing projection.
+            const entries = await captured.getEntries();
+            check();
+            const messages = await captured.getMessages();
+            check();
+            const current = await captured.getState();
+            check();
+            if (
+              !current ||
+              !Array.isArray(entries?.entries) ||
+              !Array.isArray(messages?.messages) ||
+              current.sessionId !== origin.sessionId ||
+              current.sessionFile !== origin.sessionFile ||
+              entries?.leafId !== result.leafId
+            )
+              throw new Error('ENGINE_RECOVERY_REQUIRED_AFTER_COMPLETION');
+            const all = messages.messages as JsonObject[];
+            this.state = {
+              ...this.state,
+              state: current,
+              entries: entries.entries as JsonObject[],
+              leafId: typeof entries.leafId === 'string' ? entries.leafId : null,
+              messages: all.slice(-Math.max(50, this.settings.maxTranscriptItems)),
+            };
+            this.selfWriteAt = Date.now();
+            await this.syncFileReadOffset();
+            check();
+          }
+          const leaf = this.state.leafId;
+          this.fire();
+          return {
+            cancelled: false,
+            editorText: typeof result.editorText === 'string' ? result.editorText : undefined,
+            valid: () => stable() && this.state.leafId === leaf,
+          };
+        } catch (error) {
+          if (stable() && (applied || String(error).includes('RECOVERY_REQUIRED'))) {
+            this.state = { ...this.state, connectionState: 'faulted' };
+            this.fire();
+          }
+          throw error;
+        } finally {
+          this.lifecyclePending = false;
+        }
+      },
+    };
+  }
+
   public async start(sessionFile = this.state.state.sessionFile): Promise<void> {
+    this.assertNoManualCompaction();
     if (this.state.connectionState === 'ready' || this.state.connectionState === 'busy') {
       return;
     }
@@ -213,7 +680,11 @@ export class SessionController implements vscode.Disposable {
       this.addDiagnostic(
         response.command === 'parse' ? 'error' : 'warning',
         `RPC response failed: ${response.command}`,
-        response.success ? '' : response.error
+        response.success
+          ? ''
+          : response.command === 'compact'
+            ? 'Compaction failed or was cancelled.'
+            : response.error
       );
     });
     client.onProtocolFault((error) => this.addDiagnostic('error', 'Protocol fault', error.message));
@@ -234,6 +705,8 @@ export class SessionController implements vscode.Disposable {
   }
 
   public async stop(): Promise<void> {
+    this.assertNoManualCompaction();
+    cancelModelOperations(this);
     this.stopping = true;
     this.disarmSessionFileWatcher();
     await this.supervisor.stop();
@@ -372,7 +845,9 @@ export class SessionController implements vscode.Disposable {
       messages: messageList,
       entries: Array.isArray(entries.entries) ? (entries.entries as JsonObject[]) : [],
       tree: Array.isArray(tree.tree) ? (tree.tree as JsonObject[]) : [],
-      commands: Array.isArray(commands?.commands) ? (commands.commands as JsonObject[]) : [],
+      commands: mergeLocalCommands(
+        Array.isArray(commands?.commands) ? (commands.commands as JsonObject[]) : []
+      ),
       lastSessionStats: (stats ?? undefined) as JsonObject | undefined,
       leafId:
         typeof entries.leafId === 'string'
@@ -502,6 +977,10 @@ export class SessionController implements vscode.Disposable {
     mode: 'prompt' | 'steer' | 'followUp' = 'prompt',
     images: JsonObject[] = []
   ): Promise<void> {
+    this.assertNoManualCompaction();
+    assertNotCoreSlashPrompt(message);
+    await waitForModelOperations(this);
+    this.assertNoManualCompaction();
     this.selfWriteAt = Date.now();
     const client = this.requireClient();
     // Immediate feedback: show the working state the instant the user submits,
@@ -522,10 +1001,23 @@ export class SessionController implements vscode.Disposable {
   }
 
   public async abort(): Promise<void> {
-    await this.requireClient().abort();
+    const operation = this.manualCompactOperation;
+    // Invalidate the reservation before native abort: preflight has no native work to cancel.
+    if (operation) operation.cancelled = true;
+    const pending = this.requireClient().abort();
+    if (operation)
+      operation.aborts.push(
+        pending.then(
+          () => {},
+          () => {}
+        )
+      );
+    await pending;
   }
 
   public async newSession(parentSession?: string): Promise<JsonObject | undefined> {
+    this.assertNoManualCompaction();
+    cancelModelOperations(this);
     this.selfWriteAt = Date.now();
     const result = await this.requireClient().newSession(parentSession);
     if (result?.cancelled === true) {
@@ -560,12 +1052,39 @@ export class SessionController implements vscode.Disposable {
     this.fire();
   }
 
+  public modelEpoch = 0;
+
   public async selectModel(provider: string, modelId: string): Promise<void> {
-    await this.requireClient().setModel(provider, modelId);
-    await this.refreshState();
+    this.assertNoManualCompaction();
+    this.modelEpoch = (this.modelEpoch ?? 0) + 1;
+    const client = this.requireClient();
+    const session = { ...this.state.state };
+    await client.setModel(provider, modelId);
+    if (
+      this.supervisor.currentClient !== client ||
+      this.state.state.sessionId !== session.sessionId ||
+      this.state.state.sessionFile !== session.sessionFile
+    ) {
+      throw new Error('The originating chat changed; model selection cancelled.');
+    }
+    const next = await client.getState();
+    if (
+      this.supervisor.currentClient !== client ||
+      this.state.state.sessionId !== session.sessionId ||
+      this.state.state.sessionFile !== session.sessionFile
+    ) {
+      throw new Error('The originating chat changed; model selection cancelled.');
+    }
+    this.state = {
+      ...this.state,
+      state: mergeSessionState(this.state.state, (next ?? {}) as SessionState),
+    };
+    this.fire();
   }
 
   public async cycleModel(): Promise<void> {
+    this.assertNoManualCompaction();
+    this.modelEpoch = (this.modelEpoch ?? 0) + 1;
     const data = await this.requireClient().cycleModel();
     if (data) {
       this.state = {
@@ -584,17 +1103,109 @@ export class SessionController implements vscode.Disposable {
     await this.refreshState();
   }
 
+  public async getPreferences() {
+    return this.requireClient().getPreferences();
+  }
+
+  public async savePreference(
+    key: string,
+    value: import('../rpc/preferences').PreferenceValue,
+    revision: string,
+    confirmPaid: boolean
+  ) {
+    this.assertNoManualCompaction();
+    const client = this.requireClient();
+    const state = { ...this.state.state };
+    if (
+      state.isStreaming ||
+      state.isCompacting ||
+      state.isRetrying ||
+      state.isBashRunning ||
+      this.state.queue.steering.length ||
+      this.state.queue.followUp.length
+    )
+      throw new Error(
+        'Engine preferences can be viewed while busy; saving requires an idle session with empty queues.'
+      );
+    const result = await client.savePreference(key, value, revision, confirmPaid);
+    if (
+      client !== this.supervisor.currentClient ||
+      state.sessionId !== this.state.state.sessionId ||
+      state.sessionFile !== this.state.state.sessionFile
+    )
+      throw new Error(
+        'Global preference saved; originating chat changed, session outcome not acknowledged.'
+      );
+    await this.refreshState();
+    if (
+      client !== this.supervisor.currentClient ||
+      state.sessionId !== this.state.state.sessionId ||
+      state.sessionFile !== this.state.state.sessionFile
+    )
+      throw new Error(
+        'Global preference saved; originating chat changed during refresh, session outcome not acknowledged.'
+      );
+    return result;
+  }
+
+  public async getScopedModels() {
+    return this.requireClient().getScopedModels();
+  }
+
+  public async applyScopedModels(
+    refs: import('../rpc/protocol').ScopedModelRef[],
+    revision: string,
+    saveGlobal: boolean,
+    replaceUnavailable: boolean
+  ): Promise<void> {
+    const client = this.requireClient();
+    const session = { ...this.state.state };
+    this.assertNoManualCompaction();
+    await client.setScopedModels(refs, revision, saveGlobal, replaceUnavailable);
+    if (
+      client !== this.supervisor.currentClient ||
+      session.sessionId !== this.state.state.sessionId ||
+      session.sessionFile !== this.state.state.sessionFile
+    )
+      throw new Error('The originating chat changed; scope selection cancelled.');
+  }
+
   public async getAvailableModels(): Promise<JsonObject[]> {
     const data = await this.requireClient().getAvailableModels();
     return Array.isArray(data?.models) ? (data.models as JsonObject[]) : [];
   }
 
-  public async setThinkingLevel(level: string): Promise<void> {
-    await this.requireClient().setThinkingLevel(level);
+  public async getThinkingCapabilities() {
+    return this.requireClient().getThinkingCapabilities();
+  }
+
+  public async setThinkingLevel(level: string, expectedRevision?: string): Promise<void> {
+    this.assertNoManualCompaction();
+    const client = this.requireClient();
+    const state = { ...this.state.state };
+    const capabilities = await client.getThinkingCapabilities();
+    if (!capabilities.levels.includes(level))
+      throw new Error('Unsupported thinking level for current model.');
+    if (
+      client !== this.supervisor.currentClient ||
+      state.sessionId !== this.state.state.sessionId ||
+      state.sessionFile !== this.state.state.sessionFile ||
+      JSON.stringify(state.model) !== JSON.stringify(this.state.state.model)
+    )
+      throw new Error('The originating model changed; thinking selection cancelled.');
+    this.assertNoManualCompaction();
+    await client.setThinkingLevel(level, expectedRevision ?? capabilities.revision);
+    if (
+      client !== this.supervisor.currentClient ||
+      state.sessionId !== this.state.state.sessionId ||
+      state.sessionFile !== this.state.state.sessionFile
+    )
+      throw new Error('The originating chat changed; thinking selection cancelled.');
     await this.refreshState();
   }
 
   public async cycleThinkingLevel(): Promise<void> {
+    this.assertNoManualCompaction();
     const data = await this.requireClient().cycleThinkingLevel();
     if (data && typeof data.level === 'string') {
       this.state = { ...this.state, state: { ...this.state.state, thinkingLevel: data.level } };
@@ -604,21 +1215,117 @@ export class SessionController implements vscode.Disposable {
   }
 
   public async setSteeringMode(mode: string): Promise<void> {
+    this.assertNoManualCompaction();
     await this.requireClient().setSteeringMode(mode);
     await this.refreshState();
   }
 
   public async setFollowUpMode(mode: string): Promise<void> {
+    this.assertNoManualCompaction();
     await this.requireClient().setFollowUpMode(mode);
     await this.refreshState();
   }
 
+  private manualCompactPending = false;
+  private manualCompactOperation?: { cancelled: boolean; aborts: Promise<void>[] };
+  private bashPending = false;
+  private lifecyclePending = false;
+
+  public assertNoManualCompaction(): void {
+    if (this.lifecyclePending) throw new Error('A chat lifecycle operation is in progress.');
+    if (this.manualCompactPending) throw new Error('Compaction is in progress.');
+  }
+
+  private assertCompactIdle(state = this.state.state, ownReservation = false): void {
+    if (
+      this.lifecyclePending ||
+      (!ownReservation && this.manualCompactPending) ||
+      this.bashPending ||
+      hasModelOperation(this) ||
+      state.isStreaming ||
+      state.isCompacting ||
+      state.pendingMessageCount ||
+      state.isIdle === false ||
+      state.isBashRunning ||
+      state.hasPendingBashMessages ||
+      state.isRetrying ||
+      this.state.retry ||
+      this.state.switchingSession ||
+      this.state.queue?.steering.length ||
+      this.state.queue?.followUp.length ||
+      this.requireClient().hasCompactionConflict
+    )
+      throw new Error('Compaction requires an idle session; no work or queues were aborted.');
+  }
+
+  public captureCompactIntent() {
+    this.assertCompactIdle();
+    const client = this.requireClient();
+    const generation = this.generation;
+    const origin = { ...this.state.state };
+    const valid = () =>
+      this.generation === generation &&
+      this.supervisor.currentClient === client &&
+      this.state.state.sessionId === origin.sessionId &&
+      this.state.state.sessionFile === origin.sessionFile;
+    return {
+      valid,
+      run: async (instructions?: string) => {
+        if (!valid()) throw new Error('The originating chat changed; compaction cancelled.');
+        this.assertCompactIdle();
+        this.manualCompactPending = true;
+        const operation = { cancelled: false, aborts: [] as Promise<void>[] };
+        this.manualCompactOperation = operation;
+        try {
+          const state = await client.getState();
+          if (
+            operation.cancelled ||
+            !valid() ||
+            !state ||
+            state.sessionId !== origin.sessionId ||
+            state.sessionFile !== origin.sessionFile
+          )
+            throw new Error('The originating chat changed; compaction cancelled.');
+          // The reservation is ours; all other busy conditions must still be absent.
+          this.assertCompactIdle(this.state.state, true);
+          this.assertCompactIdle(state, true);
+          this.selfWriteAt = Date.now();
+          const result = await client.compact(instructions?.trim() || undefined);
+          if (operation.cancelled) throw new Error('Compaction cancelled.');
+          if (
+            !result ||
+            typeof result.summary !== 'string' ||
+            typeof result.firstKeptEntryId !== 'string' ||
+            typeof result.tokensBefore !== 'number'
+          )
+            throw new Error('Compaction did not return a native result.');
+          return result;
+        } catch {
+          throw new Error('Compaction failed or was cancelled.');
+        } finally {
+          // Do not admit replacement work while an originating native abort is unsettled.
+          for (const abort of operation.aborts) await abort;
+          this.manualCompactOperation = undefined;
+          this.manualCompactPending = false;
+          if (valid()) {
+            this.state = {
+              ...this.state,
+              connectionState: this.state.state.isStreaming ? 'busy' : 'ready',
+              state: { ...this.state.state, isCompacting: false },
+            };
+            this.fire();
+          }
+        }
+      },
+    };
+  }
+
   public async compact(customInstructions?: string): Promise<JsonObject | undefined> {
-    this.selfWriteAt = Date.now();
-    return this.requireClient().compact(customInstructions);
+    return this.captureCompactIntent().run(customInstructions);
   }
 
   public async toggleAutoCompaction(): Promise<void> {
+    this.assertNoManualCompaction();
     await this.requireClient().setAutoCompaction(
       !(this.state.state.autoCompactionEnabled === true)
     );
@@ -626,6 +1333,7 @@ export class SessionController implements vscode.Disposable {
   }
 
   public async toggleAutoRetry(enabled: boolean): Promise<void> {
+    this.assertNoManualCompaction();
     await this.requireClient().setAutoRetry(enabled);
   }
 
@@ -637,7 +1345,13 @@ export class SessionController implements vscode.Disposable {
     command: string,
     excludeFromContext = false
   ): Promise<JsonObject | undefined> {
-    return this.requireClient().bash(command, excludeFromContext);
+    if (this.manualCompactPending) throw new Error('Compaction is in progress.');
+    this.bashPending = true;
+    try {
+      return await this.requireClient().bash(command, excludeFromContext);
+    } finally {
+      this.bashPending = false;
+    }
   }
 
   public async abortBash(): Promise<void> {
@@ -681,16 +1395,113 @@ export class SessionController implements vscode.Disposable {
   }
 
   public async renameSession(name: string): Promise<void> {
+    this.assertNoManualCompaction();
+    const client = this.requireClient();
+    const generation = this.generation;
+    const origin = { ...this.state.state };
+    const valid = () =>
+      this.generation === generation &&
+      this.state.state.sessionId === origin.sessionId &&
+      this.state.state.sessionFile === origin.sessionFile &&
+      this.requireClient() === client;
+    if (!name.trim()) throw new Error('Session name cannot be empty');
     this.selfWriteAt = Date.now();
-    await this.requireClient().setSessionName(name);
-    await this.refreshState();
+    await client.setSessionName(name.trim());
+    if (!valid()) throw new Error('The originating chat changed; rename cancelled.');
+    const updated = await client.getState();
+    if (
+      !updated ||
+      !valid() ||
+      updated.sessionId !== origin.sessionId ||
+      updated?.sessionFile !== origin.sessionFile
+    ) {
+      throw new Error('The originating chat changed; rename cancelled.');
+    }
+    if (typeof updated.sessionName !== 'string' || !updated.sessionName) {
+      throw new Error('Session name persistence could not be confirmed.');
+    }
+    this.state = {
+      ...this.state,
+      state: { ...this.state.state, sessionName: updated.sessionName },
+    };
+    this.fire();
   }
 
   public async showSessionStats(): Promise<JsonObject | undefined> {
-    const data = await this.requireClient().getSessionStats();
+    const client = this.requireClient();
+    const generation = this.generation;
+    const origin = { ...this.state.state };
+    const [stats, state, entries] = await Promise.all([
+      client.getSessionStats(),
+      client.getState(),
+      client.getEntries(),
+    ]);
+    if (
+      this.generation !== generation ||
+      this.requireClient() !== client ||
+      this.state.state.sessionId !== origin.sessionId ||
+      this.state.state.sessionFile !== origin.sessionFile ||
+      !state ||
+      state.sessionId !== origin.sessionId ||
+      state.sessionFile !== origin.sessionFile ||
+      !stats ||
+      stats.sessionId !== origin.sessionId ||
+      stats.sessionFile !== origin.sessionFile
+    )
+      throw new Error('The originating chat changed; session info cancelled.');
+    const data = projectSessionInfo(stats, state);
+    if (Array.isArray(entries?.entries)) data.totalEntries = entries.entries.length;
     this.state = { ...this.state, lastSessionStats: data };
     this.fire();
     return data;
+  }
+
+  /** Immutable originating client/session/branch; never retarget after UI waits. */
+  public captureExportIntent() {
+    const client = this.requireClient();
+    const generation = this.generation;
+    const origin = { ...this.state.state };
+    const leafId = this.state.leafId;
+    const valid = () =>
+      this.generation === generation &&
+      this.supervisor.currentClient === client &&
+      this.state.state.sessionId === origin.sessionId &&
+      this.state.state.sessionFile === origin.sessionFile &&
+      this.state.leafId === leafId;
+    return {
+      valid,
+      write: async (path: string, jsonl: boolean) => {
+        const [state, entries] = await Promise.all([client.getState(), client.getEntries()]);
+        if (
+          !valid() ||
+          !state ||
+          state.sessionId !== origin.sessionId ||
+          state.sessionFile !== origin.sessionFile ||
+          entries?.leafId !== leafId
+        )
+          throw new Error('The originating chat or branch changed; export cancelled.');
+        if (
+          state.isStreaming ||
+          state.isCompacting ||
+          state.pendingMessageCount ||
+          this.state.retry ||
+          this.state.switchingSession
+        )
+          throw new Error('Export requires an idle stable session.');
+        const expected = { sessionId: origin.sessionId, sessionFile: origin.sessionFile, leafId };
+        const data = jsonl
+          ? await client.exportJsonl(path, expected, valid)
+          : await client.exportHtml(path, expected);
+        if (valid()) {
+          this.state = {
+            ...this.state,
+            lastExportPath: typeof data?.path === 'string' ? data.path : undefined,
+          };
+          this.fire();
+        }
+        return data;
+      },
+    };
   }
 
   public async exportHtml(outputPath?: string): Promise<JsonObject | undefined> {
@@ -704,6 +1515,8 @@ export class SessionController implements vscode.Disposable {
   }
 
   public async switchSession(sessionPath: string): Promise<JsonObject | undefined> {
+    this.assertNoManualCompaction();
+    cancelModelOperations(this);
     const canonical = await canonicalizeSessionPath(this.folder.uri.fsPath, sessionPath);
     this.logger.info(`Resuming session ${canonical} for '${this.folder.name}'`);
     let result: JsonObject | undefined;
@@ -714,6 +1527,7 @@ export class SessionController implements vscode.Disposable {
       // 'ready'/'busy', so setting 'handshaking' first would deadlock it (30s
       // "Timed out waiting for Pi to be ready").
       await this.whenReady();
+      this.assertNoManualCompaction();
       // Loading feedback WITHOUT touching connectionState: clear the transcript
       // and set `switchingSession` so the webview shows the "Loading chat…"
       // loader. Using a flag (not 'handshaking') is critical — with one Pi per
@@ -753,6 +1567,7 @@ export class SessionController implements vscode.Disposable {
   }
 
   public async fork(entryId: string): Promise<JsonObject | undefined> {
+    this.assertNoManualCompaction();
     const result = await this.requireClient().fork(entryId);
     const text = typeof result?.text === 'string' ? result.text : '';
     if (result?.cancelled === true) {
@@ -787,6 +1602,7 @@ export class SessionController implements vscode.Disposable {
   // refresh the transcript from the active branch over RPC and keep the tab
   // bound to the same session.
   public async forkInPlace(entryId: string): Promise<JsonObject | undefined> {
+    this.assertNoManualCompaction();
     const result = await this.requireClient().fork(entryId);
     if (result?.cancelled === true) {
       this.addDiagnostic('info', 'Fork cancelled');
@@ -803,6 +1619,7 @@ export class SessionController implements vscode.Disposable {
   }
 
   public async clone(): Promise<JsonObject | undefined> {
+    this.assertNoManualCompaction();
     const result = await this.requireClient().clone();
     if (result?.cancelled === true) {
       this.addDiagnostic('info', 'Clone session cancelled');
@@ -826,7 +1643,9 @@ export class SessionController implements vscode.Disposable {
 
   public async getPiCommands(): Promise<JsonObject[]> {
     const result = await this.requireClient().getCommands();
-    const commands = Array.isArray(result?.commands) ? (result.commands as JsonObject[]) : [];
+    const commands = mergeLocalCommands(
+      Array.isArray(result?.commands) ? (result.commands as JsonObject[]) : []
+    );
     this.state = { ...this.state, commands };
     this.fire();
     return commands;
@@ -858,6 +1677,10 @@ export class SessionController implements vscode.Disposable {
   }
 
   public dispose(): void {
+    this.assertNoManualCompaction();
+    this.authDisposed = true;
+    this.changeEmitter.fire(this.state);
+    cancelModelOperations(this);
     this.disarmSessionFileWatcher();
     void this.stop();
     this.supervisor.dispose();
@@ -894,6 +1717,8 @@ export class SessionController implements vscode.Disposable {
   }
 
   private onEvent(event: RpcEvent): void {
+    if (event.type === 'compaction_end' && event.errorMessage)
+      event = { ...event, errorMessage: 'Compaction failed or was cancelled.' };
     let next = this.state;
     if (!isKnownEventType(String(event.type))) {
       const detail = JSON.stringify(redactJsonValue(event), null, 2);

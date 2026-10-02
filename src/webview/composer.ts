@@ -1,3 +1,5 @@
+import { assertNotCoreSlashPrompt } from '../commands/coreSlash';
+
 export type ChatUiMode = 'simple' | 'advanced';
 
 export type ComposerFocusTarget =
@@ -161,6 +163,11 @@ export interface RecoveryState {
 
 export interface ComposerSessionState {
   draft: string;
+  /** In-memory ownership revision for asynchronous local commands. */
+  localCommandAck?: string;
+  /** Correlated invoking text consumption, not native action success. */
+  localCommandConsumed?: string;
+  commandRevision?: number;
   composerResetSeq?: number;
   pendingContextItems: PendingContextItem[];
   pendingImages: PendingImageItem[];
@@ -304,6 +311,8 @@ export function buildSendPreview(
   command: 'prompt' | 'follow_up' | 'steer',
   state: ComposerSessionState
 ): SendPreviewState {
+  // Local commands must be intercepted before context/image expansion or clears.
+  assertNotCoreSlashPrompt(state.draft);
   if (
     !state.draft.trim() &&
     state.pendingContextItems.length === 0 &&

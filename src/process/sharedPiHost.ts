@@ -9,6 +9,16 @@ import type { DiagnosticsLogger } from '../diagnostics/logger';
 import type { PiProcessHandle } from './piProcess';
 
 // One channel = one open chat session multiplexed over its worker's stdio.
+export interface SdkSessionOpen {
+  /** Root captured by the supervisor launch plan; never resolved again after await. */
+  sdkRoot?: string;
+  cwd: string;
+  sessionFile?: string;
+  args?: string[];
+  env?: NodeJS.ProcessEnv;
+  dedicated?: boolean;
+}
+
 interface HostChannel {
   stdout: PassThrough; // host -> session (JSONL, exactly what RpcTransport expects)
   onExit?: (code: number | null, signal: string | null) => void;
@@ -72,11 +82,21 @@ class HostWorkerConn {
     public readonly id: number,
     private readonly hostScript: string,
     private readonly baseEnv: NodeJS.ProcessEnv,
-    private readonly piRoot: string,
+    public readonly piRoot: string,
     private readonly logger: LoggerLike,
     private readonly cacheDir: string | undefined,
-    private readonly onDead: (conn: HostWorkerConn) => void
+    private readonly onDead: (conn: HostWorkerConn) => void,
+    private readonly launchCwd?: string,
+    private readonly reusable = true
   ) {}
+
+  public matchesEnvironment(env: NodeJS.ProcessEnv, cwd?: string): boolean {
+    return (
+      this.reusable &&
+      this.launchCwd === cwd &&
+      JSON.stringify(this.baseEnv) === JSON.stringify(env)
+    );
+  }
 
   public get sessionCount(): number {
     return this.channels.size;
@@ -86,11 +106,14 @@ class HostWorkerConn {
     const nodeBin = findSystemNode() ?? process.execPath;
     const usingElectron = nodeBin === process.execPath;
     const child = spawn(nodeBin, [this.hostScript], {
+      cwd: this.launchCwd,
       env: {
         ...this.baseEnv,
         PI_TELEMETRY: '0',
         PI_SKIP_VERSION_CHECK: '1',
         PI_HOST_PI_ROOT: this.piRoot,
+        // Attested at OS-process launch, not inferred from channel count or an open request.
+        PI_HOST_DEDICATED: this.reusable ? '0' : '1',
         // Node ≥22 loads the module graph from bytecode on repeat boots.
         ...(this.cacheDir ? { NODE_COMPILE_CACHE: this.cacheDir } : {}),
         ...(usingElectron ? { ELECTRON_RUN_AS_NODE: '1' } : {}),
@@ -280,13 +303,23 @@ export class SharedPiHost {
     return this.conns.map((conn) => ({ id: conn.id, sessions: conn.sessionCount }));
   }
 
-  private async pickConn(): Promise<HostWorkerConn> {
-    this.piRootPromise ??= this.resolvePiRoot().catch((error: unknown) => {
-      this.piRootPromise = undefined;
-      throw error;
-    });
-    const piRoot = await this.piRootPromise;
-    const live = this.conns.filter((conn) => !conn.fault);
+  private async pickConn(info?: SdkSessionOpen): Promise<HostWorkerConn> {
+    // Incompatible process globals never overwrite other chats; isolate instead.
+    if (info?.dedicated) {
+      const root = info.sdkRoot ?? (await this.resolvePiRoot());
+      return this.spawnConn(root, info.env ?? this.baseEnv, info.cwd, false);
+    }
+    const env = info?.env ?? this.baseEnv;
+    if (!info?.sdkRoot) {
+      this.piRootPromise ??= this.resolvePiRoot().catch((error: unknown) => {
+        this.piRootPromise = undefined;
+        throw error;
+      });
+    }
+    const piRoot = info?.sdkRoot ?? (await this.piRootPromise!);
+    const live = this.conns.filter(
+      (conn) => !conn.fault && conn.piRoot === piRoot && conn.matchesEnvironment(env, info?.cwd)
+    );
     // NEVER boot a second worker while one is still cold: parallel cold boots
     // contend on CPU (both importing Pi's whole module graph) and can push past
     // the open timeout — exactly the activation stampede that made 0.0.200 feel
@@ -305,14 +338,19 @@ export class SharedPiHost {
     if (least && live.length >= this.maxWorkers) {
       return least;
     }
-    return this.spawnConn(piRoot);
+    return this.spawnConn(piRoot, env, info?.cwd);
   }
 
-  private spawnConn(piRoot: string): HostWorkerConn {
+  private spawnConn(
+    piRoot: string,
+    env = this.baseEnv,
+    cwd?: string,
+    reusable = true
+  ): HostWorkerConn {
     const conn = new HostWorkerConn(
       this.nextConnId++,
       this.hostScript,
-      this.baseEnv,
+      env,
       piRoot,
       this.logger,
       this.cacheDir,
@@ -326,7 +364,9 @@ export class SharedPiHost {
             this.parked.delete(cwd);
           }
         }
-      }
+      },
+      cwd,
+      reusable
     );
     conn.start();
     this.conns.push(conn);
@@ -425,11 +465,8 @@ export class SharedPiHost {
    * streams the supervisor wires into RpcTransport exactly like a real process.
    * Resolves only once the host has created the AgentSession.
    */
-  public async openSession(
-    info: { cwd: string; sessionFile?: string },
-    openTimeoutMs = 20_000
-  ): Promise<PiProcessHandle> {
-    if (!info.sessionFile) {
+  public async openSession(info: SdkSessionOpen, openTimeoutMs = 20_000): Promise<PiProcessHandle> {
+    if (!info.sessionFile && !info.args && !info.env && !info.dedicated && !info.sdkRoot) {
       const parked = this.parked.get(info.cwd);
       if (parked && !parked.conn.fault) {
         this.parked.delete(info.cwd);
@@ -442,10 +479,10 @@ export class SharedPiHost {
   }
 
   private async openSessionRaw(
-    info: { cwd: string; sessionFile?: string },
+    info: SdkSessionOpen,
     openTimeoutMs = 20_000
   ): Promise<{ handle: PiProcessHandle; conn: HostWorkerConn }> {
-    const conn = await this.pickConn();
+    const conn = await this.pickConn(info);
     if (conn.fault) {
       throw conn.fault;
     }
@@ -494,6 +531,7 @@ export class SharedPiHost {
       type: 'open',
       cwd: info.cwd,
       sessionFile: info.sessionFile,
+      args: info.args,
     });
 
     try {
@@ -508,6 +546,7 @@ export class SharedPiHost {
     }
 
     const handle: PiProcessHandle = {
+      sdkRoot: conn.piRoot,
       stdin,
       stdout,
       stderr,
@@ -521,6 +560,7 @@ export class SharedPiHost {
         conn.writeEnvelope(key, { type: 'close' });
         conn.channels.delete(key);
         stdout.push(null);
+        if (info.dedicated) conn.terminate();
       },
     };
     return { handle, conn };

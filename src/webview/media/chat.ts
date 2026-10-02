@@ -5,6 +5,7 @@ declare function acquireVsCodeApi(): {
 };
 
 import morphdom from 'morphdom';
+import { isCoreMenuCommand, parseCoreSlash } from '../../commands/coreSlash';
 import { deriveScreenChanges } from '../editToolPath';
 import type { WebviewSnapshot } from '../../state/types';
 import { installCustomTooltips } from './customTooltip';
@@ -118,6 +119,7 @@ function navigateHistory(ta: HTMLTextAreaElement, direction: 'older' | 'newer'):
       historyIndex += 1;
     } else {
       // Past the newest entry: restore the draft that was in progress.
+      editRevision++;
       ta.value = historyStash ?? '';
       exitHistory();
       const end = ta.value.length;
@@ -127,6 +129,7 @@ function navigateHistory(ta: HTMLTextAreaElement, direction: 'older' | 'newer'):
       return true;
     }
   }
+  editRevision++;
   ta.value = items[historyIndex] ?? '';
   const end = ta.value.length;
   ta.setSelectionRange(end, end);
@@ -171,6 +174,9 @@ function acceptSlash(name: string): void {
   closeSlashMenu();
   field.focus();
   field.setSelectionRange(field.value.length, field.value.length);
+  // Click, Enter and Tab explicitly activate a core menu; other completions
+  // still only insert text. Arrow/highlight never reaches this path.
+  if (isCoreMenuCommand(field.value)) submitComposer('prompt');
 }
 function paintSlashMenu(): void {
   const field = composerField();
@@ -199,10 +205,12 @@ function paintSlashMenu(): void {
     desc.className = 'slash-desc';
     desc.textContent = cmd.description;
     item.append(name, desc);
-    item.addEventListener('mousedown', (event) => {
+    const activate = (event: MouseEvent) => {
       event.preventDefault();
-      acceptSlash(cmd.name);
-    });
+      if (item.isConnected) acceptSlash(cmd.name);
+    };
+    item.addEventListener('mousedown', activate);
+    item.addEventListener('click', activate);
     menu.appendChild(item);
   });
 }
@@ -237,6 +245,7 @@ function updateSlashMenu(): void {
   paintSlashMenu();
 }
 function handleSlashKeydown(event: KeyboardEvent): boolean {
+  if (event.isComposing || (event.key === 'Enter' && event.shiftKey)) return false;
   if (slashMatches.length === 0) {
     return false;
   }
@@ -412,6 +421,21 @@ let historyStash: string | undefined;
 // the authoritative draft is empty (guards the send-clear race that made an
 // already-sent message reappear after Pi finished). Cleared when the user types.
 let lastSubmittedText: string | undefined;
+let editRevision = 0;
+let renderedEditRevision = 0;
+let submissionSequence = 0;
+const webviewGeneration = `${Date.now()}-${Math.random()}`;
+let pendingLocalCommand:
+  | {
+      draft: string;
+      consumed?: string;
+      blocked?: boolean;
+      frame?: number;
+      sessionKey?: string;
+      revision: number;
+      id: string;
+    }
+  | undefined;
 // Message-windowing scroll state.
 let lastMessageKey: string | undefined;
 let lastWindowOffset: number | undefined;
@@ -472,7 +496,12 @@ function queueFocus(targetId?: string, fallbackId = COMPOSER_FIELD_ID): void {
   pendingFocusFallbackId = fallbackId;
 }
 
+function commandSessionKey(snapshot: WebviewSnapshot | undefined): string {
+  return JSON.stringify([snapshot?.sessionFile, snapshot?.sessionId]);
+}
+
 function submitComposer(command: string): void {
+  if (pendingLocalCommand?.blocked && composerField()?.value === '') return;
   previewReturnFocusId = SEND_BUTTON_ID;
   exitHistory();
   // Optimistically clear the input immediately on submit (native chat feel),
@@ -481,11 +510,33 @@ function submitComposer(command: string): void {
   // Always clear optimistically — image/context sends included (they submit
   // immediately now, no preview popup).
   const textarea = document.getElementById(COMPOSER_FIELD_ID) as HTMLTextAreaElement | null;
-  if (textarea) {
+  if (textarea && parseCoreSlash(textarea.value)) {
+    pendingLocalCommand = {
+      draft: isCoreMenuCommand(textarea.value) ? '' : textarea.value,
+      consumed: isCoreMenuCommand(textarea.value) ? textarea.value : undefined,
+      revision: editRevision,
+      blocked: isCoreMenuCommand(textarea.value),
+      frame: currentSnapshot?.composerResetSeq,
+      id: `${webviewGeneration}:${++submissionSequence}`,
+      sessionKey: commandSessionKey(currentSnapshot),
+    };
+  } else {
+    pendingLocalCommand = undefined;
+  }
+  if (textarea && pendingLocalCommand?.consumed) {
+    textarea.value = '';
+    autosizeComposer(textarea);
+  }
+  if (textarea && !pendingLocalCommand) {
     lastSubmittedText = textarea.value; // remember it so no later render restores it
     textarea.value = '';
   }
-  vscode.postMessage({ type: 'requestSend', command, follow: followOnceRequested || undefined });
+  vscode.postMessage({
+    type: 'requestSend',
+    command,
+    follow: followOnceRequested || undefined,
+    submissionId: pendingLocalCommand?.id,
+  });
   followOnceRequested = false;
 }
 
@@ -585,7 +636,39 @@ function endInlineEdit(applyDeferred: boolean): void {
   }
 }
 
+function rejectsLocalCommandAck(snapshot: WebviewSnapshot): boolean {
+  if (snapshot.localCommandAck === undefined) {
+    return false;
+  }
+  const composer = document.getElementById(COMPOSER_FIELD_ID) as HTMLTextAreaElement | null;
+  return (
+    !pendingLocalCommand ||
+    snapshot.localCommandAck !== pendingLocalCommand.id ||
+    pendingLocalCommand.sessionKey !== commandSessionKey(snapshot) ||
+    editRevision !== pendingLocalCommand.revision ||
+    !composer ||
+    composer.value !== pendingLocalCommand.draft
+  );
+}
+
+function preserveComposerForRejectedAck(snapshot: WebviewSnapshot): WebviewSnapshot {
+  if (!rejectsLocalCommandAck(snapshot)) {
+    return snapshot;
+  }
+  const composer = document.getElementById(COMPOSER_FIELD_ID) as HTMLTextAreaElement | null;
+  // Keep model/transcript/status updates, but an unknown or obsolete reply has
+  // no authority over this frame's composer (including a fresh generation).
+  return {
+    ...snapshot,
+    draft: composer?.value ?? currentSnapshot?.draft ?? snapshot.draft,
+    composerResetSeq: lastComposerResetSeq,
+    pendingContextItems: currentSnapshot?.pendingContextItems ?? snapshot.pendingContextItems,
+    pendingImages: currentSnapshot?.pendingImages ?? snapshot.pendingImages,
+  };
+}
+
 function render(snapshot: WebviewSnapshot): void {
+  snapshot = preserveComposerForRejectedAck(snapshot);
   currentSnapshot = snapshot;
   if (!root) {
     return;
@@ -653,7 +736,29 @@ function render(snapshot: WebviewSnapshot): void {
 let scrubbedForSeq: number | undefined;
 
 function renderNow(snapshot: WebviewSnapshot): void {
+  if (pendingLocalCommand && pendingLocalCommand.sessionKey !== commandSessionKey(snapshot))
+    pendingLocalCommand = undefined;
   if (
+    pendingLocalCommand &&
+    (snapshot.localCommandConsumed === pendingLocalCommand.id ||
+      snapshot.localCommandAck === pendingLocalCommand.id ||
+      snapshot.composerResetSeq !== pendingLocalCommand.frame)
+  )
+    pendingLocalCommand.blocked = false;
+  const rejectedAck = rejectsLocalCommandAck(snapshot);
+  snapshot = preserveComposerForRejectedAck(snapshot);
+  if (
+    pendingLocalCommand?.consumed &&
+    editRevision === pendingLocalCommand.revision &&
+    pendingLocalCommand.sessionKey === commandSessionKey(snapshot) &&
+    snapshot.draft === pendingLocalCommand.consumed
+  ) {
+    // Local-only echo suppression: never post an empty draft ahead of the
+    // immutable invoking command being captured by the host route.
+    snapshot = { ...snapshot, draft: composerField()?.value ?? '' };
+  }
+  if (
+    !rejectedAck &&
     lastSubmittedText !== undefined &&
     lastSubmittedText.length > 0 &&
     snapshot.draft === lastSubmittedText
@@ -696,8 +801,42 @@ function renderNow(snapshot: WebviewSnapshot): void {
   // An authoritative composer reset (send-clear, copy-to-composer, restore)
   // must overwrite the field even if it was focused.
   const resetSeq = snapshot.composerResetSeq;
-  const authoritativeReset = resetSeq !== undefined && resetSeq !== lastComposerResetSeq;
-  lastComposerResetSeq = resetSeq;
+  let authoritativeReset = resetSeq !== undefined && resetSeq !== lastComposerResetSeq;
+  if (
+    authoritativeReset &&
+    pendingLocalCommand &&
+    pendingLocalCommand.sessionKey === commandSessionKey(snapshot)
+  ) {
+    // A local-command ack must not overwrite input typed while its picker was
+    // open, even when that input's host-side draft message is still in flight.
+    if (
+      previousComposer &&
+      (editRevision !== pendingLocalCommand.revision ||
+        previousComposer.value !== pendingLocalCommand.draft ||
+        (snapshot.localCommandAck !== undefined &&
+          snapshot.localCommandAck !== pendingLocalCommand.id))
+    ) {
+      authoritativeReset = false;
+      snapshot = { ...snapshot, draft: previousComposer.value };
+    }
+    // Retain the latest identity: an older reply can arrive after this ack.
+    // Legacy snapshots without a correlated ack are also revision-guarded.
+  }
+  if (
+    authoritativeReset &&
+    !snapshot.localCommandAck &&
+    !snapshot.draft &&
+    previousComposer &&
+    editRevision !== renderedEditRevision &&
+    parseCoreSlash(previousComposer.value)
+  ) {
+    authoritativeReset = false;
+    snapshot = { ...snapshot, draft: previousComposer.value };
+  }
+  if (!rejectedAck) {
+    renderedEditRevision = editRevision;
+    lastComposerResetSeq = resetSeq;
+  }
 
   // Preserve open dropdown menus across re-render so passive snapshots
   // (streaming, status) don't close the More/Attach menu mid-interaction.
@@ -738,7 +877,7 @@ function renderNow(snapshot: WebviewSnapshot): void {
   // reset, or one that arrives while the composer is unfocused) rebuilds the
   // textarea with exactly that submitted text, blank it. Typing resets
   // `lastSubmittedText` to undefined, so a genuine re-type is never blanked.
-  if (lastSubmittedText !== undefined) {
+  if (!rejectedAck && lastSubmittedText !== undefined) {
     const submittedField = document.getElementById(COMPOSER_FIELD_ID) as HTMLTextAreaElement | null;
     if (submittedField && submittedField.value === lastSubmittedText) {
       submittedField.value = '';
@@ -785,6 +924,7 @@ function renderNow(snapshot: WebviewSnapshot): void {
     autosizeComposer(textarea);
     bindOnce(textarea, 'input', () => {
       exitHistory(); // typing leaves history-navigation mode
+      editRevision++;
       lastSubmittedText = undefined; // fresh text — stop guarding
       autosizeComposer(textarea);
       vscode.postMessage({

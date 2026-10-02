@@ -9,11 +9,27 @@ import { shutdown, spawnRealPi } from '../helpers/rpc';
 // that the RPC calls resolve without throwing.
 test('setModel() actually applies: getState reflects it, and a subsequent prompt uses it', async () => {
   const spawned = await spawnRealPi();
-  const assistantMessages: Array<{ provider?: string; model?: string }> = [];
+  const assistantMessages: Array<{
+    provider?: string;
+    model?: string;
+    content?: Array<{ type?: string; text?: string }>;
+    stopReason?: string;
+    errorMessage?: string;
+  }> = [];
   spawned.client.onEvent((event) => {
-    const record = event as { type?: string; message?: { role?: string; provider?: string; model?: string } };
+    const record = event as {
+      type?: string;
+      message?: {
+        role?: string;
+        provider?: string;
+        model?: string;
+        content?: Array<{ type?: string; text?: string }>;
+        stopReason?: string;
+        errorMessage?: string;
+      };
+    };
     if (record.type === 'message_end' && record.message?.role === 'assistant') {
-      assistantMessages.push({ provider: record.message.provider, model: record.message.model });
+      assistantMessages.push(record.message);
     }
   });
   try {
@@ -41,14 +57,25 @@ test('setModel() actually applies: getState reflects it, and a subsequent prompt
     await spawned.client.prompt('PING', []);
     await new Promise((resolve) => setTimeout(resolve, 4000));
 
-    assert.ok(assistantMessages.length > 0, 'expected at least one assistant message after prompt()');
-    // The API call itself may fail offline (no real network/credentials) —
-    // that's expected and irrelevant here. What matters: it was ATTRIBUTED
-    // to the model we just switched to, not the one we started on.
+    assert.ok(
+      assistantMessages.length > 0,
+      'expected at least one assistant message after prompt()'
+    );
+    // A failed provider request is not evidence of successful model switching.
     for (const message of assistantMessages) {
       assert.equal(message.provider, target!.provider);
       assert.equal(message.model, target!.id);
+      assert.equal(message.stopReason, 'stop');
+      assert.equal(message.errorMessage, undefined);
+      assert.equal(
+        message.content
+          ?.filter((part) => part.type === 'text')
+          .map((part) => part.text)
+          .join(''),
+        'PING'
+      );
     }
+    assert.equal(spawned.fixture?.requests, 1, 'exactly one request to the owned mock provider');
   } finally {
     await shutdown(spawned);
   }

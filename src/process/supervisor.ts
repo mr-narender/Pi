@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { resolvePiLaunch } from './piLauncher';
+import { resolvePiLaunch, type PiLaunchPlan } from './piLauncher';
 import { spawnSubprocessPi, spawnWorkerPi, type PiProcessHandle } from './piProcess';
 import { getSharedPiHost } from './sharedPiHost';
 
@@ -54,6 +54,10 @@ export class PiProcessSupervisor extends TypedEmitter implements vscode.Disposab
     return this.client;
   }
 
+  public get sdkRoot(): string | undefined {
+    return this.piProcess?.sdkRoot;
+  }
+
   public get currentGeneration(): number {
     return this.generation;
   }
@@ -66,22 +70,48 @@ export class PiProcessSupervisor extends TypedEmitter implements vscode.Disposab
       return this.client;
     }
     validateAdditionalArgs(this.settings.additionalArgs);
-    // Shared-runtime fast path: one host worker hosts THIS session (and every
-    // other open chat) on a single ModelRuntime — no version probe (vendored Pi)
-    // and no CLI args. Falls back to a per-chat process if the host can't open.
-    const sharedHost = this.settings.sharedRuntime ? getSharedPiHost() : undefined;
-    if (sharedHost) {
+    const offline = options?.offline ?? this.settings.offline;
+    const args = this.buildArgs(existingSessionPath, {
+      noExtensions: options?.noExtensions,
+      offline,
+    });
+    const launchShell =
+      this.settings.launchShell.trim() ||
+      process.env.PI_LAUNCH_SHELL ||
+      (process.platform === 'win32' ? process.env.ComSpec || 'cmd.exe' : process.env.SHELL || '');
+    const launch = resolvePiLaunch(
+      this.settings,
+      {
+        ...process.env,
+        PI_TELEMETRY: '0',
+        PI_SKIP_VERSION_CHECK: '1',
+        ...(offline ? { PI_OFFLINE: '1' } : {}),
+        ...(launchShell ? { PI_LAUNCH_SHELL: launchShell } : {}),
+      },
+      this.folder.uri.fsPath
+    );
+    const { env, cwd } = launch;
+    // Select the correct SDK backend BEFORE creating the first session.
+    const sharedHost = getSharedPiHost();
+    if (sharedHost && launch.sdkRoot) {
       try {
         this.generation += 1;
         const handle = await sharedHost.openSession({
-          cwd: this.folder.uri.fsPath,
+          cwd,
+          sdkRoot: launch.sdkRoot,
           sessionFile: existingSessionPath,
+          args,
+          env,
+          dedicated: !this.settings.sharedRuntime,
         });
+        const backendLabel = this.settings.sharedRuntime
+          ? 'shared SDK host'
+          : 'dedicated SDK OS process';
         this.logger.info(
-          `Starting Pi for ${this.folder.name} (generation=${this.generation}) via shared host ` +
+          `Starting Pi for ${this.folder.name} (generation=${this.generation}) via ${backendLabel} ` +
             `[cwd=${this.folder.uri.fsPath}, session=${existingSessionPath ?? '(new)'}]`
         );
-        return this.attachClient(handle, 'shared host');
+        return this.attachClient(handle, backendLabel);
       } catch (error) {
         this.logger.warn(
           `Shared Pi host unavailable (${error instanceof Error ? error.message : String(error)}); ` +
@@ -90,49 +120,27 @@ export class PiProcessSupervisor extends TypedEmitter implements vscode.Disposab
       }
     }
     this.generation += 1;
-    const offline = options?.offline ?? this.settings.offline;
-    const args = this.buildArgs(existingSessionPath, {
-      noExtensions: options?.noExtensions,
-      offline,
-    });
-    const launch = resolvePiLaunch(this.settings);
     // The version probe spawns `pi --version` (up to ~10s under startup load).
     // Our OWN installs (bundled/managed cli.js) have a known-good version —
     // probe only external binaries the user pointed us at.
     if (!launch.usingBundled) {
-      await this.assertVersion();
+      await this.assertVersion(launch);
     }
     const useShell = launch.usingBundled ? false : SPAWN_WITH_SHELL;
-    // Pi's shell-inheritance extension needs a known launch shell. When Pi is
-    // spawned non-interactively (here) it can't determine one on Windows and
-    // exits code=1 unless PI_LAUNCH_SHELL is set. Honor the setting, then an
-    // existing env value, else a sane per-platform default.
-    const launchShell =
-      this.settings.launchShell.trim() ||
-      process.env.PI_LAUNCH_SHELL ||
-      (process.platform === 'win32' ? process.env.ComSpec || 'cmd.exe' : process.env.SHELL || '');
-    const env: NodeJS.ProcessEnv = {
-      ...process.env,
-      ...launch.extraEnv,
-      PI_TELEMETRY: '0',
-      PI_SKIP_VERSION_CHECK: '1',
-      ...(offline ? { PI_OFFLINE: '1' } : {}),
-      ...(launchShell ? { PI_LAUNCH_SHELL: launchShell } : {}),
-    };
-    const cwd = this.folder.uri.fsPath;
     this.logger.info(
       `Starting Pi for ${this.folder.name} (generation=${this.generation}) via ${launch.label} ` +
         `[mode=${launch.mode}, args=${args.join(' ')}, cwd=${cwd}]`
     );
     const piProcess =
       launch.mode === 'worker' && launch.cliPath
-        ? spawnWorkerPi({ cliPath: launch.cliPath, args, cwd, env })
+        ? spawnWorkerPi({ cliPath: launch.cliPath, args, cwd, env, sdkRoot: launch.sdkRoot })
         : spawnSubprocessPi({
             command: launch.command,
             args: [...launch.prefixArgs, ...args],
             cwd,
             env,
             useShell,
+            sdkRoot: launch.sdkRoot,
           });
     return this.attachClient(piProcess, launch.label);
   }
@@ -207,14 +215,15 @@ export class PiProcessSupervisor extends TypedEmitter implements vscode.Disposab
     return `See the Pi output channel for details.`;
   }
 
-  private probeVersion(): Promise<{ code: number | null; stdout: string; stderr: string }> {
+  private probeVersion(
+    launch: PiLaunchPlan
+  ): Promise<{ code: number | null; stdout: string; stderr: string }> {
     return new Promise((resolve, reject) => {
-      const launch = resolvePiLaunch(this.settings);
       const child = spawn(launch.command, [...launch.prefixArgs, '--version'], {
-        cwd: this.folder.uri.fsPath,
+        cwd: launch.cwd,
         shell: launch.usingBundled ? false : SPAWN_WITH_SHELL,
         windowsHide: true,
-        env: { ...process.env, ...launch.extraEnv, PI_OFFLINE: '1' },
+        env: { ...launch.env, PI_OFFLINE: '1' },
         stdio: ['ignore', 'pipe', 'pipe'],
       });
       let stdout = '';
@@ -232,7 +241,7 @@ export class PiProcessSupervisor extends TypedEmitter implements vscode.Disposab
     });
   }
 
-  private async assertVersion(): Promise<void> {
+  private async assertVersion(launch: PiLaunchPlan): Promise<void> {
     // The version probe is a COURTESY check, not a hard gate. It must not block
     // startup just because `pi --version` behaves unusually (e.g. writes to
     // stderr, exits non-zero, or is wrapped by a .cmd shim on Windows). Only two
@@ -240,17 +249,15 @@ export class PiProcessSupervisor extends TypedEmitter implements vscode.Disposab
     // can parse that is clearly older than the minimum.
     let probe: { code: number | null; stdout: string; stderr: string };
     try {
-      probe = await this.probeVersion();
+      probe = await this.probeVersion(launch);
     } catch (error) {
-      throw new Error(
-        `Could not run '${this.settings.executable} --version'. ${this.spawnHint(error)}`
-      );
+      throw new Error(`Could not run '${launch.command} --version'. ${this.spawnHint(error)}`);
     }
 
     const output = `${probe.stdout}\n${probe.stderr}`.trim();
     if (probe.code !== 0) {
       this.logger.warn(
-        `'${this.settings.executable} --version' exited with code ${String(probe.code)}; ` +
+        `'${launch.command} --version' exited with code ${String(probe.code)}; ` +
           `proceeding anyway. Output: ${output || '(none)'}`
       );
       return;

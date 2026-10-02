@@ -12,6 +12,7 @@ import * as vscode from 'vscode';
 import { compareModelRankDesc, fuzzyModelMatch } from './modelSearch';
 import type { JsonObject } from '../rpc/protocol';
 import type { SessionController } from '../sessions/sessionController';
+import { pickThinkingLevel } from './thinkingPicker';
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -44,7 +45,7 @@ interface FuzzyItem extends vscode.QuickPickItem {
  * list (with section headers); typing narrows to matching models only. */
 function showFuzzyQuickPick<T extends FuzzyItem>(
   items: T[],
-  options: { title: string; placeHolder: string }
+  options: { title: string; placeHolder: string; query?: string }
 ): Promise<T | undefined> {
   return new Promise((resolve) => {
     const decorated = items.map((item) =>
@@ -74,6 +75,14 @@ function showFuzzyQuickPick<T extends FuzzyItem>(
       resolve(picked);
       qp.dispose();
     });
+    qp.value = options.query ?? '';
+    if (options.query) {
+      qp.items = decorated.filter(
+        (item) =>
+          item.kind !== vscode.QuickPickItemKind.Separator &&
+          fuzzyModelMatch(options.query!, item.searchText ?? '')
+      );
+    }
     qp.show();
   });
 }
@@ -89,12 +98,18 @@ export interface PickedModel {
  * is the robust way to guarantee the resend actually uses what was picked).
  * Returns undefined on cancel at any step. */
 export async function pickChatModel(
-  controller: SessionController
+  controller: SessionController,
+  options?: {
+    models?: JsonObject[];
+    query?: string;
+    modelOnly?: boolean;
+    valid?: () => boolean;
+    apply?: (provider: string, id: string) => Promise<boolean>;
+  }
 ): Promise<PickedModel | undefined> {
-  const models = await controller.getAvailableModels();
+  const models = options?.models ?? (await controller.getAvailableModels());
   const current = asRecord(controller.snapshot.state.model);
   const currentKey = current ? `${asString(current.provider)}/${asString(current.id)}` : undefined;
-  const currentLevel = asString(controller.snapshot.state.thinkingLevel);
 
   const byProvider = new Map<string, JsonObject[]>();
   for (const model of models) {
@@ -111,22 +126,20 @@ export async function pickChatModel(
       kind: vscode.QuickPickItemKind.Separator,
       model: undefined as never,
     });
-    const sorted = (byProvider.get(provider) ?? [])
-      .slice()
-      .sort((a, b) =>
-        compareModelRankDesc(
-          {
-            id: String(a.id ?? ''),
-            name: String(a.name ?? ''),
-            contextWindow: Number(a.contextWindow) || 0,
-          },
-          {
-            id: String(b.id ?? ''),
-            name: String(b.name ?? ''),
-            contextWindow: Number(b.contextWindow) || 0,
-          }
-        )
-      );
+    const sorted = (byProvider.get(provider) ?? []).slice().sort((a, b) =>
+      compareModelRankDesc(
+        {
+          id: String(a.id ?? ''),
+          name: String(a.name ?? ''),
+          contextWindow: Number(a.contextWindow) || 0,
+        },
+        {
+          id: String(b.id ?? ''),
+          name: String(b.name ?? ''),
+          contextWindow: Number(b.contextWindow) || 0,
+        }
+      )
+    );
     for (const model of sorted) {
       const id = String(model.id ?? 'model');
       const name = String(model.name ?? '');
@@ -154,20 +167,29 @@ export async function pickChatModel(
   }
 
   const modelPick = await showFuzzyQuickPick(flatItems, {
+    query: options?.query,
     title: 'Chat Settings — Model (all providers)',
     placeHolder: 'Every model, highest version first — type to search across all of them',
   });
   if (!modelPick) {
     return undefined;
   }
+  if (options?.valid && !options.valid()) {
+    throw new Error('The originating chat changed; model selection cancelled.');
+  }
   const provider = String(modelPick.model.provider ?? '');
   const id = String(modelPick.model.id ?? '');
   try {
-    await controller.selectModel(provider, id);
+    if (options?.apply) {
+      if (!(await options.apply(provider, id))) return undefined;
+    } else {
+      await controller.selectModel(provider, id);
+    }
   } catch (error) {
     // Surfaced, not swallowed: a caller (e.g. "retry with a different
     // model") comparing before/after model keys would otherwise have no
     // idea WHY nothing changed and silently keep the old model.
+    if (options?.modelOnly) throw error;
     const detail = error instanceof Error ? error.message : String(error);
     void vscode.window.showErrorMessage(`Pi: couldn't switch to ${provider}/${id} — ${detail}`);
     return undefined;
@@ -185,18 +207,8 @@ export async function pickChatModel(
     );
   }
 
-  if (modelPick.model.reasoning) {
-    const levelPick = await vscode.window.showQuickPick(
-      ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'].map((level) => ({
-        label: `${level === currentLevel ? '$(check) ' : ''}$(lightbulb) ${level}`,
-        description: level === currentLevel ? 'current' : '',
-        level,
-      })),
-      { title: `Chat Settings — Thinking (${id})`, placeHolder: 'How hard should it think?' }
-    );
-    if (levelPick) {
-      await controller.setThinkingLevel(levelPick.level);
-    }
+  if (!options?.modelOnly) {
+    await pickThinkingLevel(controller);
   }
   await controller.refreshState();
   return { provider, id };

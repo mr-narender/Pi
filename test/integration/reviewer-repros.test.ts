@@ -143,7 +143,10 @@ test('reviewer repro 6: diagnostics export is redacted and allowlisted', () => {
   assert.ok(!text.includes('draft'));
   assert.ok(!text.includes('stderr secret'));
   assert.ok(!text.includes('/Users/demo'));
-  assert.ok(text.includes('[HOME]'));
+  // Strict projection drops paths/logs entirely rather than retaining redacted raw data.
+  assert.ok(!text.includes('[HOME]'));
+  assert.ok(!text.includes('recentLogLines'));
+  assert.equal((exported.active as any).stats.cost, 1);
 });
 
 test('reviewer repro 7: session path validation is canonical', async () => {

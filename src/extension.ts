@@ -1,4 +1,7 @@
 import * as vscode from 'vscode';
+import { showChatSession } from './commands/sessionCommand';
+import { exportCommand } from './commands/exportCommand';
+import { compactMenu } from './commands/compactCommand';
 import { existsSync } from 'node:fs';
 import { basename } from 'node:path';
 
@@ -7,17 +10,19 @@ import {
   setManagedPiCliPath,
   detectPathPi,
   usablePathPiRoot,
+  selectedSdkRoot,
 } from './process/piLauncher';
 import { registerChatOps } from './commands/chatOps';
+import { promptChatName, trackSessionName } from './commands/nameCommand';
 import {
   initSharedPiHost,
   disposeSharedPiHost,
-  getSharedPiHost,
   recycleIdleSharedPiHostWorkers,
 } from './process/sharedPiHost';
 import { TurnReview } from './review/turnReview';
 import { syncApprovalGateForWorkspace } from './review/approvalGate';
 import { pickChatModel } from './commands/modelPicker';
+import { pickThinkingLevel } from './commands/thinkingPicker';
 import {
   showResourceManager,
   addCustomResource,
@@ -32,7 +37,7 @@ import { SessionIndexService } from './sessions/sessionIndexService';
 import { ensureManagedPi, managedPiCliPath, managedPiRoot } from './process/piManaged';
 import { COMMAND_IDS, CONTRIBUTED_COMMANDS } from './config/commands';
 import { getSettings } from './config/settings';
-import { createRedactedDiagnosticsExport } from './diagnostics/export';
+import { previewDiagnostics } from './commands/debugCommand';
 import { DiagnosticsLogger } from './diagnostics/logger';
 import { redactJsonValue } from './diagnostics/redaction';
 import { ensureWorkspaceAvailable, ensureTrustedForMutation } from './security/trust';
@@ -99,16 +104,6 @@ async function appendSessionInfoName(sessionPath: string, name: string): Promise
     name,
   };
   await appendFile(sessionPath, `${JSON.stringify(entry)}\n`, 'utf8');
-}
-
-function formatTokenCount(count: number): string {
-  if (count >= 1_000_000) {
-    return `${(count / 1_000_000).toFixed(count % 1_000_000 === 0 ? 0 : 1)}M`;
-  }
-  if (count >= 1000) {
-    return `${Math.round(count / 1000)}K`;
-  }
-  return String(count);
 }
 
 function recentRequests(controller: SessionController, method?: ExtensionUiRequest['method']) {
@@ -188,6 +183,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       'cli.js'
     ).fsPath;
     const source = getSettings().piSource;
+    if (source === 'external') {
+      const selected = selectedSdkRoot(getSettings());
+      if (!selected)
+        throw new Error(
+          'SDK_ROOT_UNRESOLVABLE: selected executable is stock-only; /scoped-models requires a resolvable Pi SDK 0.99.1 or 0.99.2 JavaScript CLI.'
+        );
+      return selected;
+    }
     if ((source === 'bundled' || source === 'inprocess') && existsSync(vendorCli)) {
       return vendorRoot;
     }
@@ -232,7 +235,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       'Pi is not installed: install it (npm install -g @earendil-works/pi-coding-agent) or enable piRpc.autoInstall'
     );
   };
-  if (getSettings().sharedRuntime && getSettings().piSource !== 'external') {
+  {
+    // Both shared and dedicated SDK sessions use the same typed transport/host.
     const workers = getSettings().runtimeWorkers;
     const sharedHost = initSharedPiHost(
       context.extensionPath,
@@ -247,14 +251,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // background so the runtime is standing before the first click, then a
     // draft session is parked for instant New Chat. User opens arriving
     // mid-warmup ride the booting worker (never a second cold boot).
-    const firstFolder = vscode.workspace.workspaceFolders?.[0];
     const piAvailable =
       usablePathPiRoot(logger) !== undefined ||
       existsSync(managedCli) ||
       getSettings().autoInstall ||
       existsSync(bundledCli);
-    if (piAvailable) {
-      sharedHost.warmPool(firstFolder?.uri.fsPath);
+    if (piAvailable && getSettings().sharedRuntime && getSettings().piSource !== 'external') {
+      // Session prewarming cannot silently omit its actual CLI/trust/resource options.
+      sharedHost.warmPool();
     }
   }
   // Record the loaded build in the output channel only (no user-facing toast).
@@ -472,8 +476,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }
   };
 
+  const trackNameChanges = (controller: SessionController): void => {
+    context.subscriptions.push(
+      trackSessionName(controller, (folder) => recentSessions.refresh(folder), refreshViews)
+    );
+  };
   for (const controller of registry.list()) {
-    context.subscriptions.push(controller.onDidChangeState(refreshViews));
+    trackNameChanges(controller);
   }
   // Controllers created AFTER activation (each chat tab makes its own in the
   // per-tab model) need the same cross-cutting wiring — above all the extension
@@ -482,7 +491,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     registry.onDidCreateController((controller) => {
       broker.track(controller);
       chatTabs.trackController(controller);
-      context.subscriptions.push(controller.onDidChangeState(refreshViews));
+      trackNameChanges(controller);
       refreshViews();
     })
   );
@@ -669,8 +678,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       .find((entry) => asString(entry.snapshot.state.sessionFile) === sessionPath);
     if (live && live.snapshot.connectionState !== 'stopped') {
       await live.renameSession(trimmed);
-      await live.refreshState();
-      await live.reconcile();
       await recentSessions.refresh(live.folder);
     } else {
       await appendSessionInfoName(sessionPath, trimmed);
@@ -1081,6 +1088,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // Reuses the existing onDidChangeConfiguration sync (writes .pi/settings.json
   // + .pi/extensions/pi-approval-gate.ts, offers a runtime restart).
   registrations.set('piRpc.togglePermissionMode', async () => {
+    chatTabs.assertNoManualCompactions();
     const config = vscode.workspace.getConfiguration('piRpc');
     const next = !config.get<boolean>('requireApprovalForEdits', false);
     await config.update('requireApprovalForEdits', next, vscode.ConfigurationTarget.Workspace);
@@ -1120,20 +1128,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       void vscode.window.showInformationMessage('Open a Pi chat first.');
       return;
     }
-    const currentLevel = asString(controller.snapshot.state.thinkingLevel);
-    const levels = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
-    const picked = await vscode.window.showQuickPick(
-      levels.map((level) => ({
-        label: `${level === currentLevel ? '$(check) ' : ''}${level}`,
-        level,
-      })),
-      { title: 'Thinking level', placeHolder: 'How much should Pi reason before replying?' }
-    );
-    if (picked) {
-      await controller.setThinkingLevel(picked.level);
-      await controller.refreshState();
-      refreshViews();
-    }
+    await pickThinkingLevel(controller);
+    refreshViews();
   });
   registrations.set('piRpc.cycleThinkingLevel', async () =>
     withController((controller) => controller.cycleThinkingLevel())
@@ -1159,15 +1155,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     });
   });
   registrations.set('piRpc.compact', async () => {
-    return withController(
-      async (controller) => {
-        const customInstructions = await vscode.window.showInputBox({
-          title: 'Compaction instructions (optional)',
-        });
-        return controller.compact(customInstructions);
-      },
-      { requireTrust: true }
-    );
+    return withController(async (controller) => compactMenu(controller), { requireTrust: true });
   });
   registrations.set('piRpc.toggleAutoCompaction', async () =>
     withController((controller) => controller.toggleAutoCompaction())
@@ -1220,46 +1208,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       void vscode.window.showInformationMessage('Open a Pi chat first.');
       return undefined;
     }
-    const stats = (await controller.showSessionStats()) ?? {};
-    const tokens = asRecord(stats.tokens) ?? {};
-    const ctx = asRecord(stats.contextUsage);
-    const num = (v: unknown) => (typeof v === 'number' ? v : 0);
-    const cost = num(stats.cost);
-    const lines = [
-      `Messages: ${num(stats.userMessages)} you · ${num(stats.assistantMessages)} Pi`,
-      `Tool calls: ${num(stats.toolCalls)}`,
-      `Tokens: ${formatTokenCount(num(tokens.total))} total  (in ${formatTokenCount(
-        num(tokens.input)
-      )} · out ${formatTokenCount(num(tokens.output))} · cache ${formatTokenCount(
-        num(tokens.cacheRead)
-      )})`,
-      ctx
-        ? `Context: ${formatTokenCount(num(ctx.tokens))} / ${formatTokenCount(
-            num(ctx.contextWindow)
-          )}  (${num(ctx.percent)}%)`
-        : undefined,
-      `Cost: $${cost.toFixed(cost < 1 ? 4 : 2)}`,
-    ].filter(Boolean) as string[];
-    const choice = await vscode.window.showInformationMessage(
-      'Usage & cost',
-      { modal: true, detail: lines.join('\n') },
-      'Copy JSON'
-    );
-    if (choice === 'Copy JSON') {
-      await vscode.env.clipboard.writeText(JSON.stringify(stats, null, 2));
-      void vscode.window.showInformationMessage('Copied usage details to clipboard.');
-    }
-    return stats;
+    return showChatSession(controller);
   });
   registrations.set('piRpc.exportHtml', async () => {
     return withController(
       async (controller) => {
-        const target = await vscode.window.showSaveDialog({ filters: { HTML: ['html'] } });
-        const result = await controller.exportHtml(target?.fsPath);
-        if (typeof result?.path === 'string') {
-          void vscode.window.showInformationMessage(`Exported ${result.path}`);
+        if (await exportCommand(controller, '')) {
+          void vscode.window.showInformationMessage(
+            'Exported locally. Nothing was uploaded or opened.'
+          );
         }
-        return result;
       },
       { requireTrust: true }
     );
@@ -1507,22 +1465,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       void vscode.window.showInformationMessage('Open a Pi chat first.');
       return undefined;
     }
-    const name =
-      asString(asRecord(value)?.name) ??
-      (await vscode.window.showInputBox({
-        title: 'Rename chat',
-        value: asString(controller.snapshot.state.sessionName) ?? '',
-        prompt: 'Enter a name for this chat',
-      }));
-    if (name !== undefined && name.trim() !== '') {
-      await controller.renameSession(name.trim());
-      await controller.refreshState();
-      await controller.reconcile();
+    const applied = await promptChatName(controller, asString(asRecord(value)?.name));
+    if (applied) {
       await recentSessions.refresh(controller.folder);
       refreshViews();
-      void vscode.window.showInformationMessage(`Renamed chat to “${name.trim()}”.`);
     }
-    return name;
+    return applied;
   });
   registerChatOps({
     registrations,
@@ -1541,6 +1489,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       void vscode.window.showInformationMessage('The shared Pi runtime is disabled.');
       return;
     }
+    chatTabs.assertNoManualCompactions();
     disposeSharedPiHost();
     const restartWorkers = getSettings().runtimeWorkers;
     initSharedPiHost(
@@ -2035,54 +1984,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   registrations.set('piRpcInternal.showHealth', async () => {
     const controller = registry.getActive();
-    const health = createRedactedDiagnosticsExport(logger, controller);
-    const state = controller?.snapshot;
-    const model = asRecord(state?.state.model);
-    const modelLabel = model
-      ? `${asString(model.provider) ?? '?'}/${asString(model.id) ?? '?'}`
-      : 'not selected';
-    const lines = [
-      `Connection: ${state?.connectionState ?? 'no active chat'}`,
-      `Workspace: ${controller?.folder.name ?? '—'}`,
-      `Session: ${asString(state?.state.sessionName) ?? '—'}`,
-      `Model: ${modelLabel}`,
-      `Thinking: ${asString(state?.state.thinkingLevel) ?? '—'}`,
-      `Messages: ${state?.messages.length ?? 0}`,
-      `Pi path: ${getSettings().executable}`,
-      `Runtime pool: ${
-        getSharedPiHost()
-          ?.poolStatus()
-          .map(
-            (worker) =>
-              `#${worker.id}:${worker.sessions} session${worker.sessions === 1 ? '' : 's'}`
-          )
-          .join('  ') || '(not running)'
-      }`,
-    ];
-    const choice = await vscode.window.showInformationMessage(
-      'Pi connection health',
-      { modal: true, detail: lines.join('\n') },
-      'Copy diagnostics'
-    );
-    if (choice === 'Copy diagnostics') {
-      await vscode.env.clipboard.writeText(JSON.stringify(health, null, 2));
-      void vscode.window.showInformationMessage('Redacted diagnostics copied to clipboard.');
-    }
-    return health;
+    return previewDiagnostics(controller);
   });
   registrations.set('piRpcInternal.exportDiagnostics', async () => {
-    ensureTrustedForMutation();
-    const target = await vscode.window.showSaveDialog({ filters: { JSON: ['json'] } });
-    if (!target) {
-      return undefined;
-    }
-    const payload = createRedactedDiagnosticsExport(logger, registry.getActive());
-    await vscode.workspace.fs.writeFile(
-      target,
-      Buffer.from(JSON.stringify(payload, null, 2), 'utf8')
-    );
-    void vscode.window.showInformationMessage(`Exported diagnostics to ${target.fsPath}`);
-    return target.fsPath;
+    const controller = registry.getActive();
+    return previewDiagnostics(controller);
   });
   registrations.set('piRpcInternal.openWorktree', async () => {
     ensureTrustedForMutation();

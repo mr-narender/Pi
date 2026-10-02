@@ -3,6 +3,9 @@ import { basename } from 'node:path';
 import { existsSync } from 'node:fs';
 import { getSettings, tabTitleSettings } from '../config/settings';
 import { pickChatModel } from '../commands/modelPicker';
+import { assertNotCoreSlashPrompt } from '../commands/coreSlash';
+import { captureLocalCommandOrigin, handleLocalCommand } from '../commands/localCommand';
+import { mergeLifecycleComposer } from '../commands/lifecycleCommand';
 import { AgentFollowService } from '../live/agentFollow';
 import { CodeFormatService } from './codeFormatService';
 import { type FencedBlock, collectCodeFences } from '../webview/codeFormat';
@@ -813,7 +816,20 @@ export class ChatTabManager implements vscode.Disposable {
   /** Deleting an ACTIVE session must also shut its runtime down — tabs alone
    * left the controller running headless. Fire-and-forget: the UI never waits
    * on process teardown. */
+  public assertNoManualCompactions(): void {
+    for (const controller of this.trackedControllers) controller.assertNoManualCompaction?.();
+  }
+
+  private assertSessionFileNotCompacting(sessionFile: string): void {
+    const wanted = normalizeSessionFilePath(sessionFile);
+    for (const controller of this.trackedControllers) {
+      if (normalizeSessionFilePath(controller.snapshot.state.sessionFile ?? '') === wanted)
+        controller.assertNoManualCompaction?.();
+    }
+  }
+
   public stopControllersForSessionFile(sessionFile: string): void {
+    this.assertSessionFileNotCompacting(sessionFile);
     const wanted = normalizeSessionFilePath(sessionFile);
     for (const controller of this.trackedControllers) {
       const target = currentTargetForController(controller);
@@ -838,6 +854,7 @@ export class ChatTabManager implements vscode.Disposable {
    * before this existed — reported as "delete doesn't seem to work") isn't
    * an acceptable substitute for it. */
   public async closeResource(resource: vscode.Uri): Promise<void> {
+    this.contextForResource(resource)?.controller.assertNoManualCompaction?.();
     const key = resource.toString();
     for (const group of vscode.window.tabGroups.all) {
       for (const tab of group.tabs) {
@@ -852,6 +869,7 @@ export class ChatTabManager implements vscode.Disposable {
   }
 
   public async closeForSessionFile(sessionFile: string): Promise<void> {
+    this.assertSessionFileNotCompacting(sessionFile);
     for (const group of vscode.window.tabGroups.all) {
       for (const tab of group.tabs) {
         const input = (tab.input ?? undefined) as
@@ -1196,7 +1214,12 @@ export class ChatTabManager implements vscode.Disposable {
       case 'newFileFromCode':
         return this.openCodeInNewFile(parsed.text, parsed.language);
       case 'requestSend':
-        return this.handleRequestSend(host.resource, parsed.command, parsed.follow === true);
+        return this.handleRequestSend(
+          host.resource,
+          parsed.command,
+          parsed.follow === true,
+          parsed.submissionId
+        );
       case 'acceptPreview':
         return this.acceptPreview(host.resource);
       case 'cancelPreview':
@@ -1870,20 +1893,105 @@ export class ChatTabManager implements vscode.Disposable {
   private async handleRequestSend(
     resource: vscode.Uri,
     command: 'prompt' | 'follow_up' | 'steer',
-    followOnce?: boolean
+    followOnce?: boolean,
+    submissionId?: string
   ): Promise<void> {
-    if (followOnce) {
-      this.follow.armOnce(this.keyFor(resource));
-    }
     ensureTrustedForMutation();
     let context = this.contextForResource(resource);
     if (!context) {
       return;
     }
-    let state = await this.uiState.getComposerStateForIdentity(context.controller, context.target);
+    const origin = { controller: context.controller, target: { ...context.target } };
+    const originHost = this.hosts?.get(resource.toString());
+    const controllerValid = captureLocalCommandOrigin(origin.controller);
+    const lifecycleIntent = origin.controller.captureLifecycleIntent?.();
+    const engineIntent = origin.controller.captureEngineIntent?.();
+    const originValid = () => {
+      const current = this.contextForResource(resource);
+      return (
+        controllerValid() &&
+        current?.controller === origin.controller &&
+        current.target.kind === origin.target.kind &&
+        current.target.workspaceFolderUri === origin.target.workspaceFolderUri &&
+        current.target.sessionId === origin.target.sessionId &&
+        current.target.sessionFile === origin.target.sessionFile &&
+        current.target.draftId === origin.target.draftId
+      );
+    };
+    let state = await this.uiState.getComposerStateForIdentity(origin.controller, origin.target);
+    if (!originValid()) return;
     state.recovery = undefined;
     state.preview = undefined;
-    const origin = { controller: context.controller, target: context.target };
+    if (
+      await handleLocalCommand(
+        origin.controller,
+        state,
+        () => this.uiState.getComposerStateForIdentity(origin.controller, origin.target),
+        (next, revision) =>
+          this.uiState.setComposerStateForIdentity(origin.controller, origin.target, next, {
+            expectedCommandRevision: revision,
+          }),
+        () => this.renderResource(resource),
+        submissionId,
+        originValid,
+        {
+          intent: lifecycleIntent,
+          engineIntent,
+          valid: () => {
+            const current = this.contextForResource(resource);
+            return (
+              this.hosts?.get(resource.toString()) === originHost &&
+              current?.controller === origin.controller &&
+              current.target.kind === origin.target.kind &&
+              current.target.sessionId === origin.target.sessionId &&
+              current.target.sessionFile === origin.target.sessionFile &&
+              current.target.draftId === origin.target.draftId
+            );
+          },
+          resume: async () => {
+            const files = await vscode.window.showOpenDialog({
+              title: 'Resume a Pi session in this chat',
+              canSelectMany: false,
+              filters: { 'Pi session': ['jsonl'] },
+            });
+            const selected = files?.[0]?.fsPath;
+            if (
+              selected &&
+              this.registry
+                ?.list()
+                .some(
+                  (other) =>
+                    other !== origin.controller &&
+                    other.snapshot.state.sessionFile &&
+                    normalizeSessionFilePath(other.snapshot.state.sessionFile) ===
+                      normalizeSessionFilePath(selected)
+                )
+            )
+              throw new Error(
+                'That session is open in another Pi chat; switch to its tab instead.'
+              );
+            return selected;
+          },
+          replace: async (_identity, next) => {
+            const target = currentTargetForController(origin.controller);
+            const saved = await this.uiState.getComposerStateForIdentity(origin.controller, target);
+            await this.uiState.setComposerStateForIdentity(
+              origin.controller,
+              target,
+              mergeLifecycleComposer(saved, next),
+              { expectedCommandRevision: saved.commandRevision ?? 0 }
+            );
+            await this.promoteResource(resource, buildChatUri(target), origin.controller);
+          },
+          close: async () => {
+            await origin.controller.stop();
+            await this.closeResource(resource);
+          },
+        }
+      )
+    )
+      return;
+    if (!originValid()) return;
     try {
       // Images/context items send IMMEDIATELY with the message — no confirmation
       // popup. beginSend captures the outgoing message and clears the WHOLE
@@ -1891,6 +1999,9 @@ export class ChatTabManager implements vscode.Disposable {
       // async session work below: nothing sent may linger into the next message,
       // and the draft→session identity promotion copies an already-clean state.
       const { preview, accepted } = beginSend(command, state);
+      if (followOnce) {
+        this.follow.armOnce(this.keyFor(resource));
+      }
       context.controller.setDraft('');
       await this.uiState.setComposerStateForIdentity(context.controller, context.target, state);
       context = await this.preparePromptContext(resource);
@@ -1975,6 +2086,9 @@ export class ChatTabManager implements vscode.Disposable {
     >,
     acceptedFromBegin?: AcceptedSendSnapshot
   ): Promise<void> {
+    // Also validate restored/legacy previews before their accepted-send clear.
+    assertNotCoreSlashPrompt(preview.draft);
+    assertNotCoreSlashPrompt(preview.rpcMessage);
     // beginSend already cleared the chips, so rebuilding the accepted snapshot
     // from state here would lose them — use the one captured at begin time.
     const accepted =
