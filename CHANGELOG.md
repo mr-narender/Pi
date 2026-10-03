@@ -1,5 +1,54 @@
 # Changelog
 
+## 0.2.20 — LOCAL ONLY deferred empty reply test preview
+
+- Defer the current live empty assistant reply until meaningful content arrives;
+  retain completed empty history and its Retry/Logs controls. Native assistant
+  identity stays internal except the intended message ID; working animation remains.
+- Independently verified 557 unit and 345 integration passes (one inherited archive
+  skip), FIRST 11 guards, 52 targeted and four owned adversarial cases. Preserve
+  six animation choices/current preference, new π, follow-off and notifications.
+- Local testing only, not public release approval or physical activation proof.
+  Security/license, SDK fingerprint, archive acceptance, Extension Host and manual
+  visual release blocks remain open. Preserve original 0.2.16–0.2.19 artifacts.
+
+## 0.2.19 — LOCAL ONLY Working Animation menu test preview
+
+- Agentic sidebar Configure and Full Chat menus invoke the existing six-style
+  Working Animation picker. Original handler, braille default, current-preference
+  description and decorative π semantics are preserved; notifications unchanged.
+- Independent isolated verification passed 552 unit and 345 integration tests
+  (one inherited archived-workflow skip), with 11 FIRST guards and 17 targeted
+  adversarial/menu tests. Local testing only; no public release approval.
+- Security/license, native fingerprint, archived-workflow acceptance and Extension
+  Host/manual visual release gates remain unresolved; no physical activation claim.
+  Preserve the original 0.2.16, 0.2.17 and 0.2.18 VSIX artifacts for rollback.
+
+## 0.2.18 — LOCAL ONLY lifecycle and working-logo test preview
+
+- Includes independently verified lifecycle repairs: reject malformed file/leaf
+  identity before publication, and preserve unchanged chats when capability
+  negotiation fails before mutation. The 0.2.17 defects below are historical.
+- Includes the live-working logo with reduced-motion and disposal guards, plus
+  corrected README menu, compaction and runtime guidance. Notifications unchanged.
+- Local testing only, not publication or release approval. Full-format/native
+  fingerprint, archived workflow skip, Extension Host/manual visuals and broader
+  artifact/security readiness remain unresolved. No physical activation claim.
+  Preserve the 0.2.16 and 0.2.17 artifacts for rollback.
+
+## 0.2.17 — LOCAL ONLY repaired test preview (20261002)
+
+- Held-Enter, applied-auth completion and slash-catalog recovery independently
+  pass; valid lifecycle replacement/composer flows pass. Not release approval.
+- Two lifecycle defects remain unrepaired: explicit null/empty sessionFile or
+  empty leaf atomic identity is not rejected; unsupported lifecycle capability
+  before mutation can falsely fault an unchanged chat. Undefined sessionFile
+  (sessions disabled) and null leaf (empty entries) remain valid semantics.
+- Full-format/native drift, archived workflow skip, manual/Extension Host and
+  artifact readiness debts remain; no green release or 100% parity claim.
+  Real OAuth, accounts, uploads and physical GUI activation are unverified.
+  Keep the prior 0.2.16 VSIX available for rollback. Local testing only.
+
 ## 0.2.16 — LOCAL TEST preview (GUI commands)
 
 - Development implementations of 27 command paths; NOT release-ready.
@@ -258,7 +307,7 @@ alpha brings, by phase:
 
 ## 0.0.302
 
-- **Fixed: agent file-following wasn't opening files at all.** Root cause found in `showInSidePane`'s own comment: it skipped opening the followed file entirely whenever a π chat tab owned the active editor group, reasoning "with the sidebar chat the center is always free" — true when chat lived in the sidebar webview, but `editorTabsEnabled()` has been the default for a while (chat itself is an editor tab). In the common single-group layout, the chat tab *is* the active tab in the only group whenever you're looking at it — so that guard fired every single time, and follow silently never opened anything. Not a timing issue, not a setting — it was refusing to run at all. Fixed by redirecting instead of skipping: reuse an existing non-chat editor group if one's already open, otherwise open a new one beside the chat. That new group then naturally becomes the reused target for every subsequent followed file (its own active tab is a real file, not a chat), so this doesn't re-split on every edit — one dedicated group, populated once, reused after.
+- **Fixed: agent file-following wasn't opening files at all.** Root cause found in `showInSidePane`'s own comment: it skipped opening the followed file entirely whenever a π chat tab owned the active editor group, reasoning "with the sidebar chat the center is always free" — true when chat lived in the sidebar webview, but `editorTabsEnabled()` has been the default for a while (chat itself is an editor tab). In the common single-group layout, the chat tab _is_ the active tab in the only group whenever you're looking at it — so that guard fired every single time, and follow silently never opened anything. Not a timing issue, not a setting — it was refusing to run at all. Fixed by redirecting instead of skipping: reuse an existing non-chat editor group if one's already open, otherwise open a new one beside the chat. That new group then naturally becomes the reused target for every subsequent followed file (its own active tab is a real file, not a chat), so this doesn't re-split on every edit — one dedicated group, populated once, reused after.
 
 ## 0.0.301
 
@@ -267,7 +316,7 @@ alpha brings, by phase:
 
 ## 0.0.300
 
-- **Fixed: the list's "which chat is open/active" display went stale after switching focus between already-open tabs.** Root cause, found by reproducing live rather than guessing: VS Code only calls `resolveCustomEditor` once per tab's entire lifetime — switching focus between two tabs that are BOTH already open never re-runs it, so the one place that normally notifies the list of a change (`this.hosts.set/delete`, on open/close) never fires for a focus-only change. The list's active checkmark was frozen at whatever was true the last time a tab was actually opened or closed, not whatever's actually focused now — reported as "multiple sessions opened, but no chat seems to be opened" (the chat *was* open, the list just never learned focus had moved to it). Fixed at the actual point that DOES fire on every focus change (`onDidChangeViewState`/`onDidChangeVisibility`, already wired for other reasons) by notifying the same listeners tab open/close already does.
+- **Fixed: the list's "which chat is open/active" display went stale after switching focus between already-open tabs.** Root cause, found by reproducing live rather than guessing: VS Code only calls `resolveCustomEditor` once per tab's entire lifetime — switching focus between two tabs that are BOTH already open never re-runs it, so the one place that normally notifies the list of a change (`this.hosts.set/delete`, on open/close) never fires for a focus-only change. The list's active checkmark was frozen at whatever was true the last time a tab was actually opened or closed, not whatever's actually focused now — reported as "multiple sessions opened, but no chat seems to be opened" (the chat _was_ open, the list just never learned focus had moved to it). Fixed at the actual point that DOES fire on every focus change (`onDidChangeViewState`/`onDidChangeVisibility`, already wired for other reasons) by notifying the same listeners tab open/close already does.
 - Verified live against a real running VS Code window (not just the test suite): opened a fresh chat, opened a second existing one, confirmed the active checkmark correctly followed which tab was actually focused — including the concrete case that was broken before this fix.
 
 ## 0.0.299
@@ -288,7 +337,7 @@ alpha brings, by phase:
 
 - **"Different model…" now shows the current model name**, matching the composer's own status chip (which shows `model.id` directly) instead of a generic action label — click behavior unchanged, still opens the picker.
 - **Investigated "changing the model doesn't apply, it still uses the old model" with a real Pi CLI, not just code reading.** Wrote a test that spawns the actual `pi` binary, calls `setModel()` to a different provider, confirms `getState()` reflects it, then sends a real `prompt()` and inspects the resulting message events — the API call was genuinely attributed to the newly-selected model, not the old one. The mechanism works correctly. Also traced "Region is missing" to its source: it's an AWS SDK error (confirmed in `@aws-sdk/nested-clients`), specific to Amazon Bedrock's region configuration — not model-specific. If the repeated retries were all Bedrock models (amazon-bedrock sorts early, alphabetically, in the picker), the same error would recur regardless of which specific Bedrock model was picked, because the problem is the provider's region config, not which model. Added defensive checks regardless: `pickChatModel` now catches a `selectModel()` failure and shows it directly instead of leaving the caller to guess why nothing changed, and both this and the fork-and-resend path now compare the resulting model against what was picked and warn if they don't match — turning a theoretical silent mismatch into a visible one if it ever happens.
-- **Fixed: the chat list's delete action was too easy to miss** — it existed (hover-reveal trash icon, shipped in 0.0.294) but hover-only discovery in a sidebar list is easy to never find. Added a right-click context menu per row (Open / Delete) — also replaces the browser's default cut/copy/paste menu, which never made sense on a list of buttons. Caught a real bug before shipping: the reused `.menu-panel` class defaults to `display: none`, only shown inside an *open* `<details>` element — the standalone context menu (not inside one) would have rendered completely invisible without an explicit override. Verified rendering correctly, including the delete item's hover state, with a real screenshot.
+- **Fixed: the chat list's delete action was too easy to miss** — it existed (hover-reveal trash icon, shipped in 0.0.294) but hover-only discovery in a sidebar list is easy to never find. Added a right-click context menu per row (Open / Delete) — also replaces the browser's default cut/copy/paste menu, which never made sense on a list of buttons. Caught a real bug before shipping: the reused `.menu-panel` class defaults to `display: none`, only shown inside an _open_ `<details>` element — the standalone context menu (not inside one) would have rendered completely invisible without an explicit override. Verified rendering correctly, including the delete item's hover state, with a real screenshot.
 
 ## 0.0.295
 

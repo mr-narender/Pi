@@ -19,8 +19,8 @@
 Pi RPC embeds the [Pi coding agent](https://pi.dev) inside VS Code. It hosts real Pi
 sessions on a shared runtime in the background and gives you a native GUI on top:
 
-- **Parallel chats** — every chat tab is its own independent Pi session on ONE shared
-  runtime (not one process per chat). Fire off a long task in one chat and keep working
+- **Parallel chats** — every chat tab is its own independent Pi session on a shared
+  runtime worker pool (with per-chat process fallback if the shared host cannot start). Fire off a long task in one chat and keep working
   in another; closing a tab tears down just that session.
 - A **sidebar launcher** with an instant **New Chat** (a draft session is prewarmed for
   you), your saved chats, an **Other projects** group with every chat from every
@@ -32,7 +32,7 @@ sessions on a shared runtime in the background and gives you a native GUI on top
 - **Edits fork, visibly** — editing a message re-runs the chat on a fork in the same
   tab; `Pi: Show Chat Versions` opens any earlier version.
 - **Quick switcher** (`Cmd/Ctrl+Alt+P`), aggregate usage/cost across open chats,
-  export/copy conversations, and everything the Pi TUI can do: models, thinking levels,
+  export/copy conversations, and many Pi TUI workflows: models, thinking levels,
   slash commands, attachments/context, compaction, retry, usage, diagnostics.
 - **Watch & drive from your phone** — a **Connect a phone** button mirrors the live chat
   to a phone browser (opt-in via `piRpc.remote.enabled`).
@@ -66,7 +66,7 @@ VS Code
 └─ Editor tabs "Pi Chat"   one INDEPENDENT Pi session per tab — chats run in parallel
         │
         ▼
-shared Pi runtime host     ONE worker hosts every session (per-session extensions/MCP);
+shared Pi runtime pool     configurable workers host sessions (per-session extensions/MCP);
                            a draft session is prewarmed so New Chat opens instantly
 ```
 
@@ -85,7 +85,7 @@ shared Pi runtime host     ONE worker hosts every session (per-session extension
 3. Click the **Pi** icon in the Activity Bar → **New Chat**.
 4. Type your message and press **Enter** to send (**Shift+Enter** for a newline).
 
-## Features (TUI parity, in a GUI)
+## Features (Pi workflows in a GUI)
 
 | Area               | What you get                                                                                               |
 | ------------------ | ---------------------------------------------------------------------------------------------------------- |
@@ -98,6 +98,15 @@ shared Pi runtime host     ONE worker hosts every session (per-session extension
 | **Flow**           | Queue/steer follow-ups, Continue, abort/stop, auto-retry, auto-compaction, usage & cost chip               |
 | **Feel**           | Enter-to-send, typewriter streaming, working animation, chat-font controls, completion notifications, a11y |
 | **Remote (phone)** | **Connect a phone** to watch the live chat in a browser and take control to drive it                       |
+
+### While Pi is working
+
+In both the sidebar chat and Full Chat, your sent message stays visible with a
+**Working…** indicator while Pi prepares a reply. The current empty assistant
+container and its **π** role label are deferred until the first meaningful reply
+content arrives; the reply then streams normally, without waiting for completion.
+Thinking, tool activity, errors and completed history (including empty-reply
+Retry/Logs feedback) remain available.
 
 ## Watch & drive from your phone
 
@@ -133,32 +142,42 @@ eye on it (or nudging it) from the couch.
 | `Cmd+K` / `Ctrl+K`         | Command palette of in-chat actions |
 | `Cmd+F` / `Ctrl+F`         | Find in the current chat           |
 
-## The More menu
+## Chat menus
 
-The **More ▾** menu in a chat groups actions with color tags for quick scanning:
+In the current source tree, the sidebar **ellipsis** menu groups actions as:
 
-- 🔵 **Session** — Rename chat, Retry last message, Copy as Markdown, Export as HTML
-- 🟠 **Model** — Choose model, Thinking level
-- 🟣 **Context** — Compact conversation
-- 🟢 / 🔴 **System** — Restart Pi, Connection health, Show logs, Help
+- **Chat** — Review last turn, Chat versions, Export chat
+- **Configure** — Extensions…, Skills…, Prompts…, Agent instructions…, Working Animation
+  (opens the existing animation selector for `piRpc.workingAnimation`; choose braille,
+  dots, bars, earth, moon, or dolphin there; braille is the default, and the picker
+  describes your current preference)
+- **System** — Restart π
 
-Model, usage/cost, Continue and the ⚙️ settings gear live in the **composer toolbar** at the
-bottom-right of the chat.
+The Agentic chat-list title menu also offers **Switch to full chat**. Full Chat's
+in-webview ellipsis uses the same groups. The richer **editor-title Pi Chat Actions**
+menu additionally offers rename, retry (including with another model), find, copy as
+Markdown, thinking level, compaction, attachments, health, logs, and help.
+Model and thinking controls live in the composer status chip; there is no composer gear.
 
 ## Settings worth knowing (Settings → Pi RPC)
 
-- **Working Animation** — spinner style shown while Pi is working.
+- **Working Animation** — choose one of the six working glyph styles (default:
+  braille). The separate decorative **π** logo has a fixed shape; this setting does
+  not change it. Its breathing motion and the glyph animation respect reduced motion.
 - **Typewriter Speed** — how smoothly streamed answers type out (off / slow / normal / fast).
 - **Chat Font Family / Size** — the transcript font.
 - **Notify On Complete** — ping when a long response finishes and the chat isn’t focused.
-- **Auto Compact Threshold** — auto-compact the conversation when context usage hits this %.
+- **Auto Compact Mode / Percent** — `piRpc.autoCompact.mode` defaults to `auto`;
+  `piRpc.autoCompact.percent` defaults to **75%** of the model's detected context window.
+  The old `piRpc.autoCompactThreshold` setting is deprecated.
 - **CodeLens Enabled** — the inline “Ask Pi” action above functions/methods.
 - **Remote → Broker URL / Host Secret** — required for **Connect a phone**.
 - **Pi Executable Path** — set this if `pi` isn’t on your `PATH`.
 
 ## Troubleshooting
 
-- **Stuck on “Connecting…”** → run **More → Connection health**, or **Restart Pi**. Make sure
+- **Stuck on “Connecting…”** → use **Show Health** in the editor-title menu or Command
+  Palette, or **Restart π**. Make sure
   `pi --version` works in a terminal and that you’ve logged in.
 - **“Pi is still connecting…”** when using `/` → wait a moment; slash commands need a live session.
 - **Wrong/old Pi** → set the **Pi Executable Path** setting to the exact binary.
@@ -176,7 +195,14 @@ bottom-right of the chat.
 
 ## Notes
 
-- One Pi process per workspace folder; multi-root workspaces are isolated.
+- Workspace folders are isolated. `piRpc.runtimeWorkers` sizes the shared worker pool
+  (`auto`, or 1–8); disabling shared runtime or a host startup failure uses per-chat processes.
+- This README describes the current development source; Marketplace builds may be older.
+  Prefer the stable channel for normal use. The prerelease remains under verification:
+  all 27 meaningful command paths do not establish full native TUI parity or release readiness.
+  Terminal-only extension UI still has limits, and ExtensionHost/manual visual checks remain
+  separate gates. The two reviewed lifecycle defects are fixed in current source, not in the
+  historical local 0.2.17 preview artifact; that artifact did not include this logo.
 - The Activity Bar icon and gallery logo are an original Pi × VS Code fusion mark.
 
 ## Credits & affiliation

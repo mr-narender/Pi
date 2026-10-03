@@ -2,7 +2,7 @@
   "name": "pi",
   "displayName": "Pi – this one is (y)ours",
   "description": "An unofficial, personal VS Code chat UI for the Pi coding agent (pi.dev). Not affiliated with pi.dev — shared for anyone who wants it.",
-  "version": "0.2.16",
+  "version": "0.2.20",
   "publisher": "mr-narender",
   "license": "MIT",
   "private": true,
@@ -224,6 +224,11 @@
       {
         "command": "piRpc.manageAgentInstructions",
         "title": "Agent instructions…",
+        "category": "Pi"
+      },
+      {
+        "command": "piRpcInternal.setWorkingAnimation",
+        "title": "Working Animation",
         "category": "Pi"
       },
       {
@@ -1257,6 +1262,10 @@
           "group": "2_configure@4"
         },
         {
+          "command": "piRpcInternal.setWorkingAnimation",
+          "group": "2_configure@5"
+        },
+        {
           "command": "piRpcInternal.agenticSystemHeading",
           "group": "3_system@0"
         },
@@ -1301,6 +1310,10 @@
         {
           "command": "piRpc.compact",
           "group": "3_model@2"
+        },
+        {
+          "command": "piRpcInternal.setWorkingAnimation",
+          "group": "3b_configure@1"
         },
         {
           "command": "piRpc.reviewLastTurn",
