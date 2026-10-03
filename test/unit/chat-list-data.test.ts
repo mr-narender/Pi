@@ -62,13 +62,19 @@ test('buildChatListModel: recent rows never show NaN even with a malformed times
 test('buildChatListModel: recent rows never carry active=true (only an open chat can be active)', () => {
   const model = buildChatListModel({
     openChats: [],
-    recent: { ...baseRecent, items: [{ id: '1', path: '/s/x.jsonl', modifiedAt: 1, createdAt: 1 } as never] },
+    recent: {
+      ...baseRecent,
+      items: [{ id: '1', path: '/s/x.jsonl', modifiedAt: 1, createdAt: 1 } as never],
+    },
   });
   assert.equal(model.rows[0]?.active, false);
 });
 
 test('buildChatListModel: propagates loading/error state from the recent-sessions service', () => {
-  assert.equal(buildChatListModel({ openChats: [], recent: { ...baseRecent, loading: true } }).loading, true);
+  assert.equal(
+    buildChatListModel({ openChats: [], recent: { ...baseRecent, loading: true } }).loading,
+    true
+  );
   assert.equal(
     buildChatListModel({ openChats: [], recent: { ...baseRecent, error: 'boom' } }).error,
     'boom'
@@ -262,8 +268,20 @@ test('buildChatListModel: favorites float to the top of each block, newest-first
       items: [
         { id: '1', path: '/s/o1.jsonl', modifiedAt: 900, createdAt: 900 } as never,
         { id: '2', path: '/s/o2.jsonl', modifiedAt: 100, createdAt: 100 } as never,
-        { id: '3', path: '/s/r1.jsonl', modifiedAt: 800, createdAt: 800, displayName: 'RecNew' } as never,
-        { id: '4', path: '/s/r2.jsonl', modifiedAt: 50, createdAt: 50, displayName: 'RecFav' } as never,
+        {
+          id: '3',
+          path: '/s/r1.jsonl',
+          modifiedAt: 800,
+          createdAt: 800,
+          displayName: 'RecNew',
+        } as never,
+        {
+          id: '4',
+          path: '/s/r2.jsonl',
+          modifiedAt: 50,
+          createdAt: 50,
+          displayName: 'RecFav',
+        } as never,
       ],
     },
     favorites: new Set(['/s/o2.jsonl', '/s/r2.jsonl']),
@@ -293,7 +311,10 @@ test('buildChatListModel: a favorited recent survives the 20-row cap', () => {
     favorites: new Set(['/s/s24.jsonl']),
   });
   assert.equal(model.rows.length, 20);
-  assert.deepEqual(model.rows[0] && [model.rows[0].title, model.rows[0].favorite], ['Chat 24', true]);
+  assert.deepEqual(model.rows[0] && [model.rows[0].title, model.rows[0].favorite], [
+    'Chat 24',
+    true,
+  ]);
   assert.equal(model.rows[1]?.title, 'Chat 0');
 });
 
@@ -303,7 +324,13 @@ test('buildChatListModel: recents carry raw modifiedAt + label-only detail (rend
     recent: {
       ...baseRecent,
       items: [
-        { id: '1', path: '/s/a.jsonl', modifiedAt: 1234, createdAt: 1000, workspaceLabel: 'ws' } as never,
+        {
+          id: '1',
+          path: '/s/a.jsonl',
+          modifiedAt: 1234,
+          createdAt: 1000,
+          workspaceLabel: 'ws',
+        } as never,
       ],
     },
   });

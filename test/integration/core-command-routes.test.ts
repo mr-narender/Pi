@@ -30,7 +30,9 @@ test('core safety: real editor/sidebar handlers retain origin drafts/chips acros
     id,
     captureEngineIntent: () => ({
       valid: () => true,
-      tree: async () => { throw new Error('Owned local GUI command unavailable'); },
+      tree: async () => {
+        throw new Error('Owned local GUI command unavailable');
+      },
     }),
   }));
   const states = controllers.map(() => {

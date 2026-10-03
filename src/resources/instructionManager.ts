@@ -30,9 +30,7 @@ function labelFor(slot: InstructionSlot): string {
 function starterContentFor(slot: InstructionSlot): string {
   if (slot.kind === 'appendSystem') {
     const reach =
-      slot.scope === 'user'
-        ? 'every chat, in every project'
-        : 'every chat in this project only';
+      slot.scope === 'user' ? 'every chat, in every project' : 'every chat in this project only';
     return `<!--
   Added to π's default system prompt for ${reach} — this layers ON TOP of
   what π already knows, it does not replace anything.
@@ -78,7 +76,8 @@ export async function showInstructionManager(): Promise<void> {
   }));
   const picked = await vscode.window.showQuickPick(items, {
     title: 'π Agent Instructions',
-    placeHolder: 'Open to edit, or create a new one — SYSTEM.md (full replace) is intentionally not offered here',
+    placeHolder:
+      'Open to edit, or create a new one — SYSTEM.md (full replace) is intentionally not offered here',
     matchOnDescription: true,
     matchOnDetail: true,
   });

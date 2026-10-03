@@ -32,15 +32,15 @@ function snapshot(percent?: number): WebviewSnapshot {
     focus: 'composer',
     isTrusted: true,
     folders: [{ name: 'workspace', uri: 'file:///tmp/workspace', active: true }],
-    ...(percent === undefined
-      ? {}
-      : { usage: { totalTokens: 1000, contextPercent: percent } }),
+    ...(percent === undefined ? {} : { usage: { totalTokens: 1000, contextPercent: percent } }),
   } as WebviewSnapshot;
 }
 
 test('usage gauge: <70% plain, >=70% warn, >=85% hot', () => {
   const plain = renderChatApp(snapshot(45));
-  assert.ok(plain.includes('usage-part') && !plain.includes('usage-warn') && !plain.includes('usage-hot'));
+  assert.ok(
+    plain.includes('usage-part') && !plain.includes('usage-warn') && !plain.includes('usage-hot')
+  );
   const warn = renderChatApp(snapshot(75));
   assert.ok(warn.includes('usage-part usage-warn'));
   assert.ok(warn.includes('context 75% full'));

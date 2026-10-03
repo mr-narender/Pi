@@ -176,36 +176,37 @@
       <h1>Pi (y)ours — Shared Session Architecture <span class="tag">revised</span></h1>
       <p class="lede">
         One session, mirrored across surfaces, synchronized in real time. Share a
-        <b>new or existing</b> chat; once a device is paired the “Connect” entry
-        disappears and becomes a live sharing state.
+        <b>new or existing</b> chat; once a device is paired the “Connect” entry disappears and
+        becomes a live sharing state.
       </p>
 
       <h2>1 · Core model</h2>
       <div class="grid">
         <div class="card teal">
           <h3>Single source of truth</h3>
-          The <b>bound VS Code chat</b> owns the transcript. The broker is a pure
-          relay + registry. Every surface (VS Code, phone A, phone B…) renders from
-          the <b>same snapshot</b> → they look and behave identically.
+          The <b>bound VS Code chat</b> owns the transcript. The broker is a pure relay + registry.
+          Every surface (VS Code, phone A, phone B…) renders from the <b>same snapshot</b> → they
+          look and behave identically.
         </div>
         <div class="card teal">
           <h3>SharedSession (new object)</h3>
           Binds
-          <code>chatResource ↔ brokerSessionId ↔ hostToken ↔ devices[] ↔ driverId ↔ connectionState</code>.
-          At most one per chat. Created when you Share; destroyed on Stop sharing.
+          <!-- Preserve the literal architecture identifier sequence. -->
+          <!-- prettier-ignore -->
+          <code>chatResource ↔ brokerSessionId ↔ hostToken ↔ devices[] ↔ driverId ↔ connectionState</code
+          >. At most one per chat. Created when you Share; destroyed on Stop sharing.
         </div>
         <div class="card">
           <h3>Device (new)</h3>
-          A paired viewer: <code>id</code> (server‑minted), <code>name</code> (e.g.
-          “iPhone · Safari”), <code>role</code> (spectator | driver),
-          <code>connectedAt</code>. Sent to the host so VS Code can say
-          <i>shared with X</i>.
+          A paired viewer: <code>id</code> (server‑minted), <code>name</code> (e.g. “iPhone ·
+          Safari”), <code>role</code> (spectator | driver), <code>connectedAt</code>. Sent to the
+          host so VS Code can say <i>shared with X</i>.
         </div>
         <div class="card">
           <h3>Real‑time contract</h3>
           Host change ⇒ <code>snapshot</code> fan‑out to all viewers. Presence change
-          (join/leave/driver) ⇒ <code>presence</code> event to <b>host + all
-          viewers</b>. Both sides re‑render from it — no surface can drift.
+          (join/leave/driver) ⇒ <code>presence</code> event to <b>host + all viewers</b>. Both sides
+          re‑render from it — no surface can drift.
         </div>
       </div>
 
@@ -213,33 +214,57 @@
       <div class="states">
         <div class="st"><b>not‑shared</b><br /><span class="muted">Share entry visible</span></div>
         <div class="st">→ <b>starting</b><br /><span class="muted">dialing broker</span></div>
-        <div class="st">→ <b>awaiting‑pairing</b><br /><span class="muted">QR + PIN shown</span></div>
+        <div class="st">
+          → <b>awaiting‑pairing</b><br /><span class="muted">QR + PIN shown</span>
+        </div>
         <div class="st">→ <b>shared·live</b><br /><span class="muted">≥1 device</span></div>
-        <div class="st">↔ <b>shared·idle</b><br /><span class="muted">0 devices, session alive</span></div>
+        <div class="st">
+          ↔ <b>shared·idle</b><br /><span class="muted">0 devices, session alive</span>
+        </div>
         <div class="st">→ <b>stopped</b><br /><span class="muted">reverts both</span></div>
       </div>
       <p class="muted" style="font-size: 13px">
-        Key rule: <b>the “Connect / Share” entry is only shown in not‑shared</b>. In
-        every shared state it is replaced by a status pill + menu (Show pairing while
-        a slot is open · Stop sharing). No duplicate connect option = no confusion.
+        Key rule: <b>the “Connect / Share” entry is only shown in not‑shared</b>. In every shared
+        state it is replaced by a status pill + menu (Show pairing while a slot is open · Stop
+        sharing). No duplicate connect option = no confusion.
       </p>
 
       <h2>3 · Share a NEW or EXISTING session</h2>
       <table>
-        <tr><th>Entry point</th><th>Acts on</th><th>Behaviour</th></tr>
-        <tr><td>Chat title‑bar “Share” icon</td><td>that chat</td><td>Binds the <b>existing</b> chat; no new session created.</td></tr>
-        <tr><td>Command: <code>Pi: Share Chat to Phone</code></td><td>active chat</td><td>Shares the focused chat; if none, opens/pick a chat first.</td></tr>
-        <tr><td>Sidebar “Share to phone”</td><td>selected chat</td><td>Shares the highlighted session from the list.</td></tr>
+        <tr>
+          <th>Entry point</th>
+          <th>Acts on</th>
+          <th>Behaviour</th>
+        </tr>
+        <tr>
+          <td>Chat title‑bar “Share” icon</td>
+          <td>that chat</td>
+          <td>Binds the <b>existing</b> chat; no new session created.</td>
+        </tr>
+        <tr>
+          <td>Command: <code>Pi: Share Chat to Phone</code></td>
+          <td>active chat</td>
+          <td>Shares the focused chat; if none, opens/pick a chat first.</td>
+        </tr>
+        <tr>
+          <td>Sidebar “Share to phone”</td>
+          <td>selected chat</td>
+          <td>Shares the highlighted session from the list.</td>
+        </tr>
       </table>
       <p class="muted" style="font-size: 13px">
-        The shared chat always opens/reveals in the <b>window &amp; editor group where
-        sharing was initiated</b> (same‑window binding). The SharedSession stores that
-        exact <code>chatResource</code>.
+        The shared chat always opens/reveals in the
+        <b>window &amp; editor group where sharing was initiated</b> (same‑window binding). The
+        SharedSession stores that exact <code>chatResource</code>.
       </p>
 
       <h2>4 · What each surface shows (synchronized)</h2>
       <table>
-        <tr><th>State</th><th>VS Code (host)</th><th>Phone (viewer)</th></tr>
+        <tr>
+          <th>State</th>
+          <th>VS Code (host)</th>
+          <th>Phone (viewer)</th>
+        </tr>
         <tr>
           <td><span class="pill off">not‑shared</span></td>
           <td>“Share to phone” action visible.</td>
@@ -254,53 +279,108 @@
           <td><span class="pill live">shared·live</span></td>
           <td>
             Info bar on the chat:
-            <div class="infobar"><span class="dot"></span> Shared with <b>iPhone · Safari</b> · live <span class="muted">· Stop sharing</span></div>
+            <div class="infobar">
+              <span class="dot"></span> Shared with <b>iPhone · Safari</b> · live
+              <span class="muted">· Stop sharing</span>
+            </div>
             Connect entry hidden.
           </td>
           <td>
             Mirrored transcript + bar:
-            <div class="infobar"><span class="dot"></span> <b>Antaria</b> · live · spectator <span class="muted">· Take control</span></div>
+            <div class="infobar">
+              <span class="dot"></span> <b>Antaria</b> · live · spectator
+              <span class="muted">· Take control</span>
+            </div>
             No pair/connect prompt.
           </td>
         </tr>
         <tr>
           <td><span class="pill off">disconnected</span></td>
           <td>Info bar → “device offline”; session kept (idle).</td>
-          <td>Auto‑<b>reconnect</b> using stored token (“reconnecting…”), <b>never</b> back to pair.</td>
+          <td>
+            Auto‑<b>reconnect</b> using stored token (“reconnecting…”), <b>never</b> back to pair.
+          </td>
         </tr>
       </table>
 
       <h2>5 · Real‑time sync — event contract</h2>
+      <!-- Preserve the whitespace-sensitive flow diagram (white-space: pre). -->
+      <!-- prettier-ignore -->
       <div class="flow">host  ──snapshot(transcript, working, model, connState)──▶ broker ──▶ every viewer
 viewer ──identify(deviceName)──▶ broker ──presence(devices[], driverId)──▶ host + viewers
 viewer ──claimDriver / releaseDriver──▶ broker ──driverChanged──▶ host + viewers
 viewer ──prompt(text)──▶ broker ──▶ host (applied to the bound chat only)
 host  ──sessionEnded──▶ broker ──▶ viewers (show “ended”, nothing to reconnect to)</div>
       <ul class="muted" style="font-size: 13px">
-        <li><b>Presence is authoritative &amp; immediate</b>; snapshots are coalesced (~perf) but always full.</li>
-        <li>Both surfaces derive their <b>info bar + status pill from the same presence + connState</b> → guaranteed identical status.</li>
-        <li>Driver‑lock: one driver at a time; role changes broadcast so both sides agree instantly.</li>
+        <li>
+          <b>Presence is authoritative &amp; immediate</b>; snapshots are coalesced (~perf) but
+          always full.
+        </li>
+        <li>
+          Both surfaces derive their
+          <b>info bar + status pill from the same presence + connState</b> → guaranteed identical
+          status.
+        </li>
+        <li>
+          Driver‑lock: one driver at a time; role changes broadcast so both sides agree instantly.
+        </li>
       </ul>
 
       <h2>6 · Lifecycle &amp; teardown</h2>
       <ul style="font-size: 13.5px">
-        <li><b>Start</b> (new/existing) → reveal chat in initiating window → broker session → pairing panel.</li>
-        <li><b>Device joins</b> → identify → presence → both show “shared with X / live”; Connect entry hidden.</li>
-        <li><b>Device leaves</b> → presence(0) → state <b>shared·idle</b> (session alive, PIN re‑showable).</li>
-        <li><b>Stop sharing</b> (info bar · status pill · panel) → broker session closed → viewers get <code>sessionEnded</code> → both revert (VS Code removes bar + restores Share; phone shows “ended”).</li>
+        <li>
+          <b>Start</b> (new/existing) → reveal chat in initiating window → broker session → pairing
+          panel.
+        </li>
+        <li>
+          <b>Device joins</b> → identify → presence → both show “shared with X / live”; Connect
+          entry hidden.
+        </li>
+        <li>
+          <b>Device leaves</b> → presence(0) → state <b>shared·idle</b> (session alive, PIN
+          re‑showable).
+        </li>
+        <li>
+          <b>Stop sharing</b> (info bar · status pill · panel) → broker session closed → viewers get
+          <code>sessionEnded</code> → both revert (VS Code removes bar + restores Share; phone shows
+          “ended”).
+        </li>
       </ul>
 
       <h2>7 · Build breakdown</h2>
       <table>
-        <tr><th>Piece</th><th>Change</th></tr>
-        <tr><td><b>Broker</b> (slr‑backend)</td><td>Device identity (<code>identify</code>), <code>presence</code> + <code>driverChanged</code> fan‑out to host + viewers, <code>sessionEnded</code>. Depends on #512 landing first.</td></tr>
-        <tr><td><b>Browser PWA</b></td><td>Mirror (needs #512), device‑name on pair, reconnect‑not‑repair, live info bar, driver/spectator sync.</td></tr>
-        <tr><td><b>Extension</b> (new version)</td><td>SharedSession object, share existing/new + same‑window binding, chat title‑bar Share action, stateful control (hide Connect when shared), info bar on bound chat, presence handling.</td></tr>
+        <tr>
+          <th>Piece</th>
+          <th>Change</th>
+        </tr>
+        <tr>
+          <td><b>Broker</b> (slr‑backend)</td>
+          <td>
+            Device identity (<code>identify</code>), <code>presence</code> +
+            <code>driverChanged</code> fan‑out to host + viewers, <code>sessionEnded</code>. Depends
+            on #512 landing first.
+          </td>
+        </tr>
+        <tr>
+          <td><b>Browser PWA</b></td>
+          <td>
+            Mirror (needs #512), device‑name on pair, reconnect‑not‑repair, live info bar,
+            driver/spectator sync.
+          </td>
+        </tr>
+        <tr>
+          <td><b>Extension</b> (new version)</td>
+          <td>
+            SharedSession object, share existing/new + same‑window binding, chat title‑bar Share
+            action, stateful control (hide Connect when shared), info bar on bound chat, presence
+            handling.
+          </td>
+        </tr>
       </table>
       <p class="muted" style="font-size: 12.5px">
-        Hard dependency: the browser cannot reflect any of this until <b>#512 is merged
-        + deployed</b> (it’s still on the old build). Order: land #512 → broker presence
-        PR → extension version.
+        Hard dependency: the browser cannot reflect any of this until
+        <b>#512 is merged + deployed</b> (it’s still on the old build). Order: land #512 → broker
+        presence PR → extension version.
       </p>
     </div>
   </body>

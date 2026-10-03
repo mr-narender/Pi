@@ -40,7 +40,13 @@ const AGENTS_FILE_EXPLANATION =
 
 // Precedence order exactly as configuration.md lists them; first existing
 // one found is the one Pi actually uses.
-const AGENTS_FILE_NAMES = ['AGENTS.override.md', 'AGENTS.md', 'AGENTS.MD', 'CLAUDE.md', 'CLAUDE.MD'];
+const AGENTS_FILE_NAMES = [
+  'AGENTS.override.md',
+  'AGENTS.md',
+  'AGENTS.MD',
+  'CLAUDE.md',
+  'CLAUDE.MD',
+];
 const DEFAULT_NEW_AGENTS_FILE_NAME = 'AGENTS.md';
 
 function resolveAgentsFile(dir: string): { path: string; exists: boolean; matchedName?: string } {

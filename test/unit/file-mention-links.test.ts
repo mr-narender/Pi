@@ -3,7 +3,9 @@ import test from 'node:test';
 import { linkifyFileMentions } from '../../src/webview/render';
 
 test('linkifyFileMentions: backticked path (with and without :line) becomes clickable', () => {
-  const withLine = linkifyFileMentions('<code class="inline-code">src/webview/render.ts:611</code>');
+  const withLine = linkifyFileMentions(
+    '<code class="inline-code">src/webview/render.ts:611</code>'
+  );
   assert.ok(withLine.includes('data-file-open="src/webview/render.ts:611"'));
   assert.ok(withLine.includes('file-link'));
   const noLine = linkifyFileMentions('<code class="inline-code">src/webview/render.ts</code>');

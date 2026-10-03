@@ -20,7 +20,10 @@ test('agentDir defaults to ~/.pi/agent, respects PI_CODING_AGENT_DIR override', 
 test('canonicalDir: user scope under agent dir, project scope under <root>/.pi', () => {
   const env = { PI_CODING_AGENT_DIR: '/home/x/.pi/agent' };
   assert.equal(canonicalDir('skills', 'user', '/proj', env), '/home/x/.pi/agent/skills');
-  assert.equal(canonicalDir('extensions', 'project', '/proj', env), join('/proj', '.pi', 'extensions'));
+  assert.equal(
+    canonicalDir('extensions', 'project', '/proj', env),
+    join('/proj', '.pi', 'extensions')
+  );
   assert.equal(canonicalDir('prompts', 'project', '/proj', env), join('/proj', '.pi', 'prompts'));
 });
 
@@ -48,7 +51,10 @@ test('agentSkillsSpecProjectDirs: finds .agents/skills walking up, stops at repo
     mkdirSync(join(root, '.agents', 'skills'), { recursive: true });
 
     const found = agentSkillsSpecProjectDirs(start);
-    assert.deepEqual(found, [join(repo, 'sub', '.agents', 'skills'), join(repo, '.agents', 'skills')]);
+    assert.deepEqual(found, [
+      join(repo, 'sub', '.agents', 'skills'),
+      join(repo, '.agents', 'skills'),
+    ]);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

@@ -33,6 +33,8 @@ test('buildDeleteMessage: sessionPath wins over resource when both are present',
 });
 
 test('buildDeleteMessage: neither open nor a session file — nothing to delete, no message', () => {
-  const message = buildDeleteMessage(row({ sessionPath: undefined, isOpen: false, openCommand: {} }));
+  const message = buildDeleteMessage(
+    row({ sessionPath: undefined, isOpen: false, openCommand: {} })
+  );
   assert.equal(message, undefined);
 });

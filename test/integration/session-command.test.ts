@@ -154,7 +154,10 @@ test('session: actual editor/sidebar bare busy no-model info, privacy, errors, o
       }
       release();
       await pending;
-      assert.equal(state.draft, change === 'draft' ? 'fresh' : change === 'newer' ? '/session' : '');
+      assert.equal(
+        state.draft,
+        change === 'draft' ? 'fresh' : change === 'newer' ? '/session' : ''
+      );
       assert.equal(state.pendingImages.length, 1);
       if (['generation', 'session'].includes(change)) assert.equal(notices.length, before);
     }
@@ -259,11 +262,7 @@ for (const route of ['editor', 'sidebar']) {
     reset();
     const before = structuredClone(state);
     await send();
-    assert.equal(
-      state.draft,
-      '',
-      'undefined Cancel must not restore consumed /session draft'
-    );
+    assert.equal(state.draft, '', 'undefined Cancel must not restore consumed /session draft');
     assert.equal(state.composerResetSeq, before.composerResetSeq, 'Cancel must not reset');
     assert.equal(state.localCommandAck, before.localCommandAck, 'Cancel must not ACK acceptance');
     assert.deepEqual(state.pendingImages, chips);

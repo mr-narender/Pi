@@ -3,7 +3,11 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { discoverSkills, discoverExtensions, discoverPrompts } from '../../src/resources/resourceDiscovery';
+import {
+  discoverSkills,
+  discoverExtensions,
+  discoverPrompts,
+} from '../../src/resources/resourceDiscovery';
 
 function withTempDir(fn: (dir: string) => void): void {
   const dir = mkdtempSync(join(tmpdir(), 'pi-resource-disc-'));
@@ -102,7 +106,10 @@ test('discoverPrompts: direct .md children only, frontmatter description', () =>
 
 test('discoverPrompts: falls back to first non-empty body line when description omitted', () => {
   withTempDir((dir) => {
-    writeFileSync(join(dir, 'noframe.md'), '---\nargument-hint: "[x]"\n---\n\nFirst real line here.\n');
+    writeFileSync(
+      join(dir, 'noframe.md'),
+      '---\nargument-hint: "[x]"\n---\n\nFirst real line here.\n'
+    );
     const found = discoverPrompts('user', dir);
     assert.equal(found[0]?.description, 'First real line here.');
   });

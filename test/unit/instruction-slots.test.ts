@@ -3,7 +3,10 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { userInstructionSlots, projectInstructionSlots } from '../../src/resources/instructionSlots';
+import {
+  userInstructionSlots,
+  projectInstructionSlots,
+} from '../../src/resources/instructionSlots';
 
 function withTempDir(fn: (dir: string) => void): void {
   const dir = mkdtempSync(join(tmpdir(), 'pi-instruction-slots-'));
@@ -20,10 +23,7 @@ test('SYSTEM.md existing on disk is never surfaced as a slot — the explicit sa
     const slots = userInstructionSlots({ PI_CODING_AGENT_DIR: agentDir });
     // Exactly the 2 expected kinds — nothing extra, nothing SYSTEM.md-related,
     // regardless of what's actually sitting on disk.
-    assert.deepEqual(
-      slots.map((s) => s.kind).sort(),
-      ['agentsFile', 'appendSystem']
-    );
+    assert.deepEqual(slots.map((s) => s.kind).sort(), ['agentsFile', 'appendSystem']);
   });
 });
 

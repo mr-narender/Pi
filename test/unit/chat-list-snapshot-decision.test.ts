@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { decideSnapshotPush, type ChatListModel, type SnapshotDecisionState } from '../../src/webview/chatListShared';
+import {
+  decideSnapshotPush,
+  type ChatListModel,
+  type SnapshotDecisionState,
+} from '../../src/webview/chatListShared';
 
 const rows: ChatListModel['rows'] = [
   { id: 'open:a', title: 'Alpha', active: true, isOpen: true, openCommand: { resource: 'a' } },

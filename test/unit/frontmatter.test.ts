@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { parseFrontmatter, firstNonEmptyLineAfterFrontmatter } from '../../src/resources/frontmatter';
+import {
+  parseFrontmatter,
+  firstNonEmptyLineAfterFrontmatter,
+} from '../../src/resources/frontmatter';
 
 test('parses the exact SKILL.md example shape from skills.md', () => {
   const content = `---

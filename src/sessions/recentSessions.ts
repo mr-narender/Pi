@@ -347,7 +347,8 @@ async function buildRecentSessionRecord(
       messageCount,
       modifiedAt,
       createdAt,
-      sizeBytes: typeof stats?.size === 'number' && Number.isFinite(stats.size) ? stats.size : undefined,
+      sizeBytes:
+        typeof stats?.size === 'number' && Number.isFinite(stats.size) ? stats.size : undefined,
       parentSessionPath:
         typeof header.parentSession === 'string' ? resolve(header.parentSession) : undefined,
     };

@@ -26,7 +26,11 @@ export class SessionReplay implements vscode.Disposable {
   /** Replay one turn's files in order. */
   public async replayTurn(record: TurnRecord & { title: string }): Promise<void> {
     await vscode.window.withProgress(
-      { location: vscode.ProgressLocation.Notification, title: `Replaying "${record.title}"`, cancellable: true },
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: `Replaying "${record.title}"`,
+        cancellable: true,
+      },
       (progress, token) => this.walk([record], progress, token)
     );
   }
@@ -79,7 +83,9 @@ export class SessionReplay implements vscode.Disposable {
       const hunks = await computeHunks(before, doc.getText());
       const ranges = hunks
         .filter((hunk) => hunk.afterCount > 0)
-        .map((hunk) => new vscode.Range(hunk.afterStart, 0, hunk.afterStart + hunk.afterCount - 1, 0));
+        .map(
+          (hunk) => new vscode.Range(hunk.afterStart, 0, hunk.afterStart + hunk.afterCount - 1, 0)
+        );
       editor.setDecorations(this.decoration, ranges);
       if (ranges[0]) {
         editor.revealRange(ranges[0], vscode.TextEditorRevealType.InCenterIfOutsideViewport);

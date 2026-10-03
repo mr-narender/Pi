@@ -76,9 +76,7 @@ export function buildChatListModel(input: ChatListInput): ChatListModel {
     recordBySessionPath.set(session.path, session);
   }
   const openChatTime = (chat: OpenChatEntry): number => {
-    const t = chat.sessionFile
-      ? recordBySessionPath.get(chat.sessionFile)?.modifiedAt
-      : undefined;
+    const t = chat.sessionFile ? recordBySessionPath.get(chat.sessionFile)?.modifiedAt : undefined;
     // Same "known timestamp" rule as recentSessions.ts (finite and > 0).
     return t !== undefined && Number.isFinite(t) && t > 0 ? t : Number.MAX_SAFE_INTEGER;
   };
@@ -89,8 +87,7 @@ export function buildChatListModel(input: ChatListInput): ChatListModel {
   const query = input.recent.filterText.trim().toLowerCase();
   const sortedOpenChats = [...input.openChats].sort(
     (a, b) =>
-      favoriteRank(b.sessionFile) - favoriteRank(a.sessionFile) ||
-      openChatTime(b) - openChatTime(a)
+      favoriteRank(b.sessionFile) - favoriteRank(a.sessionFile) || openChatTime(b) - openChatTime(a)
   );
   for (const chat of sortedOpenChats) {
     // Prefer the indexed session's resolved name (first-prompt preview et

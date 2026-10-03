@@ -148,10 +148,7 @@ for (const route of ['editor', 'sidebar']) {
         if (change === 'images') state.pendingImages.push({ ...chips[0]!, itemId: 'new' });
       };
       await send();
-      assert.equal(
-        state.draft,
-        change === 'draft' ? 'newer' : ''
-      );
+      assert.equal(state.draft, change === 'draft' ? 'newer' : '');
       assert.equal(state.pendingImages.length, change === 'images' ? 2 : 1);
       if (['generation', 'session', 'file'].includes(change))
         assert.equal(invocations.length, before);

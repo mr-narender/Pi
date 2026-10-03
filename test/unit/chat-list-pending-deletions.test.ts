@@ -23,7 +23,10 @@ test('applyPendingDeletions: hides a row whose deletion is pending and not yet r
     [{ id: '/s/a.jsonl', startedAt: 1000 }],
     1100
   );
-  assert.deepEqual(rows.map((r) => r.sessionPath), ['/s/b.jsonl']);
+  assert.deepEqual(
+    rows.map((r) => r.sessionPath),
+    ['/s/b.jsonl']
+  );
   assert.deepEqual(stillPending, [{ id: '/s/a.jsonl', startedAt: 1000 }]);
 });
 
@@ -35,7 +38,10 @@ test('applyPendingDeletions: stops tracking once the real data confirms it is ac
     [{ id: '/s/a.jsonl', startedAt: 1000 }],
     1100
   );
-  assert.deepEqual(rows.map((r) => r.sessionPath), ['/s/b.jsonl']);
+  assert.deepEqual(
+    rows.map((r) => r.sessionPath),
+    ['/s/b.jsonl']
+  );
   assert.deepEqual(stillPending, []);
 });
 
@@ -47,7 +53,10 @@ test('applyPendingDeletions: gives up hiding after the timeout — a failed dele
     1000 + 5001,
     5000
   );
-  assert.deepEqual(rows.map((r) => r.sessionPath), ['/s/a.jsonl']);
+  assert.deepEqual(
+    rows.map((r) => r.sessionPath),
+    ['/s/a.jsonl']
+  );
   assert.deepEqual(stillPending, []);
 });
 
@@ -55,12 +64,27 @@ test('applyPendingDeletions: also matches on an open-chat resource (no session f
   const model: ChatListModel = {
     loading: false,
     rows: [
-      { id: 'open:a', title: 'A', active: true, isOpen: true, openCommand: { resource: 'piRpcChat://a' } },
-      { id: 'open:b', title: 'B', active: false, isOpen: true, openCommand: { resource: 'piRpcChat://b' } },
+      {
+        id: 'open:a',
+        title: 'A',
+        active: true,
+        isOpen: true,
+        openCommand: { resource: 'piRpcChat://a' },
+      },
+      {
+        id: 'open:b',
+        title: 'B',
+        active: false,
+        isOpen: true,
+        openCommand: { resource: 'piRpcChat://b' },
+      },
     ],
   };
   const { rows } = applyPendingDeletions(model, [{ id: 'piRpcChat://a', startedAt: 0 }], 10);
-  assert.deepEqual(rows.map((r) => r.id), ['open:b']);
+  assert.deepEqual(
+    rows.map((r) => r.id),
+    ['open:b']
+  );
 });
 
 test('applyPendingDeletions: no pending deletions is a no-op (same rows reference)', () => {

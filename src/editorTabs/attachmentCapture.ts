@@ -1,6 +1,11 @@
 import * as vscode from 'vscode';
 import { basename } from 'node:path';
-import { type PendingContextItem, boundDiagnosticsContent, boundFileContent, fingerprint } from '../webview/composer';
+import {
+  type PendingContextItem,
+  boundDiagnosticsContent,
+  boundFileContent,
+  fingerprint,
+} from '../webview/composer';
 import type { SessionController } from '../sessions/sessionController';
 
 // Extracted from tabManager.ts (A1 of the de-bloat plan — see plan turn):
@@ -238,9 +243,7 @@ export async function captureDiagnostics(
   }
   const diagnostics = vscode.languages.getDiagnostics(editor.document.uri);
   const lineStart =
-    diagnostics.length > 0
-      ? Math.min(...diagnostics.map((item) => item.range.start.line + 1))
-      : 1;
+    diagnostics.length > 0 ? Math.min(...diagnostics.map((item) => item.range.start.line + 1)) : 1;
   const lineEnd =
     diagnostics.length > 0 ? Math.max(...diagnostics.map((item) => item.range.end.line + 1)) : 1;
   const severity = diagnosticSeverity(diagnostics);
@@ -283,4 +286,3 @@ export async function captureDiagnostics(
     },
   };
 }
-

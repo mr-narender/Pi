@@ -31,10 +31,7 @@ export function scanImportSpecifiers(content: string, language: string): string[
     }
   }
   if (language === 'python' || language === '') {
-    const patterns = [
-      /^\s*from\s+(\.+[\w.]*|\w[\w.]*)\s+import\b/gm,
-      /^\s*import\s+(\w[\w.]*)/gm,
-    ];
+    const patterns = [/^\s*from\s+(\.+[\w.]*|\w[\w.]*)\s+import\b/gm, /^\s*import\s+(\w[\w.]*)/gm];
     for (const pattern of patterns) {
       for (const match of content.matchAll(pattern)) {
         if (match[1]) {

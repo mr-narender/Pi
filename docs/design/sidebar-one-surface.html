@@ -1,136 +1,552 @@
 <!doctype html>
 <html lang="en">
-<head>
-<meta charset="utf-8" />
-<title>π — full window: sidebar chat + center live tracking</title>
-<style>
-  :root { --bg:#17171a; --fg:#d6d6d6; --muted:#96969b; --ember:#ff8c42; --ember2:#df5f24;
-    --glass1:rgba(255,255,255,.035); --glass2:rgba(255,255,255,.06); --line:rgba(255,255,255,.08); --line2:rgba(255,255,255,.13); }
-  *{box-sizing:border-box} body{background:#0c0c0e;color:var(--fg);font:13px/1.55 -apple-system,"SF Pro Text",sans-serif;margin:0;padding:26px}
-  .cap{font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin:26px 0 10px}
-  .cap b{color:var(--ember)}
-  .win{width:100%;max-width:1180px;height:560px;border:1px solid var(--line2);border-radius:12px;overflow:hidden;display:flex;position:relative;background:#17171a}
-  /* activity bar */
-  .ab{width:44px;background:#131316;border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;padding-top:10px;gap:14px;font-size:16px;color:#777}
-  .ab .pi{color:var(--ember);font-weight:800;background:rgba(255,140,66,.12);width:30px;height:30px;border-radius:8px;display:grid;place-items:center;box-shadow:inset 2px 0 0 var(--ember)}
-  /* sidebar */
-  .sb{width:300px;border-right:1px solid var(--line);display:flex;flex-direction:column;background:radial-gradient(400px 260px at 10% -5%,rgba(255,140,66,.05),transparent 60%),#17171a;position:relative}
-  .hd{display:flex;align-items:center;gap:7px;padding:8px 10px;border-bottom:1px solid var(--line);background:var(--glass1)}
-  .hd .pim{color:var(--ember);font-weight:800;font-size:14px}
-  .hd .sess{display:flex;align-items:center;gap:5px;font-weight:600;font-size:12px;padding:3px 8px;border:1px solid var(--line);border-radius:7px;background:var(--glass1);max-width:130px;white-space:nowrap;overflow:hidden}
-  .hd .sp{flex:1}
-  .hd i{font-style:normal;opacity:.7;cursor:pointer;width:22px;height:22px;border-radius:6px;display:grid;place-items:center;font-size:12px}
-  .hd i.on{color:var(--ember);opacity:1;background:rgba(255,140,66,.12);box-shadow:0 0 8px rgba(255,140,66,.25)}
-  .chat{flex:1;padding:12px 10px;display:flex;flex-direction:column;gap:9px;overflow:hidden;font-size:12px}
-  .u{align-self:flex-end;max-width:88%;padding:7px 10px;background:rgba(255,140,66,.09);border:1px solid rgba(255,140,66,.22);border-radius:10px 10px 4px 10px}
-  .phase{display:flex;gap:6px;align-items:center;font-size:10.5px;padding:5px 8px;background:var(--glass1);border:1px solid var(--line);border-radius:8px;color:var(--muted)}
-  .a .lbl{font-size:9px;font-weight:700;letter-spacing:.06em;color:var(--ember);margin-bottom:3px}
-  .edit{background:var(--glass1);border:1px solid var(--line);border-radius:8px;padding:6px 8px;font-size:10.5px}
-  .edit .f{display:flex;gap:5px;align-items:center;margin-bottom:4px}
-  .edit code{color:#7fd0c3;font-size:10px}
-  .edit .row{margin-left:auto;display:flex;gap:3px}
-  .edit .row b{font-weight:500;font-size:9px;padding:2px 6px;border-radius:5px;border:1px solid var(--line2);cursor:pointer}
-  .edit .row b:hover{border-color:var(--ember);color:var(--ember)}
-  .d{font-family:ui-monospace,monospace;font-size:9.5px;white-space:pre}
-  .add{color:#84b98c}
-  .comp{margin:8px;border:1px solid var(--line2);border-radius:10px;background:var(--glass2);padding:8px 10px;font-size:11px}
-  .comp .ph{color:var(--muted)}
-  .comp .row{display:flex;gap:6px;align-items:center;margin-top:7px}
-  .chip{font-size:9px;padding:2px 7px;border-radius:999px;background:var(--glass1);border:1px solid var(--line)}
-  .send{margin-left:auto;width:22px;height:22px;border-radius:6px;background:linear-gradient(135deg,var(--ember),var(--ember2));display:grid;place-items:center;color:#151515;font-size:11px;box-shadow:0 0 10px rgba(255,140,66,.35)}
-  /* CENTER editor */
-  .ed{flex:1;display:flex;flex-direction:column;background:#1b1b1e}
-  .tabs{display:flex;border-bottom:1px solid var(--line);background:#161619}
-  .tab{padding:7px 16px;font-size:12px;border-right:1px solid var(--line);color:var(--muted)}
-  .tab.live{color:var(--fg);font-style:italic;background:#1b1b1e;border-top:2px solid var(--ember)}
-  .tab.live::after{content:" ⟲";color:var(--ember);font-style:normal}
-  .code{flex:1;padding:14px 0;font-family:ui-monospace,monospace;font-size:12px;line-height:1.7;overflow:hidden}
-  .ln{display:flex;padding:0 14px}
-  .ln .n{width:34px;color:#555;text-align:right;padding-right:14px;flex:none}
-  .ln.glow{background:rgba(255,140,66,.10);box-shadow:inset 3px 0 0 var(--ember)}
-  .k{color:#c586c0}.fn{color:#dcdcaa}.s{color:#ce9178}.c{color:#6a9955}
-  .hovercard{position:absolute;right:270px;top:246px;background:#232327;border:1px solid var(--line2);border-radius:8px;padding:7px 11px;font-size:11px;box-shadow:0 8px 24px rgba(0,0,0,.5)}
-  .hovercard b{color:var(--ember)}
-  .status{position:absolute;bottom:0;left:0;right:0;height:24px;background:#131316;border-top:1px solid var(--line);display:flex;align-items:center;justify-content:flex-end;padding:0 12px;font-size:11px;color:var(--muted)}
-  .status .f{color:var(--ember)}
-  /* overlay state */
-  .ov{position:absolute;inset:38px 0 0 0;background:rgba(16,16,19,.9);backdrop-filter:blur(10px);padding:10px;display:flex;flex-direction:column;gap:7px;font-size:12px}
-  .ov input{background:var(--glass1);border:1px solid var(--line2);border-radius:7px;padding:6px 9px;color:var(--fg);font-size:11px}
-  .ov .new{display:flex;justify-content:center;padding:7px;border:1px dashed rgba(255,140,66,.45);border-radius:8px;color:var(--ember);font-size:11px}
-  .ov .sec{font-size:9px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin-top:4px}
-  .ov .it{display:flex;justify-content:space-between;padding:6px 8px;border-radius:7px;font-size:11px}
-  .ov .it.cur{background:var(--glass2);box-shadow:inset 2px 0 0 var(--ember)}
-  .ov .it .m{color:var(--muted);font-size:9.5px}
-  .legend{max-width:1180px;color:var(--muted);font-size:12.5px;margin-top:10px}
-  .legend b{color:var(--ember)}
-</style>
-</head>
-<body>
+  <head>
+    <meta charset="utf-8" />
+    <title>π — full window: sidebar chat + center live tracking</title>
+    <style>
+      :root {
+        --bg: #17171a;
+        --fg: #d6d6d6;
+        --muted: #96969b;
+        --ember: #ff8c42;
+        --ember2: #df5f24;
+        --glass1: rgba(255, 255, 255, 0.035);
+        --glass2: rgba(255, 255, 255, 0.06);
+        --line: rgba(255, 255, 255, 0.08);
+        --line2: rgba(255, 255, 255, 0.13);
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        background: #0c0c0e;
+        color: var(--fg);
+        font:
+          13px/1.55 -apple-system,
+          'SF Pro Text',
+          sans-serif;
+        margin: 0;
+        padding: 26px;
+      }
+      .cap {
+        font-size: 12px;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        color: var(--muted);
+        margin: 26px 0 10px;
+      }
+      .cap b {
+        color: var(--ember);
+      }
+      .win {
+        width: 100%;
+        max-width: 1180px;
+        height: 560px;
+        border: 1px solid var(--line2);
+        border-radius: 12px;
+        overflow: hidden;
+        display: flex;
+        position: relative;
+        background: #17171a;
+      }
+      /* activity bar */
+      .ab {
+        width: 44px;
+        background: #131316;
+        border-right: 1px solid var(--line);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding-top: 10px;
+        gap: 14px;
+        font-size: 16px;
+        color: #777;
+      }
+      .ab .pi {
+        color: var(--ember);
+        font-weight: 800;
+        background: rgba(255, 140, 66, 0.12);
+        width: 30px;
+        height: 30px;
+        border-radius: 8px;
+        display: grid;
+        place-items: center;
+        box-shadow: inset 2px 0 0 var(--ember);
+      }
+      /* sidebar */
+      .sb {
+        width: 300px;
+        border-right: 1px solid var(--line);
+        display: flex;
+        flex-direction: column;
+        background:
+          radial-gradient(400px 260px at 10% -5%, rgba(255, 140, 66, 0.05), transparent 60%),
+          #17171a;
+        position: relative;
+      }
+      .hd {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--line);
+        background: var(--glass1);
+      }
+      .hd .pim {
+        color: var(--ember);
+        font-weight: 800;
+        font-size: 14px;
+      }
+      .hd .sess {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        font-weight: 600;
+        font-size: 12px;
+        padding: 3px 8px;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        background: var(--glass1);
+        max-width: 130px;
+        white-space: nowrap;
+        overflow: hidden;
+      }
+      .hd .sp {
+        flex: 1;
+      }
+      .hd i {
+        font-style: normal;
+        opacity: 0.7;
+        cursor: pointer;
+        width: 22px;
+        height: 22px;
+        border-radius: 6px;
+        display: grid;
+        place-items: center;
+        font-size: 12px;
+      }
+      .hd i.on {
+        color: var(--ember);
+        opacity: 1;
+        background: rgba(255, 140, 66, 0.12);
+        box-shadow: 0 0 8px rgba(255, 140, 66, 0.25);
+      }
+      .chat {
+        flex: 1;
+        padding: 12px 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 9px;
+        overflow: hidden;
+        font-size: 12px;
+      }
+      .u {
+        align-self: flex-end;
+        max-width: 88%;
+        padding: 7px 10px;
+        background: rgba(255, 140, 66, 0.09);
+        border: 1px solid rgba(255, 140, 66, 0.22);
+        border-radius: 10px 10px 4px 10px;
+      }
+      .phase {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+        font-size: 10.5px;
+        padding: 5px 8px;
+        background: var(--glass1);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        color: var(--muted);
+      }
+      .a .lbl {
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        color: var(--ember);
+        margin-bottom: 3px;
+      }
+      .edit {
+        background: var(--glass1);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 6px 8px;
+        font-size: 10.5px;
+      }
+      .edit .f {
+        display: flex;
+        gap: 5px;
+        align-items: center;
+        margin-bottom: 4px;
+      }
+      .edit code {
+        color: #7fd0c3;
+        font-size: 10px;
+      }
+      .edit .row {
+        margin-left: auto;
+        display: flex;
+        gap: 3px;
+      }
+      .edit .row b {
+        font-weight: 500;
+        font-size: 9px;
+        padding: 2px 6px;
+        border-radius: 5px;
+        border: 1px solid var(--line2);
+        cursor: pointer;
+      }
+      .edit .row b:hover {
+        border-color: var(--ember);
+        color: var(--ember);
+      }
+      .d {
+        font-family: ui-monospace, monospace;
+        font-size: 9.5px;
+        white-space: pre;
+      }
+      .add {
+        color: #84b98c;
+      }
+      .comp {
+        margin: 8px;
+        border: 1px solid var(--line2);
+        border-radius: 10px;
+        background: var(--glass2);
+        padding: 8px 10px;
+        font-size: 11px;
+      }
+      .comp .ph {
+        color: var(--muted);
+      }
+      .comp .row {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+        margin-top: 7px;
+      }
+      .chip {
+        font-size: 9px;
+        padding: 2px 7px;
+        border-radius: 999px;
+        background: var(--glass1);
+        border: 1px solid var(--line);
+      }
+      .send {
+        margin-left: auto;
+        width: 22px;
+        height: 22px;
+        border-radius: 6px;
+        background: linear-gradient(135deg, var(--ember), var(--ember2));
+        display: grid;
+        place-items: center;
+        color: #151515;
+        font-size: 11px;
+        box-shadow: 0 0 10px rgba(255, 140, 66, 0.35);
+      }
+      /* CENTER editor */
+      .ed {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        background: #1b1b1e;
+      }
+      .tabs {
+        display: flex;
+        border-bottom: 1px solid var(--line);
+        background: #161619;
+      }
+      .tab {
+        padding: 7px 16px;
+        font-size: 12px;
+        border-right: 1px solid var(--line);
+        color: var(--muted);
+      }
+      .tab.live {
+        color: var(--fg);
+        font-style: italic;
+        background: #1b1b1e;
+        border-top: 2px solid var(--ember);
+      }
+      .tab.live::after {
+        content: ' ⟲';
+        color: var(--ember);
+        font-style: normal;
+      }
+      .code {
+        flex: 1;
+        padding: 14px 0;
+        font-family: ui-monospace, monospace;
+        font-size: 12px;
+        line-height: 1.7;
+        overflow: hidden;
+      }
+      .ln {
+        display: flex;
+        padding: 0 14px;
+      }
+      .ln .n {
+        width: 34px;
+        color: #555;
+        text-align: right;
+        padding-right: 14px;
+        flex: none;
+      }
+      .ln.glow {
+        background: rgba(255, 140, 66, 0.1);
+        box-shadow: inset 3px 0 0 var(--ember);
+      }
+      .k {
+        color: #c586c0;
+      }
+      .fn {
+        color: #dcdcaa;
+      }
+      .s {
+        color: #ce9178;
+      }
+      .c {
+        color: #6a9955;
+      }
+      .hovercard {
+        position: absolute;
+        right: 270px;
+        top: 246px;
+        background: #232327;
+        border: 1px solid var(--line2);
+        border-radius: 8px;
+        padding: 7px 11px;
+        font-size: 11px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+      }
+      .hovercard b {
+        color: var(--ember);
+      }
+      .status {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 24px;
+        background: #131316;
+        border-top: 1px solid var(--line);
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        padding: 0 12px;
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .status .f {
+        color: var(--ember);
+      }
+      /* overlay state */
+      .ov {
+        position: absolute;
+        inset: 38px 0 0 0;
+        background: rgba(16, 16, 19, 0.9);
+        backdrop-filter: blur(10px);
+        padding: 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 7px;
+        font-size: 12px;
+      }
+      .ov input {
+        background: var(--glass1);
+        border: 1px solid var(--line2);
+        border-radius: 7px;
+        padding: 6px 9px;
+        color: var(--fg);
+        font-size: 11px;
+      }
+      .ov .new {
+        display: flex;
+        justify-content: center;
+        padding: 7px;
+        border: 1px dashed rgba(255, 140, 66, 0.45);
+        border-radius: 8px;
+        color: var(--ember);
+        font-size: 11px;
+      }
+      .ov .sec {
+        font-size: 9px;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+        color: var(--muted);
+        margin-top: 4px;
+      }
+      .ov .it {
+        display: flex;
+        justify-content: space-between;
+        padding: 6px 8px;
+        border-radius: 7px;
+        font-size: 11px;
+      }
+      .ov .it.cur {
+        background: var(--glass2);
+        box-shadow: inset 2px 0 0 var(--ember);
+      }
+      .ov .it .m {
+        color: var(--muted);
+        font-size: 9.5px;
+      }
+      .legend {
+        max-width: 1180px;
+        color: var(--muted);
+        font-size: 12.5px;
+        margin-top: 10px;
+      }
+      .legend b {
+        color: var(--ember);
+      }
+    </style>
+  </head>
+  <body>
+    <p class="cap">
+      <b>State 1</b> — tracking ON: you chat left, π works, the CENTER shows the real file it's
+      editing (live)
+    </p>
+    <div class="win">
+      <div class="ab"><span class="pi">π</span><span>⎇</span><span>🔍</span><span>⚙</span></div>
 
-<p class="cap"><b>State 1</b> — tracking ON: you chat left, π works, the CENTER shows the real file it's editing (live)</p>
-<div class="win">
-  <div class="ab"><span class="pi">π</span><span>⎇</span><span>🔍</span><span>⚙</span></div>
-
-  <div class="sb">
-    <div class="hd"><span class="pim">π</span><span class="sess">Session 13 ▾</span><span class="sp"></span><i>✚</i><i class="on" title="Following π">⌖</i><i>⋯</i></div>
-    <div class="chat">
-      <div class="u">add farewell() to hello.py and create util.py</div>
-      <div class="phase">⚙ Worked: edit ×2 · 2 files changed</div>
-      <div class="a"><div class="lbl">◉ π RESPONSE</div>Added <code>farewell()</code>, created <code>util.py</code> with <code>slugify()</code>. Tests pass.</div>
-      <div class="edit">
-        <div class="f"><code>hello.py</code><span class="row"><b>✓ Keep</b><b>↩ Undo</b><b>✎ Edit</b></span></div>
-        <div class="d"><span class="add">+ def farewell(name):</span>
+      <div class="sb">
+        <div class="hd">
+          <span class="pim">π</span><span class="sess">Session 13 ▾</span><span class="sp"></span
+          ><i>✚</i><i class="on" title="Following π">⌖</i><i>⋯</i>
+        </div>
+        <div class="chat">
+          <div class="u">add farewell() to hello.py and create util.py</div>
+          <div class="phase">⚙ Worked: edit ×2 · 2 files changed</div>
+          <div class="a">
+            <div class="lbl">◉ π RESPONSE</div>
+            Added <code>farewell()</code>, created <code>util.py</code> with <code>slugify()</code>.
+            Tests pass.
+          </div>
+          <div class="edit">
+            <div class="f">
+              <code>hello.py</code><span class="row"><b>✓ Keep</b><b>↩ Undo</b><b>✎ Edit</b></span>
+            </div>
+            <!-- Preserve the whitespace-sensitive diff (white-space: pre). -->
+            <!-- prettier-ignore -->
+            <div class="d"><span class="add">+ def farewell(name):</span>
 <span class="add">+     return f"Bye, {name}!"</span></div>
+          </div>
+        </div>
+        <div class="comp">
+          <div class="ph">Ask π to edit…</div>
+          <div class="row">
+            <span class="chip">fable-5 · $0.14 · med</span><span class="chip">＋</span
+            ><span class="chip">/</span><span class="send">↑</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="ed">
+        <div class="tabs">
+          <div class="tab">main.py</div>
+          <div class="tab live">hello.py</div>
+        </div>
+        <div class="code">
+          <div class="ln">
+            <span class="n">1</span><span class="c"># pi-playground greeting module</span>
+          </div>
+          <div class="ln"><span class="n">2</span><span></span></div>
+          <div class="ln">
+            <span class="n">3</span
+            ><span><span class="k">def</span> <span class="fn">hello</span>(name):</span>
+          </div>
+          <div class="ln">
+            <span class="n">4</span
+            ><span> <span class="k">return</span> <span class="s">f"Hello, {name}!"</span></span>
+          </div>
+          <div class="ln"><span class="n">5</span><span></span></div>
+          <div class="ln glow">
+            <span class="n">6</span
+            ><span><span class="k">def</span> <span class="fn">farewell</span>(name):</span>
+          </div>
+          <div class="ln glow">
+            <span class="n">7</span
+            ><span> <span class="k">return</span> <span class="s">f"Bye, {name}!"</span></span>
+          </div>
+          <div class="ln"><span class="n">8</span><span></span></div>
+          <div class="ln">
+            <span class="n">9</span
+            ><span><span class="k">if</span> __name__ == <span class="s">"__main__"</span>:</span>
+          </div>
+          <div class="ln">
+            <span class="n">10</span
+            ><span>
+              <span class="fn">print</span>(<span class="fn">hello</span>(<span class="s"
+                >"world"</span
+              >))</span
+            >
+          </div>
+        </div>
+      </div>
+
+      <div class="hovercard">✏️ edited by <b>π — Session 13</b></div>
+      <div class="status">
+        <span class="f">⌖ π · editing hello.py</span>&nbsp;·&nbsp;Ln 7&nbsp;·&nbsp;Python
       </div>
     </div>
-    <div class="comp"><div class="ph">Ask π to edit…</div><div class="row"><span class="chip">fable-5 · $0.14 · med</span><span class="chip">＋</span><span class="chip">/</span><span class="send">↑</span></div></div>
-  </div>
 
-  <div class="ed">
-    <div class="tabs"><div class="tab">main.py</div><div class="tab live">hello.py</div></div>
-    <div class="code">
-      <div class="ln"><span class="n">1</span><span class="c"># pi-playground greeting module</span></div>
-      <div class="ln"><span class="n">2</span><span></span></div>
-      <div class="ln"><span class="n">3</span><span><span class="k">def</span> <span class="fn">hello</span>(name):</span></div>
-      <div class="ln"><span class="n">4</span><span>    <span class="k">return</span> <span class="s">f"Hello, {name}!"</span></span></div>
-      <div class="ln"><span class="n">5</span><span></span></div>
-      <div class="ln glow"><span class="n">6</span><span><span class="k">def</span> <span class="fn">farewell</span>(name):</span></div>
-      <div class="ln glow"><span class="n">7</span><span>    <span class="k">return</span> <span class="s">f"Bye, {name}!"</span></span></div>
-      <div class="ln"><span class="n">8</span><span></span></div>
-      <div class="ln"><span class="n">9</span><span><span class="k">if</span> __name__ == <span class="s">"__main__"</span>:</span></div>
-      <div class="ln"><span class="n">10</span><span>    <span class="fn">print</span>(<span class="fn">hello</span>(<span class="s">"world"</span>))</span></div>
+    <p class="cap">
+      <b>State 2</b> — click the title ▾: the chat SWITCHER slides over the sidebar (center
+      untouched)
+    </p>
+    <div class="win" style="height: 400px">
+      <div class="ab"><span class="pi">π</span><span>⎇</span><span>🔍</span><span>⚙</span></div>
+      <div class="sb">
+        <div class="hd">
+          <span class="pim">π</span
+          ><span class="sess" style="border-color: rgba(255, 140, 66, 0.5)">Session 13 ▴</span
+          ><span class="sp"></span><i>✚</i><i class="on">⌖</i><i>⋯</i>
+        </div>
+        <div class="chat" style="filter: blur(2px); opacity: 0.45">
+          <div class="u">add farewell() to hello.py…</div>
+          <div class="a">
+            <div class="lbl">◉ π RESPONSE</div>
+            Added farewell()…
+          </div>
+        </div>
+        <div class="ov">
+          <input placeholder="Search chats…  (⌘⌥P anywhere)" />
+          <div class="new">✚ New Chat</div>
+          <div class="sec">This workspace</div>
+          <div class="it cur"><span>Session 13</span><span class="m">now</span></div>
+          <div class="it"><span>agent orchestration analysis</span><span class="m">14h</span></div>
+          <div class="it"><span>npm-audit-enolock-fix</span><span class="m">13d</span></div>
+          <div class="sec">Other projects ▸</div>
+        </div>
+      </div>
+      <div class="ed">
+        <div class="tabs">
+          <div class="tab">main.py</div>
+          <div class="tab live">hello.py</div>
+        </div>
+        <div class="code">
+          <div class="ln">
+            <span class="n">6</span
+            ><span><span class="k">def</span> <span class="fn">farewell</span>(name):</span>
+          </div>
+        </div>
+      </div>
     </div>
-  </div>
 
-  <div class="hovercard">✏️ edited by <b>π — Session 13</b></div>
-  <div class="status"><span class="f">⌖ π · editing hello.py</span>&nbsp;·&nbsp;Ln 7&nbsp;·&nbsp;Python</div>
-</div>
-
-<p class="cap"><b>State 2</b> — click the title ▾: the chat SWITCHER slides over the sidebar (center untouched)</p>
-<div class="win" style="height:400px">
-  <div class="ab"><span class="pi">π</span><span>⎇</span><span>🔍</span><span>⚙</span></div>
-  <div class="sb">
-    <div class="hd"><span class="pim">π</span><span class="sess" style="border-color:rgba(255,140,66,.5)">Session 13 ▴</span><span class="sp"></span><i>✚</i><i class="on">⌖</i><i>⋯</i></div>
-    <div class="chat" style="filter:blur(2px);opacity:.45"><div class="u">add farewell() to hello.py…</div><div class="a"><div class="lbl">◉ π RESPONSE</div>Added farewell()…</div></div>
-    <div class="ov">
-      <input placeholder="Search chats…  (⌘⌥P anywhere)" />
-      <div class="new">✚ New Chat</div>
-      <div class="sec">This workspace</div>
-      <div class="it cur"><span>Session 13</span><span class="m">now</span></div>
-      <div class="it"><span>agent orchestration analysis</span><span class="m">14h</span></div>
-      <div class="it"><span>npm-audit-enolock-fix</span><span class="m">13d</span></div>
-      <div class="sec">Other projects ▸</div>
+    <div class="legend">
+      <p>
+        <b>The center IS the file editing.</b> When ⌖ tracking is on, π opens the
+        <b>real file</b> it's working on in the normal editor area — the italic
+        <b>hello.py ⟲</b> tab is one slot that cycles as π moves between files. The
+        <b>orange lines (6–7)</b> are the live glow on what π just wrote, with the hover naming
+        which chat did it. It's a genuine editor: click line 7 and type — you're editing the real
+        file instantly.
+      </p>
+      <p>
+        <b>The sidebar is the ONLY π window.</b> No more Chat + Chats stacked — history lives behind
+        the title ▾ (State 2). ✚ new chat · ⌖ tracking toggle · ⋯ menu (Review, versions, export).
+      </p>
     </div>
-  </div>
-  <div class="ed">
-    <div class="tabs"><div class="tab">main.py</div><div class="tab live">hello.py</div></div>
-    <div class="code"><div class="ln"><span class="n">6</span><span><span class="k">def</span> <span class="fn">farewell</span>(name):</span></div></div>
-  </div>
-</div>
-
-<div class="legend">
-  <p><b>The center IS the file editing.</b> When ⌖ tracking is on, π opens the <b>real file</b> it's working on in the normal editor area — the italic <b>hello.py ⟲</b> tab is one slot that cycles as π moves between files. The <b>orange lines (6–7)</b> are the live glow on what π just wrote, with the hover naming which chat did it. It's a genuine editor: click line 7 and type — you're editing the real file instantly.</p>
-  <p><b>The sidebar is the ONLY π window.</b> No more Chat + Chats stacked — history lives behind the title ▾ (State 2). ✚ new chat · ⌖ tracking toggle · ⋯ menu (Review, versions, export).</p>
-</div>
-</body>
+  </body>
 </html>

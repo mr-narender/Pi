@@ -128,7 +128,9 @@ export function applyPendingDeletions(
       [row.sessionPath, row.openCommand.resource].filter((value): value is string => Boolean(value))
     )
   );
-  const stillPending = pending.filter((entry) => idsInModel.has(entry.id) && now - entry.startedAt <= timeoutMs);
+  const stillPending = pending.filter(
+    (entry) => idsInModel.has(entry.id) && now - entry.startedAt <= timeoutMs
+  );
   if (stillPending.length === 0) {
     return { rows: model.rows, stillPending };
   }
@@ -167,17 +169,31 @@ export function decideSnapshotPush(
   state: SnapshotDecisionState
 ): SnapshotDecision {
   if (model.loading && state.hasShownRealData) {
-    return { push: false, lastIdentity: state.lastIdentity, hasShownRealData: state.hasShownRealData };
+    return {
+      push: false,
+      lastIdentity: state.lastIdentity,
+      hasShownRealData: state.hasShownRealData,
+    };
   }
   // Title IS part of identity (a rename or a late-arriving first-prompt
   // preview changes the visible text with the same row ids — must re-push).
   // Detail stays OUT: it embeds wall-clock-relative text ("5m ago"), the
   // original reload-flash bug this diff exists to prevent.
   const identity = JSON.stringify(
-    model.rows.map((row) => [row.id, row.active, row.sessionPath ?? '', row.favorite === true, row.title])
+    model.rows.map((row) => [
+      row.id,
+      row.active,
+      row.sessionPath ?? '',
+      row.favorite === true,
+      row.title,
+    ])
   );
   if (identity === state.lastIdentity && !model.loading) {
-    return { push: false, lastIdentity: state.lastIdentity, hasShownRealData: state.hasShownRealData };
+    return {
+      push: false,
+      lastIdentity: state.lastIdentity,
+      hasShownRealData: state.hasShownRealData,
+    };
   }
   return {
     push: true,

@@ -33,7 +33,8 @@ export class RemoteSharingService {
 
   /** Force-push the active (or first open) chat's snapshot to the remote sink. */
   public async pushActiveSnapshotToRemote(): Promise<void> {
-    const resource = this.host.getActiveContext()?.resource ?? this.host.hosts().next().value?.resource;
+    const resource =
+      this.host.getActiveContext()?.resource ?? this.host.hosts().next().value?.resource;
     if (resource) {
       await this.host.renderResource(resource, { active: true });
     }

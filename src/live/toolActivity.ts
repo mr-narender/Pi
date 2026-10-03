@@ -147,7 +147,14 @@ export function anchorNeedle(args: string | undefined): string | undefined {
     const parsed: unknown = JSON.parse(args);
     if (parsed && typeof parsed === 'object') {
       const record = parsed as Record<string, unknown>;
-      for (const key of ['oldString', 'old_str', 'newString', 'new_str', 'content', 'appendContent']) {
+      for (const key of [
+        'oldString',
+        'old_str',
+        'newString',
+        'new_str',
+        'content',
+        'appendContent',
+      ]) {
         const value = record[key];
         if (typeof value === 'string' && value.trim()) {
           const line = value

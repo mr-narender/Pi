@@ -21,15 +21,18 @@ test('chooseFollowViewColumn: chat owns the active group, but a normal files gro
 });
 
 test('chooseFollowViewColumn: chat owns the active group AND every other group is also chat-owned — beside, not reuse', () => {
-  assert.deepEqual(
-    chooseFollowViewColumn(true, [{ isChatOwned: true }, { isChatOwned: true }]),
-    { kind: 'beside' }
-  );
+  assert.deepEqual(chooseFollowViewColumn(true, [{ isChatOwned: true }, { isChatOwned: true }]), {
+    kind: 'beside',
+  });
 });
 
 test('chooseFollowViewColumn: picks the FIRST reusable non-chat group when several groups exist', () => {
   assert.deepEqual(
-    chooseFollowViewColumn(true, [{ isChatOwned: true }, { isChatOwned: false }, { isChatOwned: false }]),
+    chooseFollowViewColumn(true, [
+      { isChatOwned: true },
+      { isChatOwned: false },
+      { isChatOwned: false },
+    ]),
     { kind: 'reuse', groupIndex: 1 }
   );
 });

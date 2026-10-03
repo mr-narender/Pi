@@ -8,7 +8,8 @@ test('strips the exact reported case: color codes around an emoji + text', () =>
 });
 
 test('strips multiple color codes in one string', () => {
-  const input = '\x1b[38;5;241m○\x1b[39m \x1b[38;5;244mponytail: \x1b[39m\x1b[38;5;188m⚡ FULL\x1b[39m';
+  const input =
+    '\x1b[38;5;241m○\x1b[39m \x1b[38;5;244mponytail: \x1b[39m\x1b[38;5;188m⚡ FULL\x1b[39m';
   assert.equal(stripAnsiCodes(input), '○ ponytail: ⚡ FULL');
 });
 
