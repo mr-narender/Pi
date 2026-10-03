@@ -69,6 +69,8 @@ export interface ControllerState {
   workspaceFolderName: string;
   cwd: string;
   state: SessionState;
+  /** Native message_start identity; never persisted in the transcript. */
+  currentAssistant?: { message: JsonObject; generation: number; sessionFile?: string };
   messages: JsonObject[];
   entries: JsonObject[];
   tree: JsonObject[];
@@ -211,11 +213,15 @@ export interface WebviewSnapshot {
   bindingState?: 'current' | 'cached' | 'draft';
   uiMode: ChatUiMode;
   connectionState: ControllerState['connectionState'];
+  /** Runtime owner epoch for read-only catalog invalidation. */
+  catalogGeneration?: number;
   switchingSession?: boolean;
   workspaceFolderName: string;
   sessionName?: string;
   sessionId?: string;
   sessionFile?: string;
+  /** Projected native current message identity, absent for loaded/settled history. */
+  currentAssistantMessageId?: string;
   isStreaming: boolean;
   isCompacting: boolean;
   // Set when this chat is being shared to a remote device (drives the info bar).
@@ -234,6 +240,11 @@ export interface WebviewSnapshot {
   // value to overwrite the textarea; otherwise it preserves the live text and
   // caret while the user types.
   localCommandAck?: string;
+  localCommandReplacement?: {
+    originKey: string;
+    replacementKey: string;
+    frame: number;
+  };
   /** Correlated invoking text consumption, not native action success. */
   localCommandConsumed?: string;
   composerResetSeq?: number;

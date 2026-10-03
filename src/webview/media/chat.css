@@ -457,6 +457,22 @@ textarea.drop-target {
   font-size: 13px;
   color: var(--pi-tool-accent, var(--vscode-descriptionForeground));
 }
+.working-logo {
+  flex: 0 0 16px;
+  transform-origin: center;
+  animation: pi-working-breathe 2.4s ease-in-out infinite;
+}
+@keyframes pi-working-breathe {
+  0%,
+  100% {
+    opacity: 0.75;
+    transform: scale(0.94);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
 .working-glyph {
   display: inline-flex;
   min-width: 1.1em;
@@ -525,11 +541,19 @@ textarea.drop-target {
   }
 }
 @media (prefers-reduced-motion: reduce) {
+  .working-logo,
   .working[data-anim='dots'] .working-glyph::after,
   .working[data-anim='bars'] .working-glyph,
   .working[data-anim='dolphin'] .working-glyph {
     animation: none;
   }
+}
+
+body.vscode-reduce-motion .working-logo,
+body.vscode-reduce-motion .working[data-anim='dots'] .working-glyph::after,
+body.vscode-reduce-motion .working[data-anim='bars'] .working-glyph,
+body.vscode-reduce-motion .working[data-anim='dolphin'] .working-glyph {
+  animation: none;
 }
 
 /* #6 — scroll-to-latest button: a modern circular chevron pinned to the

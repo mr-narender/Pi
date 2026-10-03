@@ -1,6 +1,10 @@
 import * as vscode from 'vscode';
 import { assertNotCoreSlashPrompt } from '../commands/coreSlash';
-import { captureLocalCommandOrigin, handleLocalCommand } from '../commands/localCommand';
+import {
+  captureLocalCommandOrigin,
+  handleLocalCommand,
+  mergeLocalCommands,
+} from '../commands/localCommand';
 import { mergeLifecycleComposer } from '../commands/lifecycleCommand';
 import { getSettings } from '../config/settings';
 import { ensureTrustedForMutation } from '../security/trust';
@@ -217,6 +221,29 @@ export class ChatPanelProvider implements vscode.Disposable {
       return;
     }
     switch (parsed.type) {
+      case 'requestSlashCommands': {
+        const panel = this.panel;
+        const valid = captureLocalCommandOrigin(controller);
+        let commands = mergeLocalCommands([]);
+        let complete = false;
+        try {
+          commands = await controller.getPiCommands();
+          complete = controller.piCommandsReady;
+        } catch {
+          // Preserve local commands and allow bounded frontend recovery.
+        }
+        if (!valid() || this.panel !== panel || this.registry.getActive() !== controller) return;
+        await panel?.webview.postMessage({
+          type: 'slashCommands',
+          requestId: parsed.requestId,
+          complete,
+          items: commands.map((command) => ({
+            name: command.name,
+            description: command.description,
+          })),
+        });
+        return;
+      }
       case 'requestSend':
         await this.handleRequestSend(controller, parsed.command, parsed.submissionId);
         return;
@@ -402,9 +429,15 @@ export class ChatPanelProvider implements vscode.Disposable {
               );
             return selected;
           },
-          replace: async (_replacement, next) => {
+          replace: async (replacement, next, valid) => {
             const target = this.uiState.captureIdentity(controller);
+            const matches = () =>
+              valid() &&
+              controller.snapshot.state.sessionId === replacement.sessionId &&
+              controller.snapshot.state.sessionFile === replacement.sessionFile;
+            if (!matches()) return;
             const saved = await this.uiState.getComposerStateForIdentity(controller, target);
+            if (!matches()) return;
             await this.uiState.setComposerStateForIdentity(
               controller,
               target,

@@ -12,6 +12,11 @@ import {
   renderRichText,
 } from '../../src/webview/render';
 import type { WebviewSnapshot } from '../../src/state/types';
+import { JSDOM } from 'jsdom';
+import { createInitialControllerState } from '../../src/state/types';
+import { reduceEvent } from '../../src/state/reducer';
+import { createWebviewSnapshot } from '../../src/webview/model';
+import { createEmptyComposerState } from '../../src/webview/composer';
 
 function snapshot(overrides: Partial<WebviewSnapshot> = {}): WebviewSnapshot {
   return {
@@ -46,6 +51,156 @@ function snapshot(overrides: Partial<WebviewSnapshot> = {}): WebviewSnapshot {
     ...overrides,
   };
 }
+
+test('empty assistant start defers the shared reply row until the first streaming chunk', () => {
+  for (const surface of ['tab', 'sidebar'] as const) {
+    for (const connectionState of ['busy', 'ready'] as const) {
+      const user = { id: 'u', role: 'user', text: 'PING', attachments: [] };
+      const current = snapshot({
+        surface,
+        connectionState,
+        isStreaming: true,
+        currentAssistantMessageId: 'a',
+        messages: [user],
+      });
+      const dom = new JSDOM('<main></main>');
+      const root = dom.window.document.querySelector('main')!;
+      const render = (): void => {
+        root.innerHTML = renderChatApp(current);
+      };
+      render();
+      assert.equal(root.querySelectorAll('.message-user').length, 1);
+      assert.ok(root.querySelector('.working-logo'));
+      for (const text of ['', '  \n\t']) {
+        for (const blocks of [undefined, [], [{ kind: 'text' as const, text }]]) {
+          current.messages = [user, { id: 'a', role: 'assistant', text, blocks, attachments: [] }];
+          render();
+          assert.equal(root.querySelectorAll('.message-assistant').length, 0);
+          assert.equal(root.querySelectorAll('.message-role').length, 1);
+          assert.ok(root.querySelector('.working-logo'));
+          render();
+          assert.equal(root.querySelectorAll('.message-assistant').length, 0);
+        }
+      }
+      for (const text of ['  \nP', '  \nPONG']) {
+        current.messages = [
+          user,
+          { id: 'a', role: 'assistant', text, blocks: [{ kind: 'text', text }], attachments: [] },
+        ];
+        render();
+        assert.equal(current.isStreaming, true);
+        assert.equal(root.querySelector('.message-assistant .message-role')?.textContent, 'π');
+        assert.equal(root.querySelector('.js-stream-text')?.getAttribute('data-raw'), text);
+        assert.match(root.querySelector('.message-assistant')!.textContent!, /P/);
+      }
+      current.currentAssistantMessageId = 'a2';
+      current.messages.push(
+        { id: 'u2', role: 'user', text: 'again', attachments: [] },
+        { id: 'a2', role: 'assistant', text: '', blocks: [], attachments: [] }
+      );
+      render();
+      assert.equal(root.querySelectorAll('.message-assistant').length, 1);
+      assert.ok(root.querySelector('[data-mid="a"]'));
+      assert.equal(root.querySelector('[data-mid="a2"]'), null);
+      dom.window.close();
+    }
+  }
+});
+
+test('RPC start and text deltas project into a reply before message_end', () => {
+  let state = createInitialControllerState('workspace', '/tmp/workspace');
+  state.connectionState = 'ready';
+  state.messages = [{ id: 'u', role: 'user', content: 'PING' }];
+  const dom = new JSDOM('<main></main>');
+  const root = dom.window.document.querySelector('main')!;
+  const render = (): void => {
+    root.innerHTML = renderChatApp(
+      createWebviewSnapshot(state, 1, {
+        uiMode: 'simple',
+        composer: createEmptyComposerState(),
+        isTrusted: true,
+        folders: [],
+      })
+    );
+  };
+  state = reduceEvent(state, { type: 'agent_start' });
+  render();
+  assert.ok(root.querySelector('.message-user'));
+  assert.ok(root.querySelector('.working-logo'));
+  state = reduceEvent(state, {
+    type: 'message_start',
+    message: { id: 'a', role: 'assistant', content: [] },
+  });
+  render();
+  assert.equal(root.querySelector('.message-assistant'), null);
+  for (const event of [
+    { type: 'text_start', contentIndex: 0 },
+    { type: 'text_delta', contentIndex: 0, delta: '  ' },
+    { type: 'text_delta', contentIndex: 0, delta: 'P' },
+    { type: 'text_delta', contentIndex: 0, delta: 'ONG' },
+  ]) {
+    state = reduceEvent(state, { type: 'message_update', assistantMessageEvent: event });
+    render();
+    assert.equal(state.state.isStreaming, true);
+    if (event.delta === 'P' || event.delta === 'ONG') {
+      assert.equal(root.querySelector('.message-assistant .message-role')?.textContent, 'π');
+      assert.equal(
+        root.querySelector('.js-stream-text')?.getAttribute('data-raw'),
+        event.delta === 'P' ? '  P' : '  PONG'
+      );
+    } else {
+      assert.equal(root.querySelector('.message-assistant'), null);
+    }
+  }
+  dom.window.close();
+});
+
+test('non-text activity and empty error/abort/retry replies remain actionable', () => {
+  for (const blocks of [
+    [{ kind: 'thinking' as const, text: 'reasoning' }],
+    [
+      { kind: 'tool' as const, name: 'bash', callId: 'c' },
+      { kind: 'toolResult' as const, text: 'failed', callId: 'c', isError: true },
+      { kind: 'text' as const, text: '  ' },
+    ],
+    [{ kind: 'image' as const, mimeType: 'image/png' }],
+    [{ kind: 'text' as const, text: '**rich**' }],
+  ]) {
+    const html = renderChatApp(
+      snapshot({
+        connectionState: 'busy',
+        isStreaming: true,
+        messages: [{ id: 'a', role: 'assistant', text: '', blocks, attachments: [] }],
+      })
+    );
+    const dom = new JSDOM(html);
+    assert.ok(dom.window.document.querySelector('.message-assistant'));
+    assert.equal(dom.window.document.querySelector('.tl-response'), null);
+    dom.window.close();
+  }
+  for (const errorMessage of ['provider failed', 'Aborted']) {
+    const html = renderChatApp(
+      snapshot({
+        connectionState: 'busy',
+        isStreaming: true,
+        messages: [
+          { id: 'a', role: 'assistant', text: '', blocks: [], attachments: [], errorMessage },
+        ],
+      })
+    );
+    assert.match(html, new RegExp(errorMessage));
+    assert.match(html, /piRpcInternal.retryLast/);
+  }
+  const history = renderChatApp(
+    snapshot({
+      messages: [
+        { id: 'empty-history', role: 'assistant', text: ' \n', blocks: [], attachments: [] },
+      ],
+    })
+  );
+  assert.match(history, /assistant-empty/);
+  assert.match(history, /piRpcInternal.retryLast/);
+});
 
 test('renderChatApp renders a minimal composer + chat header (clean layout)', () => {
   const html = renderChatApp(snapshot());
@@ -421,6 +576,43 @@ test('working animation shows while busy with the chosen style; font overrides a
   assert.doesNotMatch(idleHtml, /class="working"/); // no animation when idle
 });
 
+test('working logo is decorative, shared across surfaces and gated by live connection state', () => {
+  for (const surface of ['tab', 'sidebar'] as const) {
+    for (const workingAnimation of [
+      'braille',
+      'earth',
+      'moon',
+      'dots',
+      'bars',
+      'dolphin',
+    ] as const) {
+      const html = renderChatApp(snapshot({ surface, connectionState: 'busy', workingAnimation }));
+      assert.match(html, /<svg class="working-logo"[^>]*aria-hidden="true"/);
+      assert.match(html, /role="status" aria-label="π is working"/);
+      assert.match(html, /class="working-label">Working/);
+      assert.match(html, new RegExp(`data-anim="${workingAnimation}"`));
+    }
+    assert.doesNotMatch(
+      renderChatApp(snapshot({ surface, connectionState: 'ready', isStreaming: false })),
+      /class="working-logo"|class="working-banner"/
+    );
+    assert.match(
+      renderChatApp(snapshot({ surface, connectionState: 'ready', isStreaming: true })),
+      /class="working-logo"/
+    );
+    for (const connectionState of [
+      'faulted',
+      'stopped',
+      'unconfigured',
+      'starting',
+      'unsupported',
+    ] as const) {
+      const html = renderChatApp(snapshot({ surface, connectionState, isStreaming: true }));
+      assert.doesNotMatch(html, /class="working-logo"|class="working-banner"/);
+    }
+  }
+});
+
 test('#5 usage chip renders in header when stats present', () => {
   const html = renderChatApp(
     snapshot({ usage: { totalTokens: 12345, contextPercent: 6, cost: 0.0234 } })
@@ -492,6 +684,7 @@ test('typewriter: streaming last assistant answer is marked js-stream-text with 
   const streaming = renderChatApp(
     snapshot({
       connectionState: 'busy',
+      currentAssistantMessageId: 'a',
       messages: [
         { id: 'u', role: 'user', text: 'hi', attachments: [] },
         {

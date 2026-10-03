@@ -56,7 +56,7 @@ export type WebviewInboundMessage =
   | { type: 'openDiff'; path: string }
   | { type: 'attachFile'; path: string }
   | { type: 'requestFileMentions'; query: string }
-  | { type: 'requestSlashCommands' }
+  | { type: 'requestSlashCommands'; requestId?: string }
   | { type: 'pasteImage'; data: string; mimeType: string }
   | { type: 'diag'; scope: string; detail: string }
   | { type: 'respondUi'; id: string; value?: string; confirmed?: boolean };
@@ -213,7 +213,10 @@ export function parseWebviewMessage(value: unknown): WebviewInboundMessage | und
         ? { type: 'requestFileMentions', query: record.query }
         : undefined;
     case 'requestSlashCommands':
-      return { type: 'requestSlashCommands' };
+      return {
+        type: 'requestSlashCommands',
+        ...(typeof record.requestId === 'string' ? { requestId: record.requestId } : {}),
+      };
     case 'pasteImage':
       return typeof record.data === 'string' && typeof record.mimeType === 'string'
         ? { type: 'pasteImage', data: record.data, mimeType: record.mimeType }

@@ -288,10 +288,12 @@ export function reduceEvent(state: ControllerState, event: RpcEvent): Controller
       next = {
         ...next,
         connectionState: 'busy',
+        currentAssistant: undefined,
         state: { ...next.state, isStreaming: true },
       };
       break;
     case 'agent_end':
+      next = { ...next, currentAssistant: undefined };
       // The agent has finished responding. Release the UI to 'ready' here rather
       // than waiting for `agent_settled`: post-turn work (e.g. memory_search /
       // qmd, summarization) can delay or drop `agent_settled`, which would leave
@@ -315,6 +317,7 @@ export function reduceEvent(state: ControllerState, event: RpcEvent): Controller
       }
       break;
     case 'agent_settled':
+      next = { ...next, currentAssistant: undefined };
       next = {
         ...next,
         connectionState: next.state.isCompacting ? 'busy' : 'ready',
@@ -322,10 +325,10 @@ export function reduceEvent(state: ControllerState, event: RpcEvent): Controller
       };
       break;
     case 'turn_start':
-      next = { ...next, connectionState: 'busy' };
+      next = { ...next, connectionState: 'busy', currentAssistant: undefined };
       break;
     case 'turn_end': {
-      next = { ...next, connectionState: 'busy' };
+      next = { ...next, connectionState: 'busy', currentAssistant: undefined };
       const message = asObject(event.message);
       if (message) {
         next = { ...next, messages: upsertMessage(next.messages, message) };
@@ -340,7 +343,14 @@ export function reduceEvent(state: ControllerState, event: RpcEvent): Controller
     }
     case 'message_start': {
       const message = asObject(event.message);
-      next = { ...next, messages: upsertMessage(next.messages, message) };
+      next = {
+        ...next,
+        messages: upsertMessage(next.messages, message),
+        currentAssistant:
+          message?.role === 'assistant'
+            ? { message, generation: next.generation, sessionFile: next.state.sessionFile }
+            : undefined,
+      };
       break;
     }
     case 'message_update': {
@@ -376,12 +386,20 @@ export function reduceEvent(state: ControllerState, event: RpcEvent): Controller
         } else {
           const messages = [...next.messages];
           messages[index] = merged;
-          next = { ...next, messages };
+          next = {
+            ...next,
+            messages,
+            currentAssistant:
+              next.currentAssistant && next.currentAssistant.message === stored
+                ? { ...next.currentAssistant, message: merged }
+                : next.currentAssistant,
+          };
         }
       }
       break;
     }
     case 'message_end': {
+      next = { ...next, currentAssistant: undefined };
       const message = asObject(event.message);
       next = { ...next, messages: upsertMessage(next.messages, message) };
       break;
@@ -568,6 +586,7 @@ export function resetControllerProjection(state: ControllerState): ControllerSta
   return {
     ...state,
     ...resetUi(state),
+    currentAssistant: undefined,
     messages: [],
     entries: [],
     tree: [],

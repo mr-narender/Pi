@@ -1,4 +1,5 @@
 import type { WebviewSnapshot } from '../state/types';
+import { isLiveWorking } from './working';
 import { renderChatActionsMenu } from './chatActionsMenu';
 import { friendlyApiStatus, parseProviderError } from './apiError';
 import { formatKey } from './codeFormat';
@@ -182,14 +183,18 @@ function renderAssistantBody(
   const hasAnyContent = blocks.some((block) =>
     block.kind === 'text' || block.kind === 'thinking' ? Boolean((block.text ?? '').trim()) : true
   );
-  if (!hasAnyContent && !streamingAnswer) {
-    const who = modelName ? `<strong>${escapeHtml(modelName)}</strong>` : 'The model';
+  if (!hasAnyContent) {
     if (message.errorMessage) {
       // Show the provider's REAL error (same text the TUI shows) — parsed into
       // a structured card when it matches the "provider/model failed: N {json}"
       // shape; falls back to the plain message untouched otherwise.
       return renderApiErrorCard(message.errorMessage);
     }
+    // No reply container until actual content; errors remain actionable even live.
+    if (streamingAnswer) {
+      return '';
+    }
+    const who = modelName ? `<strong>${escapeHtml(modelName)}</strong>` : 'The model';
     return `<div class="assistant-empty">${who} returned an empty response and the provider reported no error details. <button type="button" class="link-button" data-command="piRpcInternal.retryLast">Retry</button> · <button type="button" class="link-button" data-command="piRpcInternal.showLogs">Logs</button></div>`;
   }
   const hasProcess = blocks.some((block) => block.kind !== 'text');
@@ -200,7 +205,10 @@ function renderAssistantBody(
   let textRun: string[] = [];
   const flush = (): void => {
     if (textRun.length > 0) {
-      nodes.push({ kind: 'response', text: textRun.join('\n\n') });
+      const text = textRun.join('\n\n');
+      if (text.trim()) {
+        nodes.push({ kind: 'response', text });
+      }
       textRun = [];
     }
   };
@@ -1222,7 +1230,7 @@ function renderMessages(snapshot: WebviewSnapshot): string {
   const olderSentinel = snapshot.messageWindow?.hasOlder
     ? `<div id="older-sentinel" class="older-sentinel" role="status"><span class="spinner spinner-sm" aria-hidden="true"></span>Loading earlier messages…</div>`
     : '';
-  const busy = snapshot.connectionState === 'busy';
+  const busy = snapshot.isStreaming || snapshot.connectionState === 'busy';
   const modelName = modelLabel(snapshot);
   return (
     olderSentinel +
@@ -1232,7 +1240,11 @@ function renderMessages(snapshot: WebviewSnapshot): string {
         return renderMessageArticle(
           message,
           isLast,
-          busy && isLast && message.role === 'assistant',
+          busy &&
+            snapshot.bindingState !== 'cached' &&
+            snapshot.bindingState !== 'draft' &&
+            message.id === snapshot.currentAssistantMessageId &&
+            message.role === 'assistant',
           modelName
         );
       })
@@ -1261,6 +1273,10 @@ function renderMessageArticle(
   modelName = ''
 ): string {
   const role = message.role;
+  const body = renderMessageBody(message, streamingAnswer, modelName);
+  if (role === 'assistant' && !body && message.attachments.length === 0) {
+    return '';
+  }
   const roleLabel = role === 'assistant' ? 'π' : role === 'user' ? 'You' : '';
   const showCopy = role === 'assistant' || role === 'user';
   // (content-visibility virtualization removed — see chat.css note; it caused
@@ -1269,7 +1285,7 @@ function renderMessageArticle(
   return `
         <article class="message-card message-${escapeHtml(role)}" data-mid="${escapeHtml(message.id)}"${roleLabel ? ` aria-label="${roleLabel} said"` : ''}>
           ${roleLabel ? `<div class="message-role">${roleLabel}</div>` : ''}
-          ${renderMessageBody(message, streamingAnswer, modelName)}
+          ${body}
           ${message.attachments.length > 0 ? `<div class="detail-stack">${message.attachments.map((attachment) => renderAttachment(attachment)).join('')}</div>` : ''}
           ${showCopy ? `<div class="msg-actions">${role === 'user' ? `<button type="button" class="msg-edit" title="Edit &amp; restart from here" aria-label="Edit and restart the chat from this message">${EDIT_ICON}</button>` : ''}<button type="button" class="msg-copy" title="Copy message" aria-label="Copy message">${COPY_ICON}</button></div>` : ''}
         </article>`;
@@ -1426,7 +1442,7 @@ function chatFontStyle(snapshot: WebviewSnapshot): string {
 // A "working" animation shown while Pi generates (like the TUI spinner).
 function renderWorking(snapshot: WebviewSnapshot): string {
   const anim = snapshot.workingAnimation || 'braille';
-  return `<span class="working" data-anim="${escapeHtml(anim)}" role="status" aria-label="π is working"><span class="working-glyph"></span></span>`;
+  return `<span class="working" data-anim="${escapeHtml(anim)}" role="status" aria-label="π is working"><svg class="working-logo" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><g fill="currentColor"><path d="M3.2 5.4 L20 5.4 L18.4 8 L4.8 8 Z"/><rect x="6.1" y="8" width="2.7" height="10.6" rx="1.1"/><path d="M14.4 8 h2.7 v8.4 l-2.7 2.2 Z"/><path d="M9.8 19.2 l2.1 -1.6 l-2.1 -1.6 v3.2 Z" opacity="0.9"/></g></svg><span class="working-glyph" aria-hidden="true"></span></span>`;
 }
 
 // The working indicator sits as a banner at the top of the composer so it is
@@ -1550,7 +1566,7 @@ export function renderChatApp(snapshot: WebviewSnapshot): string {
             : ''
         }
         ${renderQueueTray(snapshot)}
-        ${busy ? renderWorkingBanner(snapshot) : ''}
+        ${isLiveWorking(snapshot) ? renderWorkingBanner(snapshot) : ''}
         <div class="composer-card${connecting ? ' is-connecting' : ''}" aria-busy="${connecting ? 'true' : 'false'}">
           <textarea id="${COMPOSER_FIELD_ID}" rows="3" placeholder="${connecting ? 'Connecting to π…' : 'Ask π to edit…'}" ${disabledAttr}>${escapeHtml(snapshot.draft)}</textarea>
           <div class="composer-actions" aria-label="Composer actions">

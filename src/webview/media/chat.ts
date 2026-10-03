@@ -5,7 +5,9 @@ declare function acquireVsCodeApi(): {
 };
 
 import morphdom from 'morphdom';
+import { isLiveWorking } from '../working';
 import { isCoreMenuCommand, parseCoreSlash } from '../../commands/coreSlash';
+import { mergeLocalCommands } from '../../commands/coreCatalog';
 import { deriveScreenChanges } from '../editToolPath';
 import type { WebviewSnapshot } from '../../state/types';
 import { installCustomTooltips } from './customTooltip';
@@ -67,8 +69,19 @@ function bindOnce<K extends keyof HTMLElementEventMap>(
 }
 
 // #6 — inline slash-command autocomplete state.
-let slashCommands: Array<{ name: string; description: string }> | null = null;
+const localSlashCommands = () =>
+  mergeLocalCommands([]).map((item) => ({
+    name: item.name as string,
+    description: item.description as string,
+  }));
+let slashCommands: Array<{ name: string; description: string }> = localSlashCommands();
 let slashRequested = false;
+let slashRequestId: string | undefined;
+let slashRequestSequence = 0;
+let slashAttempts = 0;
+let slashRetryAfter = 0;
+let slashComplete = false;
+let slashContext: string | undefined;
 let slashIndex = 0;
 let slashMatches: Array<{ name: string; description: string }> = [];
 
@@ -225,12 +238,14 @@ function updateSlashMenu(): void {
     closeSlashMenu();
     return;
   }
-  if (slashCommands === null) {
-    if (!slashRequested) {
-      slashRequested = true;
-      vscode.postMessage({ type: 'requestSlashCommands' });
-    }
-    return;
+  // Further retries require a later user/snapshot event and a cooldown; no polling.
+  if (!slashComplete && !slashRequested && slashAttempts >= 2 && Date.now() >= slashRetryAfter)
+    slashAttempts = 0;
+  if (!slashComplete && !slashRequested && slashAttempts < 2) {
+    slashRequested = true;
+    slashAttempts++;
+    slashRequestId = `${webviewGeneration}:catalog:${++slashRequestSequence}`;
+    vscode.postMessage({ type: 'requestSlashCommands', requestId: slashRequestId });
   }
   const query = (match[1] ?? '').toLowerCase();
   const next = slashCommands.filter((cmd) => cmd.name.toLowerCase().startsWith(query)).slice(0, 8);
@@ -602,7 +617,7 @@ function announce(text: string): void {
   });
 }
 function announceTurnState(snapshot: WebviewSnapshot): void {
-  const busy = snapshot.connectionState === 'busy' || snapshot.isStreaming === true;
+  const busy = isLiveWorking(snapshot);
   if (busy && !lastBusyAnnounced) {
     announce('Pi is working\u2026');
   } else if (!busy && lastBusyAnnounced) {
@@ -613,7 +628,7 @@ function announceTurnState(snapshot: WebviewSnapshot): void {
   lastBusyAnnounced = busy;
 }
 function prefersReducedMotion(): boolean {
-  return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
+  return workingMotion.matches || document.body.classList.contains('vscode-reduce-motion');
 }
 
 // While an inline message editor is open, suspend transcript re-renders. Every
@@ -636,6 +651,19 @@ function endInlineEdit(applyDeferred: boolean): void {
   }
 }
 
+function acceptsCommandReplacement(snapshot: WebviewSnapshot): boolean {
+  const replacement = snapshot.localCommandReplacement;
+  return !!(
+    pendingLocalCommand &&
+    replacement &&
+    snapshot.localCommandAck === pendingLocalCommand.id &&
+    replacement.originKey === pendingLocalCommand.sessionKey &&
+    replacement.replacementKey === commandSessionKey(snapshot) &&
+    replacement.frame === (pendingLocalCommand.frame ?? 0) &&
+    snapshot.composerResetSeq === replacement.frame + 1
+  );
+}
+
 function rejectsLocalCommandAck(snapshot: WebviewSnapshot): boolean {
   if (snapshot.localCommandAck === undefined) {
     return false;
@@ -644,7 +672,8 @@ function rejectsLocalCommandAck(snapshot: WebviewSnapshot): boolean {
   return (
     !pendingLocalCommand ||
     snapshot.localCommandAck !== pendingLocalCommand.id ||
-    pendingLocalCommand.sessionKey !== commandSessionKey(snapshot) ||
+    (pendingLocalCommand.sessionKey !== commandSessionKey(snapshot) &&
+      !acceptsCommandReplacement(snapshot)) ||
     editRevision !== pendingLocalCommand.revision ||
     !composer ||
     composer.value !== pendingLocalCommand.draft
@@ -668,8 +697,18 @@ function preserveComposerForRejectedAck(snapshot: WebviewSnapshot): WebviewSnaps
 }
 
 function render(snapshot: WebviewSnapshot): void {
+  if (workingDisposed) return;
   snapshot = preserveComposerForRejectedAck(snapshot);
   currentSnapshot = snapshot;
+  if (!isLiveWorking(snapshot)) {
+    if (flushTimer) {
+      clearTimeout(flushTimer);
+      flushTimer = undefined;
+    }
+    pendingSnapshot = undefined;
+    stopWorkingAnimation();
+    document.querySelector('.working-banner')?.remove();
+  }
   if (!root) {
     return;
   }
@@ -678,7 +717,7 @@ function render(snapshot: WebviewSnapshot): void {
     deferredSnapshot = snapshot;
     return;
   }
-  const isBusy = snapshot.connectionState === 'busy' || snapshot.isStreaming === true;
+  const isBusy = isLiveWorking(snapshot);
   const sig = structureSignature(snapshot);
 
   // Fast-path: only the answer text grew -> patch that ONE element and let the
@@ -736,7 +775,12 @@ function render(snapshot: WebviewSnapshot): void {
 let scrubbedForSeq: number | undefined;
 
 function renderNow(snapshot: WebviewSnapshot): void {
-  if (pendingLocalCommand && pendingLocalCommand.sessionKey !== commandSessionKey(snapshot))
+  if (workingDisposed) return;
+  if (
+    pendingLocalCommand &&
+    pendingLocalCommand.sessionKey !== commandSessionKey(snapshot) &&
+    !acceptsCommandReplacement(snapshot)
+  )
     pendingLocalCommand = undefined;
   if (
     pendingLocalCommand &&
@@ -805,7 +849,8 @@ function renderNow(snapshot: WebviewSnapshot): void {
   if (
     authoritativeReset &&
     pendingLocalCommand &&
-    pendingLocalCommand.sessionKey === commandSessionKey(snapshot)
+    (pendingLocalCommand.sessionKey === commandSessionKey(snapshot) ||
+      acceptsCommandReplacement(snapshot))
   ) {
     // A local-command ack must not overwrite input typed while its picker was
     // open, even when that input's host-side draft message is still in flight.
@@ -1065,6 +1110,14 @@ function renderNow(snapshot: WebviewSnapshot): void {
         ) {
           vscode.postMessage({ type: 'executeCommand', command: 'piRpc.cycleThinkingLevel' });
         }
+        return;
+      }
+      // A held activation key is not fresh intent, even after consumption
+      // releases the composer while model discovery or a picker is still pending.
+      // Gate before completions and follow-once mode changes; keep IME and
+      // Shift+Enter native behavior, and allow the next nonrepeat chip-only send.
+      if (event.key === 'Enter' && event.repeat && !event.shiftKey && !event.isComposing) {
+        event.preventDefault();
         return;
       }
       // #6/#9 — slash and mention menu navigation take priority when open.
@@ -2237,6 +2290,11 @@ const WORKING_FRAMES: Record<string, string[]> = {
 // don't reset/freeze it. The frame index persists across re-renders.
 let workingTimer: ReturnType<typeof setInterval> | undefined;
 let workingFrame = 0;
+let workingDisposed = false;
+const workingMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+workingMotion.addEventListener('change', startWorkingAnimation);
+const workingClassObserver = new MutationObserver(startWorkingAnimation);
+workingClassObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] });
 function stopWorkingAnimation(): void {
   if (workingTimer) {
     clearInterval(workingTimer);
@@ -2245,7 +2303,7 @@ function stopWorkingAnimation(): void {
 }
 function startWorkingAnimation(): void {
   const container = document.querySelector('.working');
-  if (!container) {
+  if (workingDisposed || !isLiveWorking(currentSnapshot) || !container) {
     stopWorkingAnimation();
     return;
   }
@@ -2266,12 +2324,24 @@ function startWorkingAnimation(): void {
   const paint = (): void => {
     const glyph = document.querySelector('.working .working-glyph');
     if (glyph) {
-      glyph.textContent = frames[workingFrame % frames.length] ?? '';
+      glyph.textContent = frames[prefersReducedMotion() ? 0 : workingFrame % frames.length] ?? '';
     }
   };
   paint();
+  if (prefersReducedMotion()) {
+    stopWorkingAnimation();
+    return;
+  }
   if (!workingTimer) {
     workingTimer = setInterval(() => {
+      if (
+        workingDisposed ||
+        !isLiveWorking(currentSnapshot) ||
+        !document.querySelector('.working')
+      ) {
+        stopWorkingAnimation();
+        return;
+      }
       workingFrame = (workingFrame + 1) % 1_000_000;
       paint();
     }, 110);
@@ -2383,7 +2453,17 @@ function applyFocus(): void {
   focusElement(COMPOSER_FIELD_ID);
 }
 
-window.addEventListener('beforeunload', persistViewState);
+window.addEventListener('beforeunload', () => {
+  persistViewState();
+  workingDisposed = true;
+  if (flushTimer) clearTimeout(flushTimer);
+  flushTimer = undefined;
+  pendingSnapshot = undefined;
+  deferredSnapshot = undefined;
+  stopWorkingAnimation();
+  workingMotion.removeEventListener('change', startWorkingAnimation);
+  workingClassObserver.disconnect();
+});
 
 // #8 — Cmd/Ctrl+K opens the Pi command palette (quick actions).
 window.addEventListener('keydown', (event) => {
@@ -2434,7 +2514,17 @@ window.addEventListener(
       return;
     }
     if (event.data?.type === 'snapshot') {
-      render(event.data.snapshot);
+      const snapshot = event.data.snapshot as WebviewSnapshot;
+      const context = `${commandSessionKey(snapshot)}:${snapshot.bindingState}:${snapshot.catalogGeneration}:${['ready', 'busy'].includes(snapshot.connectionState)}`;
+      if (slashContext !== undefined && slashContext !== context) {
+        slashCommands = localSlashCommands();
+        slashRequested = false;
+        slashRequestId = undefined;
+        slashAttempts = 0;
+        slashComplete = false;
+      }
+      slashContext = context;
+      render(snapshot);
       // Re-evaluate the menus after a re-render (composer text is preserved).
       updateSlashMenu();
       updateMentionMenu();
@@ -2452,9 +2542,19 @@ window.addEventListener(
     } else if (event.data?.type === 'slashCommands') {
       const payload = event.data as unknown as {
         items?: Array<{ name: string; description: string }>;
+        requestId?: string;
+        complete?: boolean;
       };
-      slashCommands = Array.isArray(payload.items) ? payload.items : [];
+      if (payload.requestId !== undefined && payload.requestId !== slashRequestId) return;
+      slashCommands = mergeLocalCommands(Array.isArray(payload.items) ? payload.items : []).map(
+        (item) => ({ name: item.name as string, description: item.description as string })
+      );
+      slashComplete = payload.complete !== false;
+      if (!slashComplete) slashRetryAfter = Date.now() + 1000;
+      // Do not retry from the reply callback: only subsequent input/readiness events.
+      // Keep this request latched while painting so one failed reply cannot loop.
       updateSlashMenu();
+      slashRequested = false;
     }
   }
 );

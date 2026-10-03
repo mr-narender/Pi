@@ -418,11 +418,24 @@ export function createWebviewSnapshot(
     title: state.title,
     uiMode: extra.uiMode,
     connectionState: state.connectionState,
+    catalogGeneration: state.generation,
     switchingSession: state.switchingSession === true,
     workspaceFolderName: state.workspaceFolderName,
     sessionName: typeof state.state.sessionName === 'string' ? state.state.sessionName : undefined,
     sessionId: typeof state.state.sessionId === 'string' ? state.state.sessionId : undefined,
     sessionFile: typeof state.state.sessionFile === 'string' ? state.state.sessionFile : undefined,
+    currentAssistantMessageId:
+      state.currentAssistant &&
+      state.currentAssistant.generation === state.generation &&
+      state.currentAssistant.sessionFile === state.state.sessionFile &&
+      !state.switchingSession &&
+      state.messages.includes(state.currentAssistant.message)
+        ? toItem(
+            state.currentAssistant.message,
+            state.messages.indexOf(state.currentAssistant.message),
+            state.cwd
+          ).id
+        : undefined,
     isStreaming: state.state.isStreaming === true,
     isCompacting: state.state.isCompacting === true,
     messageCount:
@@ -440,6 +453,7 @@ export function createWebviewSnapshot(
     queue: state.queue,
     draft: extra.composer.draft,
     localCommandAck: extra.composer.localCommandAck,
+    localCommandReplacement: extra.composer.localCommandReplacement,
     localCommandConsumed: extra.composer.localCommandConsumed,
     composerResetSeq: extra.composer.composerResetSeq ?? 0,
     retry: state.retry
