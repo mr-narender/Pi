@@ -25,6 +25,7 @@ CLAUDE.md
 package-lock.json
 coverage/**
 .tmp/**
+Pi.tmp/**
 *.log
 **/.DS_Store
 graphify-out/**

@@ -5,13 +5,13 @@
 - Defer the current live empty assistant reply until meaningful content arrives;
   retain completed empty history and its Retry/Logs controls. Native assistant
   identity stays internal except the intended message ID; working animation remains.
-- Independently verified 557 unit and 345 integration passes (one inherited archive
-  skip), FIRST 11 guards, 52 targeted and four owned adversarial cases. Preserve
-  six animation choices/current preference, new π, follow-off and notifications.
-- Prepared as an unpublished prerelease candidate; historical test counts above
-  are not fresh release approval or physical activation proof. SDK advisory and
-  fingerprint acceptance, archive discovery, Extension Host and manual visual
-  qualification remain open. Preserve original 0.2.16–0.2.19 artifacts.
+- Preserve RPC source attribution for queued native messages, six animation
+  choices/current preference, new π, follow-off and notifications.
+- Locally accepted Marketplace prerelease candidate: 565 unit and 345 integration
+  passes. One optional legacy archived-workflow discovery test remains skipped
+  because its peer range excludes SDK 1.0. No full native parity claim.
+- Not yet published. Pi is an external, user-managed runtime dependency; its SDK
+  advisory is not bundled VSIX code. Preserve original 0.2.16–0.2.19 artifacts.
 
 ## 0.2.19 — LOCAL ONLY Working Animation menu test preview
 
