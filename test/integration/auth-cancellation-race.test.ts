@@ -104,10 +104,19 @@ for (const route of ['editor', 'sidebar'])
           );
           let generation = 1;
           const calls: any[] = [];
+          let observeApplied!: () => void;
+          const appliedObservation = new Promise<void>((resolve) => {
+            observeApplied = resolve;
+          });
           const client = {
             engineCommand: async (type: string, _origin: any, payload: any) => {
               calls.push({ type, payload });
-              return command(type, payload);
+              const result = await command(type, payload);
+              // Keep the late-store case in the pre-observation cancellation
+              // window now that successful callbacks correctly settle the GUI.
+              if (reason === 'late' && type === 'auth_poll' && result?.status === 'applied')
+                await appliedObservation;
+              return result;
             },
           };
           const controller: any = {
@@ -171,6 +180,7 @@ for (const route of ['editor', 'sidebar'])
               'native callback already committed'
             );
             cancel();
+            observeApplied();
           } else if (reason === 'cancel') cancel();
           else if (reason === 'native') await command('cancel_native');
           else generation++;

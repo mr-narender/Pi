@@ -62,9 +62,11 @@ for (const route of ['editor', 'sidebar']) {
           run: async () => {
             calls++;
             gate?.();
+            if (!cancelled && captured === generation)
+              controller.snapshot.state = { sessionId: 'next', sessionFile: '/owned/next' };
             return {
               cancelled,
-              replacementIdentity: { sessionId: 'next' },
+              replacementIdentity: { sessionId: 'next', sessionFile: '/owned/next' },
               editorText: 'fork text',
               valid: () => captured === generation,
             };

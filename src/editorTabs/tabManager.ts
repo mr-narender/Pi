@@ -4,7 +4,11 @@ import { existsSync } from 'node:fs';
 import { getSettings, tabTitleSettings } from '../config/settings';
 import { pickChatModel } from '../commands/modelPicker';
 import { assertNotCoreSlashPrompt } from '../commands/coreSlash';
-import { captureLocalCommandOrigin, handleLocalCommand } from '../commands/localCommand';
+import {
+  captureLocalCommandOrigin,
+  handleLocalCommand,
+  mergeLocalCommands,
+} from '../commands/localCommand';
 import { mergeLifecycleComposer } from '../commands/lifecycleCommand';
 import { AgentFollowService } from '../live/agentFollow';
 import { CodeFormatService } from './codeFormatService';
@@ -156,6 +160,7 @@ const WEBVIEW_COMMAND_ALLOWLIST = new Set<string>([
   'piRpc.manageSkills',
   'piRpc.managePrompts',
   'piRpc.manageAgentInstructions',
+  'piRpcInternal.setWorkingAnimation',
 ]);
 
 /** Common surface for chat hosts: editor-tab panels AND the sidebar view.
@@ -1208,7 +1213,7 @@ export class ChatTabManager implements vscode.Disposable {
       case 'requestFileMentions':
         return this.handleRequestFileMentions(host, context, parsed.query);
       case 'requestSlashCommands':
-        return this.handleRequestSlashCommands(host, context);
+        return this.handleRequestSlashCommands(host, context, parsed.requestId);
       case 'insertCode':
         return this.insertCodeIntoEditor(parsed.text);
       case 'newFileFromCode':
@@ -1332,20 +1337,35 @@ export class ChatTabManager implements vscode.Disposable {
     host.post({ type: 'fileMentions', items });
   }
 
-  private async handleRequestSlashCommands(host: ChatHost, context: ChatTabContext): Promise<void> {
-    // #6 — supply the slash-command list for inline composer autocomplete.
+  private async handleRequestSlashCommands(
+    host: ChatHost,
+    context: ChatTabContext,
+    requestId?: string
+  ): Promise<void> {
+    const valid = captureLocalCommandOrigin(context.controller);
+    const target = JSON.stringify(context.target);
+    let commands = mergeLocalCommands([]);
+    let complete = false;
     try {
-      const commands = await context.controller.getPiCommands();
-      const items = commands
-        .map((command) => ({
-          name: typeof command.name === 'string' ? command.name : '',
-          description: typeof command.description === 'string' ? command.description : '',
-        }))
-        .filter((command) => command.name.length > 0);
-      host.post({ type: 'slashCommands', items });
+      commands = await context.controller.getPiCommands();
+      complete = context.controller.piCommandsReady;
     } catch {
-      host.post({ type: 'slashCommands', items: [] });
+      // A transient RPC failure is partial, not an authoritative empty catalog.
     }
+    const current = this.contextForResource(host.resource);
+    if (
+      !valid() ||
+      current?.controller !== context.controller ||
+      JSON.stringify(current.target) !== target
+    )
+      return;
+    const items = commands
+      .map((command) => ({
+        name: typeof command.name === 'string' ? command.name : '',
+        description: typeof command.description === 'string' ? command.description : '',
+      }))
+      .filter((command) => command.name.length > 0);
+    host.post({ type: 'slashCommands', items, complete, requestId });
   }
 
   private async handleToggleFollow(resource: vscode.Uri): Promise<void> {
@@ -1381,6 +1401,8 @@ export class ChatTabManager implements vscode.Disposable {
       // has focused another tab before asynchronous RPC work finishes.
       if (command === 'piRpc.cycleThinkingLevel') {
         await controller.cycleThinkingLevel();
+      } else if (command === 'piRpcInternal.setWorkingAnimation') {
+        await vscode.commands.executeCommand(command);
       } else {
         await vscode.commands.executeCommand(command, argument);
       }
@@ -1972,15 +1994,22 @@ export class ChatTabManager implements vscode.Disposable {
               );
             return selected;
           },
-          replace: async (_identity, next) => {
+          replace: async (identity, next, valid) => {
             const target = currentTargetForController(origin.controller);
+            const matches = () =>
+              valid() &&
+              origin.controller.snapshot.state.sessionId === identity.sessionId &&
+              origin.controller.snapshot.state.sessionFile === identity.sessionFile;
+            if (!matches()) return;
             const saved = await this.uiState.getComposerStateForIdentity(origin.controller, target);
+            if (!matches()) return;
             await this.uiState.setComposerStateForIdentity(
               origin.controller,
               target,
               mergeLifecycleComposer(saved, next),
               { expectedCommandRevision: saved.commandRevision ?? 0 }
             );
+            if (!matches()) return;
             await this.promoteResource(resource, buildChatUri(target), origin.controller);
           },
           close: async () => {

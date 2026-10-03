@@ -19,6 +19,12 @@ export interface RpcClientOptions {
   longTimeoutMs: number;
 }
 
+/** Local-only receipt: never inferred from a remote response or error. */
+export interface LifecycleDispatch {
+  attempted: boolean;
+  valid: () => boolean;
+}
+
 export class RpcClient {
   private counter = 0;
 
@@ -75,8 +81,16 @@ export class RpcClient {
   public async replaceChat(
     name: 'new' | 'resume' | 'fork' | 'clone' | 'import',
     target: string | undefined,
-    origin: JsonObject
+    origin: JsonObject,
+    dispatch?: LifecycleDispatch
   ): Promise<JsonObject | undefined> {
+    if (dispatch) dispatch.attempted = false;
+    const caps = await this.command('get_capabilities', {}, 'short');
+    if (caps?.protocol !== 1 || caps.lifecycleProjection !== 1)
+      throw new Error(
+        'This backend has no coherent lifecycle projection capability; nothing was applied.'
+      );
+    if (dispatch && !dispatch.valid()) throw new Error('The originating chat changed.');
     return this.command(
       name === 'new'
         ? 'new_session'
@@ -92,11 +106,16 @@ export class RpcClient {
         entryId: name === 'fork' ? target : undefined,
         sessionPath: name === 'resume' ? target : undefined,
       },
-      'long'
+      'long',
+      dispatch
     );
   }
 
-  public async closeChat(origin?: JsonObject): Promise<JsonObject | undefined> {
+  public async closeChat(
+    origin?: JsonObject,
+    dispatch?: LifecycleDispatch
+  ): Promise<JsonObject | undefined> {
+    if (dispatch) dispatch.attempted = false;
     const caps = await this.command('get_capabilities', {}, 'short');
     if (
       caps?.protocol !== 1 ||
@@ -106,7 +125,8 @@ export class RpcClient {
       throw new Error(
         'This backend has no acknowledged per-chat disposal API; chat was not closed.'
       );
-    return this.command('close_chat', { origin, guiLifecycle: !!origin }, 'long');
+    if (dispatch && !dispatch.valid()) throw new Error('The originating chat changed.');
+    return this.command('close_chat', { origin, guiLifecycle: !!origin }, 'long', dispatch);
   }
 
   /** GUI SDK bridge, never sent optimistically to stock RPC. */
@@ -394,8 +414,10 @@ export class RpcClient {
   private async command<T extends JsonObject | undefined>(
     type: RpcCommandType,
     extra: JsonObject,
-    timeoutClass: 'short' | 'long'
+    timeoutClass: 'short' | 'long',
+    dispatch?: LifecycleDispatch
   ): Promise<T> {
+    if (dispatch && !dispatch.valid()) throw new Error('The originating chat changed.');
     const mutation = new Set<string>([
       'prompt',
       'steer',
@@ -419,6 +441,8 @@ export class RpcClient {
     const timeoutMs =
       timeoutClass === 'short' ? this.options.shortTimeoutMs : this.options.longTimeoutMs;
     const request = { type, id, ...extra };
+    // This is the first point where the native mutation can have been sent.
+    if (dispatch) dispatch.attempted = true;
     const pending = this.transport.request(request);
     let timer: NodeJS.Timeout | undefined;
     try {

@@ -14,7 +14,7 @@ export interface LifecycleSurface {
   engineIntent?: ReturnType<SessionController['captureEngineIntent']>;
   /** Captured resource/controller/panel only; NOT a globally relaxed identity guard. */
   valid(): boolean;
-  replace(identity: JsonObject, state: ComposerSessionState): Promise<void>;
+  replace(identity: JsonObject, state: ComposerSessionState, valid: () => boolean): Promise<void>;
   close(): Promise<void>;
   resume(): Promise<string | undefined>;
 }
@@ -49,7 +49,10 @@ export async function handleLifecycleCommand(
   originValid: () => boolean,
   surface?: LifecycleSurface
 ): Promise<void> {
-  const revision = initial.commandRevision ?? 0;
+  let revision = initial.commandRevision ?? 0;
+  const origin = controller.snapshot?.state;
+  const originKey = JSON.stringify([origin?.sessionFile, origin?.sessionId]);
+  const frame = initial.composerResetSeq ?? 0;
   const draft = isCoreMenuCommand(initial.draft) ? '' : initial.draft;
   // Captured native client, generation, session, leaf BEFORE the first UI await.
   let intent: ReturnType<SessionController['captureLifecycleIntent']> | undefined;
@@ -67,8 +70,15 @@ export async function handleLifecycleCommand(
       throw new Error(
         'Remove or save unsent attachments before closing this Pi chat. Nothing was discarded.'
       );
-    await consumeCommand(initial, write, render, valid, submissionId);
+    const consumed = await consumeCommand(initial, write, render, valid, submissionId);
     if (!valid()) return;
+    if (consumed) {
+      const owned = await read();
+      if (!valid() || owned.draft !== '' || owned.localCommandConsumed !== submissionId) return;
+      const consumedRevision = owned.commandRevision ?? 0;
+      if (consumedRevision !== revision && consumedRevision !== revision + 1) return;
+      revision = consumedRevision;
+    }
     let target: string | undefined;
     if (operation.name === 'import') {
       if (!vscode.workspace.isTrusted || controller.folder.uri.scheme !== 'file')
@@ -115,6 +125,7 @@ export async function handleLifecycleCommand(
     if (unchanged) {
       current.draft = '';
       current.localCommandAck = submissionId;
+      current.localCommandReplacement = undefined;
       current.composerResetSeq = (current.composerResetSeq ?? 0) + 1;
       current.recovery = undefined;
       await write(current, revision);
@@ -125,8 +136,21 @@ export async function handleLifecycleCommand(
       if (!unchanged || current.pendingImages.length || current.pendingContextItems.length) return;
       await surface.close();
     } else {
-      const next = { ...current, draft: unchanged ? (result.editorText ?? '') : current.draft };
-      await surface.replace(result.replacementIdentity!, next);
+      const replacement = result.replacementIdentity!;
+      const next = {
+        ...current,
+        draft: unchanged ? (result.editorText ?? '') : current.draft,
+        localCommandAck: unchanged ? submissionId : undefined,
+        localCommandReplacement:
+          unchanged && submissionId
+            ? {
+                originKey,
+                replacementKey: JSON.stringify([replacement.sessionFile, replacement.sessionId]),
+                frame,
+              }
+            : undefined,
+      };
+      await surface.replace(replacement, next, () => result.valid() && surface.valid());
       await render();
     }
   } catch (error) {

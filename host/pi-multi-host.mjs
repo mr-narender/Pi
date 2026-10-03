@@ -180,9 +180,50 @@ async function createSessionRunner(sessionKey, runtimeHost, hostEmit) {
   const output = (obj) => {
     hostEmit(sessionKey, obj);
   };
-  const success = (id, command, data) => {
+  // One synchronous native capture while lifecyclePending owns the runner.
+  // Clone immediately: public getter arrays must not remain live across response I/O.
+  const captureReplacementProjection = (origin) => {
+    const captured = session;
+    const manager = captured.sessionManager;
+    const identity = {
+      sessionId: captured.sessionId,
+      sessionFile: captured.sessionFile,
+      leafId: manager.getLeafId(),
+    };
+    const projection = JSON.parse(
+      JSON.stringify({
+        contract: 1,
+        origin,
+        identity,
+        state: readState(),
+        entries: manager.getEntries(),
+        messages: captured.messages,
+      })
+    );
+    if (
+      session !== captured ||
+      session.sessionManager !== manager ||
+      session.sessionId !== identity.sessionId ||
+      session.sessionFile !== identity.sessionFile ||
+      manager.getLeafId() !== identity.leafId ||
+      projection.state.sessionId !== identity.sessionId ||
+      projection.state.sessionFile !== identity.sessionFile
+    )
+      throw new Error('LIFECYCLE_PROJECTION_CHANGED');
+    return { replacementIdentity: projection.identity, replacementProjection: projection };
+  };
+  const success = (id, command, data, origin) => {
     if (data === undefined) {
       return { id, type: 'response', command, success: true };
+    }
+    if (
+      ['new_session', 'switch_session', 'import_session', 'fork', 'clone'].includes(command) &&
+      data.cancelled !== true
+    ) {
+      data = {
+        ...data,
+        ...captureReplacementProjection(origin),
+      };
     }
     return { id, type: 'response', command, success: true, data };
   };
@@ -586,6 +627,27 @@ async function createSessionRunner(sessionKey, runtimeHost, hostEmit) {
       if (replacing) lifecyclePending = false;
     }
   };
+  const readState = () => ({
+    model: modelDto(session.model),
+    thinkingLevel: session.thinkingLevel,
+    availableThinkingLevels: session.getAvailableThinkingLevels(),
+    isStreaming: session.isStreaming,
+    isCompacting: session.isCompacting || compactPending,
+    isIdle:
+      session.isIdle && !defaultsPending && !compactPending && !enginePending && !recoveryRequired,
+    recoveryRequired,
+    isBashRunning: session.isBashRunning,
+    hasPendingBashMessages: session.hasPendingBashMessages,
+    isRetrying: session.isRetrying,
+    steeringMode: session.steeringMode,
+    followUpMode: session.followUpMode,
+    sessionFile: session.sessionFile,
+    sessionId: session.sessionId,
+    sessionName: session.sessionName,
+    autoCompactionEnabled: session.autoCompactionEnabled,
+    messageCount: session.messages.length,
+    pendingMessageCount: session.pendingMessageCount,
+  });
   const dispatchCommand = async (command) => {
     const id = command.id;
     if (
@@ -658,37 +720,13 @@ async function createSessionRunner(sessionKey, runtimeHost, hostEmit) {
         if (!result.cancelled) {
           await rebindSession();
         }
-        return success(id, 'new_session', result);
+        return success(id, 'new_session', result, command.origin);
       }
       // =================================================================
       // State
       // =================================================================
       case 'get_state': {
-        const state = {
-          model: modelDto(session.model),
-          thinkingLevel: session.thinkingLevel,
-          availableThinkingLevels: session.getAvailableThinkingLevels(),
-          isStreaming: session.isStreaming,
-          isCompacting: session.isCompacting || compactPending,
-          isIdle:
-            session.isIdle &&
-            !defaultsPending &&
-            !compactPending &&
-            !enginePending &&
-            !recoveryRequired,
-          recoveryRequired,
-          isBashRunning: session.isBashRunning,
-          hasPendingBashMessages: session.hasPendingBashMessages,
-          isRetrying: session.isRetrying,
-          steeringMode: session.steeringMode,
-          followUpMode: session.followUpMode,
-          sessionFile: session.sessionFile,
-          sessionId: session.sessionId,
-          sessionName: session.sessionName,
-          autoCompactionEnabled: session.autoCompactionEnabled,
-          messageCount: session.messages.length,
-          pendingMessageCount: session.pendingMessageCount,
-        };
+        const state = readState();
         return success(id, 'get_state', state);
       }
       // =================================================================
@@ -696,6 +734,7 @@ async function createSessionRunner(sessionKey, runtimeHost, hostEmit) {
       // =================================================================
       case 'get_capabilities':
         return success(id, command.type, {
+          lifecycleProjection: 1,
           protocol: 1,
           sdkVersion: metadata.version,
           closeChat: true,
@@ -962,21 +1001,26 @@ async function createSessionRunner(sessionKey, runtimeHost, hostEmit) {
       case 'import_session': {
         const result = await importCommands.run(command.nonce);
         if (!result.cancelled) await rebindSession();
-        return success(id, command.type, result);
+        return success(id, command.type, result, command.origin);
       }
       case 'switch_session': {
         const result = await runtimeHost.switchSession(command.sessionPath);
         if (!result.cancelled) {
           await rebindSession();
         }
-        return success(id, 'switch_session', result);
+        return success(id, 'switch_session', result, command.origin);
       }
       case 'fork': {
         const result = await runtimeHost.fork(command.entryId);
         if (!result.cancelled) {
           await rebindSession();
         }
-        return success(id, 'fork', { text: result.selectedText, cancelled: result.cancelled });
+        return success(
+          id,
+          'fork',
+          { text: result.selectedText, cancelled: result.cancelled },
+          command.origin
+        );
       }
       case 'clone': {
         const leafId = session.sessionManager.getLeafId();
@@ -987,7 +1031,7 @@ async function createSessionRunner(sessionKey, runtimeHost, hostEmit) {
         if (!result.cancelled) {
           await rebindSession();
         }
-        return success(id, 'clone', { cancelled: result.cancelled });
+        return success(id, 'clone', { cancelled: result.cancelled }, command.origin);
       }
       case 'get_fork_messages': {
         const messages = session.getUserMessagesForForking();

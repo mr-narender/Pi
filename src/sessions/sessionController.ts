@@ -158,6 +158,11 @@ export class SessionController implements vscode.Disposable {
     const stableHost = () =>
       this.supervisor.currentClient === client && this.generation === generation;
     const valid = () =>
+      typeof origin.sessionId === 'string' &&
+      origin.sessionId.length > 0 &&
+      (origin.sessionFile === undefined ||
+        (typeof origin.sessionFile === 'string' && origin.sessionFile.length > 0)) &&
+      (leaf === null || (typeof leaf === 'string' && leaf.length > 0)) &&
       stableHost() &&
       this.state.state.sessionId === origin.sessionId &&
       this.state.state.sessionFile === origin.sessionFile &&
@@ -219,12 +224,17 @@ export class SessionController implements vscode.Disposable {
         if (!surfaceValid() || !valid()) throw new Error('The originating chat changed.');
         this.assertNoManualCompaction();
         this.lifecyclePending = true;
-        let nativeAttempted = false;
+        const dispatch = {
+          // Unknown implementations remain conservative; RpcClient clears this
+          // before negotiation and sets it only at transport dispatch.
+          attempted: false,
+          valid: () => surfaceValid() && valid(),
+        };
         try {
           if (name === 'resume')
             target = await canonicalizeSessionPath(this.folder.uri.fsPath, target!);
           if (!surfaceValid() || !valid()) throw new Error('The originating chat changed.');
-          nativeAttempted = true;
+          dispatch.attempted = true;
           const capturedIdentity = {
             sessionId: origin.sessionId,
             sessionFile: origin.sessionFile,
@@ -232,29 +242,78 @@ export class SessionController implements vscode.Disposable {
           };
           const result =
             name === 'quit'
-              ? await client!.closeChat(capturedIdentity)
-              : await client!.replaceChat(name, target, capturedIdentity);
+              ? await client!.closeChat(capturedIdentity, dispatch)
+              : await client!.replaceChat(name, target, capturedIdentity, dispatch);
           if (!result || result.cancelled === true) return { cancelled: true, valid };
-          if (!stableHost()) throw new Error('The originating native host changed.');
+          if (!valid() || !surfaceValid()) throw new Error('The originating native host changed.');
           if (name === 'quit') {
             if (result.closed !== true)
               throw new Error('Native chat disposal was not acknowledged.');
             return { cancelled: false, valid: stableHost };
           }
-          const replacement = await client!.getState();
-          if (!stableHost() || !replacement?.sessionId)
-            throw new Error('Native replacement identity unavailable.');
+          const expected = result.replacementIdentity as JsonObject | undefined;
+          const projection = result.replacementProjection as JsonObject | undefined;
+          const identity = projection?.identity as JsonObject | undefined;
+          const capturedOrigin = projection?.origin as JsonObject | undefined;
+          const replacement = projection?.state as SessionState | undefined;
+          // The managed host captures all public getters synchronously under its
+          // lifecycle reservation and detaches their data before response I/O.
+          // No independent reads (even repeated leaf reads permit branch ABA).
+          if (
+            !valid() ||
+            !surfaceValid() ||
+            projection?.contract !== 1 ||
+            typeof expected?.sessionId !== 'string' ||
+            !expected.sessionId ||
+            typeof identity?.sessionId !== 'string' ||
+            !identity.sessionId ||
+            typeof replacement?.sessionId !== 'string' ||
+            !replacement.sessionId ||
+            !(
+              expected.sessionFile === undefined ||
+              (typeof expected.sessionFile === 'string' && expected.sessionFile.length > 0)
+            ) ||
+            !(
+              identity.sessionFile === undefined ||
+              (typeof identity.sessionFile === 'string' && identity.sessionFile.length > 0)
+            ) ||
+            !(
+              replacement.sessionFile === undefined ||
+              (typeof replacement.sessionFile === 'string' && replacement.sessionFile.length > 0)
+            ) ||
+            capturedOrigin?.sessionId !== origin.sessionId ||
+            capturedOrigin?.sessionFile !== origin.sessionFile ||
+            capturedOrigin?.leafId !== leaf ||
+            identity.sessionId !== expected.sessionId ||
+            identity.sessionFile !== expected.sessionFile ||
+            identity.leafId !== expected.leafId ||
+            !(
+              (typeof identity.leafId === 'string' && identity.leafId.length > 0) ||
+              identity.leafId === null
+            ) ||
+            replacement.sessionId !== identity.sessionId ||
+            replacement.sessionFile !== identity.sessionFile ||
+            !Array.isArray(projection.entries) ||
+            !Array.isArray(projection.messages)
+          )
+            throw new Error(
+              'Native replacement identity/branch unavailable or changed. Native may already have switched; outgoing history and draft retained.'
+            );
+          const replacementLeaf = identity.leafId as string | null;
           this.state = {
             ...resetControllerProjection(this.state),
             state: replacement,
             draft: this.state.draft,
+            entries: projection!.entries as JsonObject[],
+            leafId: replacementLeaf,
+            messages: (projection!.messages as JsonObject[]).slice(
+              -Math.max(50, this.settings.maxTranscriptItems)
+            ),
           };
-          await this.refreshMessages();
-          await this.refreshEntries();
           this.selfWriteAt = Date.now();
-          await this.syncFileReadOffset();
           this.armSessionFileWatcher();
           this.fire();
+          await this.syncFileReadOffset();
           return {
             cancelled: false,
             replacementIdentity: replacement as JsonObject,
@@ -262,14 +321,18 @@ export class SessionController implements vscode.Disposable {
             valid: () =>
               stableHost() &&
               this.state.state.sessionId === replacement.sessionId &&
-              this.state.state.sessionFile === replacement.sessionFile,
+              this.state.state.sessionFile === replacement.sessionFile &&
+              this.state.leafId === replacementLeaf,
           };
         } catch (error) {
           // A runtime can fail after invalidating its old session. Do not allow
           // later sends into an uncertain native identity; retain saved draft for recovery.
-          if (nativeAttempted) {
+          if (dispatch.attempted) {
             this.state = { ...this.state, connectionState: 'faulted' };
             this.fire();
+            throw new Error(
+              `${error instanceof Error ? error.message : String(error)} Native may already have switched; outgoing history and draft retained. Restart/recover before sending.`
+            );
           }
           throw error;
         } finally {
@@ -342,6 +405,7 @@ export class SessionController implements vscode.Disposable {
         const nonce = start?.nonce;
         if (typeof nonce !== 'string') throw new Error('Authentication could not start.');
         let completed = false;
+        let nativeTerminal: JsonObject | undefined;
         const ui = new vscode.CancellationTokenSource();
         let stopped = false;
         let abortRequest: Promise<unknown> | undefined;
@@ -354,9 +418,10 @@ export class SessionController implements vscode.Disposable {
           stopped = true;
           // Bypass the login/preference queue: native cancellation must not wait
           // for a UI promise or a provider's parallel callback.
-          abortRequest = captured
-            .engineCommand('auth_response', origin, { nonce, value: null })
-            .catch(() => {});
+          if (!nativeTerminal)
+            abortRequest = captured
+              .engineCommand('auth_response', origin, { nonce, value: null })
+              .catch(() => {});
           ui.cancel();
           release();
         };
@@ -372,13 +437,22 @@ export class SessionController implements vscode.Disposable {
         const interaction = async (data: JsonObject) => {
           let polling = false;
           const nativeTimer = setInterval(() => {
-            if (polling || stopped) return;
+            if (polling || stopped || nativeTerminal || completed) return;
             polling = true;
             void captured
               .engineCommand('auth_poll', origin, { nonce })
               .then((result) => {
+                if (stopped || completed) return;
+                check();
+                if (stopped) return;
                 if (Array.isArray(result?.events)) deferredEvents.push(...result.events);
-                if (result?.status === 'cancelled' || result?.status === 'failed') stop();
+                if (result?.status === 'applied' || result?.status === 'changed_sync_failed') {
+                  // Completion of this captured nonce dismisses obsolete UI, not
+                  // the native flow. Never send a null response for this dismissal.
+                  nativeTerminal = result;
+                  ui.cancel();
+                  release();
+                } else if (result?.status === 'cancelled' || result?.status === 'failed') stop();
               })
               .catch(stop)
               .finally(() => {
@@ -394,7 +468,8 @@ export class SessionController implements vscode.Disposable {
         try {
           check();
           while (!stopped && valid() && surfaceValid()) {
-            const data = await captured.engineCommand('auth_poll', origin, { nonce });
+            const data =
+              nativeTerminal ?? (await captured.engineCommand('auth_poll', origin, { nonce }));
             check();
             if (stopped || !valid() || !surfaceValid() || !data) return false;
             if (data.status !== 'pending') {
@@ -417,12 +492,15 @@ export class SessionController implements vscode.Disposable {
               if (!valid() || !surfaceValid()) return false;
               if (event && typeof event === 'object' && !Array.isArray(event))
                 await interaction({ event });
+              if (nativeTerminal || stopped) break;
             }
+            if (nativeTerminal) continue;
             if (data.prompt && typeof data.prompt === 'object' && !Array.isArray(data.prompt)) {
               const prompt = data.prompt;
               const value = (await interaction({ prompt })) ?? null;
               check();
               if (stopped || !valid() || !surfaceValid()) return false;
+              if (nativeTerminal) continue;
               await captured.engineCommand('auth_response', origin, {
                 nonce,
                 promptNonce: prompt.nonce,
@@ -809,6 +887,8 @@ export class SessionController implements vscode.Disposable {
 
   public async reconcile(): Promise<void> {
     const client = this.requireClient();
+    const valid = this.captureLocalCommandOrigin();
+    const catalogRequest = (this.catalogRequest = (this.catalogRequest ?? 0) + 1);
     // Do not request the complete historical transcript/entry tree over RPC.
     // Pi returns each as one JSONL response record; old sessions with images or
     // large tool output make that record huge and block the handshake. Runtime
@@ -826,6 +906,7 @@ export class SessionController implements vscode.Disposable {
       this.logger.error(`Reconcile failed for '${this.folder.name}'`, error);
       throw error instanceof Error ? error : new Error(String(error));
     });
+    if (!valid()) return;
     const sessionState = mergeSessionState(this.state.state, (state ?? {}) as SessionState);
     const sessionFile =
       typeof sessionState.sessionFile === 'string'
@@ -834,6 +915,7 @@ export class SessionController implements vscode.Disposable {
           ? this.state.state.sessionFile
           : undefined;
     const messageList = sessionFile ? await this.readRecentSessionMessages(sessionFile) : [];
+    if (!valid()) return;
     // Entries/tree are intentionally lazy. Fork/tree commands request them only
     // when the user opens those actions, keeping normal resume fast and bounded.
     const entries: JsonObject = { entries: [] };
@@ -845,9 +927,12 @@ export class SessionController implements vscode.Disposable {
       messages: messageList,
       entries: Array.isArray(entries.entries) ? (entries.entries as JsonObject[]) : [],
       tree: Array.isArray(tree.tree) ? (tree.tree as JsonObject[]) : [],
-      commands: mergeLocalCommands(
-        Array.isArray(commands?.commands) ? (commands.commands as JsonObject[]) : []
-      ),
+      commands:
+        catalogRequest === this.catalogRequest
+          ? mergeLocalCommands(
+              Array.isArray(commands?.commands) ? (commands.commands as JsonObject[]) : []
+            )
+          : this.state.commands,
       lastSessionStats: (stats ?? undefined) as JsonObject | undefined,
       leafId:
         typeof entries.leafId === 'string'
@@ -981,6 +1066,8 @@ export class SessionController implements vscode.Disposable {
     assertNotCoreSlashPrompt(message);
     await waitForModelOperations(this);
     this.assertNoManualCompaction();
+    if (this.state.connectionState === 'faulted')
+      throw new Error('Native chat identity is unconfirmed. Restart/recover before sending.');
     this.selfWriteAt = Date.now();
     const client = this.requireClient();
     // Immediate feedback: show the working state the instant the user submits,
@@ -1641,8 +1728,23 @@ export class SessionController implements vscode.Disposable {
     return typeof result?.text === 'string' ? result.text : null;
   }
 
+  public get piCommandsReady(): boolean {
+    return (
+      !!this.supervisor.currentClient && ['ready', 'busy'].includes(this.state.connectionState)
+    );
+  }
+
+  private catalogRequest = 0;
+
   public async getPiCommands(): Promise<JsonObject[]> {
-    const result = await this.requireClient().getCommands();
+    const request = (this.catalogRequest = (this.catalogRequest ?? 0) + 1);
+    const client = this.supervisor.currentClient;
+    const valid = this.captureLocalCommandOrigin();
+    if (!client) return mergeLocalCommands([]);
+    const result = await client.getCommands();
+    if (!valid() || request !== this.catalogRequest) {
+      throw new Error('Obsolete command catalog request');
+    }
     const commands = mergeLocalCommands(
       Array.isArray(result?.commands) ? (result.commands as JsonObject[]) : []
     );
