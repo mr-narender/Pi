@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.20 — LOCAL ONLY deferred empty reply test preview
+## 0.2.20 — prerelease candidate (unpublished)
 
 - Defer the current live empty assistant reply until meaningful content arrives;
   retain completed empty history and its Retry/Logs controls. Native assistant
@@ -8,9 +8,10 @@
 - Independently verified 557 unit and 345 integration passes (one inherited archive
   skip), FIRST 11 guards, 52 targeted and four owned adversarial cases. Preserve
   six animation choices/current preference, new π, follow-off and notifications.
-- Local testing only, not public release approval or physical activation proof.
-  Security/license, SDK fingerprint, archive acceptance, Extension Host and manual
-  visual release blocks remain open. Preserve original 0.2.16–0.2.19 artifacts.
+- Prepared as an unpublished prerelease candidate; historical test counts above
+  are not fresh release approval or physical activation proof. SDK advisory and
+  fingerprint acceptance, archive discovery, Extension Host and manual visual
+  qualification remain open. Preserve original 0.2.16–0.2.19 artifacts.
 
 ## 0.2.19 — LOCAL ONLY Working Animation menu test preview
 

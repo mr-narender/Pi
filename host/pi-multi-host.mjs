@@ -690,11 +690,11 @@ async function createSessionRunner(sessionKey, runtimeHost, hostEmit) {
         return undefined;
       }
       case 'steer': {
-        await session.steer(command.message, command.images);
+        await session.steer(command.message, command.images, { source: 'rpc' });
         return success(id, 'steer');
       }
       case 'follow_up': {
-        await session.followUp(command.message, command.images);
+        await session.followUp(command.message, command.images, { source: 'rpc' });
         return success(id, 'follow_up');
       }
       case 'abort': {
