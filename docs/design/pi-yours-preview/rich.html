@@ -9,8 +9,7 @@
       body {
         margin: 0;
         background: #05070c;
-        font-family:
-          -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         color: #cdd6e4;
       }
       .page {
@@ -75,9 +74,8 @@
     <div class="page">
       <h1>Pi (y)ours — connected view now mirrors the VS Code chat</h1>
       <p class="lede">
-        Live render using the deployed <code>app.js</code> markdown + block renderer:
-        headings, lists, <b>fenced code with Copy</b>, tool + result cards, two-tone
-        timeline.
+        Live render using the deployed <code>app.js</code> markdown + block renderer: headings,
+        lists, <b>fenced code with Copy</b>, tool + result cards, two-tone timeline.
       </p>
       <div class="win">
         <div class="chrome">
@@ -91,17 +89,14 @@
                 ><span class="mark">π</span>Pi <span class="y">(y)ours</span></span
               >
               <span class="status live"
-                ><span class="dot"></span
-                ><span class="status-text">live</span></span
+                ><span class="dot"></span><span class="status-text">live</span></span
               >
             </header>
             <section class="view">
               <main id="messages" class="messages"></main>
               <div class="composer">
                 <div class="composer-head">
-                  <span class="role driver"
-                    ><span class="role-dot"></span>driver</span
-                  >
+                  <span class="role driver"><span class="role-dot"></span>driver</span>
                 </div>
                 <div class="drive-row">
                   <textarea rows="1" placeholder="Message Pi…"></textarea>
@@ -187,7 +182,11 @@
               it.push((L[i] || '').replace(/^\s*[-*+]\s+/, ''));
               i++;
             }
-            o.push('<ul class="md-ul">' + it.map((x) => '<li>' + inlineMd(x) + '</li>').join('') + '</ul>');
+            o.push(
+              '<ul class="md-ul">' +
+                it.map((x) => '<li>' + inlineMd(x) + '</li>').join('') +
+                '</ul>'
+            );
             continue;
           }
           if (/^\s*\d+[.)]\s+/.test(line)) {
@@ -196,7 +195,11 @@
               it.push((L[i] || '').replace(/^\s*\d+[.)]\s+/, ''));
               i++;
             }
-            o.push('<ol class="md-ol">' + it.map((x) => '<li>' + inlineMd(x) + '</li>').join('') + '</ol>');
+            o.push(
+              '<ol class="md-ol">' +
+                it.map((x) => '<li>' + inlineMd(x) + '</li>').join('') +
+                '</ol>'
+            );
             continue;
           }
           if (!line.trim()) {
@@ -215,7 +218,9 @@
       function codeBlock(code, lang) {
         const gen = ['', 'text', 'txt', 'plain', 'plaintext', 'code', 'output', 'log'];
         const show = gen.indexOf((lang || '').trim().toLowerCase()) === -1;
-        const label = show ? '<span class="code-lang-name">' + esc(lang) + '</span>' : '<span></span>';
+        const label = show
+          ? '<span class="code-lang-name">' + esc(lang) + '</span>'
+          : '<span></span>';
         return (
           '<div class="code-wrap"><div class="code-lang">' +
           label +
@@ -273,9 +278,19 @@
           case 'response':
             return richMd(b.text || '');
           case 'thinking':
-            return '<details class="card think"><summary>Thinking</summary><div class="card-body">' + richMd(b.text || '') + '</div></details>';
+            return (
+              '<details class="card think"><summary>Thinking</summary><div class="card-body">' +
+              richMd(b.text || '') +
+              '</div></details>'
+            );
           case 'tool':
-            return '<div class="card tool"><div class="card-head tool-head"><span class="tool-ic">\u2699</span>' + esc(b.name || 'tool') + '</div>' + (b.args ? codeBlock(b.args, '') : '') + '</div>';
+            return (
+              '<div class="card tool"><div class="card-head tool-head"><span class="tool-ic">\u2699</span>' +
+              esc(b.name || 'tool') +
+              '</div>' +
+              (b.args ? codeBlock(b.args, '') : '') +
+              '</div>'
+            );
           case 'toolResult':
             return resultCard(b.text || '', b.isError);
           default:
@@ -284,26 +299,37 @@
       }
       function renderMessage(m) {
         if (m.role === 'user') {
-          return '<div class="turn user"><div class="who">You</div><div class="bubble user">' + richMd(m.text || '') + '</div></div>';
+          return (
+            '<div class="turn user"><div class="who">You</div><div class="bubble user">' +
+            richMd(m.text || '') +
+            '</div></div>'
+          );
         }
         if (m.role === 'toolResult' || m.role === 'bashExecution') {
           return '<div class="turn pi">' + resultCard(m.text || '', false) + '</div>';
         }
-        const blocks = m.blocks && m.blocks.length ? m.blocks : m.text ? [{ kind: 'text', text: m.text }] : [];
+        const blocks =
+          m.blocks && m.blocks.length ? m.blocks : m.text ? [{ kind: 'text', text: m.text }] : [];
         const body = blocks.map(renderBlock).filter(Boolean).join('');
-        return '<div class="turn pi"><div class="who"><span class="pi-dot"></span>Pi</div><div class="bubble pi">' + body + '</div></div>';
+        return (
+          '<div class="turn pi"><div class="who"><span class="pi-dot"></span>Pi</div><div class="bubble pi">' +
+          body +
+          '</div></div>'
+        );
       }
 
       const SNAP = {
         messages: [
-          { role: 'user', text: 'Add a `/healthz` endpoint and show me the handler, then run the tests.' },
+          {
+            role: 'user',
+            text: 'Add a `/healthz` endpoint and show me the handler, then run the tests.',
+          },
           {
             role: 'assistant',
             blocks: [
               {
                 kind: 'text',
-                text:
-                  "Done — here's what I changed:\n\n## Health endpoint\n\n- New route **`GET /healthz`**\n- Returns `{ \"status\": \"ok\" }`\n- Wired into the main router\n\n```python\n@app.get(\"/healthz\")\nasync def healthz():\n    return {\"status\": \"ok\"}\n```\n\nRunning the suite now…",
+                text: 'Done — here\'s what I changed:\n\n## Health endpoint\n\n- New route **`GET /healthz`**\n- Returns `{ "status": "ok" }`\n- Wired into the main router\n\n```python\n@app.get("/healthz")\nasync def healthz():\n    return {"status": "ok"}\n```\n\nRunning the suite now…',
               },
               { kind: 'tool', name: 'bash', args: 'uv run pytest -q tests/apps/pi_yours' },
               { kind: 'toolResult', text: '....\n4 passed in 2.07s', isError: false },

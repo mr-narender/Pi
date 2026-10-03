@@ -70,3 +70,61 @@ test('distinct user and assistant messages in one turn are not merged', () => {
   state = reduceEvent(state, ev({ type: 'agent_end', messages: [user, assistant] }));
   assert.equal(state.messages.length, 2);
 });
+
+// Pi 0.84 streams DELTA-ONLY message_update events (no `message` field). The
+// reducer must still accumulate text onto the streaming assistant message.
+test('delta-only message_update (Pi 0.84) accumulates assistant text', () => {
+  let state = createInitialControllerState('w', '/tmp');
+  state = reduceEvent(
+    state,
+    ev({ type: 'message_start', message: { role: 'assistant', timestamp: 42, content: [] } })
+  );
+  state = reduceEvent(
+    state,
+    ev({ type: 'message_update', assistantMessageEvent: { type: 'text_start', contentIndex: 0 } })
+  );
+  state = reduceEvent(
+    state,
+    ev({
+      type: 'message_update',
+      assistantMessageEvent: { type: 'text_delta', contentIndex: 0, delta: 'Hello' },
+    })
+  );
+  state = reduceEvent(
+    state,
+    ev({
+      type: 'message_update',
+      assistantMessageEvent: { type: 'text_delta', contentIndex: 0, delta: ' world' },
+    })
+  );
+  const assistants = state.messages.filter((m) => (m as { role?: string }).role === 'assistant');
+  assert.equal(assistants.length, 1);
+  const content = (assistants[0] as { content?: Array<{ type?: string; text?: string }> }).content;
+  assert.equal(content?.[0]?.text, 'Hello world');
+});
+
+// A turn that finishes with agent_end (but no agent_settled — e.g. post-turn
+// memory/qmd work delays it) must still release the UI to 'ready' so the
+// "Working…" banner clears, sends aren't queued, and the input clears.
+test('agent_end releases connectionState to ready without agent_settled', () => {
+  let state = createInitialControllerState('w', '/tmp');
+  state = reduceEvent(state, ev({ type: 'agent_start' }));
+  state = reduceEvent(state, ev({ type: 'turn_start' }));
+  assert.equal(state.connectionState, 'busy');
+  state = reduceEvent(
+    state,
+    ev({ type: 'turn_end', message: { role: 'assistant', timestamp: 1 } })
+  );
+  state = reduceEvent(state, ev({ type: 'agent_end', messages: [] }));
+  assert.equal(state.connectionState, 'ready');
+  assert.equal(state.state.isStreaming, false);
+});
+
+// While compacting, agent_end must stay busy (compaction is still running).
+test('agent_end stays busy while compacting', () => {
+  let state = createInitialControllerState('w', '/tmp');
+  state = reduceEvent(state, ev({ type: 'compaction_start' }));
+  assert.equal(state.state.isCompacting, true);
+  state = reduceEvent(state, ev({ type: 'agent_end', messages: [] }));
+  assert.equal(state.connectionState, 'busy');
+});

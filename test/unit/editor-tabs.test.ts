@@ -78,7 +78,7 @@ test('editorTabs.api.customReadonlyDecision', () => {
   const customEditors = packageJson.contributes.customEditors ?? [];
   const contribution = customEditors.find((item) => item.viewType === 'piRpc.chatEditor');
   assert.ok(contribution);
-  assert.equal(contribution.displayName, 'Pi Chat');
+  assert.equal(contribution.displayName, 'π Chat');
 });
 
 test('editorTabs.uri.parseRoundTrip', () => {
@@ -152,9 +152,10 @@ test('editorTabs.open.multiRootIsolation', () => {
 
 test('editorTabs.render.headerHasModelChipAndMore', () => {
   const html = renderChatApp(snapshot());
-  assert.match(html, /class="model-chip"/);
+  assert.match(html, /class="composer-status" id="status-chip" data-command="piRpc.chatSettings"/);
   assert.match(html, /mock\/model/);
-  assert.match(html, /aria-label="More actions"/);
+  // Chat actions moved to the native editor title bar (piRpc.chatActions).
+  assert.doesNotMatch(html, /aria-label="Chat actions"/);
   assert.doesNotMatch(html, />New</);
   assert.doesNotMatch(html, />History</);
   assert.match(html, /Current · workspace · Demo Session · Ready/);

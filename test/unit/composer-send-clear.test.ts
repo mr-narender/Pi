@@ -1,0 +1,146 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import {
+  beginSend,
+  createEmptyComposerState,
+  restoreEditableStateFromAcceptedSnapshot,
+  toSnapshotPendingImages,
+  type PendingContextItem,
+  type PendingImageItem,
+} from '../../src/webview/composer';
+import { parseWebviewMessage } from '../../src/webview/messages';
+
+function fileChip(): PendingContextItem {
+  return {
+    kind: 'file',
+    itemId: 'ctx-1',
+    workspaceRelativePath: 'src/example.ts',
+    languageId: 'typescript',
+    lineStart: 1,
+    lineEnd: 12,
+    sanitizedContent: 'export const example = 1;',
+    persistedRef: { kind: 'file', uri: 'file:///w/src/example.ts' },
+  } as unknown as PendingContextItem;
+}
+
+function imageChip(): PendingImageItem {
+  return {
+    itemId: 'img-1',
+    name: 'screenshot.png',
+    mimeType: 'image/png',
+    sizeBytes: 128,
+    inMemoryBase64: 'aGVsbG8=',
+    previewDataUrl: 'data:image/png;base64,aGVsbG8=',
+  };
+}
+
+test('beginSend: clears draft, context chips, and image chips in one atomic step', () => {
+  const state = createEmptyComposerState();
+  state.draft = 'please review this';
+  state.pendingContextItems = [fileChip()];
+  state.pendingImages = [imageChip()];
+
+  const { preview, accepted } = beginSend('prompt', state);
+
+  assert.equal(state.draft, '', 'input text clears');
+  assert.deepEqual(state.pendingContextItems, [], 'context chips clear with the input');
+  assert.deepEqual(state.pendingImages, [], 'image chips clear with the input');
+  assert.equal(state.composerResetSeq, 1, 'webview reset sequence bumps');
+  assert.equal(state.focus, 'composer');
+  assert.equal(state.preview, undefined);
+  assert.equal(state.recovery, undefined);
+  assert.equal(state.acceptedSendSnapshot, accepted, 'sent message is captured before the clear');
+
+  assert.ok(preview.rpcMessage.includes('please review this'));
+  assert.ok(preview.rpcMessage.includes('src/example.ts'), 'chip content rides in the message');
+  assert.equal(preview.rpcImages.length, 1);
+  assert.equal(accepted.contextItems.length, 1, 'accepted snapshot retains chips for recovery');
+  assert.equal(accepted.state, 'accepted');
+});
+
+test('beginSend: cancel/failure can restore exactly what was cleared', () => {
+  const state = createEmptyComposerState();
+  state.draft = 'draft to restore';
+  state.pendingContextItems = [fileChip()];
+  state.pendingImages = [imageChip()];
+
+  const { accepted } = beginSend('follow_up', state);
+  const restored = restoreEditableStateFromAcceptedSnapshot(accepted);
+
+  assert.equal(restored.draft, 'draft to restore');
+  assert.equal(restored.pendingContextItems.length, 1);
+  assert.equal(restored.pendingContextItems[0]!.itemId, 'ctx-1');
+  assert.equal(restored.pendingImages.length, 1);
+  assert.equal(restored.pendingImages[0]!.itemId, 'img-1');
+});
+
+test('beginSend: empty composer throws without mutating state', () => {
+  const state = createEmptyComposerState();
+  assert.throws(() => beginSend('prompt', state), /Enter a message/);
+  assert.equal(state.composerResetSeq, undefined);
+  assert.equal(state.acceptedSendSnapshot, undefined);
+});
+
+test('beginSend: repeat sends keep bumping the reset sequence', () => {
+  const state = createEmptyComposerState();
+  state.draft = 'one';
+  beginSend('prompt', state);
+  state.draft = 'two';
+  beginSend('prompt', state);
+  assert.equal(state.composerResetSeq, 2);
+});
+
+test('pasted text stays text: the pasteText webview message is gone from the protocol', () => {
+  assert.equal(
+    parseWebviewMessage({ type: 'pasteText', text: 'x'.repeat(5000) }),
+    undefined,
+    'text pastes must not round-trip to the host as chip requests'
+  );
+});
+
+test('snapshot images keep previewDataUrl — the chip thumbnail must survive to the webview (reported live)', () => {
+  const fresh = imageChip();
+  const [mapped] = toSnapshotPendingImages([fresh], false);
+  assert.equal(mapped!.previewDataUrl, fresh.previewDataUrl, 'live path keeps the thumbnail');
+  assert.equal(mapped!.requiresReselect, undefined);
+  assert.equal(
+    (mapped as unknown as Record<string, unknown>).inMemoryBase64,
+    undefined,
+    'raw bytes never ride in snapshots'
+  );
+
+  // Stale (cached/reloaded) snapshots: an image with live bytes stays usable
+  // WITH its thumbnail; one without bytes demands reselect.
+  const [staleFresh] = toSnapshotPendingImages([fresh], true);
+  assert.equal(staleFresh!.requiresReselect, false);
+  assert.equal(staleFresh!.previewDataUrl, fresh.previewDataUrl);
+  const dead = { ...imageChip(), inMemoryBase64: undefined };
+  const [staleDead] = toSnapshotPendingImages([dead], true);
+  assert.equal(staleDead!.requiresReselect, true);
+});
+
+test('diag breadcrumbs parse (bounded) so webview paste issues are debuggable live', () => {
+  assert.deepEqual(parseWebviewMessage({ type: 'diag', scope: 'paste', detail: '{"items":[]}' }), {
+    type: 'diag',
+    scope: 'paste',
+    detail: '{"items":[]}',
+  });
+  const oversized = parseWebviewMessage({ type: 'diag', scope: 'paste', detail: 'x'.repeat(5000) });
+  assert.ok(
+    oversized && (oversized as { detail: string }).detail.length <= 2000,
+    'diag detail must be bounded'
+  );
+  assert.equal(parseWebviewMessage({ type: 'diag', scope: 42 }), undefined);
+});
+
+test('pasteImage protocol survives the pasteText removal (image chips must keep working)', () => {
+  assert.deepEqual(
+    parseWebviewMessage({ type: 'pasteImage', data: 'aGk=', mimeType: 'image/png' }),
+    {
+      type: 'pasteImage',
+      data: 'aGk=',
+      mimeType: 'image/png',
+    }
+  );
+  assert.equal(parseWebviewMessage({ type: 'pasteImage', data: 42 }), undefined);
+});

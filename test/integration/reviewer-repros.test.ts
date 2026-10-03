@@ -11,13 +11,14 @@ import { RpcClient } from '../../src/rpc/client';
 import { createInitialControllerState } from '../../src/state/types';
 import { reduceEvent, reduceExtensionUiRequest } from '../../src/state/reducer';
 import { createRedactedDiagnosticsExport } from '../../src/diagnostics/export';
+import { renderChatListRow } from '../../src/webview/chatListRowHtml';
 import { parseWebviewMessage } from '../../src/webview/messages';
 import { canonicalizeSessionPath } from '../../src/sessions/paths';
 import {
   getDefaultSessionDirForWorkspace,
   readRecentSessionsIndex,
 } from '../../src/sessions/recentSessions';
-import { createResumeChatSidebarModel } from '../../src/ui/trees/sessionSidebarModel';
+import { buildChatListModel } from '../../src/webview/chatListData';
 import {
   ATTACH_TRIGGER_ID,
   PREVIEW_ACCEPT_BUTTON_ID,
@@ -142,7 +143,10 @@ test('reviewer repro 6: diagnostics export is redacted and allowlisted', () => {
   assert.ok(!text.includes('draft'));
   assert.ok(!text.includes('stderr secret'));
   assert.ok(!text.includes('/Users/demo'));
-  assert.ok(text.includes('[HOME]'));
+  // Strict projection drops paths/logs entirely rather than retaining redacted raw data.
+  assert.ok(!text.includes('[HOME]'));
+  assert.ok(!text.includes('recentLogLines'));
+  assert.equal((exported.active as any).stats.cost, 1);
 });
 
 test('reviewer repro 7: session path validation is canonical', async () => {
@@ -384,24 +388,28 @@ test('reviewer repro 15: malformed session timestamps never surface NaNd ago', a
       workspaceName: 'workspace',
       workspacePath: workspace,
     });
-    const model = createResumeChatSidebarModel({
-      activeFolderName: 'workspace',
+    const model = buildChatListModel({
+      openChats: [],
       recent: {
         loading: false,
         filterText: '',
         items: index.sessions,
         sessionDir,
       },
-      hasDraft: false,
-      hasPendingAttachments: false,
       now: Date.UTC(2024, 0, 4, 0, 0, 0),
     });
-    const recentNode = model[2];
+    const recentRow = model.rows[0];
 
     assert.equal(index.sessions[0]?.createdAt, fallbackTime.getTime());
     assert.equal(index.sessions[0]?.modifiedAt, fallbackTime.getTime());
-    assert.equal(recentNode?.description, 'workspace · 1d ago');
-    assert.ok(!recentNode?.description?.includes('NaN'));
+    // Contract change (stage C): the model carries the raw timestamp and a
+    // label-only detail; the RENDERER composes "workspace · 1d ago" at paint
+    // time so it can refresh client-side. Assert the full painted pipeline.
+    assert.equal(recentRow?.detail, 'workspace');
+    assert.equal(recentRow?.modifiedAt, fallbackTime.getTime());
+    const painted = renderChatListRow(recentRow!, Date.UTC(2024, 0, 4, 0, 0, 0));
+    assert.ok(painted.includes('workspace · 1d ago'), `painted detail missing: ${painted}`);
+    assert.ok(!painted.includes('NaN'));
   } finally {
     if (previous === undefined) {
       delete process.env.PI_CODING_AGENT_DIR;

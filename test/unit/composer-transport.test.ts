@@ -7,6 +7,7 @@ import {
   serializeContextEnvelope,
 } from '../../src/webview/composer';
 import { renderChatApp } from '../../src/webview/render';
+import { parseWebviewMessage } from '../../src/webview/messages';
 import type { WebviewSnapshot } from '../../src/state/types';
 
 function snapshot(overrides: Partial<WebviewSnapshot> = {}): WebviewSnapshot {
@@ -123,29 +124,30 @@ test('buildSendPreview appends deterministic envelope and exact rpc images', () 
   assert.deepEqual(preview.rpcImages, [{ type: 'image', data: 'AAAA', mimeType: 'image/png' }]);
 });
 
-test('default simple mode keeps the header primary controls and a grouped More menu', () => {
+test('default simple mode keeps the composer primary controls; chat actions are native', () => {
   const html = renderChatApp(snapshot());
-  // Header keeps the model chip + More only (New/History live in the sidebar).
-  assert.match(html, /class="model-chip"/);
-  assert.match(html, /aria-label="More actions"/);
+  // Composer keeps the model chip (New/History live in the sidebar; the ⋯ chat
+  // actions moved to the native editor title bar — piRpc.chatActions submenu).
+  assert.match(html, /class="composer-status" id="status-chip" data-command="piRpc.chatSettings"/);
+  assert.doesNotMatch(html, /aria-label="Chat actions"/);
   assert.doesNotMatch(html, /data-command="piRpc\.newSession"/);
   assert.doesNotMatch(html, /data-command="piRpc\.switchSession"/);
   // The composer exposes attach, send, and slash commands.
   assert.match(html, /id="attach-trigger"/);
   assert.match(html, /id="composer-send-button"/);
   assert.match(html, /data-command="piRpc\.showPiCommands"/);
-  // The More menu is a grouped, color-tagged dropdown.
-  assert.match(html, /class="menu-group">Model</);
-  assert.match(html, /class="menu-item cat-model"/);
-  assert.match(html, /class="menu-item cat-system"/);
+  // The in-webview grouped More menu is gone.
+  assert.doesNotMatch(html, /class="menu-item cat-model"/);
+  assert.doesNotMatch(html, /class="menu-item cat-system"/);
   // No stop button while idle.
   assert.equal((html.match(/data-action="abort"/g) ?? []).length, 0);
 });
 
 test('composer is disabled with a connecting spinner until Pi is ready', () => {
   const connecting = renderChatApp(snapshot({ connectionState: 'handshaking', messages: [] }));
-  assert.match(connecting, /Connecting to Pi/);
-  assert.match(connecting, /class="spinner"/);
+  assert.match(connecting, /Connecting to π/);
+  assert.match(connecting, /class="boot-loader"/);
+  assert.match(connecting, /class="boot-pi"/);
   assert.match(connecting, /id="composer-field"[^>]*disabled/);
   assert.match(connecting, /id="composer-send-button"[^>]*disabled/);
 
@@ -159,7 +161,10 @@ test('composer typing is protected from caret reset and re-render loops', () => 
   assert.match(chat, /composerWasFocused/);
   assert.match(chat, /setSelectionRange/);
   const tab = readFileSync('src/editorTabs/tabManager.ts', 'utf8');
-  assert.match(tab, /setDraft\(parsed\.text, \{ silent: true \}\)/);
+  // Draft typing persists silently (no controller/UI-state fire -> no re-render).
+  assert.match(tab, /setComposerStateForIdentity\([^)]*\{\s*silent: true/s);
+  const composerState = readFileSync('src/webview/composerState.ts', 'utf8');
+  assert.match(composerState, /options\?\.silent \? \{ silent: true \}/);
 });
 
 test('opening a saved session reveals an existing tab instead of duplicating', () => {
@@ -182,4 +187,22 @@ test('chat css covers narrow, high-contrast, and reduced-motion modes', () => {
   assert.match(css, /@media \(forced-colors: active\)/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
   assert.match(css, /var\(--vscode-focusBorder\)/);
+});
+
+test('parseWebviewMessage accepts forkAndSend (inline edit + resubmit)', () => {
+  const parsed = parseWebviewMessage({
+    type: 'forkAndSend',
+    fromBottom: 0,
+    originalText: 'PING',
+    text: 'PONG',
+  });
+  assert.deepEqual(parsed, {
+    type: 'forkAndSend',
+    fromBottom: 0,
+    originalText: 'PING',
+    text: 'PONG',
+  });
+  // Missing fromBottom or empty text is rejected.
+  assert.equal(parseWebviewMessage({ type: 'forkAndSend', text: 'x' }), undefined);
+  assert.equal(parseWebviewMessage({ type: 'forkAndSend', fromBottom: 0, text: '   ' }), undefined);
 });

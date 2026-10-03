@@ -69,6 +69,8 @@ export interface ControllerState {
   workspaceFolderName: string;
   cwd: string;
   state: SessionState;
+  /** Native message_start identity; never persisted in the transcript. */
+  currentAssistant?: { message: JsonObject; generation: number; sessionFile?: string };
   messages: JsonObject[];
   entries: JsonObject[];
   tree: JsonObject[];
@@ -82,6 +84,8 @@ export interface ControllerState {
   title: string;
   draft: string;
   pendingUi: ExtensionUiRequest[];
+  /** Live auto-retry info from Pi (attempt + the provider's actual error). */
+  retry?: { attempt?: number; delayMs?: number; errorMessage?: string };
   uiHistory: ExtensionUiRecord[];
   eventHistory: EventRecord[];
   lastEventType?: string;
@@ -89,6 +93,10 @@ export interface ControllerState {
   lastExportPath?: string;
   leafId?: string | null;
   restartCount: number;
+  // True while switching to another session (loads its transcript). Drives the
+  // "Loading chat…" loader WITHOUT changing connectionState, so concurrent
+  // switches don't deadlock whenReady() (which waits for 'ready'/'busy').
+  switchingSession?: boolean;
 }
 
 export function createInitialControllerState(
@@ -153,8 +161,8 @@ export interface WebviewAttachmentItem {
 export type WebviewMessageBlock =
   | { kind: 'text'; text: string }
   | { kind: 'thinking'; text: string }
-  | { kind: 'tool'; name: string; args?: string }
-  | { kind: 'toolResult'; name?: string; text: string; isError?: boolean }
+  | { kind: 'tool'; name: string; args?: string; callId?: string }
+  | { kind: 'toolResult'; name?: string; text: string; isError?: boolean; callId?: string }
   | { kind: 'image'; mimeType: string };
 
 export interface WebviewMessageItem {
@@ -167,6 +175,9 @@ export interface WebviewMessageItem {
   // with persisted snapshots; the webview falls back to `text`.
   blocks?: WebviewMessageBlock[];
   attachments: WebviewAttachmentItem[];
+  // The PROVIDER'S actual error for failed turns (stopReason 'error') — the
+  // webview shows this instead of a generic "empty response" guess.
+  errorMessage?: string;
 }
 
 export interface WebviewPendingImageItem {
@@ -181,15 +192,36 @@ export interface WebviewPendingImageItem {
 }
 
 export interface WebviewSnapshot {
+  /** Turns with reviewable file changes (deck badge; 0 = hide). */
+  reviewCount?: number;
+  /** Display-time formatted code blocks: formatKey(lang, code) → formatted text. */
+  formattedCode?: Record<string, string>;
+  /** Which host renders this: the sidebar one-surface or an editor tab. */
+  surface?: 'sidebar' | 'tab';
+  /** Most recent task list π wrote — rendered as the plan strip. */
+  plan?: { items: Array<{ text: string; done: boolean }>; done: number };
+  /** Zed-style follow toggle state (crosshair button). */
+  followMode?: 'open' | 'status' | 'off';
+  /** True pre-apply approval mode — surfaced as a one-click deck toggle. */
+  requireApprovalForEdits?: boolean;
+  /** Chats still running on whatever approval-gate setting was active when
+   * they started (passive tooltip detail only — never an interruption). */
+  activeSessionCount?: number;
+  retry?: { attempt?: number; errorMessage?: string };
   sequence: number;
   title: string;
   bindingState?: 'current' | 'cached' | 'draft';
   uiMode: ChatUiMode;
   connectionState: ControllerState['connectionState'];
+  /** Runtime owner epoch for read-only catalog invalidation. */
+  catalogGeneration?: number;
+  switchingSession?: boolean;
   workspaceFolderName: string;
   sessionName?: string;
   sessionId?: string;
   sessionFile?: string;
+  /** Projected native current message identity, absent for loaded/settled history. */
+  currentAssistantMessageId?: string;
   isStreaming: boolean;
   isCompacting: boolean;
   // Set when this chat is being shared to a remote device (drives the info bar).
@@ -207,11 +239,20 @@ export interface WebviewSnapshot {
   // (send-clear, copy-to-composer, restore). The webview uses a change in this
   // value to overwrite the textarea; otherwise it preserves the live text and
   // caret while the user types.
+  localCommandAck?: string;
+  localCommandReplacement?: {
+    originKey: string;
+    replacementKey: string;
+    frame: number;
+  };
+  /** Correlated invoking text consumption, not native action success. */
+  localCommandConsumed?: string;
   composerResetSeq?: number;
   statuses: Record<string, string>;
   widgets: WidgetState[];
   model?: ModelInfo | null;
   thinkingLevel?: string;
+  availableThinkingLevels?: string[];
   // Compact usage summary for the header (tokens / context% / cost).
   usage?: { totalTokens: number; contextPercent?: number; cost?: number };
   // Inline approval prompts (extension UI select/confirm dialogs).

@@ -4,6 +4,7 @@ import {
   filterRecentSessions,
   type RecentSessionRecord,
   readRecentSessionsIndex,
+  readAllProjectsSessions,
 } from './recentSessions';
 
 export interface RecentSessionsState {
@@ -12,11 +13,20 @@ export interface RecentSessionsState {
   filterText: string;
   sessionDir?: string;
   items: RecentSessionRecord[];
+  /** Chats belonging to OTHER projects (different cwd), newest first. */
+  others?: RecentSessionRecord[];
 }
 
 export class RecentSessionService implements vscode.Disposable {
   private readonly emitter = new vscode.EventEmitter<void>();
   private readonly state = new Map<string, RecentSessionsState>();
+
+  public constructor(
+    // Optional off-thread accelerator; every use falls back to the inline scan.
+    private readonly indexService?: {
+      scanAll(excludeCwds: string[]): Promise<RecentSessionRecord[]>;
+    }
+  ) {}
 
   public get onDidChange(): vscode.Event<void> {
     return this.emitter.event;
@@ -64,16 +74,28 @@ export class RecentSessionService implements vscode.Disposable {
     this.emitter.fire();
     try {
       const settings = getSettings();
-      const index = await readRecentSessionsIndex({
-        workspaceName: folder.name,
-        workspacePath: folder.uri.fsPath,
-        additionalArgs: settings.additionalArgs,
-      });
+      const workspaceCwds = (vscode.workspace.workspaceFolders ?? []).map((f) => f.uri.fsPath);
+      const [index, others] = await Promise.all([
+        readRecentSessionsIndex({
+          workspaceName: folder.name,
+          workspacePath: folder.uri.fsPath,
+          additionalArgs: settings.additionalArgs,
+        }),
+        // All-projects list — off-thread when the index worker is up, inline
+        // fallback otherwise; never fail the main list because of it.
+        (this.indexService
+          ? this.indexService
+              .scanAll(workspaceCwds)
+              .catch(() => readAllProjectsSessions(workspaceCwds))
+          : readAllProjectsSessions(workspaceCwds)
+        ).catch(() => []),
+      ]);
       this.state.set(key, {
         loading: false,
         filterText: current.filterText,
         sessionDir: index.sessionDir,
         items: index.sessions,
+        others,
       });
     } catch (error) {
       this.state.set(key, {

@@ -1,10 +1,12 @@
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { spawn } from 'node:child_process';
+import { resolvePiLaunch, type PiLaunchPlan } from './piLauncher';
+import { spawnSubprocessPi, spawnWorkerPi, type PiProcessHandle } from './piProcess';
+import { getSharedPiHost } from './sharedPiHost';
 
 // On Windows the npm-installed `pi` is a `pi.cmd` shim, which Node's spawn cannot
 // execute directly (ENOENT / EINVAL). A shell is required there; on POSIX we keep
 // shell:false so arguments are passed verbatim without shell interpretation.
 const SPAWN_WITH_SHELL = process.platform === 'win32';
-import { once } from 'node:events';
 import { EventEmitter } from 'node:events';
 import * as vscode from 'vscode';
 import { DiagnosticsLogger } from '../diagnostics/logger';
@@ -35,7 +37,7 @@ class TypedEmitter extends EventEmitter {
 }
 
 export class PiProcessSupervisor extends TypedEmitter implements vscode.Disposable {
-  private child: ChildProcessWithoutNullStreams | undefined;
+  private piProcess: PiProcessHandle | undefined;
   private transport: RpcTransport | undefined;
   private client: RpcClient | undefined;
   private generation = 0;
@@ -52,43 +54,106 @@ export class PiProcessSupervisor extends TypedEmitter implements vscode.Disposab
     return this.client;
   }
 
+  public get sdkRoot(): string | undefined {
+    return this.piProcess?.sdkRoot;
+  }
+
   public get currentGeneration(): number {
     return this.generation;
   }
 
-  public async start(existingSessionPath?: string): Promise<RpcClient> {
+  public async start(
+    existingSessionPath?: string,
+    options?: { noExtensions?: boolean; offline?: boolean }
+  ): Promise<RpcClient> {
     if (this.client) {
       return this.client;
     }
     validateAdditionalArgs(this.settings.additionalArgs);
-    await this.assertVersion();
-    this.generation += 1;
-    const args = this.buildArgs(existingSessionPath);
-    this.logger.info(
-      `Starting Pi for ${this.folder.name} (generation=${this.generation}): ` +
-        `${this.settings.executable} ${args.join(' ')} [cwd=${this.folder.uri.fsPath}, shell=${SPAWN_WITH_SHELL}]`
-    );
-    const child = spawn(this.settings.executable, args, {
-      cwd: this.folder.uri.fsPath,
-      shell: SPAWN_WITH_SHELL,
-      windowsHide: true,
-      env: {
+    const offline = options?.offline ?? this.settings.offline;
+    const args = this.buildArgs(existingSessionPath, {
+      noExtensions: options?.noExtensions,
+      offline,
+    });
+    const launchShell =
+      this.settings.launchShell.trim() ||
+      process.env.PI_LAUNCH_SHELL ||
+      (process.platform === 'win32' ? process.env.ComSpec || 'cmd.exe' : process.env.SHELL || '');
+    const launch = resolvePiLaunch(
+      this.settings,
+      {
         ...process.env,
         PI_TELEMETRY: '0',
         PI_SKIP_VERSION_CHECK: '1',
-        ...(this.settings.offline ? { PI_OFFLINE: '1' } : {}),
+        ...(offline ? { PI_OFFLINE: '1' } : {}),
+        ...(launchShell ? { PI_LAUNCH_SHELL: launchShell } : {}),
       },
-      stdio: 'pipe',
-    });
-    this.child = child;
-    child.once('error', (error) => {
-      this.logger.error(
-        `Failed to launch Pi (executable='${this.settings.executable}'). ${this.spawnHint(error)}`,
-        error
-      );
+      this.folder.uri.fsPath
+    );
+    const { env, cwd } = launch;
+    // Select the correct SDK backend BEFORE creating the first session.
+    const sharedHost = getSharedPiHost();
+    if (sharedHost && launch.sdkRoot) {
+      try {
+        this.generation += 1;
+        const handle = await sharedHost.openSession({
+          cwd,
+          sdkRoot: launch.sdkRoot,
+          sessionFile: existingSessionPath,
+          args,
+          env,
+          dedicated: !this.settings.sharedRuntime,
+        });
+        const backendLabel = this.settings.sharedRuntime
+          ? 'shared SDK host'
+          : 'dedicated SDK OS process';
+        this.logger.info(
+          `Starting Pi for ${this.folder.name} (generation=${this.generation}) via ${backendLabel} ` +
+            `[cwd=${this.folder.uri.fsPath}, session=${existingSessionPath ?? '(new)'}]`
+        );
+        return this.attachClient(handle, backendLabel);
+      } catch (error) {
+        this.logger.warn(
+          `Shared Pi host unavailable (${error instanceof Error ? error.message : String(error)}); ` +
+            `falling back to a per-chat process`
+        );
+      }
+    }
+    this.generation += 1;
+    // The version probe spawns `pi --version` (up to ~10s under startup load).
+    // Our OWN installs (bundled/managed cli.js) have a known-good version —
+    // probe only external binaries the user pointed us at.
+    if (!launch.usingBundled) {
+      await this.assertVersion(launch);
+    }
+    const useShell = launch.usingBundled ? false : SPAWN_WITH_SHELL;
+    this.logger.info(
+      `Starting Pi for ${this.folder.name} (generation=${this.generation}) via ${launch.label} ` +
+        `[mode=${launch.mode}, args=${args.join(' ')}, cwd=${cwd}]`
+    );
+    const piProcess =
+      launch.mode === 'worker' && launch.cliPath
+        ? spawnWorkerPi({ cliPath: launch.cliPath, args, cwd, env, sdkRoot: launch.sdkRoot })
+        : spawnSubprocessPi({
+            command: launch.command,
+            args: [...launch.prefixArgs, ...args],
+            cwd,
+            env,
+            useShell,
+            sdkRoot: launch.sdkRoot,
+          });
+    return this.attachClient(piProcess, launch.label);
+  }
+
+  // Wire a spawned process OR a shared-host session handle into transport+client.
+  // Both paths are identical from here down — the handle just exposes stdio.
+  private attachClient(piProcess: PiProcessHandle, label: string): RpcClient {
+    this.piProcess = piProcess;
+    piProcess.onError((error) => {
+      this.logger.error(`Failed to launch Pi via ${label}. ${this.spawnHint(error)}`, error);
       this.transport?.disconnect(error instanceof Error ? error : new Error(String(error)));
     });
-    const transport = new RpcTransport(child.stdin, child.stdout, child.stderr, {
+    const transport = new RpcTransport(piProcess.stdin, piProcess.stdout, piProcess.stderr, {
       maxRecordBytes: this.settings.maxRecordBytes,
       // The residual buffer only ever holds one partial record, so it needs at
       // least maxRecordBytes; give generous headroom so resuming a large session
@@ -102,15 +167,15 @@ export class PiProcessSupervisor extends TypedEmitter implements vscode.Disposab
     transport.on('disconnected', (error) =>
       this.logger.warn(`Transport disconnected: ${error.message}`)
     );
-    child.once('exit', (code, signal) => {
+    piProcess.onExit((code, signal) => {
       this.logger.warn(`Pi exited code=${String(code)} signal=${String(signal)}`);
       this.transport?.disconnect(
         new Error(`Pi exited code=${String(code)} signal=${String(signal)}`)
       );
       this.transport = undefined;
       this.client = undefined;
-      this.child = undefined;
-      this.emit('exit', code, signal);
+      this.piProcess = undefined;
+      this.emit('exit', code, signal as NodeJS.Signals | null);
     });
     this.transport = transport;
     this.client = new RpcClient(this.generation, transport, {
@@ -121,23 +186,14 @@ export class PiProcessSupervisor extends TypedEmitter implements vscode.Disposab
   }
 
   public async stop(): Promise<void> {
-    const child = this.child;
+    const piProcess = this.piProcess;
     this.transport = undefined;
     this.client = undefined;
-    this.child = undefined;
-    if (!child) {
+    this.piProcess = undefined;
+    if (!piProcess) {
       return;
     }
-    child.stdin.end();
-    child.kill('SIGTERM');
-    const timeout = setTimeout(() => child.kill('SIGKILL'), 2000);
-    try {
-      await once(child, 'exit');
-    } catch {
-      // ignore
-    } finally {
-      clearTimeout(timeout);
-    }
+    await piProcess.stop();
   }
 
   public dispose(): void {
@@ -159,13 +215,15 @@ export class PiProcessSupervisor extends TypedEmitter implements vscode.Disposab
     return `See the Pi output channel for details.`;
   }
 
-  private probeVersion(): Promise<{ code: number | null; stdout: string; stderr: string }> {
+  private probeVersion(
+    launch: PiLaunchPlan
+  ): Promise<{ code: number | null; stdout: string; stderr: string }> {
     return new Promise((resolve, reject) => {
-      const child = spawn(this.settings.executable, ['--version'], {
-        cwd: this.folder.uri.fsPath,
-        shell: SPAWN_WITH_SHELL,
+      const child = spawn(launch.command, [...launch.prefixArgs, '--version'], {
+        cwd: launch.cwd,
+        shell: launch.usingBundled ? false : SPAWN_WITH_SHELL,
         windowsHide: true,
-        env: { ...process.env, PI_OFFLINE: '1' },
+        env: { ...launch.env, PI_OFFLINE: '1' },
         stdio: ['ignore', 'pipe', 'pipe'],
       });
       let stdout = '';
@@ -183,7 +241,7 @@ export class PiProcessSupervisor extends TypedEmitter implements vscode.Disposab
     });
   }
 
-  private async assertVersion(): Promise<void> {
+  private async assertVersion(launch: PiLaunchPlan): Promise<void> {
     // The version probe is a COURTESY check, not a hard gate. It must not block
     // startup just because `pi --version` behaves unusually (e.g. writes to
     // stderr, exits non-zero, or is wrapped by a .cmd shim on Windows). Only two
@@ -191,17 +249,15 @@ export class PiProcessSupervisor extends TypedEmitter implements vscode.Disposab
     // can parse that is clearly older than the minimum.
     let probe: { code: number | null; stdout: string; stderr: string };
     try {
-      probe = await this.probeVersion();
+      probe = await this.probeVersion(launch);
     } catch (error) {
-      throw new Error(
-        `Could not run '${this.settings.executable} --version'. ${this.spawnHint(error)}`
-      );
+      throw new Error(`Could not run '${launch.command} --version'. ${this.spawnHint(error)}`);
     }
 
     const output = `${probe.stdout}\n${probe.stderr}`.trim();
     if (probe.code !== 0) {
       this.logger.warn(
-        `'${this.settings.executable} --version' exited with code ${String(probe.code)}; ` +
+        `'${launch.command} --version' exited with code ${String(probe.code)}; ` +
           `proceeding anyway. Output: ${output || '(none)'}`
       );
       return;
@@ -217,13 +273,20 @@ export class PiProcessSupervisor extends TypedEmitter implements vscode.Disposab
     }
   }
 
-  private buildArgs(existingSessionPath?: string): string[] {
+  private buildArgs(
+    existingSessionPath?: string,
+    options?: { noExtensions?: boolean; offline?: boolean }
+  ): string[] {
     const args = ['--mode', 'rpc'];
-    if (this.settings.offline) {
+    if (options?.offline ?? this.settings.offline) {
       args.push('--offline');
     }
     if (!vscode.workspace.isTrusted || !this.settings.allowApproveInTrustedWorkspace) {
       args.push('--no-approve');
+    }
+    if (options?.noExtensions) {
+      // Recovery path: a crashing Pi extension can make session load exit code=1.
+      args.push('--no-extensions');
     }
     if (existingSessionPath) {
       args.push('--session', existingSessionPath);

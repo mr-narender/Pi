@@ -1,6 +1,9 @@
 import * as vscode from 'vscode';
+import { readFile, stat } from 'node:fs/promises';
 import type { RecentSessionService } from '../../sessions/recentSessionService';
+import type { SessionController } from '../../sessions/sessionController';
 import type { SessionRegistry } from '../../sessions/sessionRegistry';
+import { getSettings } from '../../config/settings';
 import { buildSidebarState, type SidebarSessionItem, type SidebarState } from './state';
 
 export { buildSidebarState, type SidebarSessionItem, type SidebarState };
@@ -15,8 +18,103 @@ export class SessionsWebviewProvider implements vscode.WebviewViewProvider {
     private readonly extensionUri: vscode.Uri,
     private readonly registry: SessionRegistry,
     private readonly recentSessions: RecentSessionService,
-    private readonly memento?: vscode.Memento
+    private readonly memento?: vscode.Memento,
+    private readonly contextPercentOf?: (controller: SessionController) => number | undefined,
+    // Optional off-thread search accelerator; failures fall back inline.
+    private readonly indexService?: {
+      search(
+        query: string,
+        candidates: Array<{ path: string; name: string; cwd: string; other: boolean }>
+      ): Promise<
+        Array<{ path: string; name: string; preview: string; cwd: string; other: boolean }>
+      >;
+    }
   ) {}
+
+  // Full-text search across chat CONTENT (titles are matched client-side).
+  // Bounded: ≤60 newest files, ≤2MB each, ≤20 matches, stale runs cancelled.
+  private searchSeq = 0;
+
+  private async contentSearch(query: string): Promise<void> {
+    const needle = query.trim().toLowerCase();
+    const seq = ++this.searchSeq;
+    if (needle.length < 3) {
+      return;
+    }
+    const active = this.registry.getActive();
+    if (!active) {
+      return;
+    }
+    const state = this.recentSessions.getState(active.folder);
+    const candidates = [
+      ...state.items.map((record) => ({
+        path: record.path,
+        name: record.displayName,
+        cwd: record.cwd,
+        other: false,
+      })),
+      ...(state.others ?? []).map((record) => ({
+        path: record.path,
+        name: record.displayName,
+        cwd: record.cwd,
+        other: true,
+      })),
+    ].slice(0, 60);
+    let matches: Array<{
+      path: string;
+      name: string;
+      preview: string;
+      cwd: string;
+      other: boolean;
+    }> = [];
+    if (this.indexService) {
+      try {
+        matches = await this.indexService.search(needle, candidates);
+        if (seq !== this.searchSeq) {
+          return;
+        }
+        void this.view?.webview.postMessage({ type: 'contentMatches', query, matches });
+        return;
+      } catch {
+        matches = []; // worker unavailable — fall through to the inline scan
+      }
+    }
+    for (const candidate of candidates) {
+      if (matches.length >= 20 || seq !== this.searchSeq) {
+        break;
+      }
+      try {
+        const stats = await stat(candidate.path);
+        if (stats.size > 2 * 1024 * 1024) {
+          continue;
+        }
+        const raw = await readFile(candidate.path, 'utf8');
+        const index = raw.toLowerCase().indexOf(needle);
+        if (index < 0) {
+          continue;
+        }
+        const preview = raw
+          .slice(Math.max(0, index - 60), index + needle.length + 60)
+          .replace(/\\+[nrt]/g, ' ')
+          .replace(/[\\"{}[\]]/g, '')
+          .replace(/\s+/g, ' ')
+          .trim();
+        matches.push({
+          path: candidate.path,
+          name: candidate.name,
+          preview: `…${preview}…`,
+          cwd: candidate.cwd,
+          other: candidate.other,
+        });
+      } catch {
+        /* unreadable file — skip */
+      }
+    }
+    if (seq !== this.searchSeq) {
+      return;
+    }
+    void this.view?.webview.postMessage({ type: 'contentMatches', query, matches });
+  }
 
   private pinnedPaths(): Set<string> {
     const raw = this.memento?.get<string[]>(SessionsWebviewProvider.PINNED_KEY, []) ?? [];
@@ -47,17 +145,33 @@ export class SessionsWebviewProvider implements vscode.WebviewViewProvider {
       const msg = (message ?? {}) as { type?: string; sessionPath?: string; sessionLabel?: string };
       try {
         switch (msg.type) {
+          case 'settings':
+            await vscode.commands.executeCommand('piRpcInternal.openSettingsMenu');
+            break;
           case 'newChat':
             await vscode.commands.executeCommand('piRpc.newSession');
             break;
           case 'remoteStart':
-            await vscode.commands.executeCommand('piRpc.remote.start');
+            if (getSettings().remoteEnabled) {
+              await vscode.commands.executeCommand('piRpc.remote.start');
+            }
+            break;
+          case 'contentSearch':
+            void this.contentSearch(String((msg as { query?: string }).query ?? ''));
             break;
           case 'open':
             if (msg.sessionPath) {
-              await vscode.commands.executeCommand('piRpc.switchSession', {
-                sessionPath: msg.sessionPath,
-              });
+              if ((msg as { other?: boolean }).other && (msg as { cwd?: string }).cwd) {
+                // A chat from ANOTHER project: open it with its own cwd.
+                await vscode.commands.executeCommand('piRpcInternal.openOtherChat', {
+                  sessionPath: msg.sessionPath,
+                  cwd: (msg as { cwd?: string }).cwd,
+                });
+              } else {
+                await vscode.commands.executeCommand('piRpc.switchSession', {
+                  sessionPath: msg.sessionPath,
+                });
+              }
             }
             break;
           case 'rename':
@@ -94,7 +208,11 @@ export class SessionsWebviewProvider implements vscode.WebviewViewProvider {
   }
 
   public refresh(): void {
-    this.view?.webview.postMessage({ type: 'state', state: this.buildState() });
+    this.view?.webview.postMessage({
+      type: 'state',
+      state: this.buildState(),
+      remoteEnabled: getSettings().remoteEnabled,
+    });
   }
 
   private buildState(): SidebarState {
@@ -106,21 +224,43 @@ export class SessionsWebviewProvider implements vscode.WebviewViewProvider {
       typeof active?.snapshot.state.sessionFile === 'string'
         ? active.snapshot.state.sessionFile
         : undefined;
-    return buildSidebarState(
-      recent as {
-        loading: boolean;
-        error?: string;
-        items: Array<{
-          path: string;
-          displayName: string;
-          modifiedAt: number;
-          modelLabel?: string;
-        }>;
-      },
+    const state = buildSidebarState(
+      recent as Parameters<typeof buildSidebarState>[0],
       activePath,
       Date.now(),
       this.pinnedPaths()
     );
+    // Mission Control badges: mark rows whose controller is generating (busy) or
+    // blocked on an approval (waiting) so background chats are visible at a glance.
+    const statusByPath = new Map<string, 'busy' | 'waiting'>();
+    const pctByPath = new Map<string, number>();
+    for (const controller of this.registry.list()) {
+      const file = controller.snapshot.state.sessionFile;
+      if (typeof file !== 'string') {
+        continue;
+      }
+      const snap = controller.snapshot;
+      if ((snap.pendingUi?.length ?? 0) > 0) {
+        statusByPath.set(file, 'waiting');
+      } else if (snap.state.isStreaming === true || snap.connectionState === 'busy') {
+        statusByPath.set(file, 'busy');
+      }
+      const percent = this.contextPercentOf?.(controller);
+      if (typeof percent === 'number' && percent >= 60) {
+        pctByPath.set(file, Math.round(percent));
+      }
+    }
+    for (const session of state.sessions) {
+      const status = statusByPath.get(session.path);
+      if (status) {
+        session.status = status;
+      }
+      const pct = pctByPath.get(session.path);
+      if (pct !== undefined) {
+        session.contextPct = pct;
+      }
+    }
+    return state;
   }
 
   private html(): string {
@@ -186,13 +326,44 @@ export class SessionsWebviewProvider implements vscode.WebviewViewProvider {
       }
       .icon-btn:hover { background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,0.2)); }
       .muted { opacity: 0.7; font-size: 12px; padding: 6px 8px; }
+      .other-group > summary.group-divider { cursor: pointer; list-style: none; }
+      .other-group > summary.group-divider::-webkit-details-marker { display: none; }
+      .group-divider { margin: 10px 4px 4px; padding-top: 8px; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; opacity: 0.6; border-top: 1px solid var(--vscode-panel-border); }
+      .stat-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+      .stat-dot.busy { background: var(--vscode-charts-orange, #d2795b); animation: sb-pulse 1s ease-in-out infinite; }
+      .stat-dot.waiting { background: var(--vscode-charts-yellow, #e2b93d); animation: sb-pulse 0.7s ease-in-out infinite; }
+      .ctx-pct { margin-left: 6px; font-size: 10px; opacity: 0.6; }
+      /* ═══ Refined Glass (matches the chat) ═══ */
+      :root {
+        --glass-1: color-mix(in srgb, var(--vscode-foreground) 3%, transparent);
+        --glass-2: color-mix(in srgb, var(--vscode-foreground) 6%, transparent);
+        --glass-line: color-mix(in srgb, var(--vscode-foreground) 9%, transparent);
+        --ember: #ff8c42;
+        --ember-glow: rgba(255, 140, 66, 0.35);
+      }
+      .search { background: var(--glass-1); border: 1px solid var(--glass-line); border-radius: 8px; transition: border-color 120ms ease; }
+      .search:focus { outline: none; border-color: var(--ember-glow); }
+      .item { transition: background 100ms ease; }
+      .item:hover { background: var(--glass-2); }
+      .item.active { background: var(--glass-2); box-shadow: inset 2px 0 0 var(--ember); color: inherit; }
+      .icon-btn:hover { background: var(--glass-2); color: var(--ember); }
+      .remote-btn { background: var(--glass-1); border-color: var(--glass-line); border-radius: 9px; }
+      .remote-btn:hover { border-color: var(--ember-glow); background: var(--glass-2); }
+      .group-divider { border-top-color: var(--glass-line); }
+      ::-webkit-scrollbar { width: 8px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--vscode-foreground) 16%, transparent); border-radius: 4px; }
+      body.vscode-high-contrast .search, body.vscode-high-contrast .item.active, body.vscode-high-contrast .remote-btn { background: var(--vscode-editor-background); }
+      .ctx-pct.hot { color: var(--vscode-charts-orange, #ff8c42); opacity: 1; font-weight: 600; }
+      @keyframes sb-pulse { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
+      .item.other .name { opacity: 0.92; }
     </style>
     <title>Chats</title>
   </head>
   <body>
     <div class="wrap">
       <button class="new-btn" id="new-btn" type="button" title="Start a new chat">+ New Chat</button>
-      <button class="remote-btn" id="remote-btn" type="button" title="Watch or drive this chat from your phone"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2" width="10" height="20" rx="2.5"/><path d="M11 18h2"/></svg>Connect a phone</button>
+      <button class="remote-btn" id="remote-btn" type="button" style="display:none" title="Watch or drive this chat from your phone"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2" width="10" height="20" rx="2.5"/><path d="M11 18h2"/></svg>Connect a phone</button>
       <input class="search" id="search" type="text" placeholder="Search chats\u2026" aria-label="Search chats" />
       <div class="list" id="list"></div>
     </div>
@@ -200,20 +371,22 @@ export class SessionsWebviewProvider implements vscode.WebviewViewProvider {
       const vscode = acquireVsCodeApi();
       let sessions = [];
       let filter = '';
+      let contentMatches = null;
+      let searchTimer;
+      let otherOpen = (vscode.getState() || {}).otherOpen === true;
       const listEl = document.getElementById('list');
       const searchEl = document.getElementById('search');
       function esc(s) { return String(s).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
       function render() {
         const f = filter.trim().toLowerCase();
         const items = sessions.filter((s) => !f || (s.name + ' ' + s.meta).toLowerCase().includes(f));
-        if (items.length === 0) {
-          listEl.innerHTML = '<div class="muted">' + (sessions.length ? 'No matching chats.' : 'No chats yet.') + '</div>';
-          return;
-        }
-        listEl.innerHTML = items.map((s) =>
-          '<div class="item' + (s.active ? ' active' : '') + (s.pinned ? ' pinned' : '') + '" data-path="' + esc(s.path) + '" data-name="' + esc(s.name) + '">' +
+        const current = items.filter((s) => !s.other);
+        const others = items.filter((s) => s.other);
+        const row = (s) => {
+          return ('' ) +
+          '<div class="item' + (s.active ? ' active' : '') + (s.pinned ? ' pinned' : '') + (s.other ? ' other' : '') + '" data-path="' + esc(s.path) + '" data-name="' + esc(s.name) + '"' + (s.other ? ' data-other="1" data-cwd="' + esc(s.cwd || '') + '"' : '') + '>' +
             '<div class="body">' +
-              '<div class="name">' + esc(s.name) + '</div>' +
+              '<div class="name">' + (s.status ? '<span class="stat-dot ' + s.status + '"></span>' : '') + esc(s.name) + (s.contextPct ? '<span class="ctx-pct' + (s.contextPct >= 85 ? ' hot' : '') + '">' + s.contextPct + '%</span>' : '') + '</div>' +
               (s.meta ? '<div class="meta">' + esc(s.meta) + '</div>' : '') +
             '</div>' +
             '<div class="actions">' +
@@ -221,12 +394,46 @@ export class SessionsWebviewProvider implements vscode.WebviewViewProvider {
               '<button class="icon-btn" data-act="rename" title="Rename">\u270e</button>' +
               '<button class="icon-btn" data-act="delete" title="Delete">\u2715</button>' +
             '</div>' +
-          '</div>'
-        ).join('');
+          '</div>';
+        };
+        let html = current.map(row).join('');
+        if (others.length) {
+          // Collapsed by default — a second project list doubled every window's
+          // sidebar. State is remembered per workspace (webview state).
+          html += '<details class="other-group"' + (otherOpen ? ' open' : '') + '><summary class="group-divider">Other projects (' + others.length + ')</summary>' + others.map(row).join('') + '</details>';
+        }
+        if (f.length >= 3 && contentMatches && String(contentMatches.query || '').trim().toLowerCase() === f) {
+          const rows = (contentMatches.matches || []).filter((m) => !items.some((s) => s.path === m.path));
+          if (rows.length) {
+            html += '<div class="group-divider">Message matches</div>' + rows.map((m) =>
+              '<div class="item' + (m.other ? ' other' : '') + '" data-path="' + esc(m.path) + '" data-name="' + esc(m.name) + '"' + (m.other ? ' data-other="1" data-cwd="' + esc(m.cwd || '') + '"' : '') + '>' +
+                '<div class="body"><div class="name">' + esc(m.name) + '</div><div class="meta">' + esc(m.preview) + '</div></div>' +
+              '</div>').join('');
+          }
+        }
+        if (!html) { listEl.innerHTML = '<div class="muted">' + (sessions.length ? 'No matching chats.' : 'No chats yet.') + '</div>'; return; }
+        listEl.innerHTML = html;
+        const otherGroup = listEl.querySelector('.other-group');
+        if (otherGroup) {
+          otherGroup.addEventListener('toggle', () => {
+            otherOpen = otherGroup.open;
+            vscode.setState(Object.assign({}, vscode.getState() || {}, { otherOpen: otherOpen }));
+          });
+        }
       }
       document.getElementById('new-btn').addEventListener('click', () => vscode.postMessage({ type: 'newChat' }));
       document.getElementById('remote-btn').addEventListener('click', () => vscode.postMessage({ type: 'remoteStart' }));
-      searchEl.addEventListener('input', () => { filter = searchEl.value; render(); });
+      function applyRemoteEnabled(on) {
+        const btn = document.getElementById('remote-btn');
+        if (btn) btn.style.display = on ? '' : 'none';
+      }
+      searchEl.addEventListener('input', () => {
+        filter = searchEl.value; render();
+        clearTimeout(searchTimer);
+        const q = filter.trim();
+        if (q.length >= 3) searchTimer = setTimeout(() => vscode.postMessage({ type: 'contentSearch', query: q }), 350);
+        else contentMatches = null;
+      });
       listEl.addEventListener('click', (e) => {
         const btn = e.target.closest('.icon-btn');
         const item = e.target.closest('.item');
@@ -238,11 +445,26 @@ export class SessionsWebviewProvider implements vscode.WebviewViewProvider {
           vscode.postMessage({ type: btn.getAttribute('data-act'), sessionPath, sessionLabel });
           return;
         }
-        vscode.postMessage({ type: 'open', sessionPath });
+        // Instant selection feedback: highlight the clicked item immediately,
+        // before the tab finishes loading, so the click is acknowledged at once.
+        document.querySelectorAll('.item.active').forEach(function (el) {
+          el.classList.remove('active');
+        });
+        item.classList.add('active');
+        vscode.postMessage({ type: 'open', sessionPath, other: item.getAttribute('data-other') === '1', cwd: item.getAttribute('data-cwd') || undefined });
       });
       window.addEventListener('message', (event) => {
         const msg = event.data;
-        if (msg && msg.type === 'state') { sessions = (msg.state && msg.state.sessions) || []; render(); }
+        if (msg && msg.type === 'contentMatches') {
+          contentMatches = msg;
+          render();
+          return;
+        }
+        if (msg && msg.type === 'state') {
+          sessions = (msg.state && msg.state.sessions) || [];
+          applyRemoteEnabled(!!msg.remoteEnabled);
+          render();
+        }
       });
       vscode.postMessage({ type: 'refresh' });
     </script>

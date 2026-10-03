@@ -24,7 +24,7 @@ test('buildSidebarState maps recent sessions and marks the active one', () => {
   assert.equal(state.sessions[0]?.name, 'Session 2');
   assert.equal(state.sessions[0]?.active, true);
   assert.equal(state.sessions[1]?.active, false);
-  assert.match(state.sessions[0]?.meta, /sonnet/);
+  assert.doesNotMatch(state.sessions[0]?.meta ?? '', /sonnet/); // meta is recency-only now (model lives in the chat status chip)
 });
 
 test('buildSidebarState handles the empty case', () => {

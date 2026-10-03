@@ -1,29 +1,54 @@
 import * as vscode from 'vscode';
-import { summarizeModel, summarizeQueue } from '../../state/selectors';
 import type { SessionController } from '../../sessions/sessionController';
+import { stripAnsiCodes } from './ansi';
 
+// The status bar is a PASSIVE Pi-status indicator only. All configuration
+// (model, usage/cost, thinking level, etc.) lives in the chat composer toolbar
+// so controls have a single, focused home and don't compete across surfaces.
 export class StatusBarController implements vscode.Disposable {
   private mode: 'simple' | 'advanced' = 'simple';
   private readonly connection = vscode.window.createStatusBarItem(
     vscode.StatusBarAlignment.Left,
     100
   );
-  private readonly model = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 99);
-  private readonly queue = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 98);
-  private readonly usage = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 97);
+  // Agent-driven transient statuses (e.g. plan mode) — informational, not config.
   private readonly keyed = new Map<string, vscode.StatusBarItem>();
   private controller: SessionController | undefined;
   private subscription: vscode.Disposable | undefined;
+  // Mission Control: aggregate of ALL open chats (parallel sessions) — running /
+  // waiting-for-approval counts, click to jump to any chat.
+  private readonly mission = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 99);
 
   public constructor() {
     this.connection.command = 'piRpcInternal.showHealth';
-    this.model.command = 'piRpc.showModels';
-    this.queue.command = 'piRpcInternal.openChat';
-    this.usage.command = 'piRpc.showSessionStats';
+    this.connection.tooltip = 'Pi connection status — click for health details';
     this.connection.show();
-    this.model.show();
-    this.queue.show();
-    this.usage.show();
+    this.mission.command = 'piRpc.showRunningChats';
+  }
+
+  public updateMission(
+    chats: Array<{ title: string; status: 'busy' | 'waiting' | 'idle' | 'faulted' }>
+  ): void {
+    if (chats.length === 0) {
+      this.mission.hide();
+      return;
+    }
+    const busy = chats.filter((chat) => chat.status === 'busy').length;
+    const waiting = chats.filter((chat) => chat.status === 'waiting').length;
+    const parts = [`$(comment-discussion) ${chats.length}`];
+    if (busy > 0) {
+      parts.push(`$(sync~spin) ${busy}`);
+    }
+    if (waiting > 0) {
+      parts.push(`$(bell-dot) ${waiting}`);
+    }
+    this.mission.text = parts.join('  ');
+    this.mission.tooltip = new vscode.MarkdownString(
+      ['**Pi chats**', ...chats.map((chat) => `- ${chat.title} — _${chat.status}_`)].join('\n')
+    );
+    this.mission.backgroundColor =
+      waiting > 0 ? new vscode.ThemeColor('statusBarItem.warningBackground') : undefined;
+    this.mission.show();
   }
 
   public setMode(mode: 'simple' | 'advanced'): void {
@@ -43,18 +68,13 @@ export class StatusBarController implements vscode.Disposable {
     }
     this.clearKeyed();
     this.connection.text = '$(plug) Pi: inactive';
-    this.model.text = '$(hubot) No model';
-    this.queue.text = '$(list-unordered) Queue';
-    this.usage.text = '$(pulse) Usage';
   }
 
   public dispose(): void {
     this.subscription?.dispose();
     this.clearKeyed();
     this.connection.dispose();
-    this.model.dispose();
-    this.queue.dispose();
-    this.usage.dispose();
+    this.mission.dispose();
   }
 
   private render(state: SessionController['snapshot']): void {
@@ -62,30 +82,31 @@ export class StatusBarController implements vscode.Disposable {
     const visible = this.mode === 'advanced' || state.connectionState === 'faulted';
     if (!visible) {
       this.connection.hide();
-      this.model.hide();
-      this.queue.hide();
-      this.usage.hide();
       this.clearKeyed();
       return;
     }
     this.connection.show();
-    this.model.show();
-    this.queue.show();
-    this.usage.show();
     this.connection.text = `$(plug) ${folder}: ${state.connectionState}`;
-    this.model.text = `$(hubot) ${summarizeModel(state)}`;
-    this.queue.text = `$(list-unordered) ${summarizeQueue(state)}`;
-    const stats = state.lastSessionStats;
-    const total = typeof stats?.cost === 'number' ? stats.cost.toFixed(4) : 'n/a';
-    this.usage.text = `$(pulse) Cost ${total}`;
     this.renderKeyedStatuses(state.statuses);
   }
 
   private renderKeyedStatuses(statuses: Record<string, string>): void {
-    const seen = new Set(Object.keys(statuses));
-    for (const [key, value] of Object.entries(statuses)) {
+    // Quiet by default, explicit opt-in per key — "don't just add
+    // everything" was the direct ask. Any Pi extension can set a status
+    // key; showing all of them unconditionally is how the status bar got
+    // noisy in the first place.
+    const allowlist = new Set(
+      vscode.workspace.getConfiguration('piRpc').get<string[]>('statusBarExtras', [])
+    );
+    const seen = new Set<string>();
+    for (const [key, rawValue] of Object.entries(statuses)) {
+      if (!allowlist.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      const value = stripAnsiCodes(rawValue);
       const item = this.keyed.get(key) ?? this.createKeyedItem(key);
-      item.text = `$(info) ${key}: ${value}`;
+      item.text = `$(info) ${stripAnsiCodes(key)}: ${value}`;
       item.tooltip = value;
       item.show();
     }

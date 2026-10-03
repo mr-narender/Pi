@@ -1,11 +1,48 @@
 import * as vscode from 'vscode';
+import { showChatSession } from './commands/sessionCommand';
+import { exportCommand } from './commands/exportCommand';
+import { compactMenu } from './commands/compactCommand';
+import { existsSync } from 'node:fs';
+import { basename } from 'node:path';
+
+import {
+  setBundledPiCliPath,
+  setManagedPiCliPath,
+  detectPathPi,
+  usablePathPiRoot,
+  selectedSdkRoot,
+} from './process/piLauncher';
+import { registerChatOps } from './commands/chatOps';
+import { promptChatName, trackSessionName } from './commands/nameCommand';
+import {
+  initSharedPiHost,
+  disposeSharedPiHost,
+  recycleIdleSharedPiHostWorkers,
+} from './process/sharedPiHost';
+import { TurnReview } from './review/turnReview';
+import { syncApprovalGateForWorkspace } from './review/approvalGate';
+import { pickChatModel } from './commands/modelPicker';
+import { pickThinkingLevel } from './commands/thinkingPicker';
+import {
+  showResourceManager,
+  addCustomResource,
+  exportConfiguration,
+  importConfiguration,
+  manageResourceKind,
+} from './resources/resourceManager';
+import { showInstructionManager } from './resources/instructionManager';
+import { InlineReview } from './review/inlineReview';
+import { SessionReplay } from './review/sessionReplay';
+import { SessionIndexService } from './sessions/sessionIndexService';
+import { ensureManagedPi, managedPiCliPath, managedPiRoot } from './process/piManaged';
 import { COMMAND_IDS, CONTRIBUTED_COMMANDS } from './config/commands';
 import { getSettings } from './config/settings';
-import { createRedactedDiagnosticsExport } from './diagnostics/export';
+import { previewDiagnostics } from './commands/debugCommand';
 import { DiagnosticsLogger } from './diagnostics/logger';
 import { redactJsonValue } from './diagnostics/redaction';
 import { ensureWorkspaceAvailable, ensureTrustedForMutation } from './security/trust';
 import { RecentSessionService } from './sessions/recentSessionService';
+
 import { formatRelativeTimestamp } from './sessions/recentSessions';
 import { SessionRegistry } from './sessions/sessionRegistry';
 import { ExtensionUiBroker } from './ui/extensionUiBroker';
@@ -20,12 +57,13 @@ import { ChatEditorProvider } from './editorTabs/provider';
 import { ChatFileSystemProvider } from './editorTabs/fileSystemProvider';
 import { initChatUriRegistry } from './editorTabs/uriRegistry';
 import { ChatTabManager } from './editorTabs/tabManager';
+import { AgenticChatListHost } from './ui/sidebar/agenticChatListHost';
 import { AskPiCodeLensProvider, type AskSymbolArgs } from './editorTabs/askCodeLens';
 import { RemoteHostClient } from './remote/hostClient';
 import { pairingLink } from './remote/remoteConfig';
 import { showPairingPanel, closePairingPanel, setPairingStatus } from './remote/pairingPanel';
 import type { SessionController } from './sessions/sessionController';
-import type { ExtensionUiRequest, JsonObject } from './rpc/protocol';
+import type { ExtensionUiRequest } from './rpc/protocol';
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -68,16 +106,6 @@ async function appendSessionInfoName(sessionPath: string, name: string): Promise
   await appendFile(sessionPath, `${JSON.stringify(entry)}\n`, 'utf8');
 }
 
-function formatTokenCount(count: number): string {
-  if (count >= 1_000_000) {
-    return `${(count / 1_000_000).toFixed(count % 1_000_000 === 0 ? 0 : 1)}M`;
-  }
-  if (count >= 1000) {
-    return `${Math.round(count / 1000)}K`;
-  }
-  return String(count);
-}
-
 function recentRequests(controller: SessionController, method?: ExtensionUiRequest['method']) {
   return controller.snapshot.uiHistory
     .filter((item) => (method ? item.method === method : true))
@@ -97,23 +125,272 @@ function compatibilityEvents(controller: SessionController) {
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const logger = new DiagnosticsLogger();
+  // Point the launcher at the Pi bundled inside this extension (vendor/pi). When
+  // present + piRpc.piSource='bundled', Pi runs from here with VS Code's own
+  // Node runtime — no external `pi` install required. Missing bundle -> falls
+  // back to the external `pi` automatically.
+  const bundledCli = vscode.Uri.joinPath(
+    context.extensionUri,
+    'vendor',
+    'pi',
+    'dist',
+    'cli.js'
+  ).fsPath;
+  setBundledPiCliPath(bundledCli);
+  logger.info(
+    `Bundled Pi CLI: ${existsSync(bundledCli) ? bundledCli : '(not bundled — managed bootstrap provides Pi)'}`
+  );
+  // Pi resolution order (managed default): an EXISTING `pi` on PATH always wins
+  // — no duplicate npm copy, no self-updates (the user owns that install). The
+  // managed npm bootstrap only ever runs behind explicit consent
+  // (piRpc.autoInstall, default OFF).
+  const pathPi = detectPathPi();
+  if (pathPi) {
+    logger.info(
+      `Found Pi on PATH: ${pathPi.binPath}${pathPi.version ? ` (v${pathPi.version})` : ''}` +
+        (pathPi.packageRoot
+          ? ` — using it for the shared runtime (no npm install needed)`
+          : ` — package root not resolvable; chats will run it as per-chat processes`)
+    );
+  } else {
+    logger.info('No `pi` found on PATH.');
+  }
+  const managedCli = managedPiCliPath(context);
+  setManagedPiCliPath(existsSync(managedCli) ? managedCli : undefined);
+  if (getSettings().piSource === 'managed' && !usablePathPiRoot(logger)) {
+    if (existsSync(managedCli) || getSettings().autoInstall) {
+      void ensureManagedPi(context, logger).then((cli) => setManagedPiCliPath(cli));
+    } else if (!pathPi) {
+      logger.warn(
+        'Pi is not installed: no `pi` on PATH, no managed copy, and piRpc.autoInstall is false. ' +
+          'Install it yourself (npm install -g @earendil-works/pi-coding-agent) or set "piRpc.autoInstall": true.'
+      );
+    }
+  }
+  // Shared Pi host: ONE worker hosts every chat on a single shared ModelRuntime
+  // (many AgentSessions, one runtime) instead of one OS process per chat. This
+  // is the parallel-sessions engine; supervisors fall back to a per-chat process
+  // if it can't open. Toggle with piRpc.sharedRuntime. The host imports Pi from
+  // a runtime-resolved root: PATH pi > managed install > vendored (dev).
+  let piMissingNotified = false;
+  const resolvePiRoot = async (): Promise<string> => {
+    const vendorRoot = vscode.Uri.joinPath(context.extensionUri, 'vendor', 'pi').fsPath;
+    const vendorCli = vscode.Uri.joinPath(
+      context.extensionUri,
+      'vendor',
+      'pi',
+      'dist',
+      'cli.js'
+    ).fsPath;
+    const source = getSettings().piSource;
+    if (source === 'external') {
+      const selected = selectedSdkRoot(getSettings());
+      if (!selected)
+        throw new Error(
+          'SDK_ROOT_UNRESOLVABLE: selected executable is stock-only; /scoped-models requires a resolvable Pi SDK 0.99.1 or 0.99.2 JavaScript CLI.'
+        );
+      return selected;
+    }
+    if ((source === 'bundled' || source === 'inprocess') && existsSync(vendorCli)) {
+      return vendorRoot;
+    }
+    // 1. An existing PATH install always wins — never duplicate it via npm.
+    //    (Gated: a different-MAJOR pi is not fed to the host fork — #5.)
+    const usable = usablePathPiRoot(logger);
+    if (usable) {
+      return usable;
+    }
+    // 2. Managed copy (existing, or installable when piRpc.autoInstall allows).
+    const cli = await ensureManagedPi(context, logger);
+    if (cli) {
+      setManagedPiCliPath(cli);
+      return managedPiRoot(context);
+    }
+    if (existsSync(vendorCli)) {
+      return vendorRoot;
+    }
+    // 3. Nothing available — tell the user exactly what to do (once per window).
+    if (!piMissingNotified) {
+      piMissingNotified = true;
+      void vscode.window
+        .showErrorMessage(
+          "Pi isn't installed — no `pi` on PATH and auto-install is off.",
+          'Enable auto-install',
+          'Show Logs'
+        )
+        .then(async (choice) => {
+          if (choice === 'Enable auto-install') {
+            await vscode.workspace
+              .getConfiguration('piRpc')
+              .update('autoInstall', true, vscode.ConfigurationTarget.Global);
+            void vscode.window.showInformationMessage(
+              'piRpc.autoInstall enabled — open a chat and Pi will install automatically.'
+            );
+          } else if (choice === 'Show Logs') {
+            void vscode.commands.executeCommand('piRpcInternal.showLogs');
+          }
+        });
+    }
+    throw new Error(
+      'Pi is not installed: install it (npm install -g @earendil-works/pi-coding-agent) or enable piRpc.autoInstall'
+    );
+  };
+  {
+    // Both shared and dedicated SDK sessions use the same typed transport/host.
+    const workers = getSettings().runtimeWorkers;
+    const sharedHost = initSharedPiHost(
+      context.extensionPath,
+      process.env,
+      logger,
+      resolvePiRoot,
+      workers === 'auto' ? undefined : workers,
+      vscode.Uri.joinPath(context.globalStorageUri, 'v8-cache').fsPath
+    );
+    context.subscriptions.push({ dispose: () => disposeSharedPiHost() });
+    // Warm the WHOLE pool at activation — workers boot serially in the
+    // background so the runtime is standing before the first click, then a
+    // draft session is parked for instant New Chat. User opens arriving
+    // mid-warmup ride the booting worker (never a second cold boot).
+    const piAvailable =
+      usablePathPiRoot(logger) !== undefined ||
+      existsSync(managedCli) ||
+      getSettings().autoInstall ||
+      existsSync(bundledCli);
+    if (piAvailable && getSettings().sharedRuntime && getSettings().piSource !== 'external') {
+      // Session prewarming cannot silently omit its actual CLI/trust/resource options.
+      sharedHost.warmPool();
+    }
+  }
+  // Record the loaded build in the output channel only (no user-facing toast).
+  logger.info(
+    `Pi extension activating: v${String(
+      (context.extension.packageJSON as { version?: unknown }).version ?? 'unknown'
+    )}`
+  );
   const registry = new SessionRegistry(logger);
   const settings = getSettings();
   const editorTabsEnabled = () => getSettings().editorTabsEnabled;
   const statusBar = new StatusBarController();
-  const recentSessions = new RecentSessionService();
+  const sessionIndex = new SessionIndexService(context.extensionPath, logger);
+  context.subscriptions.push({ dispose: () => sessionIndex.dispose() });
+  const recentSessions = new RecentSessionService(sessionIndex);
   const uiState = new ChatUiState(context);
   const chat = new ChatPanelProvider(context, registry, uiState);
   // Rehydrate the chat URI short-id map before any custom-editor tab is
   // restored, so restored tabs resolve to their session identity.
   initChatUriRegistry(context.workspaceState);
   const chatTabs = new ChatTabManager(context, registry, uiState, logger);
-  const remoteHost = new RemoteHostClient();
-  chatTabs.setRemoteSink((snapshot) => remoteHost.pushSnapshot(snapshot));
-  context.subscriptions.push({ dispose: () => void remoteHost.stop() });
+  const turnReview = new TurnReview(logger, context.workspaceState);
+  const inlineReview = new InlineReview(turnReview);
+  context.subscriptions.push(inlineReview);
+  chatTabs.inlineReview = inlineReview;
+  const sessionReplay = new SessionReplay(turnReview);
+  context.subscriptions.push(sessionReplay);
+  chatTabs.sessionReplay = sessionReplay;
+
+  // True pre-apply approval gate (opt-in): sync on activation so a workspace
+  // opened with the setting already on gets it without waiting for a toggle.
+  void syncApprovalGateForWorkspace(
+    context.extensionUri,
+    vscode.workspace.getConfiguration('piRpc').get<boolean>('requireApprovalForEdits', false)
+  );
+  chatTabs.chatListSource = () => {
+    const folder = vscode.workspace.workspaceFolders?.[0];
+    if (!folder) {
+      return { items: [], others: [] };
+    }
+    void recentSessions.refresh(folder);
+    const state = recentSessions.getState(folder);
+    return { items: state.items, others: state.others ?? [] };
+  };
+  // Agentic Mode: the SAME view (piRpc.chat) renders either the chat list
+  // or the full chat, chosen by piRpc.sidebarMode — not two views gated by
+  // `when` (that was the earlier attempt; see AgenticChatListHost's own
+  // comment for why a native tree view was dropped for the list itself).
+  // VS Code calls resolveWebviewView once per view lifetime (retained
+  // across hide/show), so switching modes later needs its own explicit
+  // re-attach — sidebarModeChanged below does that.
+  const sidebarMode = (): 'agentic' | 'chat' =>
+    vscode.workspace.getConfiguration('piRpc').get<'agentic' | 'chat'>('sidebarMode', 'agentic');
+  let agenticListHost: AgenticChatListHost | undefined;
+  let attachedSidebarView: vscode.WebviewView | undefined;
+  // Which host currently owns the ONE WebviewView instance. VS Code never
+  // fires onDidDispose just because a view's content is reassigned to a
+  // different host, so switching modes must explicitly tear down whichever
+  // host owned it before — otherwise the old one stays registered forever
+  // (a stale SidebarChatHost kept reporting a chat as "open" with no tab or
+  // view actually showing it — the exact bug this fixes) and, separately,
+  // a stale message listener would keep firing alongside the new one
+  // (vscode.Event supports multiple subscribers; it doesn't replace one).
+  let attachedSidebarKind: 'agentic' | 'chat' | undefined;
+  const attachSidebarForCurrentMode = (view: vscode.WebviewView): void => {
+    attachedSidebarView = view;
+    const folder = vscode.workspace.workspaceFolders?.[0];
+    const nextKind: 'agentic' | 'chat' = sidebarMode() === 'agentic' && folder ? 'agentic' : 'chat';
+    if (attachedSidebarKind && attachedSidebarKind !== nextKind) {
+      if (attachedSidebarKind === 'chat') {
+        chatTabs.detachSidebarChatHost();
+      } else {
+        agenticListHost?.detach();
+      }
+    }
+    attachedSidebarKind = nextKind;
+    if (nextKind === 'agentic') {
+      if (!agenticListHost) {
+        agenticListHost = new AgenticChatListHost(
+          context.extensionUri,
+          chatTabs,
+          recentSessions,
+          folder!,
+          context.globalState
+        );
+        context.subscriptions.push(agenticListHost);
+      }
+      agenticListHost.attach(view);
+      return;
+    }
+    void chatTabs.attachSidebarChat(context.extensionUri, view);
+  };
+  context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider(
+      'piRpc.chat',
+      { resolveWebviewView: (view) => attachSidebarForCurrentMode(view) },
+      { webviewOptions: { retainContextWhenHidden: true } }
+    )
+  );
+
+  chatTabs.setTurnReview(turnReview);
+  // Draft capture/restore must use the OWNING TAB's identity (per-tab model) —
+  // the controller's current-session identity drifts after forks/prewarm and
+  // resurrected stale composer text.
+  const captureDraft = async (controller: SessionController): Promise<void> => {
+    const identity = chatTabs.identityForController(controller);
+    if (identity) {
+      await uiState.captureControllerDraftForIdentity(controller, identity);
+    } else {
+      await uiState.captureControllerDraft(controller);
+    }
+  };
+  const restoreDraft = async (controller: SessionController): Promise<void> => {
+    const identity = chatTabs.identityForController(controller);
+    if (identity) {
+      await uiState.restoreControllerDraftForIdentity(controller, identity);
+    } else {
+      await uiState.restoreControllerDraft(controller);
+    }
+  };
+  const remoteHost = new RemoteHostClient(context.secrets);
+  chatTabs.remoteSharing.setRemoteSink((snapshot) => remoteHost.pushSnapshot(snapshot));
+  // VS Code reload/deactivation is a transport disconnect, not an explicit
+  // Stop-sharing action. Keep the broker session resumable across reloads.
+  context.subscriptions.push({ dispose: () => remoteHost.disconnect() });
   const chatEditorProvider = new ChatEditorProvider(chatTabs);
-  const broker = new ExtensionUiBroker(registry, uiState, (controller) =>
-    chatTabs.hasOpenChatFor(controller)
+  const broker = new ExtensionUiBroker(
+    registry,
+    uiState,
+    (controller) => chatTabs.hasOpenChatFor(controller),
+    (controller) => chatTabs.isControllerVisible(controller),
+    (controller) => chatTabs.revealController(controller)
   );
   const localUi = new LocalExtensionUiContext();
 
@@ -144,25 +421,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   statusBar.bind(registry.getActive());
   void recentSessions.refresh();
 
-  // Warm-start Pi for every workspace folder as soon as the extension activates
-  // so the RPC connection is already live and clicking "New Chat" opens an
-  // interactive composer instantly instead of connecting on demand.
-  const warmFolders = vscode.workspace.workspaceFolders ?? [];
-  for (const folder of warmFolders) {
-    const controller = registry.getOrCreate(folder);
-    if (controller.snapshot.connectionState === 'stopped') {
-      logger.info(`Warm-starting Pi for '${folder.name}' on activation`);
-      void controller.start().catch((error) => {
-        logger.error(`Warm-start of Pi failed for '${folder.name}'`, error);
-      });
-    }
-  }
+  // No global warm-start: with the PER-TAB controller model each chat tab owns
+  // and starts its own Pi process on activation (parallel sessions), so a
+  // folder-level warm-start would only spawn an orphan Pi + session. Tabs start
+  // on demand in activateResource.
 
   const sessionsView = new SessionsWebviewProvider(
     context.extensionUri,
     registry,
     recentSessions,
-    context.workspaceState
+    context.workspaceState,
+    (controller) => chatTabs.contextPercent.get(controller),
+    sessionIndex
   );
 
   // Keep the chat list in sync with the terminal (TUI): watch the on-disk
@@ -172,16 +442,33 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   context.subscriptions.push(
     sessionDirWatcher,
-    vscode.window.registerWebviewViewProvider(SessionsWebviewProvider.viewType, sessionsView, {
-      webviewOptions: { retainContextWhenHidden: true },
-    }),
     recentSessions.onDidChange(() => sessionsView.refresh())
   );
+
+  const chatStatus = (controller: SessionController): 'busy' | 'waiting' | 'idle' | 'faulted' => {
+    const snap = controller.snapshot;
+    if (snap.connectionState === 'faulted') {
+      return 'faulted';
+    }
+    if ((snap.pendingUi?.length ?? 0) > 0) {
+      return 'waiting';
+    }
+    if (snap.state.isStreaming === true || snap.connectionState === 'busy') {
+      return 'busy';
+    }
+    return 'idle';
+  };
 
   const refreshViews = (): void => {
     sessionsView.refresh();
     statusBar.setMode(uiState.getMode());
     statusBar.bind(registry.getActive());
+    statusBar.updateMission(
+      chatTabs.listOpenChats().map((chat) => ({
+        title: chat.title,
+        status: chatStatus(chat.controller),
+      }))
+    );
     if (editorTabsEnabled()) {
       void chatTabs.refreshVisibleTabs();
     } else {
@@ -189,9 +476,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }
   };
 
+  const trackNameChanges = (controller: SessionController): void => {
+    context.subscriptions.push(
+      trackSessionName(controller, (folder) => recentSessions.refresh(folder), refreshViews)
+    );
+  };
   for (const controller of registry.list()) {
-    context.subscriptions.push(controller.onDidChangeState(refreshViews));
+    trackNameChanges(controller);
   }
+  // Controllers created AFTER activation (each chat tab makes its own in the
+  // per-tab model) need the same cross-cutting wiring — above all the extension
+  // UI broker, or permission dialogs in those chats would go unanswered.
+  context.subscriptions.push(
+    registry.onDidCreateController((controller) => {
+      broker.track(controller);
+      chatTabs.trackController(controller);
+      trackNameChanges(controller);
+      refreshViews();
+    })
+  );
 
   // Never open JSON/Markdown editors for information. Show a notification and
   // offer to copy the raw JSON to the clipboard for anyone who wants the detail.
@@ -293,6 +596,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   const registrations = new Map<string, (...args: unknown[]) => Promise<unknown>>();
 
+  // Native menus have no section-heading API. These disabled, palette-hidden
+  // labels only restore the names of Agentic More's existing flat groups.
+  registrations.set('piRpcInternal.agenticChatHeading', async () => undefined);
+  registrations.set('piRpcInternal.agenticConfigureHeading', async () => undefined);
+  registrations.set('piRpcInternal.agenticSystemHeading', async () => undefined);
+
   registrations.set('piRpcInternal.selectWorkspaceFolder', async (folderUri?: unknown) => {
     const selected =
       typeof folderUri === 'string'
@@ -301,7 +610,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     if (selected) {
       statusBar.bind(selected);
       await recentSessions.refresh(selected.folder);
-      await uiState.restoreControllerDraft(selected);
+      await restoreDraft(selected);
       if (editorTabsEnabled()) {
         await chatTabs.openCurrentChat({ folderUri: selected.folder.uri.toString() });
       } else {
@@ -369,8 +678,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       .find((entry) => asString(entry.snapshot.state.sessionFile) === sessionPath);
     if (live && live.snapshot.connectionState !== 'stopped') {
       await live.renameSession(trimmed);
-      await live.refreshState();
-      await live.reconcile();
       await recentSessions.refresh(live.folder);
     } else {
       await appendSessionInfoName(sessionPath, trimmed);
@@ -380,28 +687,54 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     void vscode.window.showInformationMessage(`Renamed chat to “${trimmed}”.`);
   });
 
+  // Open a chat that belongs to ANOTHER project (sidebar "Other projects"). The
+  // chat runs with its OWN cwd via a synthesized folder handle — controllers and
+  // the shared host only need uri.fsPath + name, not a real workspace folder.
+  registrations.set('piRpcInternal.openOtherChat', async (value?: unknown) => {
+    const rec = asRecord(value);
+    const sessionPath = asString(rec?.sessionPath);
+    const cwd = asString(rec?.cwd);
+    if (!sessionPath || !cwd) {
+      return;
+    }
+    ensureTrustedForMutation();
+    if (!existsSync(cwd)) {
+      void vscode.window.showWarningMessage(
+        `Pi: that chat's project folder no longer exists (${cwd}).`
+      );
+      return;
+    }
+    const real = (vscode.workspace.workspaceFolders ?? []).find((f) => f.uri.fsPath === cwd);
+    const folder: vscode.WorkspaceFolder = real ?? {
+      uri: vscode.Uri.file(cwd),
+      name: basename(cwd) || cwd,
+      index: vscode.workspace.workspaceFolders?.length ?? 0,
+    };
+    const controller = registry.getOrCreate(folder);
+    const resource = await chatTabs.openForSessionFile(controller, sessionPath, {
+      focusComposer: true,
+    });
+    void chatTabs
+      .activateResource(resource, { startIfStopped: false })
+      .finally(() => refreshViews());
+  });
+
   registrations.set('piRpcInternal.deleteSession', async (value?: unknown) => {
     const node = asRecord(value);
     const sessionPath = asString(node?.sessionPath);
     if (!sessionPath) {
       return;
     }
-    const label = asString(node?.sessionLabel) ?? sessionPath.split('/').pop() ?? 'this chat';
-    const confirm = await vscode.window.showWarningMessage(
-      `Delete chat "${label}"? This permanently removes its saved session file.`,
-      { modal: true },
-      'Delete'
-    );
-    if (confirm !== 'Delete') {
-      return;
-    }
+    // One click = deleted. No confirmation by design (Master's call).
+    chatTabs.stopControllersForSessionFile(sessionPath); // runtime down, no wait
     await chatTabs.closeForSessionFile(sessionPath);
     try {
       await vscode.workspace.fs.delete(vscode.Uri.file(sessionPath));
     } catch {
       /* file may already be gone; still refresh the list */
     }
-    await recentSessions.refresh();
+    // The full sessions-dir rescan is the slow part — never block the UI on it.
+    void recentSessions.refresh().then(() => refreshViews());
     refreshViews();
   });
 
@@ -423,10 +756,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (activeContext) {
         await chatTabs.startResource(activeContext.resource);
         await recentSessions.refresh(activeContext.controller.folder);
-        await uiState.restoreControllerDraft(activeContext.controller);
-        void vscode.window.showInformationMessage(
-          `Pi started for ${activeContext.controller.folder.name}`
-        );
+        await restoreDraft(activeContext.controller);
         refreshViews();
         return activeContext.controller.folder.uri.toString();
       }
@@ -436,8 +766,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         await controller.start();
         await controller.reconcile();
         await recentSessions.refresh(controller.folder);
-        await uiState.restoreControllerDraft(controller);
-        void vscode.window.showInformationMessage(`Pi started for ${controller.folder.name}`);
+        await restoreDraft(controller);
       },
       { autoStart: false, forcePicker: true }
     );
@@ -612,37 +941,40 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (!controller) {
         return undefined;
       }
-      registry.setActive(controller);
-      statusBar.bind(controller);
-      const record = asRecord(value);
-      const currentSession = asString(controller.snapshot.state.sessionFile);
-      const sourceIdentity = activeContext?.target ?? {
-        workspaceFolderUri: controller.folder.uri.toString(),
-        kind: currentSession ? ('sessionFile' as const) : ('workspaceDraft' as const),
-        sessionFile: currentSession,
-        sessionId: asString(controller.snapshot.state.sessionId),
-      };
-      await uiState.captureControllerDraftForIdentity(controller, sourceIdentity);
-      // New Chat always starts a fresh session immediately — no confirmation.
-      // (Continuing from the current session as a parent stays available via the
-      // `parentSession` argument for programmatic callers.)
-      const parentSession = asString(record?.parentSession);
+      // PER-TAB model: New Chat = just open a fresh DRAFT tab. The draft owns its
+      // own controller (it adopts the prewarmed session and starts in the
+      // background); the first message promotes it to a real session via
+      // preparePromptContext. The old flow called newSession() on the ACTIVE
+      // chat's controller — yanking that chat onto a new session and leaving the
+      // draft tab's controller orphaned ("Connecting to Pi…" forever).
       await chatTabs.openDraftForWorkspace(controller, { focusComposer: true });
-      const result = await controller.newSession(parentSession);
-      await chatTabs.nameSessionIfUnnamed(controller);
-      await recentSessions.refresh(controller.folder);
-      await uiState.restoreControllerDraft(controller);
-      await chatTabs.promoteDraftToCurrentSession(controller);
-      await chatTabs.focusComposer();
+      const parentSession = asString(asRecord(value)?.parentSession);
+      if (parentSession) {
+        // Programmatic "continue from parent": promote the DRAFT's own controller.
+        const draft = chatTabs.getActiveContext();
+        if (draft && draft.target.kind === 'workspaceDraft') {
+          if (draft.controller.snapshot.connectionState === 'stopped') {
+            await draft.controller.start();
+            await draft.controller.reconcile();
+          }
+          await draft.controller.whenReady();
+          const result = await draft.controller.newSession(parentSession);
+          await chatTabs.nameSessionIfUnnamed(draft.controller);
+          await chatTabs.promoteDraftToCurrentSession(draft.controller);
+          await recentSessions.refresh(draft.controller.folder);
+          refreshViews();
+          return result;
+        }
+      }
       refreshViews();
-      return result;
+      return { started: true };
     }
     return withController(
       async (controller) => {
         const record = asRecord(value);
         const currentSession = asString(controller.snapshot.state.sessionFile);
         const composer = await uiState.getComposerState(controller);
-        await uiState.captureControllerDraft(controller);
+        await captureDraft(controller);
         let parentSession = asString(record?.parentSession);
         if (currentSession && !parentSession) {
           const warning =
@@ -666,7 +998,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         }
         const result = await controller.newSession(parentSession);
         await recentSessions.refresh(controller.folder);
-        await uiState.restoreControllerDraft(controller);
+        await restoreDraft(controller);
         await chat.focusComposer();
         return result;
       },
@@ -687,121 +1019,117 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const controller = activeController();
     if (!controller) {
       void vscode.window.showInformationMessage('Open a Pi chat first.');
-      return undefined;
+      return;
     }
-    {
-      const models = await controller.getAvailableModels();
-      const current = asRecord(controller.snapshot.state.model);
-      const currentProvider = current ? asString(current.provider) : undefined;
-      const currentKey = current
-        ? `${asString(current.provider)}/${asString(current.id)}`
-        : undefined;
-
-      // Group models by provider for a two-step picker: provider -> model.
-      const byProvider = new Map<string, JsonObject[]>();
-      for (const model of models) {
-        const provider = String(model.provider ?? 'provider');
-        (byProvider.get(provider) ?? byProvider.set(provider, []).get(provider)!).push(model);
-      }
-      const providers = Array.from(byProvider.keys()).sort();
-
-      const modelItem = (model: JsonObject) => {
-        const provider = String(model.provider ?? 'provider');
-        const id = String(model.id ?? 'model');
-        const key = `${provider}/${id}`;
-        const inputs = Array.isArray(model.input) ? model.input.map(String) : [];
-        const bits = [
-          model.reasoning ? 'reasoning' : 'no reasoning',
-          typeof model.contextWindow === 'number'
-            ? `ctx ${formatTokenCount(model.contextWindow)}`
-            : undefined,
-          typeof model.maxTokens === 'number'
-            ? `out ${formatTokenCount(model.maxTokens)}`
-            : undefined,
-          inputs.includes('image') ? 'images' : undefined,
-        ].filter(Boolean);
-        return {
-          label: `${key === currentKey ? '$(check) ' : ''}${id}`,
-          description: String(model.name ?? ''),
-          detail: bits.join('  \u00b7  '),
-          model,
-        };
-      };
-
-      const pickModelsFrom = async (list: JsonObject[], title: string) => {
-        const items = list
-          .slice()
-          .sort((a, b) => String(a.id ?? '').localeCompare(String(b.id ?? '')))
-          .map(modelItem);
-        return vscode.window.showQuickPick(items, {
-          title,
-          placeHolder: 'reasoning · context · max output · images',
-          matchOnDetail: true,
-        });
-      };
-
-      let picked;
-      if (providers.length <= 1) {
-        picked = await pickModelsFrom(models, 'Select model');
-      } else {
-        // Step 1: pick a provider (with an "All providers" escape hatch).
-        const ALL = '$(list-flat) All providers';
-        const providerPick = await vscode.window.showQuickPick(
-          [
-            { label: ALL, provider: undefined as string | undefined },
-            ...providers.map((provider) => ({
-              label: `${provider === currentProvider ? '$(check) ' : ''}${provider}`,
-              description: `${byProvider.get(provider)?.length ?? 0} model(s)`,
-              provider,
-            })),
-          ],
-          { title: 'Select provider', placeHolder: 'Choose a provider, then a model' }
-        );
-        if (!providerPick) {
-          return models;
-        }
-        // Step 2: pick a model within the provider (or across all).
-        picked = providerPick.provider
-          ? await pickModelsFrom(
-              byProvider.get(providerPick.provider) ?? [],
-              `${providerPick.provider} — select model`
-            )
-          : await pickModelsFrom(models, 'Select model');
-      }
-
-      if (picked) {
-        await controller.selectModel(
-          String(picked.model.provider ?? ''),
-          String(picked.model.id ?? '')
-        );
-        await controller.refreshState();
-        refreshViews();
-      }
-      return models;
-    }
+    await pickChatModel(controller);
+    refreshViews();
   });
   registrations.set('piRpc.selectModel', registrations.get('piRpc.showModels')!);
+  // Extensions/skills/prompts manager (Track B): discover what's already on
+  // disk in Pi's own conventional locations + the Agent Skills spec
+  // locations, toggle on/off via Pi's native settings.json -path/+path
+  // exclusion syntax, add custom ones, export/import the configuration.
+  registrations.set('piRpc.manageResources', async () => {
+    await showResourceManager();
+  });
+  // Direct jumps for the sidebar ⋯ menu — three short items instead of one
+  // combined label that wrapped and broke the menu's layout.
+  registrations.set('piRpc.manageExtensions', async () => {
+    await manageResourceKind('extensions');
+  });
+  registrations.set('piRpc.manageSkills', async () => {
+    await manageResourceKind('skills');
+  });
+  registrations.set('piRpc.managePrompts', async () => {
+    await manageResourceKind('prompts');
+  });
+  registrations.set('piRpc.manageAgentInstructions', async () => {
+    await showInstructionManager();
+  });
+  // Toggling just updates the setting — the onDidChangeConfiguration
+  // listener (registered later, near the other config-sync context keys)
+  // picks up ANY change to piRpc.sidebarMode, from this command or from
+  // manually editing settings.json, and syncs the context key either way.
+  registrations.set('piRpc.toggleSidebarMode', async () => {
+    const config = vscode.workspace.getConfiguration('piRpc');
+    const current = config.get<'agentic' | 'chat'>('sidebarMode', 'agentic');
+    const next = current === 'agentic' ? 'chat' : 'agentic';
+    await config.update('sidebarMode', next, vscode.ConfigurationTarget.Global);
+  });
+  registrations.set('piRpcInternal.switchToFullChat', async () => {
+    if (sidebarMode() === 'agentic') {
+      await vscode.commands.executeCommand('piRpc.toggleSidebarMode');
+    }
+  });
+  registrations.set('piRpc.addCustomResource', async () => {
+    await addCustomResource();
+  });
+  registrations.set('piRpc.exportResourceConfig', async () => {
+    await exportConfiguration();
+  });
+  registrations.set('piRpc.importResourceConfig', async () => {
+    await importConfiguration();
+  });
+  // Line-by-line review controls (CodeLens inside the real file).
+  registrations.set('piRpcInternal.hunkKeep', async (fsPath?: unknown, index?: unknown) => {
+    await inlineReview.keepHunk(String(fsPath), Number(index));
+  });
+  registrations.set('piRpcInternal.hunkRevert', async (fsPath?: unknown, index?: unknown) => {
+    await inlineReview.revertHunk(String(fsPath), Number(index));
+  });
+  registrations.set('piRpcInternal.hunkKeepAll', async (fsPath?: unknown) => {
+    await inlineReview.keepAll(String(fsPath));
+  });
+  registrations.set('piRpcInternal.hunkRevertAll', async (fsPath?: unknown) => {
+    await inlineReview.revertAll(String(fsPath));
+  });
+
+  // Claude-style mode switch: one click flips Auto <-> Approve-every-edit.
+  // Reuses the existing onDidChangeConfiguration sync (writes .pi/settings.json
+  // + .pi/extensions/pi-approval-gate.ts, offers a runtime restart).
+  registrations.set('piRpc.togglePermissionMode', async () => {
+    chatTabs.assertNoManualCompactions();
+    const config = vscode.workspace.getConfiguration('piRpc');
+    const next = !config.get<boolean>('requireApprovalForEdits', false);
+    await config.update('requireApprovalForEdits', next, vscode.ConfigurationTarget.Workspace);
+  });
+
+  // Sidebar chat: focus the docked π chat (Zed layout — center stays free).
+  registrations.set('piRpc.openSidebarChat', async () => {
+    await vscode.commands.executeCommand('piRpc.chat.focus');
+  });
+
+  // Zed-style follow mode: cycle open → status → off from the palette.
+  registrations.set('piRpc.toggleFollowAgent', async () => {
+    const config = vscode.workspace.getConfiguration('piRpc');
+    const current = config.get<string>('followAgent', 'off');
+    const next = current === 'open' ? 'status' : current === 'status' ? 'off' : 'open';
+    await config.update('followAgent', next, vscode.ConfigurationTarget.Global);
+    void vscode.window.showInformationMessage(
+      `π follow agent: ${next === 'open' ? 'open files + glow edits' : next === 'status' ? 'status bar only' : 'off'}`
+    );
+  });
+
+  // Chat settings, guided: 1) provider → 2) that provider's models → 3) that
+  // model's thinking capability (skipped when the model can't reason).
+  registrations.set('piRpc.chatSettings', async () => {
+    const controller = activeController();
+    if (!controller) {
+      void vscode.window.showInformationMessage('Open a Pi chat first.');
+      return;
+    }
+    await pickChatModel(controller);
+    refreshViews();
+  });
+
   registrations.set('piRpc.setThinkingLevel', async () => {
     const controller = activeController();
     if (!controller) {
       void vscode.window.showInformationMessage('Open a Pi chat first.');
       return;
     }
-    const currentLevel = asString(controller.snapshot.state.thinkingLevel);
-    const levels = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
-    const picked = await vscode.window.showQuickPick(
-      levels.map((level) => ({
-        label: `${level === currentLevel ? '$(check) ' : ''}${level}`,
-        level,
-      })),
-      { title: 'Thinking level', placeHolder: 'How much should Pi reason before replying?' }
-    );
-    if (picked) {
-      await controller.setThinkingLevel(picked.level);
-      await controller.refreshState();
-      refreshViews();
-      void vscode.window.showInformationMessage(`Thinking level set to “${picked.level}”.`);
-    }
+    await pickThinkingLevel(controller);
+    refreshViews();
   });
   registrations.set('piRpc.cycleThinkingLevel', async () =>
     withController((controller) => controller.cycleThinkingLevel())
@@ -827,15 +1155,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     });
   });
   registrations.set('piRpc.compact', async () => {
-    return withController(
-      async (controller) => {
-        const customInstructions = await vscode.window.showInputBox({
-          title: 'Compaction instructions (optional)',
-        });
-        return controller.compact(customInstructions);
-      },
-      { requireTrust: true }
-    );
+    return withController(async (controller) => compactMenu(controller), { requireTrust: true });
   });
   registrations.set('piRpc.toggleAutoCompaction', async () =>
     withController((controller) => controller.toggleAutoCompaction())
@@ -888,49 +1208,34 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       void vscode.window.showInformationMessage('Open a Pi chat first.');
       return undefined;
     }
-    const stats = (await controller.showSessionStats()) ?? {};
-    const tokens = asRecord(stats.tokens) ?? {};
-    const ctx = asRecord(stats.contextUsage);
-    const num = (v: unknown) => (typeof v === 'number' ? v : 0);
-    const cost = num(stats.cost);
-    const lines = [
-      `Messages: ${num(stats.userMessages)} you · ${num(stats.assistantMessages)} Pi`,
-      `Tool calls: ${num(stats.toolCalls)}`,
-      `Tokens: ${formatTokenCount(num(tokens.total))} total  (in ${formatTokenCount(
-        num(tokens.input)
-      )} · out ${formatTokenCount(num(tokens.output))} · cache ${formatTokenCount(
-        num(tokens.cacheRead)
-      )})`,
-      ctx
-        ? `Context: ${formatTokenCount(num(ctx.tokens))} / ${formatTokenCount(
-            num(ctx.contextWindow)
-          )}  (${num(ctx.percent)}%)`
-        : undefined,
-      `Cost: $${cost.toFixed(cost < 1 ? 4 : 2)}`,
-    ].filter(Boolean) as string[];
-    const choice = await vscode.window.showInformationMessage(
-      'Usage & cost',
-      { modal: true, detail: lines.join('\n') },
-      'Copy JSON'
-    );
-    if (choice === 'Copy JSON') {
-      await vscode.env.clipboard.writeText(JSON.stringify(stats, null, 2));
-      void vscode.window.showInformationMessage('Copied usage details to clipboard.');
-    }
-    return stats;
+    return showChatSession(controller);
   });
   registrations.set('piRpc.exportHtml', async () => {
     return withController(
       async (controller) => {
-        const target = await vscode.window.showSaveDialog({ filters: { HTML: ['html'] } });
-        const result = await controller.exportHtml(target?.fsPath);
-        if (typeof result?.path === 'string') {
-          void vscode.window.showInformationMessage(`Exported ${result.path}`);
+        if (await exportCommand(controller, '')) {
+          void vscode.window.showInformationMessage(
+            'Exported locally. Nothing was uploaded or opened.'
+          );
         }
-        return result;
       },
       { requireTrust: true }
     );
+  });
+  // Open Chat List's "Open" rows: reveal an already-open chat (which may be
+  // a draft with no session file yet, so piRpc.switchSession's
+  // sessionPath-based resume flow doesn't apply here).
+  registrations.set('piRpcInternal.revealOpenChat', async (value?: unknown) => {
+    const record = asRecord(value);
+    const resourceStr = asString(record?.resource);
+    if (!resourceStr) {
+      return;
+    }
+    const uri = vscode.Uri.parse(resourceStr);
+    const context = await chatTabs.activateResource(uri, { startIfStopped: false });
+    if (context) {
+      chatTabs.revealController(context.controller);
+    }
   });
   registrations.set('piRpc.switchSession', async (value?: unknown) => {
     if (editorTabsEnabled()) {
@@ -961,12 +1266,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (!picked) {
         return { cancelled: true };
       }
-      await recentSessions.refresh(controller.folder);
+      // Open the tab IMMEDIATELY for instant feedback. The webview renders a
+      // "Loading chat…" loader (switchSession sets a handshaking state) while the
+      // session reconciles. The recent-list refresh and the reconcile run in the
+      // background so neither blocks the tab from appearing.
+      void recentSessions.refresh(controller.folder);
       const resource = await chatTabs.openForSessionFile(controller, picked.sessionPath, {
         focusComposer: true,
       });
-      await chatTabs.activateResource(resource, { startIfStopped: false });
-      refreshViews();
+      void chatTabs
+        .activateResource(resource, { startIfStopped: false })
+        .finally(() => refreshViews());
       return picked;
     }
     return withController(
@@ -992,7 +1302,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           void vscode.window.showInformationMessage(`${picked.label} is already open.`);
           return { cancelled: true, alreadyCurrent: true };
         }
-        await uiState.captureControllerDraft(controller);
+        await captureDraft(controller);
         if (currentSession) {
           const confirm = await vscode.window.showWarningMessage(
             `Resume ${picked.label}? Your current chat stays saved and you can come back from Resume Chat.`,
@@ -1006,7 +1316,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         }
         const result = await controller.switchSession(picked.sessionPath);
         await recentSessions.refresh(controller.folder);
-        await uiState.restoreControllerDraft(controller);
+        await restoreDraft(controller);
         await chat.focusComposer();
         return result;
       },
@@ -1048,7 +1358,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         await uiState.captureControllerDraftForIdentity(live.controller, live.target);
         const result = await live.controller.fork(chosenEntryId);
         await recentSessions.refresh(live.controller.folder);
-        await uiState.captureControllerDraft(live.controller);
+        await captureDraft(live.controller);
         const resource = await chatTabs.openCurrentChat({ focusComposer: true });
         refreshViews();
         return resource ? result : { cancelled: true };
@@ -1058,10 +1368,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       async (controller) => {
         const entryId = asString(asRecord(value)?.entryId);
         if (entryId) {
-          await uiState.captureControllerDraft(controller);
+          await captureDraft(controller);
           const result = await controller.fork(entryId);
           await recentSessions.refresh(controller.folder);
-          await uiState.captureControllerDraft(controller);
+          await captureDraft(controller);
           await chat.focusComposer();
           return result;
         }
@@ -1076,10 +1386,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           { title: 'Start Branch from User Message', matchOnDescription: true }
         );
         if (picked && typeof picked.entry.entryId === 'string') {
-          await uiState.captureControllerDraft(controller);
+          await captureDraft(controller);
           const result = await controller.fork(picked.entry.entryId);
           await recentSessions.refresh(controller.folder);
-          await uiState.captureControllerDraft(controller);
+          await captureDraft(controller);
           await chat.focusComposer();
           return result;
         }
@@ -1102,7 +1412,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         await uiState.captureControllerDraftForIdentity(live.controller, live.target);
         const result = await live.controller.clone();
         await recentSessions.refresh(live.controller.folder);
-        await uiState.captureControllerDraft(live.controller);
+        await captureDraft(live.controller);
         await chatTabs.openCurrentChat({ focusComposer: true });
         refreshViews();
         return result;
@@ -1110,10 +1420,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }
     return withController(
       async (controller) => {
-        await uiState.captureControllerDraft(controller);
+        await captureDraft(controller);
         const result = await controller.clone();
         await recentSessions.refresh(controller.folder);
-        await uiState.captureControllerDraft(controller);
+        await captureDraft(controller);
         await chat.focusComposer();
         return result;
       },
@@ -1155,23 +1465,46 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       void vscode.window.showInformationMessage('Open a Pi chat first.');
       return undefined;
     }
-    const name =
-      asString(asRecord(value)?.name) ??
-      (await vscode.window.showInputBox({
-        title: 'Rename chat',
-        value: asString(controller.snapshot.state.sessionName) ?? '',
-        prompt: 'Enter a name for this chat',
-      }));
-    if (name !== undefined && name.trim() !== '') {
-      await controller.renameSession(name.trim());
-      await controller.refreshState();
-      await controller.reconcile();
+    const applied = await promptChatName(controller, asString(asRecord(value)?.name));
+    if (applied) {
       await recentSessions.refresh(controller.folder);
       refreshViews();
-      void vscode.window.showInformationMessage(`Renamed chat to “${name.trim()}”.`);
     }
-    return name;
+    return applied;
   });
+  registerChatOps({
+    registrations,
+    chatTabs,
+    registry,
+    recentSessions,
+    turnReview,
+    logger,
+    chatStatus,
+    subscriptions: context.subscriptions,
+  });
+
+  // Shared-runtime self-heal: tear the host down; chats respawn it on next start.
+  registrations.set('piRpc.restartSharedRuntime', async () => {
+    if (!getSettings().sharedRuntime) {
+      void vscode.window.showInformationMessage('The shared Pi runtime is disabled.');
+      return;
+    }
+    chatTabs.assertNoManualCompactions();
+    disposeSharedPiHost();
+    const restartWorkers = getSettings().runtimeWorkers;
+    initSharedPiHost(
+      context.extensionPath,
+      process.env,
+      logger,
+      resolvePiRoot,
+      restartWorkers === 'auto' ? undefined : restartWorkers,
+      vscode.Uri.joinPath(context.globalStorageUri, 'v8-cache').fsPath
+    );
+    void vscode.window.showInformationMessage(
+      'Pi shared runtime restarted. Open chats will reconnect on their next action.'
+    );
+  });
+
   registrations.set('piRpc.showPiCommands', async () => {
     const activeContext = chatTabs.getActiveContext();
     const controller = activeContext?.controller ?? registry.getActive();
@@ -1234,6 +1567,30 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   registrations.set('piRpcInternal.increaseChatFont', () => adjustChatFont(1));
   registrations.set('piRpcInternal.decreaseChatFont', () => adjustChatFont(-1));
 
+  // The Settings gear (top of the sidebar) opens this menu of global/app + system
+  // actions. Per-chat actions live in the chat header “…” menu instead.
+  registrations.set('piRpcInternal.openSettingsMenu', async () => {
+    const items: Array<vscode.QuickPickItem & { command: string }> = [
+      { label: '$(add) Increase chat font size', command: 'piRpcInternal.increaseChatFont' },
+      { label: '$(remove) Decrease chat font size', command: 'piRpcInternal.decreaseChatFont' },
+      { label: '$(watch) Working animation…', command: 'piRpcInternal.setWorkingAnimation' },
+      { label: '$(keyboard) Typewriter speed…', command: 'piRpcInternal.setTypewriterSpeed' },
+      { label: '$(settings-gear) All Pi settings…', command: 'piRpcInternal.openSettings' },
+      { label: 'System', kind: vscode.QuickPickItemKind.Separator, command: '' },
+      { label: '$(debug-restart) Restart Pi', command: 'piRpcInternal.restart' },
+      { label: '$(pulse) Connection health', command: 'piRpcInternal.showHealth' },
+      { label: '$(output) Show logs', command: 'piRpcInternal.showLogs' },
+      { label: '$(question) Help', command: 'piRpcInternal.showHelp' },
+    ];
+    const pick = await vscode.window.showQuickPick(items, {
+      title: 'Pi — Settings',
+      placeHolder: 'Choose a setting or action',
+    });
+    if (pick?.command) {
+      await vscode.commands.executeCommand(pick.command);
+    }
+  });
+
   const pickSetting = async (key: string, title: string, options: string[]): Promise<void> => {
     const config = vscode.workspace.getConfiguration('piRpc');
     const current = config.get<string>(key);
@@ -1265,6 +1622,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     await vscode.commands.executeCommand('workbench.action.openSettings', '@ext:mr-narender.pi');
   });
 
+  // Debounce for the approval-gate config-change reaction (worker recycling +
+  // notification) — rapid toggling must settle to ONE outcome, not one per
+  // click (VS Code has no API to dismiss an already-shown toast).
+  let approvalGateReactionTimer: ReturnType<typeof setTimeout> | undefined;
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((event) => {
       if (
@@ -1277,6 +1638,38 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
       if (event.affectsConfiguration('piRpc.codeLensEnabled')) {
         codeLensProvider.refresh();
+      }
+      if (event.affectsConfiguration('piRpc.requireApprovalForEdits')) {
+        const enabled = vscode.workspace
+          .getConfiguration('piRpc')
+          .get<boolean>('requireApprovalForEdits', false);
+        // Instant visual feedback on EVERY click — this was the missing
+        // piece that made the toggle look "stuck": the setting always
+        // flipped correctly, but no webview was ever told to re-render, so
+        // the icon never reflected it. The icon flip itself IS the
+        // confirmation — no toast on top of it. A popup restating what you
+        // just saw happen, plus a decision button, was double confirmation
+        // for a single click. Any nuance (chats still on the old setting)
+        // lives in the icon's tooltip — checked when you're curious, not
+        // pushed at you.
+        void chatTabs.rerenderAll();
+        void syncApprovalGateForWorkspace(context.extensionUri, enabled).then(() => {
+          // Pi only re-reads .pi/settings.json (and a newly toggled project
+          // extension) at process boot — confirmed in Pi's own source,
+          // newSession() never touches the extension runtime. A full runtime
+          // restart would interrupt any chat mid-conversation just for a
+          // settings toggle, so instead: recycle only IDLE workers (zero
+          // disruption — nothing was running on them) and re-warm the pool so
+          // fresh capacity is ready. Debounced so rapid re-toggling settles
+          // to one recycle, not one per click.
+          clearTimeout(approvalGateReactionTimer);
+          approvalGateReactionTimer = setTimeout(() => {
+            const { recycled, stillBusy } = recycleIdleSharedPiHostWorkers();
+            logger.info(
+              `[approval-gate] settled: recycled ${recycled} idle worker(s), ${stillBusy} still busy`
+            );
+          }, 600);
+        });
       }
     })
   );
@@ -1417,16 +1810,58 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   remoteHost.onPrompt((message) => {
     void withController((controller) => controller.prompt(message), { requireTrust: true });
   });
+  const pushRemoteChatList = async (): Promise<void> => {
+    const chats = [...chatTabs.remoteSharing.getRemoteChats()];
+    // Include saved/current chats from the same workspace, not only tabs that
+    // happen to be open. Selecting one below opens it in VS Code and mirrors it.
+    for (const controller of registry.list()) {
+      await recentSessions.refresh(controller.folder);
+      const active = chatTabs.getActiveContext();
+      const activeFile =
+        active?.target.kind === 'sessionFile' ? active.target.sessionFile : undefined;
+      for (const item of recentSessions.getState(controller.folder).items) {
+        if (chats.some((chat) => chat.id === item.path)) continue;
+        chats.push({
+          id: item.path,
+          title: item.displayName,
+          active: item.path === activeFile,
+        });
+      }
+    }
+    remoteHost.pushChatList(chats);
+  };
+  remoteHost.onChatListRequest(() => void pushRemoteChatList());
+  remoteHost.onChatSelect((chatId) => {
+    void (async () => {
+      let selected = await chatTabs.remoteSharing.selectRemoteChat(chatId);
+      if (!selected) {
+        for (const controller of registry.list()) {
+          const item = recentSessions
+            .getState(controller.folder)
+            .items.find((candidate) => candidate.path === chatId);
+          if (item) {
+            await chatTabs.openForSessionFile(controller, item.path);
+            selected = true;
+            break;
+          }
+        }
+      }
+      if (selected) {
+        await chatTabs.remoteSharing.pushActiveSnapshotToRemote();
+        await pushRemoteChatList();
+      }
+    })();
+  });
   remoteHost.onPresence((devices, count) => {
     if (count === 0) {
       setPairingStatus('Waiting for a device…', false);
-      void chatTabs.updateSharingLabel('a device (waiting to pair)');
+      void chatTabs.remoteSharing.updateSharingLabel('a device (waiting to pair)');
       return;
     }
     const first = devices[0]?.name ?? 'a device';
     const label = count > 1 ? `${first} +${count - 1} more` : first;
     setPairingStatus(`Connected — ${label}`, true);
-    void chatTabs.updateSharingLabel(label);
+    void chatTabs.remoteSharing.updateSharingLabel(label);
   });
   remoteHost.onViewer((event, count) => {
     if (event === 'joined') {
@@ -1434,11 +1869,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       closePairingPanel();
       void vscode.window.showInformationMessage('Pi: a device connected to your remote session.');
       void (async () => {
-        await chatTabs.revealSharedChat();
-        await chatTabs.pushActiveSnapshotToRemote();
+        await chatTabs.remoteSharing.revealSharedChat();
+        await chatTabs.remoteSharing.pushActiveSnapshotToRemote();
+        pushRemoteChatList();
       })();
     } else if (count === 0) {
-      void chatTabs.updateSharingLabel('a device (waiting to pair)');
+      void chatTabs.remoteSharing.updateSharingLabel('a device (waiting to pair)');
     } else {
       setPairingStatus(
         count > 0 ? `${count} device${count === 1 ? '' : 's'} connected` : 'Waiting for a device…',
@@ -1447,6 +1883,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }
   });
   registrations.set('piRpc.remote.start', async () => {
+    if (!getSettings().remoteEnabled) {
+      void vscode.window.showInformationMessage(
+        'Pi: the Connect a phone feature is off. Enable “piRpc.remote.enabled” in Settings to use it.'
+      );
+      return;
+    }
     const cfg = vscode.workspace.getConfiguration('piRpc');
     const brokerUrl = (cfg.get<string>('remote.brokerUrl', '') || '').trim();
     const hostSecret = (cfg.get<string>('remote.hostSecret', '') || '').trim();
@@ -1464,12 +1906,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }
     try {
       // Ensure a live chat exists so the phone has a real session to mirror + drive.
-      await chatTabs.ensureActiveChat();
+      await chatTabs.remoteSharing.ensureActiveChat();
       const sharedResource = chatTabs.getActiveContext()?.resource;
       const session = await remoteHost.start(brokerUrl, hostSecret);
       const link = pairingLink(brokerUrl, session.pairingCode);
       if (sharedResource) {
-        await chatTabs.setSharing(sharedResource, 'a device (waiting to pair)');
+        await chatTabs.remoteSharing.setSharing(sharedResource, 'a device (waiting to pair)');
       }
       // Persistent panel with QR + PIN + link (does not vanish like a notification).
       await showPairingPanel(
@@ -1485,7 +1927,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         }
       );
       // Mirror the current chat immediately so a freshly-paired phone isn't blank.
-      await chatTabs.pushActiveSnapshotToRemote();
+      await chatTabs.remoteSharing.pushActiveSnapshotToRemote();
+      pushRemoteChatList();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       void vscode.window.showErrorMessage(`Pi remote: ${message}`);
@@ -1493,7 +1936,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   });
   registrations.set('piRpc.remote.stop', async () => {
     closePairingPanel();
-    await chatTabs.clearSharing();
+    await chatTabs.remoteSharing.clearSharing();
     await remoteHost.stop();
     void vscode.window.showInformationMessage('Pi remote session stopped.');
   });
@@ -1541,45 +1984,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   registrations.set('piRpcInternal.showHealth', async () => {
     const controller = registry.getActive();
-    const health = createRedactedDiagnosticsExport(logger, controller);
-    const state = controller?.snapshot;
-    const model = asRecord(state?.state.model);
-    const modelLabel = model
-      ? `${asString(model.provider) ?? '?'}/${asString(model.id) ?? '?'}`
-      : 'not selected';
-    const lines = [
-      `Connection: ${state?.connectionState ?? 'no active chat'}`,
-      `Workspace: ${controller?.folder.name ?? '—'}`,
-      `Session: ${asString(state?.state.sessionName) ?? '—'}`,
-      `Model: ${modelLabel}`,
-      `Thinking: ${asString(state?.state.thinkingLevel) ?? '—'}`,
-      `Messages: ${state?.messages.length ?? 0}`,
-      `Pi path: ${getSettings().executable}`,
-    ];
-    const choice = await vscode.window.showInformationMessage(
-      'Pi connection health',
-      { modal: true, detail: lines.join('\n') },
-      'Copy diagnostics'
-    );
-    if (choice === 'Copy diagnostics') {
-      await vscode.env.clipboard.writeText(JSON.stringify(health, null, 2));
-      void vscode.window.showInformationMessage('Redacted diagnostics copied to clipboard.');
-    }
-    return health;
+    return previewDiagnostics(controller);
   });
   registrations.set('piRpcInternal.exportDiagnostics', async () => {
-    ensureTrustedForMutation();
-    const target = await vscode.window.showSaveDialog({ filters: { JSON: ['json'] } });
-    if (!target) {
-      return undefined;
-    }
-    const payload = createRedactedDiagnosticsExport(logger, registry.getActive());
-    await vscode.workspace.fs.writeFile(
-      target,
-      Buffer.from(JSON.stringify(payload, null, 2), 'utf8')
-    );
-    void vscode.window.showInformationMessage(`Exported diagnostics to ${target.fsPath}`);
-    return target.fsPath;
+    const controller = registry.getActive();
+    return previewDiagnostics(controller);
   });
   registrations.set('piRpcInternal.openWorktree', async () => {
     ensureTrustedForMutation();
@@ -1934,6 +2343,66 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const contributedIds = new Set(CONTRIBUTED_COMMANDS.map((command) => command.id));
   logger.info(
     `Registered ${registrations.size} command handlers for ${contributedIds.size} contributed commands`
+  );
+
+  // Reattach the host socket after VS Code reload without creating a new
+  // pairing session. The persisted session is cleared only by explicit Stop.
+  if (await remoteHost.restore()) {
+    const active = chatTabs.getActiveContext();
+    if (active) {
+      await chatTabs.remoteSharing.setSharing(active.resource, 'your device (reconnected)');
+      await chatTabs.remoteSharing.pushActiveSnapshotToRemote();
+    }
+  }
+
+  // Gate the phone/remote feature behind an opt-in setting: drive the
+  // command-palette `when` clause via a context key and keep it in sync.
+  const applyRemoteEnabledContext = (): void => {
+    void vscode.commands.executeCommand(
+      'setContext',
+      'piRpc.remoteEnabled',
+      getSettings().remoteEnabled
+    );
+  };
+  applyRemoteEnabledContext();
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration((event) => {
+      if (event.affectsConfiguration('piRpc.remote.enabled')) {
+        applyRemoteEnabledContext();
+        sessionsView.refresh();
+      }
+    })
+  );
+
+  // Agentic/Chat sidebar mode: the piRpc.chat view's context key (used by a
+  // couple of `when` clauses elsewhere, e.g. the mode-toggle button itself
+  // needing to know which icon to show). The COMMAND handler is registered
+  // earlier (with the other commands, before the registration loop).
+  let lastKnownSidebarMode = sidebarMode();
+  const applySidebarModeContext = (): void => {
+    void vscode.commands.executeCommand('setContext', 'piRpc.sidebarMode', sidebarMode());
+  };
+  applySidebarModeContext();
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration((event) => {
+      if (event.affectsConfiguration('piRpc.sidebarMode')) {
+        applySidebarModeContext();
+        const mode = sidebarMode();
+        if (mode !== lastKnownSidebarMode) {
+          lastKnownSidebarMode = mode;
+          // Never leave the same chat visible in the sidebar AND an editor
+          // tab at once — move it (close the tab it came from, or open the
+          // tab it's going to) BEFORE re-rendering the sidebar's content,
+          // so a switch to Chat mode shows the chat that just closed, not
+          // whatever the sidebar last happened to have.
+          void chatTabs.syncSidebarModeTransition(mode).then(() => {
+            if (attachedSidebarView) {
+              attachSidebarForCurrentMode(attachedSidebarView);
+            }
+          });
+        }
+      }
+    })
   );
 
   const firstFolder = vscode.workspace.workspaceFolders?.[0];

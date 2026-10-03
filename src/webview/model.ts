@@ -259,6 +259,7 @@ function toBlocks(message: JsonObject): WebviewMessageBlock[] {
           typed.arguments !== undefined && typed.arguments !== null
             ? JSON.stringify(typed.arguments, null, 2)
             : undefined,
+        callId: typeof typed.id === 'string' ? typed.id : undefined,
       });
     } else if (typed.type === 'toolResult') {
       blocks.push({
@@ -266,12 +267,87 @@ function toBlocks(message: JsonObject): WebviewMessageBlock[] {
         name: typeof typed.name === 'string' ? typed.name : undefined,
         text: typeof typed.content === 'string' ? typed.content : messageText(raw as JsonObject),
         isError: typed.isError === true,
+        callId: typeof typed.toolCallId === 'string' ? typed.toolCallId : undefined,
       });
     } else if (typed.type === 'image') {
       blocks.push({ kind: 'image', mimeType: String(typed.mimeType ?? 'image') });
     }
   }
   return blocks;
+}
+
+// Tool RESULTS stream in as separate messages, which rendered as disconnected
+// cards. Fold each result INTO the assistant message that made the call (matched
+// by toolCallId, else the nearest previous assistant with tool calls), inserted
+// right after its call block — the renderer then fuses call+result into one
+// card. Results with no owning call stay standalone.
+function foldToolResults(
+  items: WebviewMessageItem[],
+  raws: readonly JsonObject[]
+): WebviewMessageItem[] {
+  const out: WebviewMessageItem[] = [];
+  for (let index = 0; index < items.length; index += 1) {
+    const item = items[index]!;
+    const raw = raws[index];
+    const role = item.role;
+    const isResultRole =
+      role === 'toolResult' ||
+      role === 'tool' ||
+      role === 'tool_result' ||
+      role === 'bashExecution';
+    if (!isResultRole) {
+      out.push(item);
+      continue;
+    }
+    const callId = typeof raw?.toolCallId === 'string' ? raw.toolCallId : undefined;
+    // Find the owning assistant: prefer exact callId match, else nearest
+    // previous assistant that has any tool-call block.
+    let targetIndex = -1;
+    for (let back = out.length - 1; back >= 0; back -= 1) {
+      const candidate = out[back]!;
+      if (candidate.role !== 'assistant' || !candidate.blocks) {
+        continue;
+      }
+      const hasMatch = callId
+        ? candidate.blocks.some((block) => block.kind === 'tool' && block.callId === callId)
+        : candidate.blocks.some((block) => block.kind === 'tool');
+      if (hasMatch) {
+        targetIndex = back;
+        break;
+      }
+      if (candidate.role === 'assistant') {
+        break; // don't skip past an unrelated assistant turn
+      }
+    }
+    if (targetIndex < 0) {
+      out.push(item); // no owner — keep it standalone
+      continue;
+    }
+    const target = out[targetIndex]!;
+    const resultBlock: WebviewMessageBlock = {
+      kind: 'toolResult',
+      name: item.blocks?.find((block) => block.kind === 'toolResult')?.name,
+      text: item.text,
+      isError:
+        raw?.isError === true ||
+        item.blocks?.some((block) => block.kind === 'toolResult' && block.isError === true) ===
+          true,
+      callId,
+    };
+    const blocks = [...(target.blocks ?? [])];
+    let insertAt = blocks.length;
+    if (callId) {
+      const callIndex = blocks.findIndex(
+        (block) => block.kind === 'tool' && block.callId === callId
+      );
+      if (callIndex >= 0) {
+        insertAt = callIndex + 1;
+      }
+    }
+    blocks.splice(insertAt, 0, resultBlock);
+    out[targetIndex] = { ...target, blocks };
+  }
+  return out;
 }
 
 function toItem(message: JsonObject, index: number, cwd: string): WebviewMessageItem {
@@ -281,6 +357,10 @@ function toItem(message: JsonObject, index: number, cwd: string): WebviewMessage
     text: messageText(message),
     blocks: toBlocks(message),
     attachments: normalizeAttachments(message.attachments, cwd),
+    errorMessage:
+      typeof message.errorMessage === 'string' && message.errorMessage.trim()
+        ? sanitizeDisplayText(message.errorMessage, 600)
+        : undefined,
   };
 }
 
@@ -327,15 +407,35 @@ export function createWebviewSnapshot(
       ? extra.messageLimit
       : DEFAULT_MESSAGE_WINDOW;
   const windowOffset = Math.max(0, totalMessages - limit);
+  const foldedMessages = foldToolResults(
+    state.messages
+      .slice(windowOffset)
+      .map((message, index) => toItem(message, windowOffset + index, state.cwd)),
+    state.messages.slice(windowOffset)
+  );
   return {
     sequence,
     title: state.title,
     uiMode: extra.uiMode,
     connectionState: state.connectionState,
+    catalogGeneration: state.generation,
+    switchingSession: state.switchingSession === true,
     workspaceFolderName: state.workspaceFolderName,
     sessionName: typeof state.state.sessionName === 'string' ? state.state.sessionName : undefined,
     sessionId: typeof state.state.sessionId === 'string' ? state.state.sessionId : undefined,
     sessionFile: typeof state.state.sessionFile === 'string' ? state.state.sessionFile : undefined,
+    currentAssistantMessageId:
+      state.currentAssistant &&
+      state.currentAssistant.generation === state.generation &&
+      state.currentAssistant.sessionFile === state.state.sessionFile &&
+      !state.switchingSession &&
+      state.messages.includes(state.currentAssistant.message)
+        ? toItem(
+            state.currentAssistant.message,
+            state.messages.indexOf(state.currentAssistant.message),
+            state.cwd
+          ).id
+        : undefined,
     isStreaming: state.state.isStreaming === true,
     isCompacting: state.state.isCompacting === true,
     messageCount:
@@ -344,9 +444,7 @@ export function createWebviewSnapshot(
       typeof state.state.pendingMessageCount === 'number'
         ? state.state.pendingMessageCount
         : undefined,
-    messages: state.messages
-      .slice(windowOffset)
-      .map((message, index) => toItem(message, windowOffset + index, state.cwd)),
+    messages: foldedMessages,
     messageWindow: {
       total: totalMessages,
       offset: windowOffset,
@@ -354,12 +452,25 @@ export function createWebviewSnapshot(
     },
     queue: state.queue,
     draft: extra.composer.draft,
+    localCommandAck: extra.composer.localCommandAck,
+    localCommandReplacement: extra.composer.localCommandReplacement,
+    localCommandConsumed: extra.composer.localCommandConsumed,
     composerResetSeq: extra.composer.composerResetSeq ?? 0,
+    retry: state.retry
+      ? {
+          attempt: state.retry.attempt,
+          errorMessage: state.retry.errorMessage
+            ? sanitizeDisplayText(state.retry.errorMessage, 300)
+            : undefined,
+        }
+      : undefined,
     statuses: state.statuses,
     widgets: state.widgets,
     model: state.state.model,
     thinkingLevel:
       typeof state.state.thinkingLevel === 'string' ? state.state.thinkingLevel : undefined,
+    availableThinkingLevels: state.state.availableThinkingLevels,
+    plan: derivePlan(foldedMessages),
     usage: summarizeUsage(state.lastSessionStats),
     approvals: state.pendingUi
       .filter((request) => request.method === 'select' || request.method === 'confirm')
@@ -386,4 +497,29 @@ export function createWebviewSnapshot(
         : undefined,
     typewriterSpeed: extra.presentation?.typewriterSpeed,
   };
+}
+
+/** Newest assistant markdown task list → plan strip ("- [ ] step" lines). */
+function derivePlan(
+  messages: Array<{ role: string; blocks?: WebviewMessageBlock[] }>
+): { items: Array<{ text: string; done: boolean }>; done: number } | undefined {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]!;
+    if (message.role !== 'assistant') {
+      continue;
+    }
+    const text = (message.blocks ?? [])
+      .filter((block) => block.kind === 'text')
+      .map((block) => ('text' in block ? (block.text ?? '') : ''))
+      .join('\n');
+    const matches = Array.from(text.matchAll(/^[-*] \[([ xX])\] +(.+)$/gm));
+    if (matches.length >= 2) {
+      const items = matches.slice(0, 12).map((match) => ({
+        text: match[2]!.trim().slice(0, 120),
+        done: match[1] !== ' ',
+      }));
+      return { items, done: items.filter((item) => item.done).length };
+    }
+  }
+  return undefined;
 }

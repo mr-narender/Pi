@@ -47,16 +47,10 @@ export function formatTokens(count: number): string {
 }
 
 /** Short chip label, e.g. "45% · 12.3k · $0.02". Empty parts are dropped. */
+/** Composer chip usage: ONLY the overall-consumed percentage — model and
+ * thinking already fill the chip; tokens/cost are one click away via the
+ * chip itself (chatSettings) or the π menu (Usage & cost), not crammed in
+ * here where they were forcing truncation of the model name. */
 export function formatUsageChip(usage: UsageSummary): string {
-  const parts: string[] = [];
-  if (typeof usage.contextPercent === 'number') {
-    parts.push(`${Math.round(usage.contextPercent)}%`);
-  }
-  if (usage.totalTokens > 0) {
-    parts.push(`${formatTokens(usage.totalTokens)} tok`);
-  }
-  if (typeof usage.cost === 'number' && usage.cost > 0) {
-    parts.push(`$${usage.cost.toFixed(usage.cost < 1 ? 3 : 2)}`);
-  }
-  return parts.join(' · ');
+  return typeof usage.contextPercent === 'number' ? `${Math.round(usage.contextPercent)}%` : '';
 }

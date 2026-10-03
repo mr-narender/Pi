@@ -11,6 +11,7 @@ async function run() {
     'piRpc.prompt',
     'piRpc.showModels',
     'piRpc.newSession',
+    'piRpcInternal.switchToFullChat',
     'piRpc.switchSession',
     'piRpcInternal.start',
     'piRpcInternal.openChat',
@@ -32,7 +33,21 @@ async function run() {
   assert.ok(all.includes('piRpc.switchSession'));
 
   const views = extension.packageJSON.contributes.views.piRpc.map((view) => view.id);
-  assert.deepEqual(views, ['piRpc.sessions']);
+  assert.deepEqual(views, ['piRpc.chat']);
+  const viewTitle = extension.packageJSON.contributes.menus['view/title'];
+  const agentic = viewTitle.filter(
+    (item) => item.when === 'view == piRpc.chat && piRpc.sidebarMode == agentic'
+  );
+  assert.deepEqual(
+    agentic.map((item) => item.command || item.submenu),
+    ['piRpc.newSession', 'piRpc.agenticActions']
+  );
+  assert.ok(extension.packageJSON.contributes.menus['piRpc.agenticActions'].length > 0);
+  assert.equal(
+    extension.packageJSON.contributes.configuration.properties['piRpc.followAgent'].default,
+    'off'
+  );
+  assert.ok(commands.includes('piRpc.toggleSidebarMode'));
 
   const customEditor = extension.packageJSON.contributes.customEditors.find(
     (item) => item.viewType === 'piRpc.chatEditor'

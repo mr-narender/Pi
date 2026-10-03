@@ -1,16 +1,43 @@
 export type WebviewInboundMessage =
-  | { type: 'requestSend'; command: 'prompt' | 'follow_up' | 'steer' }
+  | {
+      type: 'requestSend';
+      command: 'prompt' | 'follow_up' | 'steer';
+      follow?: boolean;
+      submissionId?: string;
+    }
   | { type: 'acceptPreview' }
   | { type: 'cancelPreview' }
   | { type: 'copyAcceptedSnapshot' }
   | { type: 'sendAcceptedSnapshotAgain' }
   | { type: 'abort' }
-  | { type: 'setDraft'; text: string }
+  | { type: 'toggleFollow' }
+  | { type: 'requestChatList' }
+  | { type: 'deleteChatSession'; path: string; title?: string }
+  | { type: 'requestReview' }
+  | {
+      type: 'reviewAction';
+      action: 'diff' | 'inline' | 'revertFile' | 'revertTurn' | 'replayTurn' | 'replaySession';
+      turn: number;
+      file?: string;
+    }
+  | { type: 'newChatSession' }
+  | { type: 'openChatSession'; path: string; workspaceFolderUri?: string }
+  | { type: 'screenOpenFile'; path: string; needle?: string }
+  | { type: 'screenRevert'; path: string; oldText?: string; newText?: string }
+  | { type: 'setDraft'; text: string; resetSeq?: number }
   | {
       type: 'setFocus';
       focus: 'composer' | 'attach' | 'contextChip' | 'imageChip' | 'preview' | 'none';
     }
   | { type: 'executeCommand'; command: string; argument?: unknown }
+  | {
+      type: 'forkAndSend';
+      fromBottom: number;
+      originalText: string;
+      text: string;
+      pickModel?: boolean;
+    }
+  | { type: 'debugLog'; text: string }
   | { type: 'pickImages' }
   | { type: 'clearAttachments' }
   | { type: 'appendActiveFile' }
@@ -29,8 +56,9 @@ export type WebviewInboundMessage =
   | { type: 'openDiff'; path: string }
   | { type: 'attachFile'; path: string }
   | { type: 'requestFileMentions'; query: string }
-  | { type: 'requestSlashCommands' }
+  | { type: 'requestSlashCommands'; requestId?: string }
   | { type: 'pasteImage'; data: string; mimeType: string }
+  | { type: 'diag'; scope: string; detail: string }
   | { type: 'respondUi'; id: string; value?: string; confirmed?: boolean };
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
@@ -51,13 +79,22 @@ export function parseWebviewMessage(value: unknown): WebviewInboundMessage | und
         record.command === 'follow_up' ||
         record.command === 'steer'
       ) {
-        return { type: 'requestSend', command: record.command };
+        return {
+          submissionId: typeof record.submissionId === 'string' ? record.submissionId : undefined,
+          follow: record.follow === true ? true : undefined,
+          type: 'requestSend',
+          command: record.command,
+        };
       }
       return undefined;
     case 'acceptPreview':
     case 'cancelPreview':
     case 'copyAcceptedSnapshot':
     case 'sendAcceptedSnapshotAgain':
+    case 'toggleFollow':
+    case 'requestChatList':
+    case 'requestReview':
+    case 'newChatSession':
     case 'abort':
     case 'pickImages':
     case 'clearAttachments':
@@ -67,8 +104,63 @@ export function parseWebviewMessage(value: unknown): WebviewInboundMessage | und
     case 'appendPickedFile':
     case 'loadOlder':
       return { type: record.type };
+    case 'reviewAction':
+      return (record.action === 'diff' ||
+        record.action === 'inline' ||
+        record.action === 'revertFile' ||
+        record.action === 'revertTurn' ||
+        record.action === 'replayTurn' ||
+        record.action === 'replaySession') &&
+        typeof record.turn === 'number'
+        ? {
+            type: 'reviewAction',
+            action: record.action,
+            turn: record.turn,
+            file: typeof record.file === 'string' ? record.file : undefined,
+          }
+        : undefined;
+    case 'deleteChatSession':
+      return typeof record.path === 'string'
+        ? {
+            type: 'deleteChatSession',
+            path: record.path,
+            title: typeof record.title === 'string' ? record.title : undefined,
+          }
+        : undefined;
+    case 'openChatSession':
+      return typeof record.path === 'string'
+        ? {
+            type: 'openChatSession',
+            path: record.path,
+            workspaceFolderUri:
+              typeof record.workspaceFolderUri === 'string' ? record.workspaceFolderUri : undefined,
+          }
+        : undefined;
+    case 'screenOpenFile':
+      return typeof record.path === 'string'
+        ? {
+            type: 'screenOpenFile',
+            path: record.path,
+            needle: typeof record.needle === 'string' ? record.needle : undefined,
+          }
+        : undefined;
+    case 'screenRevert':
+      return typeof record.path === 'string'
+        ? {
+            type: 'screenRevert',
+            path: record.path,
+            oldText: typeof record.oldText === 'string' ? record.oldText : undefined,
+            newText: typeof record.newText === 'string' ? record.newText : undefined,
+          }
+        : undefined;
     case 'setDraft':
-      return typeof record.text === 'string' ? { type: 'setDraft', text: record.text } : undefined;
+      return typeof record.text === 'string'
+        ? {
+            type: 'setDraft',
+            text: record.text,
+            resetSeq: typeof record.resetSeq === 'number' ? record.resetSeq : undefined,
+          }
+        : undefined;
     case 'setFocus':
       return record.focus === 'composer' ||
         record.focus === 'attach' ||
@@ -81,6 +173,21 @@ export function parseWebviewMessage(value: unknown): WebviewInboundMessage | und
     case 'executeCommand':
       return typeof record.command === 'string'
         ? { type: 'executeCommand', command: record.command, argument: record.argument }
+        : undefined;
+    case 'debugLog':
+      return typeof record.text === 'string' ? { type: 'debugLog', text: record.text } : undefined;
+    case 'forkAndSend':
+      return typeof record.fromBottom === 'number' &&
+        Number.isFinite(record.fromBottom) &&
+        typeof record.text === 'string' &&
+        record.text.trim().length > 0
+        ? {
+            type: 'forkAndSend',
+            fromBottom: record.fromBottom,
+            originalText: typeof record.originalText === 'string' ? record.originalText : '',
+            text: record.text,
+            ...(record.pickModel === true ? { pickModel: true } : {}),
+          }
         : undefined;
     case 'removeContextItem':
     case 'removeImageItem':
@@ -106,10 +213,21 @@ export function parseWebviewMessage(value: unknown): WebviewInboundMessage | und
         ? { type: 'requestFileMentions', query: record.query }
         : undefined;
     case 'requestSlashCommands':
-      return { type: 'requestSlashCommands' };
+      return {
+        type: 'requestSlashCommands',
+        ...(typeof record.requestId === 'string' ? { requestId: record.requestId } : {}),
+      };
     case 'pasteImage':
       return typeof record.data === 'string' && typeof record.mimeType === 'string'
         ? { type: 'pasteImage', data: record.data, mimeType: record.mimeType }
+        : undefined;
+    // 'pasteText' intentionally removed: pasted text stays plain text in the
+    // composer — only images (and file URIs) become chips.
+    case 'diag':
+      // Webview-side breadcrumbs (e.g. what a paste delivered) — log-only,
+      // bounded so a hostile payload can't flood the output channel.
+      return typeof record.scope === 'string' && typeof record.detail === 'string'
+        ? { type: 'diag', scope: record.scope.slice(0, 64), detail: record.detail.slice(0, 2000) }
         : undefined;
     case 'respondUi': {
       if (typeof record.id !== 'string') {

@@ -1,0 +1,49 @@
+
+    <a class="skip-link" href="#composer-field">Skip to composer</a>
+    <div class="layout" data-testid="chat-app" data-ui-mode="simple">
+      <div class="header-summary visually-hidden" aria-label="Current chat summary">Current · workspace · Demo Session · π is replying</div>
+      <div id="a11y-status" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></div>
+
+      
+      
+      
+
+      
+      
+      <main class="conversation" id="messages" role="log" aria-live="off" aria-relevant="additions text">
+        <article class="message-card message-user" data-mid="u1" aria-label="You said">
+          <div class="message-role">You</div>
+          <div class="message-body"><p class="msg-para">refactor this</p></div>
+          
+          <div class="msg-actions"><button type="button" class="msg-edit" title="Edit &amp; restart from here" aria-label="Edit and restart the chat from this message"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.5 3.5l2 2L6 12l-2.5.5L4 10z"/></svg></button><button type="button" class="msg-copy" title="Copy message" aria-label="Copy message"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="8" height="8" rx="1.5"/><path d="M3 10.5V4a1.5 1.5 0 0 1 1.5-1.5H10"/></svg></button></div>
+        </article><button type="button" id="jump-latest" class="jump-latest" title="Scroll to latest" aria-label="Scroll to latest message" hidden><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9.5l6 6 6-6"/></svg></button></main>
+
+      
+      
+      <section class="composer-dock" aria-labelledby="composer-heading">
+        <h2 id="composer-heading" class="visually-hidden">Message Pi</h2>
+        <label class="visually-hidden" for="composer-field">Message π</label>
+        
+        <div class="queue-tray"><div class="section-label">Queued for π</div><div class="queue-item"><span class="queue-kind">Steering</span><span class="queue-text">also check the tests</span></div><div class="queue-item"><span class="queue-kind">Steering</span><span class="queue-text">and update docs</span></div></div>
+        <div class="working-banner"><span class="working" data-anim="braille" role="status" aria-label="π is working"><svg class="working-logo" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><g fill="currentColor"><path d="M3.2 5.4 L20 5.4 L18.4 8 L4.8 8 Z"/><rect x="6.1" y="8" width="2.7" height="10.6" rx="1.1"/><path d="M14.4 8 h2.7 v8.4 l-2.7 2.2 Z"/><path d="M9.8 19.2 l2.1 -1.6 l-2.1 -1.6 v3.2 Z" opacity="0.9"/></g></svg><span class="working-glyph" aria-hidden="true"></span></span><span class="working-label">Working…</span></div>
+        <div class="composer-card" aria-busy="false">
+          <textarea id="composer-field" rows="3" placeholder="Ask π to edit…" ></textarea>
+          <div class="composer-actions" aria-label="Composer actions">
+            <div class="composer-actions-left">
+              <button type="button" class="composer-status" id="status-chip" data-command="piRpc.chatSettings" title="Model: mock/model · thinking: medium — click to change either" aria-label="Chat settings: model and thinking level"><span class="model-dot"></span>model · medium</button>
+              <button type="button" id="attach-trigger" class="icon-button" data-action="appendPickedFile" title="Add a file" aria-label="Add a file" >+</button>
+              <button type="button" class="icon-button" data-command="piRpc.showPiCommands" title="Commands" aria-label="Commands" >/</button>
+            </div>
+            <div class="composer-actions-right">
+              <button type="button" class="icon-button follow-toggle is-on" data-action="toggleFollow" title="Following π — the side editor tracks every file and line the agent touches (click to stop)" aria-label="Toggle follow agent" aria-pressed="true"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="8" cy="8" r="4.4"/><circle cx="8" cy="8" r="1" fill="currentColor" stroke="none"/><path d="M8 1v2.2M8 12.8V15M1 8h2.2M12.8 8H15"/></svg></button>
+              <button type="button" class="icon-button permission-toggle is-auto" data-command="piRpc.togglePermissionMode" title="Auto Mode — π edits freely, no pauses (click for Ask Before Edits)" aria-label="Toggle approval mode: Auto Mode or Ask Before Edits" aria-pressed="false"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3 L12 3 L12 8 C12 10.5 10 12.3 8 13.5 C6 12.3 4 10.5 4 8 Z"/><path d="M5.8 8 L7.2 9.6 L10.3 6.2"/></svg></button>
+              
+              <button type="button" class="ghost" data-action="abort">Stop</button>
+              <button type="button" id="composer-send-button" class="send-button" data-send-command="follow_up" title="Send next (Enter)" aria-label="Send next (Enter)" ><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12.5 4v3a1.5 1.5 0 0 1-1.5 1.5H4.5"/><path d="M7 6L4.3 8.5 7 11"/></svg></button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      
+    </div>

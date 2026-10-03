@@ -93,6 +93,10 @@ export class ChatUiState implements vscode.Disposable {
     return next;
   }
 
+  public captureIdentity(controller: SessionController): ChatTabTarget {
+    return currentIdentity(controller);
+  }
+
   public async getComposerState(controller: SessionController): Promise<ComposerSessionState> {
     return this.getComposerStateForIdentity(controller, currentIdentity(controller));
   }
@@ -120,18 +124,45 @@ export class ChatUiState implements vscode.Disposable {
     await this.setComposerStateForIdentity(controller, currentIdentity(controller), state);
   }
 
+  /**
+   * LIVE composer reset seq (synchronous, straight from the in-memory map).
+   * Used as a same-microtask gate right before a draft write: the async read→
+   * write path can be overtaken by a send's clear+seq-bump when the draft is
+   * large (slow restore/validate), and a stale write would resurrect sent text.
+   */
+  public peekComposerResetSeq(identity: ChatTabTarget): number {
+    const state = this.composerStates.get(sessionStateKeyForIdentity(identity));
+    return state?.composerResetSeq ?? 0;
+  }
+
   public async setComposerStateForIdentity(
     controller: SessionController,
     identity: ChatTabTarget,
-    state: ComposerSessionState
+    state: ComposerSessionState,
+    options?: { silent?: boolean; expectedCommandRevision?: number }
   ): Promise<void> {
     const key = sessionStateKeyForIdentity(identity);
+    const revision = this.composerStates.get(key)?.commandRevision ?? 0;
+    if (
+      options?.expectedCommandRevision !== undefined &&
+      options.expectedCommandRevision !== revision
+    )
+      return;
+    state.commandRevision = revision + 1;
     this.composerStates.set(key, cloneComposerState(state));
     await this.persist();
-    if (sessionStateKeyForIdentity(currentIdentity(controller)) === key) {
-      controller.setDraft(state.draft);
+    if (
+      sessionStateKeyForIdentity(currentIdentity(controller)) === key &&
+      (options?.expectedCommandRevision === undefined ||
+        this.composerStates.get(key)?.commandRevision === state.commandRevision)
+    ) {
+      // silent (draft typing): update the controller draft WITHOUT firing a
+      // state change, which would re-render the whole chat on every keystroke.
+      controller.setDraft(state.draft, options?.silent ? { silent: true } : undefined);
     }
-    this.emitter.fire();
+    if (!options?.silent) {
+      this.emitter.fire();
+    }
   }
 
   public async clearComposerStateForIdentity(
@@ -158,7 +189,8 @@ export class ChatUiState implements vscode.Disposable {
   ): Promise<void> {
     const state = await this.getComposerStateForIdentity(controller, identity);
     state.draft = draft;
-    await this.setComposerStateForIdentity(controller, identity, state);
+    // Draft typing must never trigger a re-render (silent).
+    await this.setComposerStateForIdentity(controller, identity, state, { silent: true });
   }
 
   public async restoreControllerDraft(controller: SessionController): Promise<void> {
@@ -462,6 +494,17 @@ export class ChatUiState implements vscode.Disposable {
     controller: SessionController,
     item: PendingContextItem
   ): Promise<PendingContextItem> {
+    if (item.kind === 'pastedText') {
+      // Self-contained: the bounded content lives in the persisted ref —
+      // nothing on disk to re-read, nothing to go stale, and no workspace
+      // access, so it's exempt from the trust gate below too.
+      return {
+        ...item,
+        sanitizedContent: item.persistedRef.content,
+        stale: false,
+        staleReason: undefined,
+      };
+    }
     if (!vscode.workspace.isTrusted) {
       return {
         ...item,
@@ -471,7 +514,15 @@ export class ChatUiState implements vscode.Disposable {
     }
     const folderPath = controller.folder.uri.fsPath;
     const relativePath = item.workspaceRelativePath;
-    const target = vscode.Uri.joinPath(controller.folder.uri, relativePath);
+    // workspaceRelativePath is absolute for files outside this chat's own
+    // folder (see attachmentCapture.ts's relativeWorkspacePath) — same
+    // isAbsolute-path pattern tabManager.ts already uses for
+    // attachFileByPath/openEditToolFile, so both attach paths resolve the
+    // same file the same way.
+    const isAbsolute = /^([a-zA-Z]:[\\/]|[\\/])/.test(relativePath);
+    const target = isAbsolute
+      ? vscode.Uri.file(relativePath)
+      : vscode.Uri.joinPath(controller.folder.uri, relativePath);
     try {
       if (item.kind === 'diagnostics') {
         const diagnostics = vscode.languages.getDiagnostics(target);

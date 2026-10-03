@@ -101,11 +101,6 @@ function messageIndex(messages: JsonObject[], key: string | undefined): number {
   return key ? messages.findIndex((message) => messageKey(message) === key) : -1;
 }
 
-function messageAt(messages: JsonObject[], key: string | undefined): JsonObject | undefined {
-  const index = messageIndex(messages, key);
-  return index === -1 ? undefined : asObject(messages[index]);
-}
-
 function upsertMessage(
   messages: JsonObject[],
   incoming: JsonObject | undefined,
@@ -293,13 +288,21 @@ export function reduceEvent(state: ControllerState, event: RpcEvent): Controller
       next = {
         ...next,
         connectionState: 'busy',
+        currentAssistant: undefined,
         state: { ...next.state, isStreaming: true },
       };
       break;
     case 'agent_end':
+      next = { ...next, currentAssistant: undefined };
+      // The agent has finished responding. Release the UI to 'ready' here rather
+      // than waiting for `agent_settled`: post-turn work (e.g. memory_search /
+      // qmd, summarization) can delay or drop `agent_settled`, which would leave
+      // the composer stuck on "Working…", queue follow-ups, and not clear the
+      // input. If a queued turn starts next, `agent_start`/`turn_start` set busy
+      // again. Stay busy only while compacting.
       next = {
         ...next,
-        connectionState: 'busy',
+        connectionState: next.state.isCompacting ? 'busy' : 'ready',
         state: {
           ...next.state,
           isStreaming: false,
@@ -314,6 +317,7 @@ export function reduceEvent(state: ControllerState, event: RpcEvent): Controller
       }
       break;
     case 'agent_settled':
+      next = { ...next, currentAssistant: undefined };
       next = {
         ...next,
         connectionState: next.state.isCompacting ? 'busy' : 'ready',
@@ -321,10 +325,10 @@ export function reduceEvent(state: ControllerState, event: RpcEvent): Controller
       };
       break;
     case 'turn_start':
-      next = { ...next, connectionState: 'busy' };
+      next = { ...next, connectionState: 'busy', currentAssistant: undefined };
       break;
     case 'turn_end': {
-      next = { ...next, connectionState: 'busy' };
+      next = { ...next, connectionState: 'busy', currentAssistant: undefined };
       const message = asObject(event.message);
       if (message) {
         next = { ...next, messages: upsertMessage(next.messages, message) };
@@ -339,16 +343,36 @@ export function reduceEvent(state: ControllerState, event: RpcEvent): Controller
     }
     case 'message_start': {
       const message = asObject(event.message);
-      next = { ...next, messages: upsertMessage(next.messages, message) };
+      next = {
+        ...next,
+        messages: upsertMessage(next.messages, message),
+        currentAssistant:
+          message?.role === 'assistant'
+            ? { message, generation: next.generation, sessionFile: next.state.sessionFile }
+            : undefined,
+      };
       break;
     }
     case 'message_update': {
       const current = asObject(event.message);
-      const stored = messageAt(next.messages, messageKey(current));
+      // Pi 0.84 streams DELTA-ONLY message_update events (no cumulative `message`
+      // field). Locate the message the delta belongs to by key when present,
+      // otherwise the last assistant message being streamed. Without this every
+      // text_delta was dropped and the assistant bubble stayed empty.
+      let index = messageIndex(next.messages, messageKey(current));
+      if (index === -1) {
+        for (let i = next.messages.length - 1; i >= 0; i -= 1) {
+          if (asObject(next.messages[i])?.role === 'assistant') {
+            index = i;
+            break;
+          }
+        }
+      }
+      const stored = index === -1 ? undefined : asObject(next.messages[index]);
       const mergedSnapshot = stored
         ? {
             ...stored,
-            ...current,
+            ...(current ?? {}),
             content:
               Array.isArray(current?.content) && current.content.length > 0
                 ? current.content
@@ -356,10 +380,26 @@ export function reduceEvent(state: ControllerState, event: RpcEvent): Controller
           }
         : current;
       const merged = applyAssistantDelta(mergedSnapshot, event);
-      next = { ...next, messages: upsertMessage(next.messages, merged) };
+      if (merged) {
+        if (index === -1) {
+          next = { ...next, messages: upsertMessage(next.messages, merged) };
+        } else {
+          const messages = [...next.messages];
+          messages[index] = merged;
+          next = {
+            ...next,
+            messages,
+            currentAssistant:
+              next.currentAssistant && next.currentAssistant.message === stored
+                ? { ...next.currentAssistant, message: merged }
+                : next.currentAssistant,
+          };
+        }
+      }
       break;
     }
     case 'message_end': {
+      next = { ...next, currentAssistant: undefined };
       const message = asObject(event.message);
       next = { ...next, messages: upsertMessage(next.messages, message) };
       break;
@@ -428,10 +468,23 @@ export function reduceEvent(state: ControllerState, event: RpcEvent): Controller
       };
       break;
     case 'auto_retry_start':
-      next = { ...next, connectionState: 'busy' };
+      next = {
+        ...next,
+        connectionState: 'busy',
+        // Pi tells us EXACTLY why it is retrying — surface it, never guess.
+        retry: {
+          attempt: typeof event.attempt === 'number' ? event.attempt : undefined,
+          delayMs: typeof event.delayMs === 'number' ? event.delayMs : undefined,
+          errorMessage: typeof event.errorMessage === 'string' ? event.errorMessage : undefined,
+        },
+      };
       break;
     case 'auto_retry_end':
-      next = { ...next, connectionState: next.state.isStreaming ? 'busy' : 'ready' };
+      next = {
+        ...next,
+        connectionState: next.state.isStreaming ? 'busy' : 'ready',
+        retry: undefined,
+      };
       break;
     case 'entry_appended': {
       const entry = asObject(event.entry);
@@ -533,6 +586,7 @@ export function resetControllerProjection(state: ControllerState): ControllerSta
   return {
     ...state,
     ...resetUi(state),
+    currentAssistant: undefined,
     messages: [],
     entries: [],
     tree: [],

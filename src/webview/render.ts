@@ -1,4 +1,9 @@
 import type { WebviewSnapshot } from '../state/types';
+import { isLiveWorking } from './working';
+import { renderChatActionsMenu } from './chatActionsMenu';
+import { friendlyApiStatus, parseProviderError } from './apiError';
+import { formatKey } from './codeFormat';
+import { highlightCode } from './highlight';
 import { chipPrivacyLabel, summarizeChip, type PendingContextItem } from './composer';
 import { formatUsageChip } from './usageSummary';
 import { editReplacements, editToolFilePath, type EditReplacement } from './editToolPath';
@@ -146,7 +151,14 @@ const META_ICONS = {
 const CARET_ICON =
   '<svg class="tl-caret" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4l4 4-4 4"/></svg>';
 
-type TimelineNode = MessageBlock | { kind: 'response'; text: string };
+type TimelineNode =
+  | MessageBlock
+  | { kind: 'response'; text: string }
+  | {
+      kind: 'toolPair';
+      call: Extract<MessageBlock, { kind: 'tool' }>;
+      result: Extract<MessageBlock, { kind: 'toolResult' }>;
+    };
 
 /**
  * Assistant turns render as a TIMELINE of rounded, hairline-bordered cards
@@ -156,7 +168,8 @@ type TimelineNode = MessageBlock | { kind: 'response'; text: string };
  */
 function renderAssistantBody(
   message: WebviewSnapshot['messages'][number],
-  streamingAnswer = false
+  streamingAnswer = false,
+  modelName = ''
 ): string {
   const blocks: MessageBlock[] =
     message.blocks && message.blocks.length > 0
@@ -164,6 +177,26 @@ function renderAssistantBody(
       : message.text
         ? [{ kind: 'text', text: message.text }]
         : [];
+  // A settled assistant turn with NO content means the model returned nothing
+  // (commonly a provider error / rate limit that Pi couldn't surface as an
+  // event). Show a clear hint instead of a silent blank bubble.
+  const hasAnyContent = blocks.some((block) =>
+    block.kind === 'text' || block.kind === 'thinking' ? Boolean((block.text ?? '').trim()) : true
+  );
+  if (!hasAnyContent) {
+    if (message.errorMessage) {
+      // Show the provider's REAL error (same text the TUI shows) — parsed into
+      // a structured card when it matches the "provider/model failed: N {json}"
+      // shape; falls back to the plain message untouched otherwise.
+      return renderApiErrorCard(message.errorMessage);
+    }
+    // No reply container until actual content; errors remain actionable even live.
+    if (streamingAnswer) {
+      return '';
+    }
+    const who = modelName ? `<strong>${escapeHtml(modelName)}</strong>` : 'The model';
+    return `<div class="assistant-empty">${who} returned an empty response and the provider reported no error details. <button type="button" class="link-button" data-command="piRpcInternal.retryLast">Retry</button> · <button type="button" class="link-button" data-command="piRpcInternal.showLogs">Logs</button></div>`;
+  }
   const hasProcess = blocks.some((block) => block.kind !== 'text');
   if (!hasProcess) {
     return renderMessageStream(message, streamingAnswer);
@@ -172,26 +205,147 @@ function renderAssistantBody(
   let textRun: string[] = [];
   const flush = (): void => {
     if (textRun.length > 0) {
-      nodes.push({ kind: 'response', text: textRun.join('\n\n') });
+      const text = textRun.join('\n\n');
+      if (text.trim()) {
+        nodes.push({ kind: 'response', text });
+      }
       textRun = [];
     }
   };
-  for (const block of blocks) {
+  // FUSE each tool call with ITS result (matched by callId when present, else
+  // the immediately following unclaimed result) into ONE card.
+  const claimed = new Set<number>();
+  for (let index = 0; index < blocks.length; index += 1) {
+    const block = blocks[index]!;
+    if (claimed.has(index)) {
+      continue;
+    }
     if (block.kind === 'text') {
       textRun.push(block.text);
-    } else {
-      flush();
-      nodes.push(block);
+      continue;
     }
+    flush();
+    if (block.kind === 'tool') {
+      let resultIndex = -1;
+      for (let ahead = index + 1; ahead < blocks.length; ahead += 1) {
+        const candidate = blocks[ahead]!;
+        if (candidate.kind !== 'toolResult' || claimed.has(ahead)) {
+          continue;
+        }
+        if (block.callId ? candidate.callId === block.callId : ahead === index + 1) {
+          resultIndex = ahead;
+        }
+        break;
+      }
+      if (resultIndex >= 0) {
+        claimed.add(resultIndex);
+        nodes.push({
+          kind: 'toolPair',
+          call: block,
+          result: blocks[resultIndex] as Extract<MessageBlock, { kind: 'toolResult' }>,
+        });
+        continue;
+      }
+    }
+    nodes.push(block);
   }
   flush();
-  return `<div class="timeline">${nodes
-    .map((node, index) => renderTimelineNode(node, streamingAnswer && index === nodes.length - 1))
-    .join('')}</div>`;
+  // #5 (review round 2): CALM TIMELINE. Consecutive work nodes (thinking/tool
+  // runs) collapse into one "work phase" chip once the turn has settled —
+  // `N steps · M files` — so long agentic turns read as outcomes, not walls.
+  // The LIVE streaming turn stays expanded; phases containing a failed tool
+  // stay open with an error tint. Open/closed state survives re-renders via
+  // data-preserve-open (chat.ts).
+  const metaKinds = new Set(['thinking', 'tool', 'toolPair', 'toolResult', 'image']);
+  const rendered: string[] = [];
+  let run: TimelineNode[] = [];
+  const flushRun = (): void => {
+    if (run.length === 0) {
+      return;
+    }
+    const runNodes = run;
+    run = [];
+    const html = runNodes.map((node) => renderTimelineNode(node, false)).join('');
+    if (runNodes.length < 2) {
+      rendered.push(html);
+      return;
+    }
+    // Say WHAT the agent did, not how many "steps": tool names with counts,
+    // plus how many files were touched. ("3 steps" was meaningless.)
+    const toolCounts = new Map<string, number>();
+    const files = new Set<string>();
+    let hasError = false;
+    for (const node of runNodes) {
+      if (node.kind === 'tool' || node.kind === 'toolPair') {
+        const call = node.kind === 'toolPair' ? node.call : node;
+        toolCounts.set(call.name, (toolCounts.get(call.name) ?? 0) + 1);
+        const path = editToolFilePath(call.name, call.args);
+        if (path) {
+          files.add(path);
+        }
+      }
+      if (
+        (node.kind === 'toolPair' && node.result.isError === true) ||
+        (node.kind === 'toolResult' && node.isError === true)
+      ) {
+        hasError = true;
+      }
+    }
+    const names = [...toolCounts.entries()].map(([name, count]) =>
+      count > 1 ? `${name} ×${count}` : name
+    );
+    const shown = names.slice(0, 3).join(', ') + (names.length > 3 ? ` +${names.length - 3}` : '');
+    const label =
+      names.length > 0
+        ? `Worked: ${shown}${files.size > 0 ? ` · ${files.size} file${files.size === 1 ? '' : 's'} changed` : ''}`
+        : 'Thought it through';
+    // During streaming only the LATEST phase stays expanded (still working);
+    // earlier phases of the live turn fold as they finish. Tokens resolve in
+    // finalizeWorkPhases() at join time.
+    const open = hasError ? ' open' : streamingAnswer ? '__PHASE_OPEN__' : '';
+    rendered.push(
+      `<details class="work-phase${hasError ? ' is-error' : ''}" data-preserve-open id="wp-${escapeHtml(message.id)}-${rendered.length}"${open}><summary class="work-phase-head" title="Click to show the agent's work">${META_ICONS.tool}<span class="work-phase-label">${escapeHtml(label)}</span><span class="work-phase-hint">show work</span>${hasError ? '<span class="tl-flag-error">failed</span>' : ''}${CARET_ICON}</summary>${html}</details>`
+    );
+  };
+  for (let index = 0; index < nodes.length; index += 1) {
+    const node = nodes[index]!;
+    if (metaKinds.has(node.kind)) {
+      run.push(node);
+      continue;
+    }
+    flushRun();
+    rendered.push(renderTimelineNode(node, streamingAnswer && index === nodes.length - 1));
+  }
+  flushRun();
+  return `<div class="timeline">${finalizeWorkPhases(rendered.join(''))}</div>`;
+}
+
+/** Live turns fold finished phases: every __PHASE_OPEN__ token except the
+ * last collapses; the final (still-active) phase keeps its details open. */
+function finalizeWorkPhases(html: string): string {
+  const token = '__PHASE_OPEN__';
+  const last = html.lastIndexOf(token);
+  if (last === -1) {
+    return html;
+  }
+  let out = '';
+  let cursor = 0;
+  for (let at = html.indexOf(token); at !== -1; at = html.indexOf(token, cursor)) {
+    out += html.slice(cursor, at) + (at === last ? ' open' : '');
+    cursor = at + token.length;
+  }
+  return out + html.slice(cursor);
 }
 
 // Rich diff for `edit` tool cards: removed lines (−) then added lines (+),
 // coloured with the theme's diff palette. Long diffs get a Show more toggle.
+
+// Per-change approval on edit cards: Keep dismisses, Undo reverts exactly this
+// change in the file, Edit opens the real file at the change.
+function renderEditApprove(callId: string): string {
+  return `<span class="edit-approve" data-ecid="${escapeHtml(callId)}"><button type="button" class="tl-file-btn ed-keep" title="Keep this change">✓ Keep</button><button type="button" class="tl-file-btn ed-undo" title="Undo this change in the file">↩ Undo</button><button type="button" class="tl-file-btn ed-edit" title="Open the file at this change">✎ Edit</button></span>`;
+}
+
 function renderEditDiff(replacements: EditReplacement[]): string {
   const lines: string[] = [];
   for (const replacement of replacements) {
@@ -220,6 +374,130 @@ function renderClampedOutput(text: string): string {
   return `<div class="clampable"><div class="clamp-body">${pre}</div><button type="button" class="code-showmore">Show more</button></div>`;
 }
 
+// --- JSON pretty rendering ------------------------------------------------
+// Tool args and tool results are frequently JSON. Raw JSON is hard to scan, so
+// render objects as key/value grids and arrays-of-objects as columnar tables
+// (recursively), which matches the "tabular for clarity" goal. Non-JSON falls
+// back to the plain preformatted block.
+const JSON_MAX_DEPTH = 8;
+
+function tryParseJson(text: string): unknown {
+  const trimmed = text.trim();
+  if (trimmed.length < 2 || trimmed.length > 200_000) {
+    return undefined;
+  }
+  const first = trimmed[0];
+  if (first !== '{' && first !== '[') {
+    return undefined;
+  }
+  try {
+    const parsed: unknown = JSON.parse(trimmed);
+    return parsed !== null && typeof parsed === 'object' ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function jsonScalar(value: unknown): string {
+  if (value === null) {
+    return '<span class="json-null">null</span>';
+  }
+  if (typeof value === 'boolean') {
+    return `<span class="json-bool">${value ? 'true' : 'false'}</span>`;
+  }
+  if (typeof value === 'number') {
+    return `<span class="json-num">${escapeHtml(String(value))}</span>`;
+  }
+  return `<span class="json-str">${escapeHtml(String(value))}</span>`;
+}
+
+function jsonTable(inner: string): string {
+  return `<div class="md-table-wrap json-table-wrap"><table class="md-table json-table">${inner}</table></div>`;
+}
+
+function renderJsonValue(value: unknown, depth = 0): string {
+  if (value === null || typeof value !== 'object') {
+    return jsonScalar(value);
+  }
+  if (depth >= JSON_MAX_DEPTH) {
+    // Too deep to keep nesting tables — pretty-print (readable) instead of a
+    // compact one-line dump.
+    return `<pre class="code-block json-deep"><code>${escapeHtml(
+      JSON.stringify(value, null, 2)
+    )}</code></pre>`;
+  }
+  if (Array.isArray(value)) {
+    if (value.length === 0) {
+      return '<span class="json-empty">[ ]</span>';
+    }
+    // Array of objects -> one column per key (union, first-seen order).
+    if (value.every(isPlainObject)) {
+      const cols: string[] = [];
+      for (const item of value) {
+        for (const key of Object.keys(item)) {
+          if (!cols.includes(key)) {
+            cols.push(key);
+          }
+        }
+      }
+      const head = cols.map((col) => `<th>${escapeHtml(col)}</th>`).join('');
+      const rows = value
+        .map(
+          (item) =>
+            `<tr>${cols
+              .map((col) => `<td>${col in item ? renderJsonValue(item[col], depth + 1) : ''}</td>`)
+              .join('')}</tr>`
+        )
+        .join('');
+      return jsonTable(`<thead><tr>${head}</tr></thead><tbody>${rows}</tbody>`);
+    }
+    // Mixed/scalar array -> indexed rows.
+    const rows = value
+      .map(
+        (item, index) =>
+          `<tr><td class="json-key">${index}</td><td>${renderJsonValue(item, depth + 1)}</td></tr>`
+      )
+      .join('');
+    return jsonTable(`<tbody>${rows}</tbody>`);
+  }
+  const entries = Object.entries(value);
+  if (entries.length === 0) {
+    return '<span class="json-empty">{ }</span>';
+  }
+  const rows = entries
+    .map(
+      ([key, val]) =>
+        `<tr><td class="json-key">${escapeHtml(key)}</td><td>${renderJsonValue(val, depth + 1)}</td></tr>`
+    )
+    .join('');
+  return jsonTable(`<tbody>${rows}</tbody>`);
+}
+
+// A JSON value from Pi's ANSWER, shown as a structured table with a toggle to
+// reveal/copy the raw JSON.
+function renderJsonBlock(value: unknown, raw: string): string {
+  return `<div class="json-block" data-json-block><div class="json-block-bar"><span class="json-block-label">JSON</span><button type="button" class="json-toggle" data-mode="table" aria-pressed="false" title="Toggle table / raw JSON">Raw</button></div><div class="json-block-view">${renderJsonValue(value)}</div><pre class="code-block json-raw" hidden><code class="hljs language-json">${escapeHtml(raw)}</code></pre></div>`;
+}
+
+// Render tool args / results: as a structured JSON table when the content is
+// JSON, otherwise as the plain preformatted block. Long output stays clamped.
+function renderToolContent(text: string): string {
+  const parsed = tryParseJson(text);
+  const inner =
+    parsed !== undefined
+      ? `<div class="json-view">${renderJsonValue(parsed)}</div>`
+      : `<pre class="code-block"><code>${escapeHtml(text)}</code></pre>`;
+  const long = text.length > 1400 || text.split('\n').length > 16;
+  if (!long) {
+    return inner;
+  }
+  return `<div class="clampable"><div class="clamp-body">${inner}</div><button type="button" class="code-showmore">Show more</button></div>`;
+}
+
 function renderTimelineNode(node: TimelineNode, streamingAnswer = false): string {
   // Small colored marker on the rail; the identifying icon lives in the card
   // header (icon + rounded border make each section obvious).
@@ -234,23 +512,49 @@ function renderTimelineNode(node: TimelineNode, streamingAnswer = false): string
         replacements.length > 0
           ? renderEditDiff(replacements)
           : node.args
-            ? renderClampedOutput(node.args)
+            ? renderToolContent(node.args)
             : '';
+      const approve = editPath && node.callId ? renderEditApprove(node.callId) : '';
       const fileActions = editPath
-        ? `<div class="tl-file-actions"><span class="tl-file-path">${escapeHtml(editPath)}</span><button type="button" class="tl-file-btn" data-file-open="${escapeHtml(editPath)}">Open file</button><button type="button" class="tl-file-btn" data-file-diff="${escapeHtml(editPath)}">Open changes</button></div>`
+        ? `<div class="tl-file-actions"><span class="tl-file-path">${escapeHtml(editPath)}</span><button type="button" class="tl-file-btn" data-file-open="${escapeHtml(editPath)}">Open file</button><button type="button" class="tl-file-btn" data-file-diff="${escapeHtml(editPath)}">Open changes</button>${approve}</div>`
         : '';
       return `<div class="tl-node tl-tool">${marker}<div class="tl-card"><div class="tl-head">${META_ICONS.tool}<span class="tl-label">Tool</span><code class="tool-name">${escapeHtml(node.name)}</code></div>${body}${fileActions}</div></div>`;
     }
     case 'toolResult': {
       const err = node.isError === true;
-      return `<div class="tl-node tl-result${err ? ' is-error' : ''}">${marker}<details class="tl-card" open><summary class="tl-head">${err ? META_ICONS.error : META_ICONS.result}<span class="tl-label">${err ? 'Error' : 'Result'}</span>${node.name ? `<code class="tool-name">${escapeHtml(node.name)}</code>` : ''}${CARET_ICON}</summary>${renderClampedOutput(node.text)}</details></div>`;
+      // Results collapse by default (they're often long/noisy); errors stay open.
+      return `<div class="tl-node tl-result${err ? ' is-error' : ''}">${marker}<details class="tl-card"${err ? ' open' : ''}><summary class="tl-head">${err ? META_ICONS.error : META_ICONS.result}<span class="tl-label">${err ? 'Error' : 'Result'}</span>${node.name ? `<code class="tool-name">${escapeHtml(node.name)}</code>` : ''}${CARET_ICON}</summary>${renderToolContent(node.text)}</details></div>`;
+    }
+    case 'toolPair': {
+      const call = node.call;
+      const result = node.result;
+      const err = result.isError === true;
+      const editPath = editToolFilePath(call.name, call.args);
+      const replacements = editReplacements(call.name, call.args);
+      const callBody =
+        replacements.length > 0
+          ? renderEditDiff(replacements)
+          : call.args
+            ? renderToolContent(call.args)
+            : '';
+      const approve = editPath && call.callId ? renderEditApprove(call.callId) : '';
+      const fileActions = editPath
+        ? `<div class="tl-file-actions"><span class="tl-file-path">${escapeHtml(editPath)}</span><button type="button" class="tl-file-btn" data-file-open="${escapeHtml(editPath)}">Open file</button><button type="button" class="tl-file-btn" data-file-diff="${escapeHtml(editPath)}">Open changes</button>${approve}</div>`
+        : '';
+      const lineCount = result.text ? result.text.split('\n').length : 0;
+      const shortResult = !err && lineCount <= 12 && (result.text?.length ?? 0) <= 1400;
+      const open = err || shortResult ? ' open' : '';
+      const summaryLabel = err
+        ? 'Error'
+        : `Result · ${lineCount} line${lineCount === 1 ? '' : 's'}`;
+      return `<div class="tl-node tl-tool${err ? ' is-error' : ''}">${marker}<div class="tl-card"><div class="tl-head">${META_ICONS.tool}<span class="tl-label">Tool</span><code class="tool-name">${escapeHtml(call.name)}</code>${err ? '<span class="tl-flag-error">failed</span>' : ''}</div>${callBody}${fileActions}<details class="tl-result-inline${err ? ' is-error' : ''}"${open}><summary class="tl-result-head">${err ? META_ICONS.error : META_ICONS.result}<span class="tl-label">${summaryLabel}</span>${CARET_ICON}</summary>${renderToolContent(result.text)}</details></div></div>`;
     }
     case 'image':
       return `<div class="tl-node tl-tool">${marker}<div class="tl-card"><div class="tl-head">${META_ICONS.image}<span class="tl-label">Image</span><span class="tool-name">${escapeHtml(node.mimeType)}</span></div></div></div>`;
     case 'response': {
       const streamClass = streamingAnswer ? ' js-stream-text' : '';
       const streamData = streamingAnswer ? ` data-raw="${escapeHtml(node.text)}"` : '';
-      return `<div class="tl-node tl-response">${marker}<div class="tl-card tl-answer"><div class="tl-head tl-answer-head">${META_ICONS.response}<span class="tl-label">Pi</span></div><div class="tl-body${streamClass}"${streamData}>${renderRichText(node.text)}</div></div></div>`;
+      return `<div class="tl-node tl-response">${marker}<div class="tl-card tl-answer"><div class="tl-head tl-answer-head">${META_ICONS.response}<span class="tl-label">π Response</span></div><div class="tl-body${streamClass}"${streamData}>${renderRichText(node.text)}</div></div></div>`;
     }
     default:
       return '';
@@ -266,10 +570,10 @@ function renderMetaBlock(block: MessageBlock): string {
     case 'thinking':
       return `<details class="meta-block meta-thinking"><summary class="meta-head">${metaLabel('thinking', 'Thinking')}</summary><div class="meta-body">${renderRichText(block.text)}</div></details>`;
     case 'tool':
-      return `<div class="meta-block meta-tool"><div class="meta-head">${metaLabel('tool', 'Tool')}<code class="tool-name">${escapeHtml(block.name)}</code></div>${block.args ? `<pre class="code-block tool-args"><code>${escapeHtml(block.args)}</code></pre>` : ''}</div>`;
+      return `<div class="meta-block meta-tool"><div class="meta-head">${metaLabel('tool', 'Tool')}<code class="tool-name">${escapeHtml(block.name)}</code></div>${block.args ? renderToolContent(block.args) : ''}</div>`;
     case 'toolResult': {
       const err = block.isError === true;
-      return `<details class="meta-block meta-tool-result${err ? ' is-error' : ''}"><summary class="meta-head">${metaLabel(err ? 'error' : 'result', err ? 'Tool error' : 'Tool result')}${block.name ? `<code class="tool-name">${escapeHtml(block.name)}</code>` : ''}</summary><pre class="code-block"><code>${escapeHtml(block.text)}</code></pre></details>`;
+      return `<details class="meta-block meta-tool-result${err ? ' is-error' : ''}"><summary class="meta-head">${metaLabel(err ? 'error' : 'result', err ? 'Tool error' : 'Tool result')}${block.name ? `<code class="tool-name">${escapeHtml(block.name)}</code>` : ''}</summary>${renderToolContent(block.text)}</details></div>`;
     }
     case 'image':
       return `<div class="meta-block meta-image meta-head">${metaLabel('image', 'Image')}<span class="tool-name">${escapeHtml(block.mimeType)}</span></div>`;
@@ -284,17 +588,158 @@ function renderMetaBlock(block: MessageBlock): string {
  */
 // Inline Markdown: escape first, then code / links / bold / italic. Order
 // matters so ** inside `code` isn't bolded.
+/** Copy-to-clipboard icon (inline SVG — the webview loads no icon font). */
+export const COPY_ICON_SVG =
+  '<svg class="i-copy" width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5" stroke="currentColor"/><path d="M10.5 3.5v-0.5a1.5 1.5 0 0 0-1.5-1.5H4a1.5 1.5 0 0 0-1.5 1.5V9a1.5 1.5 0 0 0 1.5 1.5h0.5" stroke="currentColor"/></svg>';
+
+/** Copied-confirmation icon (swapped in by the webview after a copy). */
+export const COPIED_ICON_SVG =
+  '<svg class="i-copy" width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8.5 6.5 12 13 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+let formattedCodeLookup: Record<string, string> = {};
+
 function renderInlineMarkdown(text: string): string {
   let html = escapeHtml(text);
+  // Inline code first so its contents aren't transformed by later passes.
   html = html.replace(/`([^`\n]+)`/g, '<code class="inline-code">$1</code>');
+  // Images ![alt](url): rendered as a safe labeled link (CSP forbids remote
+  // image fetches, and embedding arbitrary remote images is a tracking vector).
+  html = html.replace(
+    /!\[([^\]\n]*)\]\((https?:\/\/[^\s)]+)\)/g,
+    (_m, alt: string, url: string) =>
+      `<a class="md-link md-img-link" data-href="${url}">\u{1F5BC} ${alt || 'image'}</a>`
+  );
+  // Explicit links [text](url).
   html = html.replace(
     /\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g,
     (_m, label: string, url: string) => `<a class="md-link" data-href="${url}">${label}</a>`
   );
+  // Autolink bare URLs. The `(^|[\s(])` prefix prevents matching URLs already
+  // moved into a data-href="…" attribute above (those are preceded by a quote).
+  html = html.replace(/(^|[\s(])(https?:\/\/[^\s<>"')]+)/g, (_m, pre: string, url: string) => {
+    const trailing = /[.,;:!?]+$/.exec(url);
+    const clean = trailing ? url.slice(0, url.length - trailing[0].length) : url;
+    const tail = trailing ? trailing[0] : '';
+    return `${pre}<a class="md-link" data-href="${clean}">${clean}</a>${tail}`;
+  });
   html = html.replace(/\*\*(?!\s)([^\n*]+?)\*\*/g, '<strong>$1</strong>');
   html = html.replace(/(?<![\w*])\*(?!\s)([^\n*]+?)\*(?![\w*])/g, '<em>$1</em>');
   html = html.replace(/(?<![\w_])_(?!\s)([^\n_]+?)_(?![\w_])/g, '<em>$1</em>');
-  return html;
+  // Strikethrough ~~text~~ (GFM).
+  html = html.replace(/~~(?!\s)([^\n~]+?)~~/g, '<del>$1</del>');
+  return linkifyFileMentions(html);
+}
+
+// A workspace-relative path with an extension, at least one slash, and an
+// optional :line(:col) suffix — the shape agents write constantly ("see
+// `src/webview/render.ts:611`"). Deliberately strict (slash + extension
+// required) so plain prose like "3:1" or npm names never match.
+const FILE_MENTION = /(?:[\w.@-]+\/)+[\w.@-]+\.\w{1,8}(?::\d{1,6}(?::\d{1,6})?)?/;
+const CODE_SPAN_FILE_RE = new RegExp(
+  `<code class="inline-code">(${FILE_MENTION.source})</code>`,
+  'g'
+);
+// Bare (un-backticked) mentions must carry :line — higher precision, since
+// prose contains many harmless path-shaped fragments. Preceded by start/
+// whitespace/paren (never a quote → can't match inside a tag attribute;
+// same guard the bare-URL autolink pass above relies on).
+const BARE_FILE_RE = new RegExp(
+  `(^|[\\s(])((?:[\\w.@-]+\\/)+[\\w.@-]+\\.\\w{1,8}:\\d{1,6}(?::\\d{1,6})?)(?=$|[\\s).,;:!?])`,
+  'gm'
+);
+
+/** Make file mentions in prose clickable — backticked paths (with or
+ * without :line) and bare path:line tokens become [data-file-open] targets,
+ * handled by the SAME delegated click wiring as the tool-card "Open file"
+ * buttons. Exported for unit tests. */
+export function linkifyFileMentions(html: string): string {
+  let out = html.replace(
+    CODE_SPAN_FILE_RE,
+    (_m, path: string) =>
+      `<code class="inline-code file-link" data-file-open="${path}" title="Open ${path}">${path}</code>`
+  );
+  out = out.replace(
+    BARE_FILE_RE,
+    (_m, pre: string, path: string) =>
+      `${pre}<a class="md-link file-link" data-file-open="${path}" title="Open ${path}">${path}</a>`
+  );
+  return out;
+}
+
+// --- lists (nested + GFM task lists) --------------------------------------
+interface ListItem {
+  indent: number;
+  ordered: boolean;
+  task: boolean | null; // null = not a task item; true/false = checked state
+  content: string;
+}
+
+const LIST_ITEM_RE = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/;
+
+function consumeListItems(lines: string[], start: number): { items: ListItem[]; next: number } {
+  const items: ListItem[] = [];
+  let i = start;
+  while (i < lines.length) {
+    const match = LIST_ITEM_RE.exec(lines[i] ?? '');
+    if (!match) {
+      break;
+    }
+    let content = match[3] ?? '';
+    let task: boolean | null = null;
+    const taskMatch = /^\[([ xX])\]\s+(.*)$/.exec(content);
+    if (taskMatch) {
+      task = (taskMatch[1] ?? ' ').toLowerCase() === 'x';
+      content = taskMatch[2] ?? '';
+    }
+    items.push({
+      indent: (match[1] ?? '').length,
+      ordered: /\d/.test(match[2] ?? ''),
+      task,
+      content,
+    });
+    i += 1;
+  }
+  return { items, next: i };
+}
+
+function buildListHtml(
+  items: ListItem[],
+  pos: number,
+  indent: number
+): { html: string; pos: number } {
+  const ordered = items[pos]!.ordered;
+  const tag = ordered ? 'ol' : 'ul';
+  const cls = ordered ? 'md-ol' : 'md-ul';
+  let html = `<${tag} class="${cls}">`;
+  let cursor = pos;
+  while (cursor < items.length && items[cursor]!.indent >= indent) {
+    if (items[cursor]!.indent > indent) {
+      // Deeper items are handled as children of the previous <li>; a stray
+      // over-indent with no parent is absorbed at this level defensively.
+      const child = buildListHtml(items, cursor, items[cursor]!.indent);
+      html += child.html;
+      cursor = child.pos;
+      continue;
+    }
+    const item = items[cursor]!;
+    cursor += 1;
+    let inner = '';
+    if (cursor < items.length && items[cursor]!.indent > indent) {
+      const child = buildListHtml(items, cursor, items[cursor]!.indent);
+      inner = child.html;
+      cursor = child.pos;
+    }
+    if (item.task === null) {
+      html += `<li>${renderInlineMarkdown(item.content)}${inner}</li>`;
+    } else {
+      const checked = item.task ? ' checked' : '';
+      html +=
+        `<li class="md-task"><input type="checkbox" disabled${checked} />` +
+        `<span>${renderInlineMarkdown(item.content)}</span>${inner}</li>`;
+    }
+  }
+  html += `</${tag}>`;
+  return { html, pos: cursor };
 }
 
 function isBlockStart(line: string): boolean {
@@ -305,6 +750,77 @@ function isBlockStart(line: string): boolean {
     /^\s*>\s?/.test(line) ||
     /^\s*([-*_])\1{2,}\s*$/.test(line)
   );
+}
+
+// --- GFM tables -----------------------------------------------------------
+// A table is a header row of `|`-separated cells immediately followed by a
+// delimiter row (e.g. `| --- | :--: | ---: |`). Rendered as a real <table> so
+// columns align in the proportional webview font (space-padded ASCII, which the
+// monospace TUI relies on, cannot align in the GUI).
+type TableAlign = 'left' | 'center' | 'right' | '';
+
+function isTableDelimiterRow(line: string): boolean {
+  const trimmed = line.trim();
+  // Must contain a dash and at least one column separator to be a delimiter row.
+  if (!trimmed.includes('-')) {
+    return false;
+  }
+  return /^\|?\s*:?-{1,}:?\s*(\|\s*:?-{1,}:?\s*)*\|?$/.test(trimmed);
+}
+
+function isTableStart(current: string, next: string): boolean {
+  return current.includes('|') && current.trim().length > 0 && isTableDelimiterRow(next);
+}
+
+function splitTableRow(line: string): string[] {
+  let trimmed = line.trim();
+  if (trimmed.startsWith('|')) trimmed = trimmed.slice(1);
+  if (trimmed.endsWith('|')) trimmed = trimmed.slice(0, -1);
+  const cells: string[] = [];
+  let current = '';
+  for (let index = 0; index < trimmed.length; index += 1) {
+    const char = trimmed[index];
+    if (char === '\\' && trimmed[index + 1] === '|') {
+      current += '|';
+      index += 1;
+      continue;
+    }
+    if (char === '|') {
+      cells.push(current.trim());
+      current = '';
+      continue;
+    }
+    current += char;
+  }
+  cells.push(current.trim());
+  return cells;
+}
+
+function cellAlignment(spec: string): TableAlign {
+  const trimmed = spec.trim();
+  const left = trimmed.startsWith(':');
+  const right = trimmed.endsWith(':');
+  if (left && right) return 'center';
+  if (right) return 'right';
+  if (left) return 'left';
+  return '';
+}
+
+function renderTable(header: string[], aligns: TableAlign[], rows: string[][]): string {
+  const style = (index: number): string =>
+    aligns[index] ? ` style="text-align:${aligns[index]}"` : '';
+  const head = header
+    .map((cell, index) => `<th${style(index)}>${renderInlineMarkdown(cell)}</th>`)
+    .join('');
+  const body = rows
+    .map(
+      (row) =>
+        `<tr>${header
+          .map((_, index) => `<td${style(index)}>${renderInlineMarkdown(row[index] ?? '')}</td>`)
+          .join('')}</tr>`
+    )
+    .join('');
+  return `<div class="md-table-wrap"><table class="md-table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
 }
 
 // Block-level Markdown: headings, lists, blockquotes, hr, paragraphs.
@@ -326,6 +842,18 @@ function renderMarkdownBlock(text: string): string {
       i += 1;
       continue;
     }
+    if (isTableStart(line, lines[i + 1] ?? '')) {
+      const header = splitTableRow(line);
+      const aligns = splitTableRow(lines[i + 1] ?? '').map(cellAlignment);
+      i += 2;
+      const rows: string[][] = [];
+      while (i < lines.length && (lines[i] ?? '').includes('|') && (lines[i] ?? '').trim()) {
+        rows.push(splitTableRow(lines[i] ?? ''));
+        i += 1;
+      }
+      out.push(renderTable(header, aligns, rows));
+      continue;
+    }
     if (/^\s*>\s?/.test(line)) {
       const quoted: string[] = [];
       while (i < lines.length && /^\s*>\s?/.test(lines[i] ?? '')) {
@@ -337,26 +865,11 @@ function renderMarkdownBlock(text: string): string {
       );
       continue;
     }
-    if (/^\s*[-*+]\s+/.test(line)) {
-      const items: string[] = [];
-      while (i < lines.length && /^\s*[-*+]\s+/.test(lines[i] ?? '')) {
-        items.push((lines[i] ?? '').replace(/^\s*[-*+]\s+/, ''));
-        i += 1;
-      }
-      out.push(
-        `<ul class="md-ul">${items.map((it) => `<li>${renderInlineMarkdown(it)}</li>`).join('')}</ul>`
-      );
-      continue;
-    }
-    if (/^\s*\d+[.)]\s+/.test(line)) {
-      const items: string[] = [];
-      while (i < lines.length && /^\s*\d+[.)]\s+/.test(lines[i] ?? '')) {
-        items.push((lines[i] ?? '').replace(/^\s*\d+[.)]\s+/, ''));
-        i += 1;
-      }
-      out.push(
-        `<ol class="md-ol">${items.map((it) => `<li>${renderInlineMarkdown(it)}</li>`).join('')}</ol>`
-      );
+    if (LIST_ITEM_RE.test(line)) {
+      const { items, next } = consumeListItems(lines, i);
+      const baseIndent = Math.min(...items.map((item) => item.indent));
+      out.push(buildListHtml(items, 0, baseIndent).html);
+      i = next;
       continue;
     }
     if (!line.trim()) {
@@ -364,7 +877,12 @@ function renderMarkdownBlock(text: string): string {
       continue;
     }
     const para: string[] = [];
-    while (i < lines.length && (lines[i] ?? '').trim() && !isBlockStart(lines[i] ?? '')) {
+    while (
+      i < lines.length &&
+      (lines[i] ?? '').trim() &&
+      !isBlockStart(lines[i] ?? '') &&
+      !isTableStart(lines[i] ?? '', lines[i + 1] ?? '')
+    ) {
       para.push(lines[i] ?? '');
       i += 1;
     }
@@ -397,15 +915,42 @@ export function renderRichText(raw: string): string {
         index += 1;
       }
       index += 1; // skip closing fence
+      const codeText = code.join('\n');
+      // JSON in Pi's ANSWER: render it as the same structured table used for
+      // tool output (easier to read than raw JSON), with a toggle to view/copy
+      // the raw JSON. Only for an explicit ```json fence or an unlabeled fence
+      // whose content actually parses as a JSON object/array — real code in
+      // other languages is left as a highlighted code block.
+      const fenceLang = language.trim().toLowerCase();
+      const jsonFenceLangs = new Set(['', 'json', 'json5', 'jsonc', 'text', 'txt', 'output']);
+      const jsonValue = jsonFenceLangs.has(fenceLang) ? tryParseJson(codeText) : undefined;
+      if (jsonValue !== undefined) {
+        out.push(renderJsonBlock(jsonValue, codeText));
+        continue;
+      }
+      // Display-time formatting: the host formats blocks through the user's
+      // registered VS Code formatters (async, cached); when a result exists
+      // for this exact block, render the readable version instead.
+      const displayText = formattedCodeLookup[formatKey(language, codeText)] ?? codeText;
+      // Syntax-highlight the block (falls back to plain escaped text). The
+      // resolved language (explicit or auto-detected) drives the label + class.
+      const highlighted = highlightCode(displayText, language, escapeHtml);
+      const labelLang = language.trim() || highlighted.language || '';
       // Fenced code renders as its OWN block with a Copy button. Only show a
       // language label for a REAL language — never a generic "text"/"code".
       const generic = new Set(['', 'text', 'txt', 'plain', 'plaintext', 'code', 'output', 'log']);
-      const showLang = !generic.has(language.trim().toLowerCase());
+      const showLang = !generic.has(labelLang.toLowerCase());
       const langSlot = showLang
-        ? `<span class="code-lang-name">${escapeHtml(language)}</span>`
+        ? `<span class="code-lang-name">${escapeHtml(labelLang)}</span>`
         : '<span class="code-lang-spacer"></span>';
+      const codeClass = highlighted.language
+        ? `hljs language-${escapeHtml(highlighted.language)}`
+        : 'hljs';
       out.push(
-        `<div class="code-wrap" data-lang="${escapeHtml(language)}"><div class="code-lang">${langSlot}<div class="code-actions"><button type="button" class="code-btn code-insert" title="Insert at cursor in the active editor" aria-label="Insert code at cursor">Insert</button><button type="button" class="code-btn code-newfile" title="Open in a new file" aria-label="Open code in a new file">New file</button><button type="button" class="code-btn code-copy" aria-label="Copy code">Copy</button></div></div><pre class="code-block"><code>${escapeHtml(code.join('\n'))}</code></pre></div>`
+        // Code blocks carry COPY only — file changes happen through the agent's
+        // edit tool (whose cards have Open file / Open changes). Insert/New-file
+        // buttons on every snippet were noise on normal responses.
+        `<div class="code-wrap" data-lang="${escapeHtml(language)}"><div class="code-lang">${langSlot}<div class="code-actions"><button type="button" class="code-btn code-copy" aria-label="Copy code" title="Copy code">${COPY_ICON_SVG}</button></div></div><pre class="code-block"><code class="${codeClass}">${highlighted.html}</code></pre></div>`
       );
     } else {
       buffer.push(lines[index] ?? '');
@@ -416,7 +961,7 @@ export function renderRichText(raw: string): string {
   return out.join('');
 }
 
-function escapeHtml(value: string): string {
+export function escapeHtml(value: string): string {
   return value
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')
@@ -439,7 +984,7 @@ function renderApprovals(snapshot: WebviewSnapshot): string {
   }
   return approvals
     .map((approval) => {
-      const heading = escapeHtml(approval.title ?? 'Pi needs your approval');
+      const heading = escapeHtml(approval.title ?? 'π needs your approval');
       const body = approval.message
         ? `<p class="approval-msg">${escapeHtml(approval.message)}</p>`
         : '';
@@ -458,17 +1003,154 @@ function renderApprovals(snapshot: WebviewSnapshot): string {
 }
 
 // #5 — compact tokens / context% / cost chip. Click opens full session stats.
-function renderUsageChip(snapshot: WebviewSnapshot): string {
-  const usage = snapshot.usage;
-  if (!usage) {
-    return '';
-  }
-  const label = formatUsageChip(usage);
-  if (!label) {
-    return '';
-  }
-  return `<button type="button" class="usage-chip" data-command="piRpc.showSessionStats" title="Session usage — click for details" aria-label="Session usage and cost — open details">${escapeHtml(label)}</button>`;
+// Cost is a read-only, non-interactive label (not a button).
+// #6 (review round 2): ONE composer status chip — model · cost · thinking —
+// with the detail actions in a popover, instead of a strip of separate chips.
+
+// Zed's crosshair: toggle "follow π" — the side editor tracks every file and
+// line the agent opens, reads, or edits, live.
+
+// One-click permission mode toggle (Claude-style mode switch — no settings.json
+// hunting, no menu, click flips it). Lock glows when every edit requires
+// your approval before it touches disk.
+function renderPermissionModeToggle(snapshot: WebviewSnapshot): string {
+  const on = snapshot.requireApprovalForEdits === true;
+  // Shield-check, not a padlock: a lock reads as "restricted" (the opposite —
+  // π can still edit, it just pauses for your OK). Shield-check is the
+  // standard "needs to pass a check" metaphor; labels match Claude Code's own
+  // now-familiar naming ("Auto Mode" / "Ask Before Edits") on purpose.
+  //
+  // The click itself is silent (icon flip = confirmation, no toast — a
+  // separate popup on top of the visual change was double confirmation).
+  // Any "still on the old setting" nuance is passive, in the tooltip, not
+  // pushed at you. Deliberately NOT promising "picks it up when idle" — a
+  // chat holds its worker open until closed, not just between turns, so
+  // that claim wouldn't reliably be true; restart is the one lever that is.
+  const busy = snapshot.activeSessionCount ?? 0;
+  const busyNote =
+    busy > 0 ? ` — ${busy} chat${busy === 1 ? '' : 's'} still on the previous setting` : '';
+  const title = on
+    ? `Ask Before Edits — every change needs your OK first (click for Auto Mode)${busyNote}`
+    : `Auto Mode — π edits freely, no pauses (click for Ask Before Edits)${busyNote}`;
+  // Orange = Auto Mode is active (π edits freely) — the more "live" of the
+  // two states, not the cautious one. Was backwards: the glow used to mean
+  // "Ask Before Edits is on", which reads as "orange = restricted", the
+  // opposite of how an accent color normally reads (active/energized).
+  return `<button type="button" class="icon-button permission-toggle${!on ? ' is-auto' : ''}" data-command="piRpc.togglePermissionMode" title="${title}" aria-label="Toggle approval mode: Auto Mode or Ask Before Edits" aria-pressed="${on ? 'true' : 'false'}"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3 L12 3 L12 8 C12 10.5 10 12.3 8 13.5 C6 12.3 4 10.5 4 8 Z"/><path d="M5.8 8 L7.2 9.6 L10.3 6.2"/></svg></button>`;
 }
+
+function renderFollowToggle(snapshot: WebviewSnapshot): string {
+  const on = (snapshot.followMode ?? 'open') === 'open';
+  return `<button type="button" class="icon-button follow-toggle${on ? ' is-on' : ''}" data-action="toggleFollow" title="${on ? 'Following π — the side editor tracks every file and line the agent touches (click to stop)' : 'Follow π: open the file the agent is reading or editing, live (click to start)'}" aria-label="Toggle follow agent" aria-pressed="${on ? 'true' : 'false'}"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="8" cy="8" r="4.4"/><circle cx="8" cy="8" r="1" fill="currentColor" stroke="none"/><path d="M8 1v2.2M8 12.8V15M1 8h2.2M12.8 8H15"/></svg></button>`;
+}
+
+// Plan strip: π's own task list, pinned above the chat as live progress.
+
+// One-surface sidebar: the command deck. ☰/title▾ open the in-view switcher
+// (webview-local), ✚ rebinds fresh, ⌖ is the follow crosshair, ⋯ holds the
+// rest. Rendered ONLY for the sidebar surface.
+function renderSidebarHeader(snapshot: WebviewSnapshot): string {
+  // ☰ is the ONLY switcher trigger. The title is a passive label shown only
+  // when a named chat is active (drafts show nothing).
+  const name = snapshot.sessionName?.trim();
+  const label = name
+    ? `<span class="sb-title" title="${escapeHtml(name)}"><span class="sb-title-text">${escapeHtml(name)}</span></span>`
+    : '';
+  const review =
+    (snapshot.reviewCount ?? 0) > 0
+      ? `<button type="button" class="sb-btn sb-review" data-action="toggleReview" title="Review π's changes (${snapshot.reviewCount} turn${snapshot.reviewCount === 1 ? '' : 's'})" aria-label="Review changes">⧉<span class="sb-review-count">${snapshot.reviewCount}</span></button>`
+      : '';
+  // Follow (⌖) and approval-mode (🛡) toggles live ONLY in the composer now
+  // (composer-actions-right) — they were duplicated here in the top deck too,
+  // which cluttered it for no reason since they're already one click away at
+  // the input. Top deck stays to session-level actions only.
+  return `<header class="sb-deck"><button type="button" class="sb-btn" data-action="toggleChatList" title="All chats" aria-label="All chats">☰</button>${label}<span class="sb-spacer"></span>${review}<button type="button" class="sb-btn" data-action="newChatSession" title="New chat" aria-label="New chat">✚</button>${renderChatActionsMenu()}</header>`;
+}
+
+function renderPlanStrip(snapshot: WebviewSnapshot): string {
+  const plan = snapshot.plan;
+  if (!plan || plan.items.length === 0) {
+    return '';
+  }
+  const total = plan.items.length;
+  const pct = Math.round((plan.done / total) * 100);
+  const rows = plan.items
+    .map(
+      (item) =>
+        `<li class="plan-item${item.done ? ' is-done' : ''}">${item.done ? '<span class="plan-check">✓</span>' : '<span class="plan-dot"></span>'}${escapeHtml(item.text)}</li>`
+    )
+    .join('');
+  return `<details class="plan-strip" id="plan-strip" data-preserve-open><summary title="π's current plan"><span class="plan-badge">Plan</span><span class="plan-progress"><span class="plan-progress-fill" style="width:${pct}%"></span></span><span class="plan-count">${plan.done}/${total}</span>${CARET_ICON}</summary><ul class="plan-list">${rows}</ul></details>`;
+}
+
+// Compact inline version for the slim retry banner — badge + clean message,
+// no grid. Same parser as the full card so BOTH places where a provider
+// error can surface (a settled failed turn, and Pi's own auto-retry banner)
+// show the real message, never raw JSON.
+function renderApiErrorInline(errorMessage: string): string {
+  const parsed = parseProviderError(errorMessage);
+  if (parsed.statusCode === undefined && parsed.provider === undefined) {
+    return `<span class="error-text">${escapeHtml(parsed.message)}</span>`;
+  }
+  const status = friendlyApiStatus(parsed.statusCode, parsed.errorType);
+  return `<span class="api-error-badge api-error-${status.severity}">${escapeHtml(status.label)}</span> <span class="error-text">${escapeHtml(parsed.message)}</span>`;
+}
+
+// Structured provider-error card — never a raw JSON dump. Falls back to a
+// plain sentence when the message doesn't match the parseable shape.
+function renderApiErrorCard(errorMessage: string): string {
+  const parsed = parseProviderError(errorMessage);
+  const retryButtons = `<button type="button" class="link-button" data-command="piRpcInternal.retryLast">Retry</button> · <button type="button" class="link-button" data-command="piRpcInternal.retryWithModel">Retry with a different model</button> · <button type="button" class="link-button" data-command="piRpcInternal.showLogs">Logs</button>`;
+  if (parsed.statusCode === undefined && parsed.provider === undefined) {
+    return `<div class="assistant-empty assistant-error"><span class="error-text">${escapeHtml(parsed.message)}</span> ${retryButtons}</div>`;
+  }
+  const status = friendlyApiStatus(parsed.statusCode, parsed.errorType);
+  const rows: Array<[string, string]> = [];
+  if (parsed.provider || parsed.model) {
+    rows.push(['Model', escapeHtml([parsed.provider, parsed.model].filter(Boolean).join('/'))]);
+  }
+  if (parsed.statusCode !== undefined) {
+    rows.push([
+      'Status',
+      `${parsed.statusCode}${parsed.errorType ? ` · ${escapeHtml(parsed.errorType)}` : ''}`,
+    ]);
+  }
+  if (parsed.requestId) {
+    rows.push([
+      'Request ID',
+      `<code class="api-error-reqid">${escapeHtml(parsed.requestId)}</code><button type="button" class="link-button api-error-copy" data-copy-text="${escapeHtml(parsed.requestId)}" title="Copy request ID">Copy</button>`,
+    ]);
+  }
+  return `<div class="assistant-empty assistant-error api-error-card"><div class="api-error-head"><span class="api-error-badge api-error-${status.severity}">${escapeHtml(status.label)}</span></div><div class="api-error-message">${escapeHtml(parsed.message)}</div><div class="api-error-grid">${rows.map(([label, value]) => `<span>${label}</span><span>${value}</span>`).join('')}</div><div class="api-error-actions">${retryButtons}</div></div>`;
+}
+
+function renderStatusChip(snapshot: WebviewSnapshot): string {
+  // One chip → ONE centered settings box (models + thinking sizes together).
+  const model = snapshot.model?.id ? snapshot.model.id : 'model';
+  const usage = snapshot.usage ? formatUsageChip(snapshot.usage) : '';
+  const thinking = typeof snapshot.thinkingLevel === 'string' ? snapshot.thinkingLevel : '';
+  // Context-fill gauge: amber approaching the auto-compact trigger, red
+  // past it — the number was already there, but an uncolored "82%" reads
+  // as trivia, not as "compaction is imminent".
+  const percent = snapshot.usage?.contextPercent;
+  const usageClass =
+    typeof percent === 'number' && percent >= 85
+      ? ' usage-hot'
+      : typeof percent === 'number' && percent >= 70
+        ? ' usage-warn'
+        : '';
+  const usageHtml = usage
+    ? `<span class="usage-part${usageClass}">${escapeHtml(usage)}</span>`
+    : '';
+  const parts = [escapeHtml(model), usageHtml, escapeHtml(thinking)].filter(Boolean);
+  const usageTitle = typeof percent === 'number' ? ` · context ${Math.round(percent)}% full` : '';
+  return `<button type="button" class="composer-status" id="status-chip" data-command="piRpc.chatSettings" title="Model: ${escapeHtml(modelLabel(snapshot))} · thinking: ${escapeHtml(thinking || 'default')}${usageTitle} — click to change either" aria-label="Chat settings: model and thinking level"><span class="model-dot"></span>${parts.join(' · ')}</button>`;
+}
+
+// Chat header ("sidecar" top bar): per-chat overflow actions live here.
+// (chat header removed — the editor TAB shows the chat name + icon, and chat
+// actions live in the NATIVE editor title bar via the piRpc.chatActions submenu.
+// The multi-root workspace picker moved into the composer toolbar.)
 
 function modelLabel(snapshot: WebviewSnapshot): string {
   return snapshot.model?.provider && snapshot.model?.id
@@ -478,7 +1160,7 @@ function modelLabel(snapshot: WebviewSnapshot): string {
 
 function statusLabel(snapshot: WebviewSnapshot): string {
   if (snapshot.isStreaming) {
-    return 'Pi is replying';
+    return 'π is replying';
   }
   if (snapshot.isCompacting) {
     return 'Compacting';
@@ -527,7 +1209,7 @@ function renderMessages(snapshot: WebviewSnapshot): string {
   if (snapshot.messages.length === 0) {
     return `
       <div class="empty-state" data-testid="empty-state">
-        <svg class="empty-mascot" width="64" height="48" viewBox="0 0 8 6" role="img" aria-label="Pi" shape-rendering="crispEdges">
+        <svg class="empty-mascot" width="64" height="48" viewBox="0 0 8 6" role="img" aria-label="π" shape-rendering="crispEdges">
           <rect x="1" y="1" width="6" height="4" fill="currentColor" />
           <rect x="2" y="2" width="1" height="1" fill="var(--vscode-editor-background)" />
           <rect x="5" y="2" width="1" height="1" fill="var(--vscode-editor-background)" />
@@ -548,7 +1230,8 @@ function renderMessages(snapshot: WebviewSnapshot): string {
   const olderSentinel = snapshot.messageWindow?.hasOlder
     ? `<div id="older-sentinel" class="older-sentinel" role="status"><span class="spinner spinner-sm" aria-hidden="true"></span>Loading earlier messages…</div>`
     : '';
-  const busy = snapshot.connectionState === 'busy';
+  const busy = snapshot.isStreaming || snapshot.connectionState === 'busy';
+  const modelName = modelLabel(snapshot);
   return (
     olderSentinel +
     snapshot.messages
@@ -557,7 +1240,12 @@ function renderMessages(snapshot: WebviewSnapshot): string {
         return renderMessageArticle(
           message,
           isLast,
-          busy && isLast && message.role === 'assistant'
+          busy &&
+            snapshot.bindingState !== 'cached' &&
+            snapshot.bindingState !== 'draft' &&
+            message.id === snapshot.currentAssistantMessageId &&
+            message.role === 'assistant',
+          modelName
         );
       })
       .join('')
@@ -574,37 +1262,42 @@ function isResultRole(role: string): boolean {
 }
 
 const COPY_ICON =
-  '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="8" height="8" rx="1.5"/><path d="M3 10.5V4a1.5 1.5 0 0 1 1.5-1.5H10"/></svg>';
+  '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="8" height="8" rx="1.5"/><path d="M3 10.5V4a1.5 1.5 0 0 1 1.5-1.5H10"/></svg>';
 const EDIT_ICON =
-  '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M10.5 3.5l2 2L6 12l-2.5.5L4 10z"/></svg>';
+  '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.5 3.5l2 2L6 12l-2.5.5L4 10z"/></svg>';
 
 function renderMessageArticle(
   message: WebviewSnapshot['messages'][number],
   isLast = false,
-  streamingAnswer = false
+  streamingAnswer = false,
+  modelName = ''
 ): string {
   const role = message.role;
-  const roleLabel = role === 'assistant' ? 'Pi' : role === 'user' ? 'You' : '';
+  const body = renderMessageBody(message, streamingAnswer, modelName);
+  if (role === 'assistant' && !body && message.attachments.length === 0) {
+    return '';
+  }
+  const roleLabel = role === 'assistant' ? 'π' : role === 'user' ? 'You' : '';
   const showCopy = role === 'assistant' || role === 'user';
-  // Virtualization: off-screen messages get `content-visibility: auto` so the
-  // browser skips their layout/paint. The last message is exempt so streaming
-  // growth and scroll-to-bottom stay exact.
-  const virtualClass = isLast ? '' : ' msg-virtual';
+  // (content-visibility virtualization removed — see chat.css note; it caused
+  // scrollbar jumpiness. `isLast` retained for future use.)
+  void isLast;
   return `
-        <article class="message-card message-${escapeHtml(role)}${virtualClass}"${roleLabel ? ` aria-label="${roleLabel} said"` : ''}>
+        <article class="message-card message-${escapeHtml(role)}" data-mid="${escapeHtml(message.id)}"${roleLabel ? ` aria-label="${roleLabel} said"` : ''}>
           ${roleLabel ? `<div class="message-role">${roleLabel}</div>` : ''}
-          ${showCopy ? `<div class="msg-actions">${role === 'user' ? `<button type="button" class="msg-edit" title="Edit in composer" aria-label="Edit message">${EDIT_ICON}</button>` : ''}<button type="button" class="msg-copy" title="Copy message" aria-label="Copy message">${COPY_ICON}</button></div>` : ''}
-          ${renderMessageBody(message, streamingAnswer)}
+          ${body}
           ${message.attachments.length > 0 ? `<div class="detail-stack">${message.attachments.map((attachment) => renderAttachment(attachment)).join('')}</div>` : ''}
+          ${showCopy ? `<div class="msg-actions">${role === 'user' ? `<button type="button" class="msg-edit" title="Edit &amp; restart from here" aria-label="Edit and restart the chat from this message">${EDIT_ICON}</button>` : ''}<button type="button" class="msg-copy" title="Copy message" aria-label="Copy message">${COPY_ICON}</button></div>` : ''}
         </article>`;
 }
 
 function renderMessageBody(
   message: WebviewSnapshot['messages'][number],
-  streamingAnswer = false
+  streamingAnswer = false,
+  modelName = ''
 ): string {
   if (message.role === 'assistant') {
-    return renderAssistantBody(message, streamingAnswer);
+    return renderAssistantBody(message, streamingAnswer, modelName);
   }
   if (isResultRole(message.role)) {
     return renderResultMessage(message);
@@ -615,7 +1308,7 @@ function renderMessageBody(
 /** A standalone tool-result / bash-execution message rendered as a Result card. */
 function renderResultMessage(message: WebviewSnapshot['messages'][number]): string {
   const text = message.text ?? '';
-  return `<div class="timeline timeline-standalone"><div class="tl-node tl-result"><span class="tl-dot"></span><details class="tl-card" open><summary class="tl-head">${META_ICONS.result}<span class="tl-label">Result</span>${CARET_ICON}</summary>${renderClampedOutput(text)}</details></div></div>`;
+  return `<div class="timeline timeline-standalone"><div class="tl-node tl-result"><span class="tl-dot"></span><details class="tl-card"><summary class="tl-head">${META_ICONS.result}<span class="tl-label">Result</span>${CARET_ICON}</summary>${renderClampedOutput(text)}</details></div></div>`;
 }
 
 function renderContextChip(item: PendingContextItem): string {
@@ -653,7 +1346,7 @@ function renderImageChip(snapshot: WebviewSnapshot): string {
       (item) => `
         <div class="chip-shell" role="listitem" data-chip-id="${escapeHtml(item.itemId)}" data-chip-kind="image">
           <details class="chip-details${item.requiresReselect ? ' chip-stale' : ''}">
-            <summary>${escapeHtml(item.requiresReselect ? `Reselect image: ${item.name}` : `Image: ${item.name}`)}</summary>
+            <summary aria-label="${escapeHtml(item.requiresReselect ? `Reselect image: ${item.name}` : `Image: ${item.name}`)}" title="${escapeHtml(item.name)}">${item.previewDataUrl && !item.requiresReselect ? `<img class="chip-thumb" src="${escapeHtml(item.previewDataUrl)}" alt="" aria-hidden="true" />` : escapeHtml(item.requiresReselect ? `Reselect image: ${item.name}` : `Image: ${item.name}`)}</summary>
             <div class="detail-stack">
               <div class="muted">${escapeHtml(item.mimeType)} · ${item.sizeBytes} bytes</div>
               <div class="muted">Local image · sent on next message only</div>
@@ -749,7 +1442,7 @@ function chatFontStyle(snapshot: WebviewSnapshot): string {
 // A "working" animation shown while Pi generates (like the TUI spinner).
 function renderWorking(snapshot: WebviewSnapshot): string {
   const anim = snapshot.workingAnimation || 'braille';
-  return `<span class="working" data-anim="${escapeHtml(anim)}" role="status" aria-label="Pi is working"><span class="working-glyph"></span></span>`;
+  return `<span class="working" data-anim="${escapeHtml(anim)}" role="status" aria-label="π is working"><svg class="working-logo" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><g fill="currentColor"><path d="M3.2 5.4 L20 5.4 L18.4 8 L4.8 8 Z"/><rect x="6.1" y="8" width="2.7" height="10.6" rx="1.1"/><path d="M14.4 8 h2.7 v8.4 l-2.7 2.2 Z"/><path d="M9.8 19.2 l2.1 -1.6 l-2.1 -1.6 v3.2 Z" opacity="0.9"/></g></svg><span class="working-glyph" aria-hidden="true"></span></span>`;
 }
 
 // The working indicator sits as a banner at the top of the composer so it is
@@ -782,67 +1475,18 @@ function renderQueueTray(snapshot: WebviewSnapshot): string {
         `<div class="queue-item"><span class="queue-kind">${item.kind}</span><span class="queue-text">${escapeHtml(item.text)}</span></div>`
     )
     .join('');
-  return `<div class="queue-tray"><div class="section-label">Queued for Pi</div>${rows}</div>`;
-}
-
-// A subtle "Continue" affordance after a completed turn (when idle and the
-// composer is empty), to nudge Pi to keep going / finish a truncated answer.
-function renderContinue(snapshot: WebviewSnapshot): string {
-  const last = snapshot.messages[snapshot.messages.length - 1];
-  if (!last || last.role !== 'assistant' || snapshot.draft.trim().length > 0) {
-    return '';
-  }
-  return `<button type="button" class="continue-btn" data-command="piRpcInternal.continue" title="Ask Pi to continue" aria-label="Ask Pi to continue">Continue</button>`;
-}
-
-// Settings gear popover — quick presentation controls next to the composer.
-function renderSettingsMenu(): string {
-  const gear =
-    '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="2.1"/><path d="M8 1.6v1.6M8 12.8v1.6M14.4 8h-1.6M3.2 8H1.6M12.5 3.5l-1.1 1.1M4.6 11.4l-1.1 1.1M12.5 12.5l-1.1-1.1M4.6 4.6L3.5 3.5" stroke-linecap="round"/></svg>';
-  return `
-    <details class="menu-details settings-menu" id="settings-menu">
-      <summary aria-label="Settings" title="Settings">${gear}</summary>
-      <div class="menu-panel" role="menu">
-        <div class="menu-group">Appearance</div>
-        <div class="menu-row"><span>Chat font size</span><span class="menu-stepper"><button type="button" data-command="piRpcInternal.decreaseChatFont" aria-label="Decrease font size">−</button><button type="button" data-command="piRpcInternal.increaseChatFont" aria-label="Increase font size">+</button></span></div>
-        <button type="button" class="menu-item" data-command="piRpcInternal.setWorkingAnimation"><span class="dot"></span>Working animation…</button>
-        <button type="button" class="menu-item" data-command="piRpcInternal.setTypewriterSpeed"><span class="dot"></span>Typewriter speed…</button>
-        <button type="button" class="menu-item" data-command="piRpcInternal.openSettings"><span class="dot"></span>All Pi settings…</button>
-      </div>
-    </details>`;
-}
-
-function renderMoreMenu(_snapshot: WebviewSnapshot): string {
-  return `
-    <details class="menu-details more-menu" id="more-menu">
-      <summary aria-label="More actions">More ▾</summary>
-      <div class="menu-panel" role="menu">
-        <div class="menu-group">Session</div>
-        <button type="button" class="menu-item cat-session" data-command="piRpc.renameSession"><span class="dot"></span>Rename chat</button>
-        <button type="button" class="menu-item cat-session" data-command="piRpcInternal.retryLast"><span class="dot"></span>Retry last message</button>
-        <button type="button" class="menu-item cat-session" data-command="piRpcInternal.retryWithModel"><span class="dot"></span>Retry with model\u2026</button>
-        <button type="button" class="menu-item cat-session" data-command="piRpcInternal.copyConversationMarkdown"><span class="dot"></span>Copy as Markdown</button>
-        <button type="button" class="menu-item cat-session" data-command="piRpc.exportHtml"><span class="dot"></span>Export as HTML</button>
-        <div class="menu-group">Model</div>
-        <button type="button" class="menu-item cat-model" data-command="piRpc.showModels"><span class="dot"></span>Choose model</button>
-        <button type="button" class="menu-item cat-model" data-command="piRpc.setThinkingLevel"><span class="dot"></span>Thinking level</button>
-        <div class="menu-group">Context</div>
-        <button type="button" class="menu-item cat-context" data-command="piRpc.compact"><span class="dot"></span>Compact conversation</button>
-        <button type="button" class="menu-item cat-context" data-command="piRpc.showSessionStats"><span class="dot"></span>Usage &amp; cost</button>
-        <div class="menu-group">System</div>
-        <button type="button" class="menu-item cat-system" data-command="piRpcInternal.restart"><span class="dot"></span>Restart Pi</button>
-        <button type="button" class="menu-item cat-system" data-command="piRpcInternal.showHealth"><span class="dot"></span>Connection health</button>
-        <button type="button" class="menu-item cat-system" data-command="piRpcInternal.showLogs"><span class="dot"></span>Show logs</button>
-        <button type="button" class="menu-item cat-system" data-command="piRpcInternal.showHelp"><span class="dot"></span>Help</button>
-      </div>
-    </details>`;
+  return `<div class="queue-tray"><div class="section-label">Queued for π</div>${rows}</div>`;
 }
 
 export function renderChatApp(snapshot: WebviewSnapshot): string {
+  formattedCodeLookup = snapshot.formattedCode ?? {};
   const busy = snapshot.isStreaming || snapshot.connectionState === 'busy';
   const interactive = snapshot.connectionState === 'ready' || snapshot.connectionState === 'busy';
   const faulted = snapshot.connectionState === 'faulted';
-  const connecting = !interactive && !faulted;
+  // Show the loading spinner while connecting OR while switching to another
+  // session (the latter keeps connectionState 'ready' so switches don't deadlock,
+  // so it needs its own signal).
+  const connecting = (!interactive && !faulted) || snapshot.switchingSession === true;
   const disabledAttr = interactive ? '' : 'disabled';
   const sendLabel = busy ? 'Send next (Enter)' : 'Send (Enter · Shift+Enter for newline)';
   const sendCommand = busy ? 'follow_up' : 'prompt';
@@ -879,28 +1523,39 @@ export function renderChatApp(snapshot: WebviewSnapshot): string {
       ${renderShareBar(snapshot)}
       ${renderRecovery(snapshot)}
 
+      ${snapshot.surface === 'sidebar' ? renderSidebarHeader(snapshot) : ''}
+      ${renderPlanStrip(snapshot)}
       <main class="conversation" id="messages" role="log" aria-live="off" aria-relevant="additions text">${
         connecting && snapshot.messages.length === 0
-          ? `<div class="connecting-state" role="status" aria-live="polite"><span class="spinner" aria-hidden="true"></span><p class="empty-copy">${snapshot.sessionFile ? 'Loading chat…' : 'Connecting to Pi…'}</p></div>`
+          ? `<div class="connecting-state" role="status" aria-live="polite"><div class="boot-loader" aria-hidden="true"><svg class="boot-squiggle" viewBox="0 0 104 104" role="img"><path d="M 96.0 52.0 L 97.3 54.0 L 98.2 56.0 L 98.7 58.2 L 98.7 60.2 L 98.0 62.2 L 96.8 64.0 L 95.2 65.6 L 93.3 67.0 L 91.4 68.3 L 89.7 69.6 L 88.2 70.9 L 87.2 72.3 L 86.5 74.0 L 86.1 75.9 L 85.9 78.0 L 85.7 80.3 L 85.4 82.6 L 84.8 84.8 L 83.8 86.8 L 82.5 88.3 L 80.7 89.4 L 78.6 90.0 L 76.3 90.2 L 74.0 90.1 L 71.7 89.9 L 69.6 89.7 L 67.6 89.7 L 65.9 90.2 L 64.3 91.0 L 62.8 92.2 L 61.2 93.7 L 59.6 95.3 L 57.9 96.9 L 56.0 98.2 L 54.1 99.1 L 52.0 99.4 L 49.9 99.1 L 48.0 98.2 L 46.1 96.9 L 44.4 95.3 L 42.8 93.7 L 41.2 92.2 L 39.7 91.0 L 38.1 90.2 L 36.4 89.7 L 34.4 89.7 L 32.3 89.9 L 30.0 90.1 L 27.7 90.2 L 25.4 90.0 L 23.3 89.4 L 21.5 88.3 L 20.2 86.8 L 19.2 84.8 L 18.6 82.6 L 18.3 80.3 L 18.1 78.0 L 17.9 75.9 L 17.5 74.0 L 16.8 72.3 L 15.8 70.9 L 14.3 69.6 L 12.6 68.3 L 10.7 67.0 L 8.8 65.6 L 7.2 64.0 L 6.0 62.2 L 5.3 60.2 L 5.3 58.2 L 5.8 56.0 L 6.7 54.0 L 8.0 52.0 L 9.3 50.1 L 10.6 48.4 L 11.5 46.7 L 12.0 44.9 L 12.1 43.2 L 11.8 41.2 L 11.3 39.2 L 10.7 37.0 L 10.1 34.7 L 9.9 32.4 L 10.2 30.2 L 11.0 28.3 L 12.2 26.7 L 14.0 25.4 L 16.1 24.4 L 18.3 23.7 L 20.5 23.2 L 22.6 22.6 L 24.4 21.9 L 25.9 20.9 L 27.1 19.6 L 28.1 17.9 L 29.1 16.0 L 30.0 13.9 L 31.1 11.8 L 32.4 9.9 L 34.0 8.4 L 35.8 7.5 L 37.8 7.0 L 40.0 7.2 L 42.2 7.8 L 44.4 8.7 L 46.4 9.7 L 48.4 10.6 L 50.2 11.2 L 52.0 11.4 L 53.8 11.2 L 55.6 10.6 L 57.6 9.7 L 59.6 8.7 L 61.8 7.8 L 64.0 7.2 L 66.2 7.0 L 68.2 7.5 L 70.0 8.4 L 71.6 9.9 L 72.9 11.8 L 74.0 13.9 L 74.9 16.0 L 75.9 17.9 L 76.9 19.6 L 78.1 20.9 L 79.6 21.9 L 81.4 22.6 L 83.5 23.2 L 85.7 23.7 L 87.9 24.4 L 90.0 25.4 L 91.8 26.7 L 93.0 28.3 L 93.8 30.2 L 94.1 32.4 L 93.9 34.7 L 93.3 37.0 L 92.7 39.2 L 92.2 41.2 L 91.9 43.2 L 92.0 44.9 L 92.5 46.7 L 93.4 48.4 L 94.7 50.1 L 96.0 52.0 Z" fill="none" stroke="#ff8c42" stroke-width="2.5" stroke-linecap="round"/></svg><svg class="boot-pi" viewBox="0 0 24 24" role="img"><g fill="#ff8c42"><path d="M3.2 5.4 L20 5.4 L18.4 8 L4.8 8 Z"/><rect x="6.1" y="8" width="2.7" height="10.6" rx="1.1"/><path d="M14.4 8 h2.7 v8.4 l-2.7 2.2 Z"/><path d="M9.8 19.2 l2.1 -1.6 l-2.1 -1.6 v3.2 Z" opacity="0.9"/></g></svg></div><p class="connecting-copy">${
+              snapshot.sessionFile
+                ? 'Loading chat'
+                : snapshot.connectionState === 'starting'
+                  ? 'Starting π'
+                  : 'Connecting to π'
+            }<span class="loading-dots" aria-hidden="true"></span></p><p class="connecting-hint">Warming up the runtime…</p></div>`
           : faulted && snapshot.messages.length === 0
             ? `<div class="empty-state"><p class="empty-copy">Couldn’t start Pi for this workspace.</p><div class="button-row compact"><button type="button" data-command="piRpcInternal.restart">Try again</button><button type="button" data-command="piRpcInternal.showLogs">Show logs</button></div></div>`
             : renderMessages(snapshot)
-      }</main>
-      <button type="button" id="jump-latest" class="jump-latest" title="Jump to latest" aria-label="Jump to latest message" hidden><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2.5v7"/><path d="M4.5 6.5L8 10l3.5-3.5"/><path d="M4 13h8"/></svg></button>
+      }<button type="button" id="jump-latest" class="jump-latest" title="Scroll to latest" aria-label="Scroll to latest message" hidden><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9.5l6 6 6-6"/></svg></button></main>
 
       ${renderApprovals(snapshot)}
+      ${
+        snapshot.retry
+          ? `<div class="retry-banner" role="status">⟳ π is retrying${
+              typeof snapshot.retry.attempt === 'number'
+                ? ` (attempt ${snapshot.retry.attempt})`
+                : ''
+            }${
+              snapshot.retry.errorMessage
+                ? ` — ${renderApiErrorInline(snapshot.retry.errorMessage)}`
+                : ''
+            }</div>`
+          : ''
+      }
       <section class="composer-dock" aria-labelledby="composer-heading">
-        <div class="composer-toolbar brand-controls">
-          <span class="toolbar-spacer"></span>
-          ${folderSelect}
-          <button type="button" class="model-chip" data-command="piRpc.showModels" title="Choose model" aria-label="Choose model"><span class="model-dot"></span>${escapeHtml(modelLabel(snapshot))}</button>
-          ${renderUsageChip(snapshot)}
-          ${busy ? '' : renderContinue(snapshot)}
-          ${renderSettingsMenu()}
-          ${renderMoreMenu(snapshot)}
-        </div>
         <h2 id="composer-heading" class="visually-hidden">Message Pi</h2>
-        <label class="visually-hidden" for="${COMPOSER_FIELD_ID}">Message Pi</label>
+        <label class="visually-hidden" for="${COMPOSER_FIELD_ID}">Message π</label>
         ${
           attachmentsVisible
             ? `<div class="attachment-tray"><div class="section-label">Attachments for next message</div><div class="chip-list" role="list" aria-label="Attachments for next message">${snapshot.pendingContextItems
@@ -911,15 +1566,19 @@ export function renderChatApp(snapshot: WebviewSnapshot): string {
             : ''
         }
         ${renderQueueTray(snapshot)}
-        ${busy ? renderWorkingBanner(snapshot) : ''}
+        ${isLiveWorking(snapshot) ? renderWorkingBanner(snapshot) : ''}
         <div class="composer-card${connecting ? ' is-connecting' : ''}" aria-busy="${connecting ? 'true' : 'false'}">
-          <textarea id="${COMPOSER_FIELD_ID}" rows="3" placeholder="${connecting ? 'Connecting to Pi…' : 'Ask Pi to edit…'}" ${disabledAttr}>${escapeHtml(snapshot.draft)}</textarea>
+          <textarea id="${COMPOSER_FIELD_ID}" rows="3" placeholder="${connecting ? 'Connecting to π…' : 'Ask π to edit…'}" ${disabledAttr}>${escapeHtml(snapshot.draft)}</textarea>
           <div class="composer-actions" aria-label="Composer actions">
             <div class="composer-actions-left">
+              ${connecting ? '' : renderStatusChip(snapshot)}
               <button type="button" id="${ATTACH_TRIGGER_ID}" class="icon-button" data-action="appendPickedFile" title="Add a file" aria-label="Add a file" ${disabledAttr}>+</button>
               <button type="button" class="icon-button" data-command="piRpc.showPiCommands" title="Commands" aria-label="Commands" ${disabledAttr}>/</button>
             </div>
             <div class="composer-actions-right">
+              ${connecting ? '' : renderFollowToggle(snapshot)}
+              ${connecting ? '' : renderPermissionModeToggle(snapshot)}
+              ${connecting ? '' : folderSelect}
               ${busy ? '<button type="button" class="ghost" data-action="abort">Stop</button>' : ''}
               <button type="button" id="${SEND_BUTTON_ID}" class="send-button" data-send-command="${sendCommand}" title="${sendLabel}" aria-label="${sendLabel}" ${disabledAttr}><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12.5 4v3a1.5 1.5 0 0 1-1.5 1.5H4.5"/><path d="M7 6L4.3 8.5 7 11"/></svg></button>
             </div>

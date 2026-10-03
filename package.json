@@ -2,7 +2,7 @@
   "name": "pi",
   "displayName": "Pi – this one is (y)ours",
   "description": "An unofficial, personal VS Code chat UI for the Pi coding agent (pi.dev). Not affiliated with pi.dev — shared for anyone who wants it.",
-  "version": "0.0.107",
+  "version": "0.2.20",
   "publisher": "mr-narender",
   "license": "MIT",
   "private": true,
@@ -35,14 +35,6 @@
   "extensionKind": [
     "workspace"
   ],
-  "files": [
-    "dist",
-    "media",
-    "README.md",
-    "CHANGELOG.md",
-    "LICENSE",
-    "NOTICE"
-  ],
   "scripts": {
     "clean": "rm -rf dist .tmp coverage *.vsix",
     "build": "npm run clean && node ./scripts/build.mjs",
@@ -55,25 +47,33 @@
     "test:integration": "node --import tsx --test test/integration/**/*.test.ts",
     "test:extension": "node --import tsx test/extension/run.ts",
     "smoke:real-pi": "node --import tsx --test test/integration/real-pi-smoke.test.ts",
-    "package:vsix": "npm run build && npx @vscode/vsce package --no-dependencies --allow-missing-repository",
-    "audit:prod": "npm audit --omit=dev"
+    "vendor:pi": "node ./scripts/vendor-pi.mjs",
+    "package:vsix": "npm run build && npm run vendor:pi && npx @vscode/vsce package --no-dependencies --allow-missing-repository",
+    "audit:prod": "npm audit --omit=dev",
+    "gate": "npm run typecheck && npm run lint && npm run test:unit && npm run test:integration",
+    "gate:full": "npm run typecheck && npm run lint && npm run test:unit && npm run test:integration && npm run test:extension && npm run check:drift",
+    "check:drift": "node scripts/check-host-drift.mjs"
   },
   "dependencies": {
+    "highlight.js": "^11.11.1",
     "markdown-it": "14.3.0",
+    "morphdom": "^2.7.8",
     "qrcode": "^1.5.4",
     "ws": "^8.21.1"
   },
   "devDependencies": {
+    "@types/jsdom": "^30.0.0",
     "@types/node": "24.10.0",
     "@types/qrcode": "^1.5.6",
     "@types/vscode": "1.75.0",
     "@types/ws": "^8.18.1",
     "@typescript-eslint/eslint-plugin": "8.46.2",
     "@typescript-eslint/parser": "8.46.2",
-    "@vscode/test-electron": "2.5.2",
+    "@vscode/test-electron": "^3.1.0",
     "@vscode/vsce": "3.6.1",
     "esbuild": "0.25.12",
     "eslint": "9.39.1",
+    "jsdom": "^30.1.1",
     "prettier": "3.6.2",
     "tsx": "4.20.6",
     "typescript": "5.9.3"
@@ -83,7 +83,7 @@
       "activitybar": [
         {
           "id": "piRpc",
-          "title": "Pi",
+          "title": "π",
           "icon": "media/icon.svg"
         }
       ]
@@ -91,8 +91,8 @@
     "views": {
       "piRpc": [
         {
-          "id": "piRpc.sessions",
-          "name": "Chats",
+          "id": "piRpc.chat",
+          "name": "Chat",
           "type": "webview"
         }
       ]
@@ -100,7 +100,7 @@
     "customEditors": [
       {
         "viewType": "piRpc.chatEditor",
-        "displayName": "Pi Chat",
+        "displayName": "π Chat",
         "selector": [
           {
             "filenamePattern": "*.chat"
@@ -123,7 +123,7 @@
       },
       {
         "command": "piRpcInternal.restart",
-        "title": "Restart",
+        "title": "Restart π",
         "category": "Pi"
       },
       {
@@ -156,7 +156,7 @@
         "command": "piRpc.newSession",
         "title": "New Chat",
         "category": "Pi",
-        "icon": "$(add)"
+        "icon": "$(comment-add)"
       },
       {
         "command": "piRpc.refreshState",
@@ -199,6 +199,81 @@
       {
         "command": "piRpc.showModels",
         "title": "Show Available Models",
+        "category": "Pi"
+      },
+      {
+        "command": "piRpc.manageResources",
+        "title": "Manage Extensions, Skills & Prompts",
+        "category": "Pi"
+      },
+      {
+        "command": "piRpc.manageExtensions",
+        "title": "Extensions…",
+        "category": "Pi"
+      },
+      {
+        "command": "piRpc.manageSkills",
+        "title": "Skills…",
+        "category": "Pi"
+      },
+      {
+        "command": "piRpc.managePrompts",
+        "title": "Prompts…",
+        "category": "Pi"
+      },
+      {
+        "command": "piRpc.manageAgentInstructions",
+        "title": "Agent instructions…",
+        "category": "Pi"
+      },
+      {
+        "command": "piRpcInternal.setWorkingAnimation",
+        "title": "Working Animation",
+        "category": "Pi"
+      },
+      {
+        "command": "piRpc.toggleSidebarMode",
+        "title": "Switch Chat List / Full Chat",
+        "category": "Pi",
+        "icon": "$(arrow-swap)"
+      },
+      {
+        "command": "piRpcInternal.switchToFullChat",
+        "title": "Switch to full chat",
+        "category": "Pi",
+        "icon": "$(arrow-swap)"
+      },
+      {
+        "command": "piRpcInternal.agenticChatHeading",
+        "title": "Chat",
+        "category": "Pi",
+        "enablement": "false"
+      },
+      {
+        "command": "piRpcInternal.agenticConfigureHeading",
+        "title": "Configure",
+        "category": "Pi",
+        "enablement": "false"
+      },
+      {
+        "command": "piRpcInternal.agenticSystemHeading",
+        "title": "System",
+        "category": "Pi",
+        "enablement": "false"
+      },
+      {
+        "command": "piRpc.addCustomResource",
+        "title": "Add Custom Extension, Skill, or Prompt",
+        "category": "Pi"
+      },
+      {
+        "command": "piRpc.exportResourceConfig",
+        "title": "Export Resource Configuration",
+        "category": "Pi"
+      },
+      {
+        "command": "piRpc.importResourceConfig",
+        "title": "Import Resource Configuration",
         "category": "Pi"
       },
       {
@@ -258,7 +333,87 @@
       },
       {
         "command": "piRpc.exportHtml",
-        "title": "Export Session as HTML",
+        "title": "Export chat",
+        "category": "Pi"
+      },
+      {
+        "command": "piRpc.showRunningChats",
+        "title": "Show Running Chats",
+        "category": "Pi"
+      },
+      {
+        "command": "piRpcInternal.retryWithModel",
+        "title": "Retry with Model…",
+        "category": "Pi"
+      },
+      {
+        "command": "piRpc.reviewLastTurn",
+        "title": "Review last turn",
+        "category": "Pi"
+      },
+      {
+        "command": "piRpc.showChatVersions",
+        "title": "Chat versions",
+        "category": "Pi"
+      },
+      {
+        "command": "piRpc.quickSwitchChat",
+        "title": "Switch Chat…",
+        "category": "Pi"
+      },
+      {
+        "command": "piRpc.restartSharedRuntime",
+        "title": "Restart Shared Runtime",
+        "category": "Pi"
+      },
+      {
+        "command": "piRpc.showAllChatsUsage",
+        "title": "Show Usage for All Open Chats",
+        "category": "Pi"
+      },
+      {
+        "command": "piRpc.toggleFollowAgent",
+        "title": "Toggle Follow Agent (Live File Activity)",
+        "category": "Pi"
+      },
+      {
+        "command": "piRpc.openSidebarChat",
+        "title": "Open Chat in Sidebar",
+        "category": "Pi"
+      },
+      {
+        "command": "piRpc.togglePermissionMode",
+        "title": "Toggle Approval Mode (Auto / Approve Every Edit)",
+        "category": "Pi"
+      },
+      {
+        "command": "piRpc.chatSettings",
+        "title": "Chat Settings (Model & Thinking)",
+        "category": "Pi"
+      },
+      {
+        "command": "piRpc.findInChat",
+        "title": "Find in Chat",
+        "category": "Pi"
+      },
+      {
+        "command": "piRpc.fanOut",
+        "title": "Fan Out to Parallel Chats…",
+        "category": "Pi"
+      },
+      {
+        "command": "piRpcInternal.attachGitDiff",
+        "title": "Attach Git Diff to Chat",
+        "category": "Pi"
+      },
+      {
+        "command": "piRpcInternal.attachStagedDiff",
+        "title": "Attach Staged Diff to Chat",
+        "category": "Pi"
+      },
+      {
+        "command": "piRpcInternal.attachTerminalSelection",
+        "title": "Attach Terminal Selection to Chat",
         "category": "Pi"
       },
       {
@@ -657,15 +812,66 @@
         "command": "piRpc.remote.stop",
         "title": "Stop Remote Session",
         "category": "Pi"
+      },
+      {
+        "command": "piRpcInternal.openSettingsMenu",
+        "title": "Pi Settings",
+        "category": "Pi",
+        "icon": "$(gear)"
       }
     ],
     "configuration": {
       "title": "Pi",
       "properties": {
+        "piRpc.piSource": {
+          "type": "string",
+          "enum": [
+            "bundled",
+            "inprocess",
+            "managed",
+            "external"
+          ],
+          "enumDescriptions": [
+            "Run a vendored Pi when present (dev builds; the Marketplace VSIX no longer bundles Pi).",
+            "Run a vendored Pi in-process on a worker thread (dev builds). Experimental.",
+            "Bootstrap the LATEST Pi into the extension storage on first use and keep it updated (needs npm + network once).",
+            "Run the `pi` on your PATH or the 'Pi: Executable' override."
+          ],
+          "default": "managed",
+          "description": "Where to run the Pi agent from. 'managed' (default) auto-installs the latest Pi on first use and self-updates; 'external' uses your installed `pi`. Each falls back to external `pi` if unavailable."
+        },
+        "piRpc.autoInstall": {
+          "type": "boolean",
+          "default": false,
+          "description": "Allow the extension to install (and self-update) Pi from npm when no `pi` is found on PATH. Off by default: an existing `pi` installation is always used as-is; without one, chats stay offline until you install Pi yourself or enable this."
+        },
+        "piRpc.runtimeWorkers": {
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": "auto",
+          "description": "Size of the Pi runtime worker pool hosting parallel chats. 'auto' scales with your CPU (cores/4, capped at 4 — e.g. 3 workers on 14 cores); a number (1–8) pins it. More workers = more chats generating truly in parallel, at ~150MB memory each."
+        },
+        "piRpc.idleSessionMinutes": {
+          "type": "number",
+          "default": 15,
+          "description": "Free a hidden chat's session after this many idle minutes (0 = never). The tab and transcript stay; the session restarts instantly when you focus the tab. Busy chats and chats waiting for approval are never touched."
+        },
+        "piRpc.turnReview": {
+          "type": "boolean",
+          "default": true,
+          "description": "Snapshot the git tree when a Pi turn starts and offer a consolidated review (diff/revert) of every file the turn changed."
+        },
+        "piRpc.sharedRuntime": {
+          "type": "boolean",
+          "default": true,
+          "description": "Run all chats on ONE shared Pi runtime (many sessions in a single host worker) instead of one process per chat. Big memory win for parallel chats. Falls back to a per-chat process automatically if the shared host can't start."
+        },
         "piRpc.executable": {
           "type": "string",
           "default": "pi",
-          "description": "Pi executable resolved on the workspace extension host."
+          "description": "Pi executable (used when Pi Source = external, or as a fallback if the bundled Pi is missing)."
         },
         "piRpc.additionalArgs": {
           "type": "array",
@@ -680,10 +886,15 @@
           "default": false,
           "description": "Start Pi automatically when a trusted file workspace is opened."
         },
+        "piRpc.launchShell": {
+          "type": "string",
+          "default": "",
+          "description": "Path to your shell executable, exported as PI_LAUNCH_SHELL so Pi's shell-inheritance extension can load. Required on Windows for that extension (e.g. C:\\Program Files\\Git\\bin\\bash.exe, powershell.exe, pwsh.exe, or cmd.exe). Empty auto-detects (defaults to cmd.exe on Windows)."
+        },
         "piRpc.offline": {
           "type": "boolean",
-          "default": true,
-          "description": "Launch Pi with --offline by default."
+          "default": false,
+          "description": "Launch Pi with --offline. Off by default so Pi runs online like the TUI (some extensions need the network at startup). Enable only to force offline."
         },
         "piRpc.allowApproveInTrustedWorkspace": {
           "type": "boolean",
@@ -704,9 +915,9 @@
         },
         "piRpc.maxRecordBytes": {
           "type": "number",
-          "default": 16777216,
+          "default": 67108864,
           "minimum": 1024,
-          "description": "Maximum JSONL record size accepted from Pi stdout. Large enough to resume sessions with big messages or tool outputs."
+          "description": "Maximum JSONL record size accepted from Pi stdout. Defaults to 64 MiB so older sessions with large images or tool outputs can resume."
         },
         "piRpc.maxPendingRequests": {
           "type": "number",
@@ -826,17 +1037,48 @@
           "default": "normal",
           "description": "How smoothly streamed answers type out. \"off\" shows Pi's coarse chunks directly."
         },
+        "piRpc.autoCompact.mode": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "off"
+          ],
+          "enumDescriptions": [
+            "Auto-detect the current model's maximum context window and compact when usage reaches piRpc.autoCompact.percent of it.",
+            "Never auto-compact from the extension (Pi still compacts when nearly full)."
+          ],
+          "default": "auto",
+          "description": "Auto-compaction mode. 'auto' detects the current model's max tokens and compacts at the configured percent; 'off' disables it."
+        },
+        "piRpc.autoCompact.percent": {
+          "type": "number",
+          "default": 75,
+          "minimum": 10,
+          "maximum": 95,
+          "description": "When mode is 'auto', compact once context usage reaches this percent of the current model's auto-detected maximum context window."
+        },
+        "piRpc.autoCompact.resumeTask": {
+          "type": "boolean",
+          "default": true,
+          "description": "After an auto-compaction, automatically continue the in-progress task on the freshly compacted context."
+        },
         "piRpc.autoCompactThreshold": {
           "type": "number",
           "default": 70,
           "minimum": 0,
           "maximum": 100,
-          "description": "Automatically compact the conversation when context usage reaches this percent, then continue. 0 disables (Pi still auto-compacts when nearly full)."
+          "deprecationMessage": "Deprecated. Use piRpc.autoCompact.mode and piRpc.autoCompact.percent instead.",
+          "description": "Deprecated — replaced by piRpc.autoCompact.mode + piRpc.autoCompact.percent."
         },
         "piRpc.codeLensEnabled": {
           "type": "boolean",
           "default": true,
           "description": "Show an inline \"Ask Pi\" action above functions/methods in code files."
+        },
+        "piRpc.remote.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable the Connect a phone feature (watch or drive a chat from your phone). Off by default; when off the Connect a phone button and the remote-session commands are hidden."
         },
         "piRpc.remote.brokerUrl": {
           "type": "string",
@@ -847,10 +1089,120 @@
           "type": "string",
           "default": "",
           "markdownDescription": "Host secret used to open a remote session (matches the broker PI_YOURS_HOST_SECRET). Store it securely; source from the vault."
+        },
+        "piRpc.tabTitleMode": {
+          "type": "string",
+          "enum": [
+            "consistent",
+            "full"
+          ],
+          "enumDescriptions": [
+            "Every π tab gets the same width: long titles ellipsize, short ones pad. Keeps the tab strip even.",
+            "Tabs size naturally to the full chat title."
+          ],
+          "default": "consistent",
+          "description": "How π chat tab titles are sized in the editor tab strip."
+        },
+        "piRpc.tabTitleWidth": {
+          "type": "number",
+          "default": 20,
+          "minimum": 8,
+          "maximum": 48,
+          "description": "Character budget per tab title when piRpc.tabTitleMode is \"consistent\"."
+        },
+        "piRpc.followAgent": {
+          "type": "string",
+          "enum": [
+            "open",
+            "status",
+            "off"
+          ],
+          "enumDescriptions": [
+            "π's live screen: every file the agent EDITS opens in a side editor group (bounded by piRpc.followMaxTabs, focus never moves); edited regions glow with chat attribution. Reads narrate in the status bar.",
+            "Only show live read/edit activity in the status bar.",
+            "No live activity."
+          ],
+          "default": "off",
+          "description": "Follow the agent Zed-style when enabled: a side editor shows the file π is editing, live (reads narrate in the status bar only)."
+        },
+        "piRpc.formatCodeBlocks": {
+          "type": "boolean",
+          "default": true,
+          "description": "Format code blocks in the chat for readability using your installed VS Code formatters (display only — the conversation text itself is never changed)."
+        },
+        "piRpc.followMaxTabs": {
+          "type": "number",
+          "default": 10,
+          "minimum": 1,
+          "maximum": 100,
+          "description": "Maximum number of editor tabs the follow pane keeps open. Opening more closes the oldest follow-opened tab — tabs you opened, pinned, edited, or are viewing are never closed."
+        },
+        "piRpc.sidebarMode": {
+          "type": "string",
+          "enum": [
+            "agentic",
+            "chat"
+          ],
+          "enumDescriptions": [
+            "Sidebar shows a compact chat list (open + recent); the actual conversation opens as a real editor tab, alongside your files.",
+            "Sidebar shows the full chat (composer + transcript) directly, like before — no separate list."
+          ],
+          "default": "agentic",
+          "description": "What the π sidebar shows: a chat list (Agentic Mode) or the full chat (Chat Mode). Switch anytime from either view’s title bar."
+        },
+        "piRpc.statusBarExtras": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Which extra status keys (set by installed Pi extensions/skills, e.g. an MCP-status reporter) to show in the VS Code status bar. Empty by default — every Pi extension can set its own status, and showing all of them unconditionally makes the status bar noisy. Add a key name here to opt it in."
+        },
+        "piRpc.preventSleepWhileBusy": {
+          "type": "boolean",
+          "default": true,
+          "description": "macOS: keep the system awake (caffeinate) while any π turn is running."
+        },
+        "piRpc.soundOnComplete": {
+          "type": "boolean",
+          "default": false,
+          "description": "Play a short sound when a background chat finishes (macOS)."
+        },
+        "piRpc.requireApprovalForEdits": {
+          "type": "boolean",
+          "default": false,
+          "description": "True pre-apply approval: every file edit π makes must be Allowed before it touches disk (Allow / Allow rest of turn / Deny). Installs a PROJECT-scoped Pi extension (.pi/extensions/pi-approval-gate.ts) — applies everywhere π runs for this project, not just in VS Code. Takes effect immediately for new chats; chats already running pick it up when they next go idle (or restart π manually for instant effect on an active chat)."
+        },
+        "piRpc.predictivePreload": {
+          "type": "boolean",
+          "default": true,
+          "description": "Silently pre-warm files locally imported by whatever π is reading/editing (zero-dependency, self-built import scan — no visible tabs, just a head start for when π touches them next)."
         }
       }
     },
     "menus": {
+      "view/title": [
+        {
+          "command": "piRpcInternal.openSettingsMenu",
+          "when": "view == piRpc.sessions",
+          "group": "navigation@1"
+        },
+        {
+          "command": "piRpc.toggleSidebarMode",
+          "when": "view == piRpc.chat && piRpc.sidebarMode == chat",
+          "group": "navigation@0"
+        },
+        {
+          "command": "piRpc.newSession",
+          "when": "view == piRpc.chat && piRpc.sidebarMode == agentic",
+          "group": "navigation@1"
+        },
+        {
+          "submenu": "piRpc.agenticActions",
+          "when": "view == piRpc.chat && piRpc.sidebarMode == agentic",
+          "group": "navigation@2"
+        }
+      ],
       "editor/title": [
         {
           "command": "piRpcInternal.openChat",
@@ -861,15 +1213,172 @@
           "command": "piRpc.newSession",
           "when": "resourceScheme == file || resourceScheme == untitled || resourceScheme == pi-chat",
           "group": "navigation@2"
+        },
+        {
+          "submenu": "piRpc.chatActions",
+          "when": "activeCustomEditorId == 'piRpc.chatEditor'",
+          "group": "navigation@0"
+        }
+      ],
+      "piRpc.agenticActions": [
+        {
+          "command": "piRpcInternal.agenticChatHeading",
+          "group": "1_chat@0"
+        },
+        {
+          "command": "piRpcInternal.switchToFullChat",
+          "group": "1_chat@1"
+        },
+        {
+          "command": "piRpc.reviewLastTurn",
+          "group": "1_chat@2"
+        },
+        {
+          "command": "piRpc.showChatVersions",
+          "group": "1_chat@3"
+        },
+        {
+          "command": "piRpc.exportHtml",
+          "group": "1_chat@4"
+        },
+        {
+          "command": "piRpcInternal.agenticConfigureHeading",
+          "group": "2_configure@0"
+        },
+        {
+          "command": "piRpc.manageExtensions",
+          "group": "2_configure@1"
+        },
+        {
+          "command": "piRpc.manageSkills",
+          "group": "2_configure@2"
+        },
+        {
+          "command": "piRpc.managePrompts",
+          "group": "2_configure@3"
+        },
+        {
+          "command": "piRpc.manageAgentInstructions",
+          "group": "2_configure@4"
+        },
+        {
+          "command": "piRpcInternal.setWorkingAnimation",
+          "group": "2_configure@5"
+        },
+        {
+          "command": "piRpcInternal.agenticSystemHeading",
+          "group": "3_system@0"
+        },
+        {
+          "command": "piRpcInternal.restart",
+          "group": "3_system@1"
+        }
+      ],
+      "piRpc.chatActions": [
+        {
+          "command": "piRpc.renameSession",
+          "group": "1_session@1"
+        },
+        {
+          "command": "piRpcInternal.retryLast",
+          "group": "1_session@2"
+        },
+        {
+          "command": "piRpcInternal.retryWithModel",
+          "group": "1_session@3"
+        },
+        {
+          "command": "piRpc.showChatVersions",
+          "group": "1_session@4"
+        },
+        {
+          "command": "piRpc.findInChat",
+          "group": "1_session@5"
+        },
+        {
+          "command": "piRpcInternal.copyConversationMarkdown",
+          "group": "2_export@1"
+        },
+        {
+          "command": "piRpc.exportHtml",
+          "group": "2_export@2"
+        },
+        {
+          "command": "piRpc.setThinkingLevel",
+          "group": "3_model@1"
+        },
+        {
+          "command": "piRpc.compact",
+          "group": "3_model@2"
+        },
+        {
+          "command": "piRpcInternal.setWorkingAnimation",
+          "group": "3b_configure@1"
+        },
+        {
+          "command": "piRpc.reviewLastTurn",
+          "group": "4_review@1"
+        },
+        {
+          "command": "piRpcInternal.attachGitDiff",
+          "group": "4b_attach@1"
+        },
+        {
+          "command": "piRpcInternal.attachStagedDiff",
+          "group": "4b_attach@2"
+        },
+        {
+          "command": "piRpcInternal.attachTerminalSelection",
+          "group": "4b_attach@3"
+        },
+        {
+          "command": "piRpcInternal.restart",
+          "group": "5_system@1"
+        },
+        {
+          "command": "piRpcInternal.showHealth",
+          "group": "5_system@2"
+        },
+        {
+          "command": "piRpcInternal.showLogs",
+          "group": "5_system@3"
+        },
+        {
+          "command": "piRpcInternal.showHelp",
+          "group": "5_system@4"
         }
       ],
       "commandPalette": [
+        {
+          "command": "piRpcInternal.agenticChatHeading",
+          "when": "false"
+        },
+        {
+          "command": "piRpcInternal.agenticConfigureHeading",
+          "when": "false"
+        },
+        {
+          "command": "piRpcInternal.agenticSystemHeading",
+          "when": "false"
+        },
         {
           "command": "piRpcInternal.deleteSession",
           "when": "false"
         },
         {
           "command": "piRpcInternal.renameSession",
+          "when": "false"
+        },
+        {
+          "command": "piRpc.remote.start",
+          "when": "piRpc.remoteEnabled"
+        },
+        {
+          "command": "piRpc.remote.stop",
+          "when": "piRpc.remoteEnabled"
+        },
+        {
+          "command": "piRpcInternal.openSettingsMenu",
           "when": "false"
         }
       ],
@@ -903,6 +1412,17 @@
         "win": "ctrl+k",
         "linux": "ctrl+k",
         "when": "activeCustomEditorId == 'piRpc.chatEditor'"
+      },
+      {
+        "command": "piRpc.quickSwitchChat",
+        "key": "ctrl+alt+p",
+        "mac": "cmd+alt+p"
+      },
+      {
+        "command": "piRpc.findInChat",
+        "key": "ctrl+f",
+        "mac": "cmd+f",
+        "when": "activeCustomEditorId == 'piRpc.chatEditor' && !editorTextFocus"
       }
     ],
     "submenus": [
@@ -910,6 +1430,19 @@
         "id": "piRpc.ask",
         "label": "Ask Pi",
         "icon": "$(sparkle)"
+      },
+      {
+        "id": "piRpc.agenticActions",
+        "label": "More actions",
+        "icon": "$(ellipsis)"
+      },
+      {
+        "id": "piRpc.chatActions",
+        "label": "Pi Chat Actions",
+        "icon": {
+          "light": "media/tab-icon.svg",
+          "dark": "media/tab-icon.svg"
+        }
       }
     ]
   },

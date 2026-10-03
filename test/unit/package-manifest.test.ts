@@ -25,15 +25,26 @@ test('coverage row inventory totals stay stable', () => {
   assert.equal((coverage.match(/\| D-\d+/g) ?? []).length, 8);
 });
 
-test('manifest contributes a single Chats webview sidebar', () => {
+test('manifest contributes exactly one always-visible Chat webview; mode is content, not view visibility', () => {
+  // Superseded the native-tree-view "Open Chat List" attempt entirely — a
+  // native TreeDataProvider has no extension-facing API for row spacing,
+  // font size, or custom (non-Codicon) icons/buttons, confirmed against
+  // VS Code's own source (listView.ts row-height options are internal,
+  // never exposed to extensions) and the VS Code team's own admission that
+  // list/tree isn't a good fit for chat UI (microsoft/vscode#268858). One
+  // webview now renders EITHER the list or the full chat depending on
+  // piRpc.sidebarMode — no `when`-gated second view needed.
   const view = packageJson.contributes.views.piRpc;
   assert.deepEqual(
     view.map((entry) => entry.id),
-    ['piRpc.sessions']
+    ['piRpc.chat']
   );
-  assert.equal(view[0]?.type, 'webview');
+  const chatWebview = view[0];
+  assert.equal(chatWebview?.type, 'webview');
+  assert.ok(!('when' in chatWebview));
   const allMenus = JSON.stringify(packageJson.contributes.menus ?? {});
   assert.ok(!allMenus.includes('piRpc.currentChat'));
+  assert.ok(!allMenus.includes('piRpc.openChatList'));
 });
 
 test('manifest exposes delete and rename chat commands for the sidebar', () => {

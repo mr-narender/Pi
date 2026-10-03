@@ -64,7 +64,10 @@ export class JsonlDecoder {
       throw new JsonlProtocolError('Blank JSONL record');
     }
     if (trimmed.length > this.options.maxRecordBytes) {
-      throw new JsonlProtocolError('JSONL record exceeded limit');
+      throw new JsonlProtocolError(
+        `JSONL record exceeded limit (${trimmed.length} bytes > ${this.options.maxRecordBytes} bytes); ` +
+          'increase piRpc.maxRecordBytes to resume this session'
+      );
     }
     let decoded: string;
     try {

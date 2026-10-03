@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" role="img" aria-label="Pi">
+  <!-- Tab icon: same pi mark as icon.svg but in the brand ember orange.
+       panel.iconPath renders SVGs literally (no theme masking), so currentColor
+       would be black — invisible on dark themes. Solid #ff8c42 reads on both. -->
+  <g fill="#ff8c42">
+    <path d="M3.2 5.4 L20 5.4 L18.4 8 L4.8 8 Z" />
+    <rect x="6.1" y="8" width="2.7" height="10.6" rx="1.1" />
+    <path d="M14.4 8 h2.7 v8.4 l-2.7 2.2 Z" />
+    <path d="M9.8 19.2 l2.1 -1.6 l-2.1 -1.6 v3.2 Z" opacity="0.9" />
+  </g>
+</svg>

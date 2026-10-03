@@ -10,11 +10,19 @@ export const COMMAND_TYPES = [
   'follow_up',
   'abort',
   'new_session',
+  'close_chat',
   'get_state',
   'get_messages',
   'set_model',
   'cycle_model',
   'get_available_models',
+  'get_capabilities',
+  'get_preferences',
+  'save_preference',
+  'get_scoped_models',
+  'set_scoped_models',
+  'save_scoped_models_default',
+  'get_available_thinking_levels',
   'set_thinking_level',
   'cycle_thinking_level',
   'set_steering_mode',
@@ -27,12 +35,25 @@ export const COMMAND_TYPES = [
   'abort_bash',
   'get_session_stats',
   'export_html',
+  'export_jsonl',
   'switch_session',
   'fork',
   'clone',
   'get_fork_messages',
   'get_entries',
   'get_tree',
+  'navigate_tree',
+  'get_project_trust',
+  'set_project_trust',
+  'reload_session',
+  'auth_providers',
+  'auth_logout',
+  'auth_login',
+  'auth_poll',
+  'auth_response',
+  'delivery_payload',
+  'import_prepare',
+  'import_session',
   'get_last_assistant_text',
   'set_session_name',
   'get_commands',
@@ -135,9 +156,120 @@ export interface ModelInfo extends JsonObject {
   cost?: JsonObject;
 }
 
+export interface ThinkingCapabilities {
+  levels: string[];
+  revision: string;
+}
+
+export interface ScopedModelRef extends JsonObject {
+  provider: string;
+  id: string;
+  thinkingLevel?: string;
+}
+export interface ScopedModelsSnapshot extends JsonObject {
+  models: ModelInfo[];
+  scoped: ScopedModelRef[];
+  revision: string;
+  globalPatterns: string[] | null;
+  projectPatterns: string[] | null;
+  effectivePatterns: string[] | null;
+  startupPatterns?: string[] | null;
+  patternSource?: string;
+  projectOverride: boolean;
+  diagnostics: JsonObject[];
+  globalDiagnostics: JsonObject[];
+}
+
+export function parseScopedModelsSnapshot(value: unknown): ScopedModelsSnapshot {
+  const data = asRecord(value, 'scope snapshot');
+  asString(data.revision, 'scope revision');
+  if (
+    Object.keys(data).some(
+      (k) =>
+        ![
+          'models',
+          'scoped',
+          'revision',
+          'globalPatterns',
+          'projectPatterns',
+          'effectivePatterns',
+          'startupPatterns',
+          'patternSource',
+          'projectOverride',
+          'diagnostics',
+          'globalDiagnostics',
+        ].includes(k)
+    )
+  )
+    throw new Error('Unsafe scope snapshot metadata');
+  if (
+    !Array.isArray(data.models) ||
+    !Array.isArray(data.scoped) ||
+    typeof data.projectOverride !== 'boolean'
+  )
+    throw new Error('Invalid scope snapshot');
+  for (const key of ['globalPatterns', 'projectPatterns', 'effectivePatterns'])
+    if (data[key] !== null) asStringArray(data[key], key);
+  if (data.startupPatterns !== undefined && data.startupPatterns !== null)
+    asStringArray(data.startupPatterns, 'startupPatterns');
+  if (
+    data.patternSource !== undefined &&
+    !['cli', 'project', 'global'].includes(String(data.patternSource))
+  )
+    throw new Error('Invalid scope pattern source');
+  for (const model of data.models) {
+    const m = asRecord(model);
+    asString(m.provider);
+    asString(m.id);
+    if (
+      Object.keys(m).some(
+        (k) =>
+          ![
+            'provider',
+            'id',
+            'name',
+            'reasoning',
+            'input',
+            'contextWindow',
+            'maxTokens',
+            'cost',
+          ].includes(k)
+      )
+    )
+      throw new Error('Unsafe scope model metadata');
+    if (
+      m.cost &&
+      (Object.keys(asRecord(m.cost)).some(
+        (k) => !['input', 'output', 'cacheRead', 'cacheWrite'].includes(k)
+      ) ||
+        Object.values(asRecord(m.cost)).some((v) => typeof v !== 'number' || !Number.isFinite(v)))
+    )
+      throw new Error('Invalid scope model cost');
+  }
+  for (const ref of data.scoped) {
+    const r = asRecord(ref);
+    asString(r.provider);
+    asString(r.id);
+    if (Object.keys(r).some((k) => !['provider', 'id', 'thinkingLevel'].includes(k)))
+      throw new Error('Unsafe scope reference');
+  }
+  for (const key of ['diagnostics', 'globalDiagnostics']) {
+    if (!Array.isArray(data[key])) throw new Error('Invalid scope diagnostics');
+    for (const diagnostic of data[key]) {
+      const d = asRecord(diagnostic);
+      asString(d.code);
+      asString(d.pattern);
+      if (Object.keys(d).some((k) => !['code', 'pattern'].includes(k)))
+        throw new Error('Unsafe scope diagnostics');
+    }
+  }
+  return structuredClone(data) as ScopedModelsSnapshot;
+}
+
 export interface SessionState extends JsonObject {
   model?: ModelInfo | null;
   thinkingLevel?: string;
+  availableThinkingLevels?: string[];
   isStreaming?: boolean;
   isCompacting?: boolean;
   steeringMode?: string;

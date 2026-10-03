@@ -26,17 +26,34 @@ export function editReplacements(
       return [];
     }
     const record = parsed as Record<string, unknown>;
+    // Pi's edit tool speaks several dialects: single {oldString,newString},
+    // batch edits[], appendContent, symbol+content — plus the legacy
+    // {oldText,newText} and replacements[] shapes.
+    const single = (entry: Record<string, unknown>): boolean =>
+      ['oldText', 'newText', 'oldString', 'newString', 'appendContent', 'content'].some(
+        (key) => typeof entry[key] === 'string'
+      );
     const rawList = Array.isArray(record.replacements)
       ? record.replacements
-      : typeof record.oldText === 'string' || typeof record.newText === 'string'
-        ? [record]
-        : [];
+      : Array.isArray(record.edits)
+        ? record.edits
+        : single(record)
+          ? [record]
+          : [];
     const out: EditReplacement[] = [];
     for (const item of rawList) {
       if (item && typeof item === 'object') {
         const entry = item as Record<string, unknown>;
-        const oldText = typeof entry.oldText === 'string' ? entry.oldText : '';
-        const newText = typeof entry.newText === 'string' ? entry.newText : '';
+        const pick = (...keys: string[]): string => {
+          for (const key of keys) {
+            if (typeof entry[key] === 'string') {
+              return entry[key] as string;
+            }
+          }
+          return '';
+        };
+        const oldText = pick('oldText', 'oldString');
+        const newText = pick('newText', 'newString', 'appendContent', 'content');
         if (oldText || newText) {
           out.push({ oldText, newText });
         }
@@ -88,4 +105,46 @@ export function editToolFilePath(
     }
   }
   return undefined;
+}
+
+/** Per-change approval units: every edit tool call in the NEWEST assistant
+ * turn, as { path, oldText, newText } — the pane renders Keep/Undo/Edit for
+ * each. Pure so tests can drive it directly. */
+export function deriveScreenChanges(
+  messages: Array<{
+    role: string;
+    blocks?: Array<{ kind: string; name?: string; args?: string; callId?: string }>;
+  }>
+): Array<{ callId: string; path: string; oldText: string; newText: string }> {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]!;
+    if (message.role === 'user') {
+      break;
+    }
+    if (message.role !== 'assistant') {
+      continue;
+    }
+    const changes: Array<{ callId: string; path: string; oldText: string; newText: string }> = [];
+    for (const block of message.blocks ?? []) {
+      if (block.kind !== 'tool' || !('name' in block)) {
+        continue;
+      }
+      const path = editToolFilePath(block.name, block.args);
+      if (!path) {
+        continue;
+      }
+      for (const [at, replacement] of editReplacements(block.name, block.args).entries()) {
+        changes.push({
+          callId: `${block.callId ?? 'call'}-${at}`,
+          path,
+          oldText: replacement.oldText ?? '',
+          newText: replacement.newText ?? '',
+        });
+      }
+    }
+    if (changes.length > 0) {
+      return changes.slice(-12);
+    }
+  }
+  return [];
 }

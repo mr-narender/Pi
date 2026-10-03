@@ -1,3 +1,5 @@
+import { assertNotCoreSlashPrompt } from '../commands/coreSlash';
+
 export type ChatUiMode = 'simple' | 'advanced';
 
 export type ComposerFocusTarget =
@@ -17,6 +19,14 @@ export interface PersistedContextRefBase {
 export interface PersistedFileContextRef extends PersistedContextRefBase {
   languageId: string;
   contentFingerprint: string;
+}
+
+export interface PersistedPastedTextRef extends PersistedContextRefBase {
+  languageId: string;
+  contentFingerprint: string;
+  /** Pasted text has no file to re-read on restore — the (bounded, ≤16KB)
+   * content itself is the persisted source of truth. */
+  content: string;
 }
 
 export interface PersistedDiagnosticsContextRef extends PersistedContextRefBase {
@@ -82,6 +92,21 @@ export type PendingContextItem =
       persistedRef: PersistedDiagnosticsContextRef;
       stale?: boolean;
       staleReason?: string;
+    }
+  | {
+      kind: 'pastedText';
+      itemId: string;
+      workspaceFolder: string;
+      /** Synthetic display label ("Pasted text 3") — no file behind it. */
+      workspaceRelativePath: string;
+      lineStart: number;
+      lineEnd: number;
+      languageId: string;
+      sanitizedContent: string;
+      capturedAt: string;
+      persistedRef: PersistedPastedTextRef;
+      stale?: boolean;
+      staleReason?: string;
     };
 
 export interface PendingImageItem {
@@ -138,6 +163,17 @@ export interface RecoveryState {
 
 export interface ComposerSessionState {
   draft: string;
+  /** In-memory ownership revision for asynchronous local commands. */
+  localCommandAck?: string;
+  /** Native-authorized identity transition, scoped to the invoking frame and ACK. */
+  localCommandReplacement?: {
+    originKey: string;
+    replacementKey: string;
+    frame: number;
+  };
+  /** Correlated invoking text consumption, not native action success. */
+  localCommandConsumed?: string;
+  commandRevision?: number;
   composerResetSeq?: number;
   pendingContextItems: PendingContextItem[];
   pendingImages: PendingImageItem[];
@@ -281,6 +317,8 @@ export function buildSendPreview(
   command: 'prompt' | 'follow_up' | 'steer',
   state: ComposerSessionState
 ): SendPreviewState {
+  // Local commands must be intercepted before context/image expansion or clears.
+  assertNotCoreSlashPrompt(state.draft);
   if (
     !state.draft.trim() &&
     state.pendingContextItems.length === 0 &&
@@ -313,6 +351,71 @@ export function buildSendPreview(
       requiresReselect: image.requiresReselect,
     })),
   };
+}
+
+export interface SnapshotPendingImageItem {
+  itemId: string;
+  name: string;
+  mimeType: string;
+  sizeBytes: number;
+  width?: number;
+  height?: number;
+  previewDataUrl?: string;
+  requiresReselect?: boolean;
+}
+
+/**
+ * Shape composer images for a webview snapshot: keep the preview thumbnail
+ * (data URL — the chip must LOOK like an image), never the raw send bytes.
+ * `stale` marks snapshots built from cache/reload: an image whose in-memory
+ * bytes are gone must demand reselect, but a freshly pasted image in the same
+ * tab stays fully usable. (Live bug: both fallback snapshot builders stripped
+ * previewDataUrl, so pasted images rendered as text-only chips.)
+ */
+export function toSnapshotPendingImages(
+  items: PendingImageItem[],
+  stale: boolean
+): SnapshotPendingImageItem[] {
+  return items.map((item) => ({
+    itemId: item.itemId,
+    name: item.name,
+    mimeType: item.mimeType,
+    sizeBytes: item.sizeBytes,
+    width: item.width,
+    height: item.height,
+    previewDataUrl: item.previewDataUrl,
+    requiresReselect: stale
+      ? item.requiresReselect === true || !item.inMemoryBase64
+      : item.requiresReselect,
+  }));
+}
+
+export interface BeginSendResult {
+  preview: SendPreviewState;
+  accepted: AcceptedSendSnapshot;
+}
+
+/**
+ * Atomically begin a send: capture the outgoing message (preview + accepted
+ * snapshot) and clear the composer — draft, context chips, AND image chips —
+ * in one step, so nothing sent ever lingers into the next message. Throws
+ * without mutating state when there is nothing to send.
+ */
+export function beginSend(
+  command: 'prompt' | 'follow_up' | 'steer',
+  state: ComposerSessionState
+): BeginSendResult {
+  const preview = buildSendPreview(command, state); // throws before any mutation
+  const accepted = acceptedSnapshotFromPreview(preview, state.pendingContextItems);
+  state.draft = '';
+  state.pendingContextItems = [];
+  state.pendingImages = [];
+  state.preview = undefined;
+  state.recovery = undefined;
+  state.acceptedSendSnapshot = accepted;
+  state.composerResetSeq = (state.composerResetSeq ?? 0) + 1;
+  state.focus = 'composer';
+  return { preview, accepted };
 }
 
 export function acceptedSnapshotFromPreview(
@@ -383,6 +486,8 @@ export function summarizeChip(item: PendingContextItem): string {
       return `Selection: ${item.workspaceRelativePath} L${item.lineStart}-L${item.lineEnd}`;
     case 'diagnostics':
       return `Diagnostics: ${item.workspaceRelativePath} · ${item.issueCount} issues`;
+    case 'pastedText':
+      return `${item.workspaceRelativePath} · ${item.lineEnd} lines`;
   }
 }
 
@@ -396,5 +501,12 @@ export function chipPrivacyLabel(item: PendingContextItem): string {
       return 'Selected text only';
     case 'diagnostics':
       return 'Active-file diagnostics snapshot';
+    case 'pastedText':
+      return 'Pasted clipboard text';
   }
 }
+
+// NOTE: text pastes deliberately stay plain text in the composer (no
+// "pastedText" chip capture). The 'pastedText' PendingContextItem kind and its
+// persisted-ref handling remain for restoring chips persisted by older
+// versions — they render, remove, and send fine; we just never create new ones.

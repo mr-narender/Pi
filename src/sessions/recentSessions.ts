@@ -1,6 +1,6 @@
 import { createReadStream, existsSync, realpathSync } from 'node:fs';
 import { readFile, readdir, stat } from 'node:fs/promises';
-import { homedir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { redactText } from '../diagnostics/redaction';
@@ -16,7 +16,6 @@ const MAX_PROMPT_CHARS = 96;
 const CONTROL_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g;
 const MIN_PLAUSIBLE_TIMESTAMP_MS = Date.UTC(2000, 0, 1);
 const MAX_FUTURE_SKEW_MS = 5 * 60_000;
-const UNKNOWN_RELATIVE_TIMESTAMP = 'Unknown';
 
 export interface SessionWorkspaceContext {
   workspaceName: string;
@@ -36,6 +35,9 @@ export interface RecentSessionRecord {
   messageCount: number;
   modifiedAt: number;
   createdAt: number;
+  /** Session file size on disk — oversized sessions (100MB+) resume slowly
+   * or not at all; the chat list surfaces a warning from this. */
+  sizeBytes?: number;
   parentSessionPath?: string;
 }
 
@@ -345,6 +347,8 @@ async function buildRecentSessionRecord(
       messageCount,
       modifiedAt,
       createdAt,
+      sizeBytes:
+        typeof stats?.size === 'number' && Number.isFinite(stats.size) ? stats.size : undefined,
       parentSessionPath:
         typeof header.parentSession === 'string' ? resolve(header.parentSession) : undefined,
     };
@@ -416,7 +420,163 @@ export async function readRecentSessionsIndex(
         left.index - right.index
     )
     .map((item) => item.session);
-  return { sessionDir, filterByWorkspaceCwd, sessions };
+  return { sessionDir, filterByWorkspaceCwd, sessions: collapseForkAncestors(sessions) };
+}
+
+// A fork copies the parent's ENTIRE history — including its `session_info` name
+// — into a new file, and every message EDIT forks. So after an edit (or rename +
+// edit) the old file lingers as a stale duplicate row with the same name ("my
+// rename spread to another chat"). Hide a session when a newer session points at
+// it via parentSession AND it has had no activity since that fork was created.
+// A deliberately cloned chat whose original keeps being used reappears on the
+// original's next activity.
+const FORK_ANCESTOR_EPSILON_MS = 2000;
+function collapseForkAncestors(sessions: RecentSessionRecord[]): RecentSessionRecord[] {
+  const byPath = new Map(sessions.map((session) => [session.path, session]));
+  const hidden = new Set<string>();
+  for (const child of sessions) {
+    if (!child.parentSessionPath) {
+      continue;
+    }
+    const parent = byPath.get(child.parentSessionPath);
+    if (!parent) {
+      continue;
+    }
+    if (parent.modifiedAt <= child.createdAt + FORK_ANCESTOR_EPSILON_MS) {
+      hidden.add(parent.path);
+    }
+  }
+  return hidden.size === 0 ? sessions : sessions.filter((session) => !hidden.has(session.path));
+}
+
+// "main" alone is a useless project badge — for generic leaf dirs (worktree
+// checkouts), include the repo dir: …/agent-registry/worktrees/main →
+// "agent-registry/main".
+const GENERIC_LEAF_DIRS = new Set(['main', 'master', 'trunk', 'dev', 'src', 'repo', 'work']);
+function projectLabelForCwd(cwd: string): string {
+  const parts = cwd.split(/[/\\]/).filter(Boolean);
+  const leaf = parts[parts.length - 1] ?? cwd;
+  if (!GENERIC_LEAF_DIRS.has(leaf.toLowerCase()) || parts.length < 2) {
+    return leaf;
+  }
+  const parent = parts[parts.length - 2] ?? '';
+  const repo = parent.toLowerCase() === 'worktrees' ? (parts[parts.length - 3] ?? parent) : parent;
+  return repo ? `${repo}/${leaf}` : leaf;
+}
+
+/**
+ * Chats from EVERY project (each cwd has its own session dir under
+ * ~/.pi/agent/sessions). Used for the sidebar's "Other projects" group so all
+ * chats are reachable from any window — not just the current workspace's.
+ * Bounded: newest 40 project dirs, 200 rows total; per-file scan caps apply.
+ */
+export async function readAllProjectsSessions(
+  excludeCwds: string[]
+): Promise<RecentSessionRecord[]> {
+  const root = getSessionsRootDir();
+  if (!existsSync(root)) {
+    return [];
+  }
+  const excluded = new Set(excludeCwds.map((cwd) => resolve(cwd)));
+  // macOS tmpdir() is /var/folders/… while session cwds record the resolved
+  // /private/var/folders/… — match both spellings.
+  const tempRoot = resolve(tmpdir());
+  const tempRoots = [
+    tempRoot,
+    tempRoot.startsWith('/private/') ? tempRoot.slice('/private'.length) : `/private${tempRoot}`,
+  ];
+  const now = Date.now();
+  const dirents = await readdir(root, { withFileTypes: true }).catch(() => []);
+  const dirs = await Promise.all(
+    dirents
+      .filter((entry) => entry.isDirectory())
+      .map(async (entry) => {
+        const path = join(root, entry.name);
+        const stats = await stat(path).catch(() => undefined);
+        return { path, mtime: stats?.mtimeMs ?? 0 };
+      })
+  );
+  dirs.sort((left, right) => right.mtime - left.mtime);
+  const sessions: RecentSessionRecord[] = [];
+  for (const dir of dirs.slice(0, 40)) {
+    const entries = await readdir(dir.path, { withFileTypes: true }).catch(() => []);
+    const files = entries
+      .filter((entry) => entry.isFile() && entry.name.endsWith('.jsonl'))
+      .map((entry) => join(dir.path, entry.name));
+    const records = (
+      await Promise.all(files.map((file) => buildRecentSessionRecord(file, now)))
+    ).filter((record): record is RecentSessionRecord => record !== undefined);
+    for (const record of collapseForkAncestors(records)) {
+      const cwd = resolve(record.cwd);
+      // Skip the current window's own projects (already listed) and throwaway
+      // temp-dir sessions (diagnostics, tests).
+      if (excluded.has(cwd) || tempRoots.some((root) => cwd.startsWith(root))) {
+        continue;
+      }
+      sessions.push({ ...record, workspaceLabel: projectLabelForCwd(cwd) });
+    }
+  }
+  sessions.sort(
+    (left, right) => right.modifiedAt - left.modifiedAt || left.path.localeCompare(right.path)
+  );
+  return sessions.slice(0, 200);
+}
+
+async function readSessionHeader(path: string): Promise<Record<string, unknown> | undefined> {
+  return new Promise((resolvePromise) => {
+    let done = false;
+    const finish = (value: Record<string, unknown> | undefined): void => {
+      if (!done) {
+        done = true;
+        resolvePromise(value);
+      }
+    };
+    const stream = createReadStream(path, { encoding: 'utf8', end: 16_384 });
+    let buffer = '';
+    stream.on('data', (chunk: string | Buffer) => {
+      buffer += chunk.toString();
+      const newline = buffer.indexOf('\n');
+      if (newline >= 0) {
+        stream.destroy();
+        try {
+          finish(JSON.parse(buffer.slice(0, newline)) as Record<string, unknown>);
+        } catch {
+          finish(undefined);
+        }
+      }
+    });
+    stream.on('error', () => finish(undefined));
+    stream.on('close', () => finish(undefined));
+  });
+}
+
+/**
+ * Walk a session's fork lineage (each message EDIT forks a new file that points
+ * at its parent via the header's `parentSession`). Returns newest→oldest,
+ * starting with the given file. Used by the "chat versions" picker.
+ */
+export async function readSessionLineage(
+  sessionPath: string
+): Promise<Array<{ path: string; createdAt: number }>> {
+  const lineage: Array<{ path: string; createdAt: number }> = [];
+  const seen = new Set<string>();
+  let current = resolve(sessionPath);
+  for (let hop = 0; hop < 20 && current && !seen.has(current); hop += 1) {
+    seen.add(current);
+    if (!existsSync(current)) {
+      break;
+    }
+    const header = await readSessionHeader(current);
+    if (!header || header.type !== 'session') {
+      break;
+    }
+    lineage.push({
+      path: current,
+      createdAt: parseTimestamp(header.timestamp, Date.now()) ?? 0,
+    });
+    current = typeof header.parentSession === 'string' ? resolve(header.parentSession) : '';
+  }
+  return lineage;
 }
 
 export function filterRecentSessions(
@@ -441,25 +601,7 @@ export function filterRecentSessions(
   );
 }
 
-export function formatRelativeTimestamp(value: number, now = Date.now()): string {
-  if (!Number.isFinite(value) || value <= 0 || !Number.isFinite(now)) {
-    return UNKNOWN_RELATIVE_TIMESTAMP;
-  }
-  const delta = Math.max(0, now - value);
-  if (!Number.isFinite(delta)) {
-    return UNKNOWN_RELATIVE_TIMESTAMP;
-  }
-  const minute = 60_000;
-  const hour = 60 * minute;
-  const day = 24 * hour;
-  if (delta < minute) {
-    return 'just now';
-  }
-  if (delta < hour) {
-    return `${Math.floor(delta / minute)}m ago`;
-  }
-  if (delta < day) {
-    return `${Math.floor(delta / hour)}h ago`;
-  }
-  return `${Math.floor(delta / day)}d ago`;
-}
+// Canonical implementation moved to webview/chatListShared.ts (browser-safe)
+// so the chat-list webview can re-render "5m ago" on an interval without a
+// host push; re-exported here to keep this module's existing public API.
+export { formatRelativeTime as formatRelativeTimestamp } from '../webview/chatListShared';
