@@ -22,7 +22,7 @@ Use isolated `--user-data-dir` and `--extensions-dir`.
 
 1. Install the VSIX with `code --install-extension <vsix> --force` (or the matching remote CLI when testing remote).
 2. Launch the throwaway workspace with Extension Development Host logging disabled for secrets.
-3. Confirm Activity Bar container, the two default views (`New Chat`, `Resume Chat`), center editor tab journeys, commands, settings, and advanced-mode surfaces exist. No Pi process starts before explicit Start or first trusted send/start action.
+3. Confirm the Agentic Chat view, New Chat/recent chat list, native editor tabs, Full Chat and Back to chats, commands and shared settings. Prewarming must preserve trust/resource/runtime options without sending a prompt.
 4. Configure mock executable; run `Pi RPC: Start`. Confirm version check, handshake, ready state, and Health report.
 5. Reload window. Confirm safe reattach prompt, no duplicate process/views/listeners, and successful reconciliation.
 6. Stop, uninstall, relaunch, reinstall, and relaunch. Confirm clean deactivation, no orphan child, and no secret/session content in global state.
@@ -72,17 +72,6 @@ Load installed official `examples/extensions/rpc-demo.ts` through an explicit tr
 - U-009 editor text: empty draft and conflicting non-empty draft replace/append/cancel.
 
 Acceptance: dialog responses match ids and shapes exactly once; fire-and-forget methods produce no response; keyboard/screen-reader behavior works.
-
-## Local unsupported/degraded `ExtensionUIContext` compatibility walkthrough
-
-Use a reviewed compatibility fixture extension that calls each installed local RPC-mode member while stdout is captured for unexpected `extension_ui_request` traffic.
-
-- X-001–X-008: verify no-op/disposer/`undefined` behaviors for terminal input, working-state APIs, header/footer, and `custom()`.
-- X-009–X-013: verify `pasteToEditor()` delegates exactly once to `set_editor_text`, `getEditorText()` returns `""`, autocomplete/editor-component setters are ignored, and `getEditorComponent()` returns `undefined`.
-- X-014–X-017: verify the `theme` getter stays local/read-only, `getAllThemes()` returns `[]`, `getTheme()` returns `undefined`, and `setTheme()` returns `{ success:false, error }` without switching VS Code theme state.
-- X-018–X-019: verify tools-expanded getter/setter remain local compatibility no-ops.
-
-Acceptance: all X-rows match installed Pi semantics exactly, emit no extra wire methods beyond `U-001`–`U-009`, and produce only the planned unsupported-custom-UI diagnostic.
 
 ## Trust, privacy, and webview cases
 
@@ -139,41 +128,23 @@ Acceptance: no cross-controller state or path leakage; host labeling and process
 
 ## Accessibility and UX
 
-Visual workflow to verify during acceptance:
+Agentic is the only interface. Verify the default chat list, its native New Chat
+and More actions, native editor tabs, Full Chat and Back to chats. Confirm the
+chosen surface restores within the workspace and a conversation never appears
+in both the sidebar and an editor tab after moving it.
 
-```text
-New Chat | Resume Chat
-        ↓
-Current editor tab → Attach / Send / Stop / Model
-        ↓
-     Advanced
-```
+Complete send/steer/abort/model/session/dialog/diff workflows keyboard-only.
+Verify Shift+Tab thinking routing, IME composition and held Enter, immediate
+slash-menu activation, drafts and image chips across tabs and surface changes.
+Check screen readers, 200% zoom, high contrast, reduced motion and meaningful
+focus/status announcements. Follow Agent defaults off; all six working
+animations remain selectable. Live empty assistant replies remain deferred.
 
-Complete the whole send/steer/abort/model/session/dialog/diff workflow keyboard-only. Test NVDA or VoiceOver, 200% zoom, high-contrast themes, reduced motion, long localized strings, empty/loading/error states, and focus restoration after every XUI method. Verify throttled `aria-live` summaries and non-color statuses.
-
-Additional UX walkthrough:
-
-1. Verify the default sidebar exposes only **New Chat** and **Resume Chat** with one clear primary action in each view.
-2. Verify **Resume Chat** supports search/filter/refresh, shows loading/empty/error states, and never exposes unsafe transcript/secrets in labels.
-3. Open the current chat in the center editor tab and confirm workspace/session/status live there with **Model**, **New**, **Resume**, and **More** only.
-4. Verify advanced session/branch/diagnostic/tooling actions remain reachable through **Advanced** or unchanged command ids.
-
-Acceptance: no keyboard trap, visible focus, meaningful names/roles/statuses/alt text, no token-stream screen-reader spam, and native theme compatibility.
-
-### LOCAL-003 acceptance addendum
-
-Run the UX acceptance addendum in [UX_REDESIGN.md](UX_REDESIGN.md) before release:
-
-1. In default **Simple Mode**, verify the sidebar exposes only **New Chat** and **Resume Chat**; **Current Chat**, **Help & Walkthrough**, **Conversation & Branches**, **Queues**, **Workflow**, and **Advanced & Diagnostics** are not visible as default destinations.
-2. Verify the default chat surface shows only the header, transcript, composer, attachments entry point, **Send**, **Stop**, and model selection; queue, bash, diagnostics, extension UI preview, and branching controls appear only in **Advanced** or the Command Palette.
-3. Verify `New Chat` is one primary action: with no current chat it starts fresh immediately; with a current chat it shows only `Start fresh` _(default)_ and `Continue from current as parent`; when an unsent draft/chip exists it warns that the draft/attachments stay on the active chat tab; `Cancel` preserves everything and returns focus to the composer.
-4. Verify `Attach` creates explicit removable chips by source: images show thumbnail/name, and active file, picked file, selection, and diagnostics show structured context chips with preview, scope, size, removal, clear-all, and privacy labels; no hidden prose is inserted into the draft.
-5. Verify every chip-bearing send opens a preflight preview that shows the exact final `message` body, including the literal `<pi-vscode-context-v1>` envelope, plus the exact RPC `images` list that will be sent.
-6. Verify switching/resuming chats and both `New Chat` paths preserve drafts, chip state, in-memory images, accepted-send snapshot ownership, and focus restoration to the composer.
-7. Verify recovery labels and transitions are error-class specific: start failure => `Start again`; disconnect/crash => `Restart Pi` plus reconciliation; accepted-prompt failure => no auto-resend, immutable snapshot retained until `agent_settled`, explicit `Copy to composer` / `Send again`, and expired images require reselection; preflight rejection => draft/chips/images return unchanged.
-8. Verify only safe refs/metadata for local file/selection/diagnostic chips persist across restart, base64 images do not, and stale refs are blocked until refreshed or removed.
-9. Verify **Advanced Mode** is opt-in, persistent, reversible, and that every current RPC capability remains reachable through **Advanced** or unchanged command ids in the Command Palette.
-10. Re-run the keyboard-only, screen-reader, 200% zoom, high-contrast, reduced-motion, empty/loading/error-state walkthroughs against the simplified layout.
+Use the shared native Extension UI broker for select/confirm/input/editor and
+notifications; no removed inspection or compatibility commands are required.
+Keep composer previews, accepted-send ownership, recovery and attachment trust
+validation intact. Base64 images must not persist and stale file refs must be
+revalidated.
 
 ## Final acceptance record
 

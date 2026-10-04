@@ -42,7 +42,6 @@ function render(overrides: Partial<WebviewSnapshot> = {}) {
     sequence: 1,
     title: 'Chat',
     bindingState: 'current',
-    uiMode: 'simple',
     connectionState: 'ready',
     workspaceFolderName: 'workspace',
     sessionId: 'session',

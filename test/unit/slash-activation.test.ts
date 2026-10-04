@@ -42,7 +42,6 @@ for (const activation of ['click', 'Enter', 'Tab', 'typed'] as const) {
         sequence: 1,
         title: 'Chat',
         bindingState: 'current',
-        uiMode: 'simple',
         connectionState: 'ready',
         sessionId: 'sid',
         messages: [],

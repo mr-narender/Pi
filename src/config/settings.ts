@@ -25,7 +25,6 @@ export interface PiRpcSettings {
   maxRestartAttempts: number;
   telemetryEnabled: boolean;
   autoStart: boolean;
-  editorTabsEnabled: boolean;
   workingAnimation: string;
   formatCodeBlocks: boolean;
   chatFontFamily: string;
@@ -115,7 +114,6 @@ export function getSettings(): PiRpcSettings {
     maxRestartAttempts: config.get<number>('maxRestartAttempts', 3),
     telemetryEnabled: config.get<boolean>('telemetryEnabled', false),
     autoStart: config.get<boolean>('autoStart', false),
-    editorTabsEnabled: config.get<boolean>('editorTabs.enabled', true),
   };
 }
 

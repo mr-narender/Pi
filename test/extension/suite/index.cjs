@@ -20,15 +20,14 @@ async function run() {
     'piRpc.fixSelection',
     'piRpc.refactorSelection',
     'piRpcInternal.showHelp',
-    'piRpc.extensionUi.setTitle',
-    'piRpc.extensionUiLocal.setTheme',
+    'piRpcInternal.showChatList',
   ]) {
     assert.ok(commands.includes(id), `missing registered command ${id}`);
   }
 
   const all = extension.packageJSON.contributes.commands.map((command) => command.command);
   assert.ok(all.includes('piRpc.prompt'));
-  assert.ok(all.includes('piRpc.extensionUiLocal.setTheme'));
+  assert.ok(!all.some((id) => /^piRpc\.(inspect|extensionUi)/.test(id)));
   assert.ok(all.includes('piRpc.newSession'));
   assert.ok(all.includes('piRpc.switchSession'));
 
@@ -36,7 +35,7 @@ async function run() {
   assert.deepEqual(views, ['piRpc.chat']);
   const viewTitle = extension.packageJSON.contributes.menus['view/title'];
   const agentic = viewTitle.filter(
-    (item) => item.when === 'view == piRpc.chat && piRpc.sidebarMode == agentic'
+    (item) => item.when === 'view == piRpc.chat && piRpc.sidebarSurface == list'
   );
   assert.deepEqual(
     agentic.map((item) => item.command || item.submenu),
@@ -47,7 +46,11 @@ async function run() {
     extension.packageJSON.contributes.configuration.properties['piRpc.followAgent'].default,
     'off'
   );
-  assert.ok(commands.includes('piRpc.toggleSidebarMode'));
+  assert.ok(!commands.includes('piRpc.toggleSidebarMode'));
+  assert.ok(!extension.packageJSON.contributes.configuration.properties['piRpc.sidebarMode']);
+  assert.ok(
+    !extension.packageJSON.contributes.configuration.properties['piRpc.editorTabs.enabled']
+  );
 
   const customEditor = extension.packageJSON.contributes.customEditors.find(
     (item) => item.viewType === 'piRpc.chatEditor'
@@ -64,35 +67,16 @@ async function run() {
   // showHelp opens a modal popover; the test harness refuses modal dialogs, so
   // just assert the command is registered (checked above) rather than invoking it.
 
-  const themeResult = await vscode.commands.executeCommand('piRpc.extensionUiLocal.setTheme');
-  assert.equal(themeResult.success, false);
-
-  const toolsExpanded = await vscode.commands.executeCommand(
-    'piRpc.extensionUiLocal.getToolsExpanded'
-  );
-  assert.equal(toolsExpanded, false);
-
-  const editorText = await vscode.commands.executeCommand('piRpc.extensionUiLocal.getEditorText');
-  assert.equal(editorText, '');
-
   // Regression: opening a pi-chat custom editor must resolve (not hang on a
   // permanent loading indicator). This proves a FileSystemProvider is
   // registered for the pi-chat scheme so vscode.openWith can back the editor.
   if ((vscode.workspace.workspaceFolders ?? []).length > 0) {
-    const folderUri = vscode.workspace.workspaceFolders[0].uri.toString();
-    const seg = Buffer.from(folderUri, 'utf8').toString('base64url');
-    const chatUri = vscode.Uri.from({ scheme: 'pi-chat', path: `/${seg}/draft.chat` });
     // Regression: opening the pi-chat custom editor must resolve quickly. It
     // hung indefinitely when postSnapshot awaited webview.postMessage inside
     // resolveCustomEditor (channel not established until resolve returns).
     let openWithOutcome = 'pending';
     await Promise.race([
-      Promise.resolve(
-        vscode.commands.executeCommand('vscode.openWith', chatUri, 'piRpc.chatEditor', {
-          preview: false,
-          preserveFocus: false,
-        })
-      )
+      Promise.resolve(vscode.commands.executeCommand('piRpcInternal.openChat'))
         .then(() => {
           openWithOutcome = 'ok';
         })

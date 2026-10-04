@@ -142,7 +142,7 @@ test('Agentic New Chat and More sit beside π: Chat in the native view header', 
   const manifest = JSON.parse(
     readFileSync(join(process.cwd(), 'package.json'), 'utf8')
   ).contributes;
-  const when = 'view == piRpc.chat && piRpc.sidebarMode == agentic';
+  const when = 'view == piRpc.chat && piRpc.sidebarSurface == list';
   assert.deepEqual(
     manifest.menus['view/title'].filter((item: { when: string }) => item.when === when),
     [

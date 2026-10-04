@@ -232,12 +232,6 @@
         "category": "Pi"
       },
       {
-        "command": "piRpc.toggleSidebarMode",
-        "title": "Switch Chat List / Full Chat",
-        "category": "Pi",
-        "icon": "$(arrow-swap)"
-      },
-      {
         "command": "piRpcInternal.switchToFullChat",
         "title": "Switch to full chat",
         "category": "Pi",
@@ -465,266 +459,6 @@
         "category": "Pi"
       },
       {
-        "command": "piRpc.respondExtensionUi",
-        "title": "Respond to Extension UI Request",
-        "category": "Pi"
-      },
-      {
-        "command": "piRpc.inspectRpcError",
-        "title": "Inspect RPC Error",
-        "category": "Pi"
-      },
-      {
-        "command": "piRpc.inspectParseError",
-        "title": "Inspect Parse Error",
-        "category": "Pi"
-      },
-      {
-        "command": "piRpc.inspectAgentStart",
-        "title": "Inspect Agent Start",
-        "category": "Pi"
-      },
-      {
-        "command": "piRpc.inspectAgentEnd",
-        "title": "Inspect Agent End",
-        "category": "Pi"
-      },
-      {
-        "command": "piRpc.inspectAgentSettled",
-        "title": "Inspect Agent Settled",
-        "category": "Pi"
-      },
-      {
-        "command": "piRpc.inspectTurnStart",
-        "title": "Inspect Turn Start",
-        "category": "Pi"
-      },
-      {
-        "command": "piRpc.inspectTurnEnd",
-        "title": "Inspect Turn End",
-        "category": "Pi"
-      },
-      {
-        "command": "piRpc.inspectMessageStart",
-        "title": "Inspect Message Start",
-        "category": "Pi"
-      },
-      {
-        "command": "piRpc.inspectMessageUpdate",
-        "title": "Inspect Message Update",
-        "category": "Pi"
-      },
-      {
-        "command": "piRpc.inspectMessageEnd",
-        "title": "Inspect Message End",
-        "category": "Pi"
-      },
-      {
-        "command": "piRpc.inspectToolStart",
-        "title": "Inspect Tool Start",
-        "category": "Pi"
-      },
-      {
-        "command": "piRpc.inspectToolUpdate",
-        "title": "Inspect Tool Update",
-        "category": "Pi"
-      },
-      {
-        "command": "piRpc.inspectToolEnd",
-        "title": "Inspect Tool End",
-        "category": "Pi"
-      },
-      {
-        "command": "piRpc.inspectQueueUpdate",
-        "title": "Inspect Queue Update",
-        "category": "Pi"
-      },
-      {
-        "command": "piRpc.inspectCompactionStart",
-        "title": "Inspect Compaction Start",
-        "category": "Pi"
-      },
-      {
-        "command": "piRpc.inspectCompactionEnd",
-        "title": "Inspect Compaction End",
-        "category": "Pi"
-      },
-      {
-        "command": "piRpc.inspectRetryStart",
-        "title": "Inspect Retry Start",
-        "category": "Pi"
-      },
-      {
-        "command": "piRpc.inspectRetryEnd",
-        "title": "Inspect Retry End",
-        "category": "Pi"
-      },
-      {
-        "command": "piRpc.inspectExtensionError",
-        "title": "Inspect Extension Error",
-        "category": "Pi"
-      },
-      {
-        "command": "piRpc.inspectCompatibilityEvents",
-        "title": "Inspect Compatibility Events",
-        "category": "Pi"
-      },
-      {
-        "command": "piRpc.inspectEntryAppended",
-        "title": "Inspect Entry Appended",
-        "category": "Pi"
-      },
-      {
-        "command": "piRpc.inspectSessionInfoChanged",
-        "title": "Inspect Session Info Changed",
-        "category": "Pi"
-      },
-      {
-        "command": "piRpc.inspectThinkingChanged",
-        "title": "Inspect Thinking Changed",
-        "category": "Pi"
-      },
-      {
-        "command": "piRpc.extensionUi.select",
-        "title": "Inspect Extension UI Select",
-        "category": "Pi"
-      },
-      {
-        "command": "piRpc.extensionUi.confirm",
-        "title": "Inspect Extension UI Confirm",
-        "category": "Pi"
-      },
-      {
-        "command": "piRpc.extensionUi.input",
-        "title": "Inspect Extension UI Input",
-        "category": "Pi"
-      },
-      {
-        "command": "piRpc.extensionUi.editor",
-        "title": "Inspect Extension UI Editor",
-        "category": "Pi"
-      },
-      {
-        "command": "piRpc.extensionUi.notify",
-        "title": "Inspect Extension UI Notify",
-        "category": "Pi"
-      },
-      {
-        "command": "piRpc.extensionUi.setStatus",
-        "title": "Inspect Extension UI Set Status",
-        "category": "Pi"
-      },
-      {
-        "command": "piRpc.extensionUi.setWidget",
-        "title": "Inspect Extension UI Set Widget",
-        "category": "Pi"
-      },
-      {
-        "command": "piRpc.extensionUi.setTitle",
-        "title": "Inspect Extension UI Set Title",
-        "category": "Pi"
-      },
-      {
-        "command": "piRpc.extensionUi.setEditorText",
-        "title": "Inspect Extension UI Set Editor Text",
-        "category": "Pi"
-      },
-      {
-        "command": "piRpc.extensionUiLocal.onTerminalInput",
-        "title": "Inspect Local UI onTerminalInput",
-        "category": "Pi"
-      },
-      {
-        "command": "piRpc.extensionUiLocal.setWorkingMessage",
-        "title": "Inspect Local UI setWorkingMessage",
-        "category": "Pi"
-      },
-      {
-        "command": "piRpc.extensionUiLocal.setWorkingVisible",
-        "title": "Inspect Local UI setWorkingVisible",
-        "category": "Pi"
-      },
-      {
-        "command": "piRpc.extensionUiLocal.setWorkingIndicator",
-        "title": "Inspect Local UI setWorkingIndicator",
-        "category": "Pi"
-      },
-      {
-        "command": "piRpc.extensionUiLocal.setHiddenThinkingLabel",
-        "title": "Inspect Local UI setHiddenThinkingLabel",
-        "category": "Pi"
-      },
-      {
-        "command": "piRpc.extensionUiLocal.setFooter",
-        "title": "Inspect Local UI setFooter",
-        "category": "Pi"
-      },
-      {
-        "command": "piRpc.extensionUiLocal.setHeader",
-        "title": "Inspect Local UI setHeader",
-        "category": "Pi"
-      },
-      {
-        "command": "piRpc.extensionUiLocal.custom",
-        "title": "Inspect Local UI custom",
-        "category": "Pi"
-      },
-      {
-        "command": "piRpc.extensionUiLocal.pasteToEditor",
-        "title": "Inspect Local UI pasteToEditor",
-        "category": "Pi"
-      },
-      {
-        "command": "piRpc.extensionUiLocal.getEditorText",
-        "title": "Inspect Local UI getEditorText",
-        "category": "Pi"
-      },
-      {
-        "command": "piRpc.extensionUiLocal.addAutocompleteProvider",
-        "title": "Inspect Local UI addAutocompleteProvider",
-        "category": "Pi"
-      },
-      {
-        "command": "piRpc.extensionUiLocal.setEditorComponent",
-        "title": "Inspect Local UI setEditorComponent",
-        "category": "Pi"
-      },
-      {
-        "command": "piRpc.extensionUiLocal.getEditorComponent",
-        "title": "Inspect Local UI getEditorComponent",
-        "category": "Pi"
-      },
-      {
-        "command": "piRpc.extensionUiLocal.themeGetter",
-        "title": "Inspect Local UI theme Getter",
-        "category": "Pi"
-      },
-      {
-        "command": "piRpc.extensionUiLocal.getAllThemes",
-        "title": "Inspect Local UI getAllThemes",
-        "category": "Pi"
-      },
-      {
-        "command": "piRpc.extensionUiLocal.getTheme",
-        "title": "Inspect Local UI getTheme",
-        "category": "Pi"
-      },
-      {
-        "command": "piRpc.extensionUiLocal.setTheme",
-        "title": "Inspect Local UI setTheme",
-        "category": "Pi"
-      },
-      {
-        "command": "piRpc.extensionUiLocal.getToolsExpanded",
-        "title": "Inspect Local UI getToolsExpanded",
-        "category": "Pi"
-      },
-      {
-        "command": "piRpc.extensionUiLocal.setToolsExpanded",
-        "title": "Inspect Local UI setToolsExpanded",
-        "category": "Pi"
-      },
-      {
         "command": "piRpcInternal.showHealth",
         "title": "Show Health",
         "category": "Pi"
@@ -818,6 +552,12 @@
         "title": "Pi Settings",
         "category": "Pi",
         "icon": "$(gear)"
+      },
+      {
+        "command": "piRpcInternal.showChatList",
+        "title": "Back to chats",
+        "category": "Pi",
+        "icon": "$(arrow-swap)"
       }
     ],
     "configuration": {
@@ -977,11 +717,6 @@
           "default": false,
           "description": "Reserved local extension telemetry switch. No telemetry is sent by default."
         },
-        "piRpc.editorTabs.enabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "Open Pi chats as native editor tabs backed by pi-chat: resources. Turn off only to roll back to the legacy shared panel during migration."
-        },
         "piRpc.workingAnimation": {
           "type": "string",
           "enum": [
@@ -1137,19 +872,6 @@
           "maximum": 100,
           "description": "Maximum number of editor tabs the follow pane keeps open. Opening more closes the oldest follow-opened tab — tabs you opened, pinned, edited, or are viewing are never closed."
         },
-        "piRpc.sidebarMode": {
-          "type": "string",
-          "enum": [
-            "agentic",
-            "chat"
-          ],
-          "enumDescriptions": [
-            "Sidebar shows a compact chat list (open + recent); the actual conversation opens as a real editor tab, alongside your files.",
-            "Sidebar shows the full chat (composer + transcript) directly, like before — no separate list."
-          ],
-          "default": "agentic",
-          "description": "What the π sidebar shows: a chat list (Agentic Mode) or the full chat (Chat Mode). Switch anytime from either view’s title bar."
-        },
         "piRpc.statusBarExtras": {
           "type": "array",
           "items": {
@@ -1183,23 +905,18 @@
     "menus": {
       "view/title": [
         {
-          "command": "piRpcInternal.openSettingsMenu",
-          "when": "view == piRpc.sessions",
-          "group": "navigation@1"
-        },
-        {
-          "command": "piRpc.toggleSidebarMode",
-          "when": "view == piRpc.chat && piRpc.sidebarMode == chat",
+          "command": "piRpcInternal.showChatList",
+          "when": "view == piRpc.chat && piRpc.sidebarSurface == full-chat",
           "group": "navigation@0"
         },
         {
           "command": "piRpc.newSession",
-          "when": "view == piRpc.chat && piRpc.sidebarMode == agentic",
+          "when": "view == piRpc.chat && piRpc.sidebarSurface == list",
           "group": "navigation@1"
         },
         {
           "submenu": "piRpc.agenticActions",
-          "when": "view == piRpc.chat && piRpc.sidebarMode == agentic",
+          "when": "view == piRpc.chat && piRpc.sidebarSurface == list",
           "group": "navigation@2"
         }
       ],

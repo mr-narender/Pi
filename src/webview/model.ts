@@ -12,7 +12,7 @@ import type {
   WebviewPendingImageItem,
   WebviewSnapshot,
 } from '../state/types';
-import type { ChatUiMode, ComposerSessionState, PendingImageItem } from './composer';
+import type { ComposerSessionState, PendingImageItem } from './composer';
 import { summarizeUsage } from './usageSummary';
 
 // Default number of trailing messages sent to the webview. The webview lazily
@@ -386,7 +386,6 @@ export function createWebviewSnapshot(
   state: ControllerState,
   sequence: number,
   extra: {
-    uiMode: ChatUiMode;
     composer: ComposerSessionState;
     isTrusted: boolean;
     folders: WebviewSnapshot['folders'];
@@ -416,7 +415,6 @@ export function createWebviewSnapshot(
   return {
     sequence,
     title: state.title,
-    uiMode: extra.uiMode,
     connectionState: state.connectionState,
     catalogGeneration: state.generation,
     switchingSession: state.switchingSession === true,

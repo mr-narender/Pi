@@ -4,8 +4,8 @@ import { createRequire } from 'node:module';
 import { build } from 'esbuild';
 import { createEmptyComposerState } from '../../src/webview/composer';
 
-for (const route of ['editor', 'sidebar']) {
-  test(`hotkeys: compiled ${route} native editor/help, busy no-model, cancellation and origin ACKs`, async () => {
+{
+  test(`hotkeys: compiled editor native editor/help, busy no-model, cancellation and origin ACKs`, async () => {
     let choice: string | undefined = 'Keyboard Shortcuts';
     let mutate: (() => void) | undefined;
     let fail = false;
@@ -13,8 +13,7 @@ for (const route of ['editor', 'sidebar']) {
     const invocations: any[] = [];
     const result = await build({
       stdin: {
-        contents:
-          "export {ChatTabManager} from './src/editorTabs/tabManager'; export {ChatPanelProvider} from './src/webview/provider';",
+        contents: "export {ChatTabManager} from './src/editorTabs/tabManager'; ",
         resolveDir: process.cwd(),
       },
       bundle: true,
@@ -56,9 +55,7 @@ for (const route of ['editor', 'sidebar']) {
         throw new Error('must not prompt');
       },
     };
-    const instance = Object.create(
-      module.exports[route === 'editor' ? 'ChatTabManager' : 'ChatPanelProvider'].prototype
-    );
+    const instance = Object.create(module.exports['ChatTabManager'].prototype);
     instance.uiState = {
       captureIdentity: () => ({}),
       getComposerState: async () => structuredClone(state),
@@ -76,10 +73,7 @@ for (const route of ['editor', 'sidebar']) {
         throw new Error('must not follow');
       },
     };
-    const send = () =>
-      route === 'editor'
-        ? instance.handleRequestSend({}, 'prompt', true, 'ack')
-        : instance.handleRequestSend(controller, 'prompt', 'ack');
+    const send = () => instance.handleRequestSend({}, 'prompt', true, 'ack');
     const reset = () => {
       delete state.localCommandAck;
       delete state.recovery;

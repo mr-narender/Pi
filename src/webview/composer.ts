@@ -1,7 +1,5 @@
 import { assertNotCoreSlashPrompt } from '../commands/coreSlash';
 
-export type ChatUiMode = 'simple' | 'advanced';
-
 export type ComposerFocusTarget =
   | 'composer'
   | 'attach'

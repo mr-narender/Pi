@@ -19,7 +19,6 @@ function base(overrides: Partial<WebviewSnapshot> = {}): WebviewSnapshot {
     sequence: 1,
     title: 'Current Chat',
     bindingState: 'current',
-    uiMode: 'simple',
     connectionState: 'ready',
     workspaceFolderName: 'workspace',
     sessionName: 'Demo Session',
@@ -55,7 +54,7 @@ function checkGolden(name: string, html: string): void {
   const expected = readFileSync(file, 'utf8');
   assert.equal(
     html,
-    expected,
+    expected.replace(/\r?\n$/, ''),
     `golden mismatch for ${name} — review the diff; if intentional run UPDATE_GOLDEN=1 npm run test:unit`
   );
 }

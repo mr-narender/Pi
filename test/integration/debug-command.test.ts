@@ -9,7 +9,7 @@ async function load(vscode: any) {
   const result = await build({
     stdin: {
       contents:
-        "export {ChatTabManager} from './src/editorTabs/tabManager'; export {ChatPanelProvider} from './src/webview/provider'; export {createRedactedDiagnosticsExport} from './src/diagnostics/export';",
+        "export {ChatTabManager} from './src/editorTabs/tabManager'; export {createRedactedDiagnosticsExport} from './src/diagnostics/export';",
       resolveDir: process.cwd(),
     },
     bundle: true,
@@ -109,8 +109,8 @@ test('debug strict recursive whitelist: raw logs/names/config/auth/tool/custom s
   }
 });
 
-for (const route of ['editor', 'sidebar']) {
-  test(`debug actual ${route} route: inspect exact payload; Done/Copy/Save/cancel/errors/stale/newer/retyped/images`, async () => {
+{
+  test(`debug actual editor route: inspect exact payload; Done/Copy/Save/cancel/errors/stale/newer/retyped/images`, async () => {
     let choice: string | undefined = 'Done';
     let target: any = { fsPath: '/owned/test.json' };
     let mutate: (() => void) | undefined;
@@ -153,9 +153,7 @@ for (const route of ['editor', 'sidebar']) {
     const state = createEmptyComposerState();
     const chips = [{ itemId: 'chip', name: secret, mimeType: 'image/png', sizeBytes: 1 }];
     const c = origin();
-    const instance = Object.create(
-      m[route === 'editor' ? 'ChatTabManager' : 'ChatPanelProvider'].prototype
-    );
+    const instance = Object.create(m['ChatTabManager'].prototype);
     instance.uiState = {
       captureIdentity: () => ({}),
       getComposerState: async () => structuredClone(state),
@@ -173,10 +171,7 @@ for (const route of ['editor', 'sidebar']) {
         throw new Error('no follow');
       },
     };
-    const send = (mode = 'prompt') =>
-      route === 'editor'
-        ? instance.handleRequestSend({}, mode, true, 'ack')
-        : instance.handleRequestSend(c, mode, 'ack');
+    const send = (mode = 'prompt') => instance.handleRequestSend({}, mode, true, 'ack');
     const reset = () => {
       state.draft = '/debug';
       state.commandRevision = 0;

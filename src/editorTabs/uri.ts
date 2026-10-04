@@ -1,7 +1,5 @@
 import * as vscode from 'vscode';
 import {
-  parseChatPath,
-  parseChatQuery,
   tabTitleFromTarget,
   chatTargetSessionKey,
   canonicalChatTarget,
@@ -35,6 +33,5 @@ export function parseChatUri(uri: vscode.Uri): ChatTabTarget | undefined {
   if (uri.scheme !== CHAT_URI_SCHEME) {
     return undefined;
   }
-  // 1) short-id map (current), 2) legacy path format, 3) legacy query format.
-  return lookupChatUri(uri.path) ?? parseChatPath(uri.path) ?? parseChatQuery(uri.query);
+  return lookupChatUri(uri.path);
 }

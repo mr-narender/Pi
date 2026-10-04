@@ -4,13 +4,10 @@ import { SessionRegistry } from '../sessions/sessionRegistry';
 import type { SessionController } from '../sessions/sessionController';
 import type { ChatUiState } from '../webview/composerState';
 import { notifier } from './notifier';
-
 export class ExtensionUiBroker implements vscode.Disposable {
   private readonly subscriptions: vscode.Disposable[] = [];
-
   // Rate-limit "waiting for approval" toasts per controller.
   private readonly lastWaitingNotify = new Map<SessionController, number>();
-
   public constructor(
     private readonly registry: SessionRegistry,
     private readonly uiState?: ChatUiState,
@@ -27,14 +24,13 @@ export class ExtensionUiBroker implements vscode.Disposable {
       this.track(controller);
     }
   }
-
   private notifyIfBackground(controller: SessionController): void {
     // Only notify when we can POSITIVELY tell the chat is hidden.
     if (this.isChatVisible?.(controller) !== false) {
       return;
     }
     const last = this.lastWaitingNotify.get(controller) ?? 0;
-    if (Date.now() - last < 20_000) {
+    if (Date.now() - last < 20000) {
       return;
     }
     this.lastWaitingNotify.set(controller, Date.now());
@@ -49,47 +45,25 @@ export class ExtensionUiBroker implements vscode.Disposable {
       open: () => this.revealChat?.(controller),
     });
   }
-
   public track(controller: SessionController): void {
     this.subscriptions.push(
       controller.onDidReceiveExtensionUiRequest(
-        (request) => void this.handleRequest(controller, request, { respond: true })
+        (request) => void this.handleRequest(controller, request)
       )
     );
   }
-
-  public async previewRequest(
-    controller: SessionController,
-    request: ExtensionUiRequest
-  ): Promise<unknown> {
-    controller.applyExtensionUiRequest(request);
-    const result = await this.handleRequest(controller, request, { respond: false });
-    if (
-      request.method === 'select' ||
-      request.method === 'confirm' ||
-      request.method === 'input' ||
-      request.method === 'editor'
-    ) {
-      controller.completeExtensionUiRequest(request.id);
-    }
-    return result;
-  }
-
   public dispose(): void {
     for (const subscription of this.subscriptions) {
       subscription.dispose();
     }
   }
-
   private async handleRequest(
     controller: SessionController,
-    request: ExtensionUiRequest,
-    options: { respond: boolean }
+    request: ExtensionUiRequest
   ): Promise<unknown> {
     // Route approval-style dialogs (select/confirm) into the chat when it is
     // open; the webview renders Allow/Deny and sends the response.
     if (
-      options.respond &&
       (request.method === 'select' || request.method === 'confirm') &&
       this.isChatOpen?.(controller)
     ) {
@@ -120,12 +94,10 @@ export class ExtensionUiBroker implements vscode.Disposable {
           (request.options ?? []).map((label) => ({ label })),
           request.title
         );
-        if (options.respond) {
-          await controller.respondExtensionUi(
-            picked ? { id: request.id, value: picked.label } : { id: request.id, cancelled: true }
-          );
-          controller.completeExtensionUiRequest(request.id);
-        }
+        await controller.respondExtensionUi(
+          picked ? { id: request.id, value: picked.label } : { id: request.id, cancelled: true }
+        );
+        controller.completeExtensionUiRequest(request.id);
         return picked ? picked.label : { cancelled: true };
       }
       case 'confirm': {
@@ -135,24 +107,20 @@ export class ExtensionUiBroker implements vscode.Disposable {
           request.title,
           request.message
         );
-        if (options.respond) {
-          await controller.respondExtensionUi(
-            picked
-              ? { id: request.id, confirmed: picked.label === 'Yes' }
-              : { id: request.id, cancelled: true }
-          );
-          controller.completeExtensionUiRequest(request.id);
-        }
+        await controller.respondExtensionUi(
+          picked
+            ? { id: request.id, confirmed: picked.label === 'Yes' }
+            : { id: request.id, cancelled: true }
+        );
+        controller.completeExtensionUiRequest(request.id);
         return picked ? { confirmed: picked.label === 'Yes' } : { cancelled: true };
       }
       case 'input': {
         const value = await this.runInputBox(request);
-        if (options.respond) {
-          await controller.respondExtensionUi(
-            value === undefined ? { id: request.id, cancelled: true } : { id: request.id, value }
-          );
-          controller.completeExtensionUiRequest(request.id);
-        }
+        await controller.respondExtensionUi(
+          value === undefined ? { id: request.id, cancelled: true } : { id: request.id, value }
+        );
+        controller.completeExtensionUiRequest(request.id);
         return value === undefined ? { cancelled: true } : { value };
       }
       case 'editor': {
@@ -169,14 +137,12 @@ export class ExtensionUiBroker implements vscode.Disposable {
         );
         const result =
           action === 'Submit' ? { value: doc.getText() } : ({ cancelled: true } as const);
-        if (options.respond) {
-          await controller.respondExtensionUi(
-            action === 'Submit'
-              ? { id: request.id, value: doc.getText() }
-              : { id: request.id, cancelled: true }
-          );
-          controller.completeExtensionUiRequest(request.id);
-        }
+        await controller.respondExtensionUi(
+          action === 'Submit'
+            ? { id: request.id, value: doc.getText() }
+            : { id: request.id, cancelled: true }
+        );
+        controller.completeExtensionUiRequest(request.id);
         return result;
       }
       case 'set_editor_text': {
@@ -212,21 +178,35 @@ export class ExtensionUiBroker implements vscode.Disposable {
         return undefined;
     }
   }
-
   private async runQuickPick(
     request: ExtensionUiRequest,
-    items: Array<{ label: string }>,
+    items: Array<{
+      label: string;
+    }>,
     title?: string,
     detail?: string
-  ): Promise<{ label: string } | undefined> {
+  ): Promise<
+    | {
+        label: string;
+      }
+    | undefined
+  > {
     return new Promise((resolve) => {
-      const quickPick = vscode.window.createQuickPick<{ label: string }>();
+      const quickPick = vscode.window.createQuickPick<{
+        label: string;
+      }>();
       quickPick.items = items;
       quickPick.title = title;
       quickPick.placeholder = detail;
       quickPick.ignoreFocusOut = true;
       let done = false;
-      const finish = (value: { label: string } | undefined): void => {
+      const finish = (
+        value:
+          | {
+              label: string;
+            }
+          | undefined
+      ): void => {
         if (done) {
           return;
         }
@@ -245,7 +225,6 @@ export class ExtensionUiBroker implements vscode.Disposable {
       quickPick.show();
     });
   }
-
   private async runInputBox(request: ExtensionUiRequest): Promise<string | undefined> {
     return new Promise((resolve) => {
       const input = vscode.window.createInputBox();

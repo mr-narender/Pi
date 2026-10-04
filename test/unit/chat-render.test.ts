@@ -23,7 +23,6 @@ function snapshot(overrides: Partial<WebviewSnapshot> = {}): WebviewSnapshot {
     sequence: 1,
     title: 'Current Chat',
     bindingState: 'current',
-    uiMode: 'simple',
     connectionState: 'ready',
     workspaceFolderName: 'workspace',
     sessionName: 'Demo Session',
@@ -116,7 +115,6 @@ test('RPC start and text deltas project into a reply before message_end', () => 
   const render = (): void => {
     root.innerHTML = renderChatApp(
       createWebviewSnapshot(state, 1, {
-        uiMode: 'simple',
         composer: createEmptyComposerState(),
         isTrusted: true,
         folders: [],
@@ -302,13 +300,6 @@ test('renderChatApp exposes empty, restricted, preview, and attachment states ac
   assert.match(html, new RegExp(`data-chip-id="img-1"`));
   assert.match(html, new RegExp(`id="${imageChipRemoveButtonId('img-1')}"`));
   assert.match(html, /Draft preserved\. Not resent\./);
-});
-
-test('renderChatApp no longer renders the confusing Advanced drawer', () => {
-  const html = renderChatApp(snapshot({ uiMode: 'advanced' }));
-  assert.doesNotMatch(html, /advanced-heading/);
-  assert.doesNotMatch(html, /Queue &amp; steering/);
-  assert.doesNotMatch(html, /data-command="piRpc\.toggleAdvancedMode"/);
 });
 
 test('renderChatApp no longer shows the left "Pi" brand label', () => {

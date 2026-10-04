@@ -18,7 +18,6 @@ function snapshot(overrides: Partial<WebviewSnapshot> = {}): WebviewSnapshot {
   return {
     sequence: 1,
     title: 'Current Chat',
-    uiMode: 'simple',
     connectionState: 'ready',
     workspaceFolderName: 'workspace',
     sessionName: 'Demo Session',

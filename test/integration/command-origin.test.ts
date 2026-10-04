@@ -8,7 +8,7 @@ async function load(vscode: unknown) {
   const result = await build({
     stdin: {
       contents:
-        "export {ChatTabManager} from './src/editorTabs/tabManager'; export {ChatPanelProvider} from './src/webview/provider'; export {SessionController} from './src/sessions/sessionController';",
+        "export {ChatTabManager} from './src/editorTabs/tabManager'; export {SessionController} from './src/sessions/sessionController';",
       resolveDir: process.cwd(),
     },
     bundle: true,
@@ -26,8 +26,8 @@ async function load(vscode: unknown) {
   return module.exports;
 }
 
-for (const route of ['editor', 'sidebar']) {
-  test(`${route}: captured command origin survives held first UI read`, async () => {
+{
+  test(`editor: captured command origin survives held first UI read`, async () => {
     let effects = 0;
     const compiled = await load({
       workspace: { isTrusted: true },
@@ -108,9 +108,7 @@ for (const route of ['editor', 'sidebar']) {
           }
           return structuredClone(state);
         };
-        const instance = Object.create(
-          compiled[route === 'editor' ? 'ChatTabManager' : 'ChatPanelProvider'].prototype
-        );
+        const instance = Object.create(compiled['ChatTabManager'].prototype);
         instance.registry = { getActive: () => active };
         instance.uiState = {
           captureIdentity: () => ({ ...target }),
@@ -124,10 +122,7 @@ for (const route of ['editor', 'sidebar']) {
         instance.contextForResource = () => ({ controller: active, target });
         instance.renderResource = instance.postSnapshot = async () => {};
         const beforeEffects = effects;
-        const sending =
-          route === 'editor'
-            ? instance.handleRequestSend({}, 'prompt', true, 'ack')
-            : instance.handleRequestSend(controller, 'prompt', 'ack');
+        const sending = instance.handleRequestSend({}, 'prompt', true, 'ack');
         await started;
         if (change === 'generation') controller.supervisor.currentGeneration++;
         if (change === 'session') controller.state.state.sessionId = 'replacement';
@@ -136,7 +131,7 @@ for (const route of ['editor', 'sidebar']) {
         if (change === 'controller') active = replacement;
         if (change === 'focus') {
           target = { sessionId: 'other', sessionFile: '/owned/other' };
-          active = route === 'sidebar' ? replacement : controller;
+          active = controller;
         }
         // Preserve newer/retyped draft revision and current chips, not a stale clone.
         state.commandRevision++;
@@ -146,13 +141,9 @@ for (const route of ['editor', 'sidebar']) {
         assert.equal(
           effects,
           beforeEffects,
-          `${route} ${change} ${command}: no stale dispatch/effect`
+          `editor ${change} ${command}: no stale dispatch/effect`
         );
-        assert.deepEqual(
-          state,
-          snapshot,
-          `${route} ${change} ${command}: preserve draft/chips/ACK`
-        );
+        assert.deepEqual(state, snapshot, `editor ${change} ${command}: preserve draft/chips/ACK`);
       }
     }
   });

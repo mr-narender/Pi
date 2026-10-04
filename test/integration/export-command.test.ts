@@ -7,8 +7,8 @@ import { join } from 'node:path';
 import { build } from 'esbuild';
 import { createEmptyComposerState } from '../../src/webview/composer';
 
-for (const route of ['editor', 'sidebar']) {
-  test(`export ${route}: native grammar, local consent, cancellation and unchanged-origin ACK`, async () => {
+{
+  test(`export editor: native grammar, local consent, cancellation and unchanged-origin ACK`, async () => {
     const root = await mkdtemp(join(tmpdir(), 'pi-export-route-'));
     try {
       let choice: string | undefined = 'Export locally';
@@ -20,8 +20,7 @@ for (const route of ['editor', 'sidebar']) {
       const writes: any[] = [];
       const result = await build({
         stdin: {
-          contents:
-            "export {ChatTabManager} from './src/editorTabs/tabManager'; export {ChatPanelProvider} from './src/webview/provider';",
+          contents: "export {ChatTabManager} from './src/editorTabs/tabManager'; ",
           resolveDir: process.cwd(),
         },
         bundle: true,
@@ -93,9 +92,7 @@ for (const route of ['editor', 'sidebar']) {
           throw new Error('provider forbidden');
         },
       };
-      const instance = Object.create(
-        module.exports[route === 'editor' ? 'ChatTabManager' : 'ChatPanelProvider'].prototype
-      );
+      const instance = Object.create(module.exports['ChatTabManager'].prototype);
       instance.uiState = {
         captureIdentity: () => ({}),
         getComposerState: async () => structuredClone(state),
@@ -113,10 +110,7 @@ for (const route of ['editor', 'sidebar']) {
           throw new Error('follow forbidden');
         },
       };
-      const send = () =>
-        route === 'editor'
-          ? instance.handleRequestSend({}, 'prompt', true, 'ack')
-          : instance.handleRequestSend(controller, 'prompt', 'ack');
+      const send = () => instance.handleRequestSend({}, 'prompt', true, 'ack');
       const reset = (draft: string) => {
         mutate = undefined;
         fail = false;

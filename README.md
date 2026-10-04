@@ -153,8 +153,11 @@ In the current source tree, the sidebar **ellipsis** menu groups actions as:
   describes your current preference)
 - **System** — Restart π
 
-The Agentic chat-list title menu also offers **Switch to full chat**. Full Chat's
-in-webview ellipsis uses the same groups. The richer **editor-title Pi Chat Actions**
+The Agentic chat-list title menu also offers **Switch to full chat**. Its
+title bar offers **Back to chats**; both surfaces belong to Agentic and remember
+your chosen surface for this workspace. Agentic is the only Pi interface; chats
+always use native editor tabs or its shared full-chat sidebar.
+Full Chat's in-webview ellipsis uses the same groups. The richer **editor-title Pi Chat Actions**
 menu additionally offers rename, retry (including with another model), find, copy as
 Markdown, thinking level, compaction, attachments, health, logs, and help.
 Model and thinking controls live in the composer status chip; there is no composer gear.

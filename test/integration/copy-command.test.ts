@@ -3,13 +3,12 @@ import test from 'node:test';
 import { build } from 'esbuild';
 import { createEmptyComposerState } from '../../src/webview/composer';
 
-test('copy: actual editor/sidebar clipboard, busy no-model, empty, arguments and origin ownership', async () => {
+test('copy: actual Agentic editor clipboard, busy no-model, empty, arguments and origin ownership', async () => {
   const copied: string[] = [];
   let clipboardFails = false;
   const result = await build({
     stdin: {
-      contents:
-        "export { ChatTabManager } from './src/editorTabs/tabManager'; export { ChatPanelProvider } from './src/webview/provider';",
+      contents: "export { ChatTabManager } from './src/editorTabs/tabManager'; ",
       resolveDir: process.cwd(),
     },
     bundle: true,
@@ -34,7 +33,7 @@ test('copy: actual editor/sidebar clipboard, busy no-model, empty, arguments and
     module,
     module.exports
   );
-  for (const route of ['editor', 'sidebar']) {
+  {
     const state = createEmptyComposerState();
     state.pendingImages = [{ itemId: 'chip', name: 'chip', mimeType: 'image/png', sizeBytes: 1 }];
     let text: string | null = '  newest committed text  ';
@@ -52,9 +51,7 @@ test('copy: actual editor/sidebar clipboard, busy no-model, empty, arguments and
         throw new Error('must not prompt');
       },
     };
-    const instance = Object.create(
-      module.exports[route === 'editor' ? 'ChatTabManager' : 'ChatPanelProvider'].prototype
-    );
+    const instance = Object.create(module.exports['ChatTabManager'].prototype);
     instance.uiState = {
       captureIdentity: () => ({}),
       getComposerState: async () => structuredClone(state),
@@ -72,10 +69,7 @@ test('copy: actual editor/sidebar clipboard, busy no-model, empty, arguments and
         throw new Error('must not follow');
       },
     };
-    const send = () =>
-      route === 'editor'
-        ? instance.handleRequestSend({}, 'prompt', true)
-        : instance.handleRequestSend(controller, 'prompt');
+    const send = () => instance.handleRequestSend({}, 'prompt', true);
     state.draft = '/copy';
     await send();
     assert.equal(calls, 1, 'copy must invoke the actual controller backend');

@@ -198,114 +198,105 @@ test('compact reservation rejects sibling mutations during preflight and native 
   assert.equal(c.manualCompactPending, false);
 });
 
-for (const route of ['editor', 'sidebar'])
-  test(`compact ${route}: bare/whole arguments, no expansion, origin ACK, failure sanitation`, async () => {
-    const state = createEmptyComposerState();
-    const chips = [{ itemId: 'owned', name: 'owned', mimeType: 'image/png', sizeBytes: 1 }];
-    const calls: any[] = [];
-    let fail = false;
-    let mutate = () => {};
-    const controller = {
-      generation: 1,
-      snapshot: { state: { sessionId: 'owned', sessionFile: '/owned/file' } },
-      setDraft() {},
-      captureCompactIntent() {
-        const generation = this.generation;
-        return {
-          valid: () => this.generation === generation,
-          run: async (instructions?: string) => {
-            calls.push(instructions);
-            mutate();
-            if (fail) throw new Error('Authorization: Bearer secret-canary provider/config');
-            return { summary: 'owned', firstKeptEntryId: 'leaf', tokensBefore: 1 };
-          },
-        };
-      },
-      prompt() {
-        throw new Error('prompt forbidden');
-      },
-    };
-    const api = await load(
-      "export {ChatTabManager} from './src/editorTabs/tabManager'; export {ChatPanelProvider} from './src/webview/provider';",
-      {
-        workspace: { isTrusted: true },
-        window: {
-          showInputBox() {
-            throw new Error('typed command dialog forbidden');
-          },
+test(`compact editor: bare/whole arguments, no expansion, origin ACK, failure sanitation`, async () => {
+  const state = createEmptyComposerState();
+  const chips = [{ itemId: 'owned', name: 'owned', mimeType: 'image/png', sizeBytes: 1 }];
+  const calls: any[] = [];
+  let fail = false;
+  let mutate = () => {};
+  const controller = {
+    generation: 1,
+    snapshot: { state: { sessionId: 'owned', sessionFile: '/owned/file' } },
+    setDraft() {},
+    captureCompactIntent() {
+      const generation = this.generation;
+      return {
+        valid: () => this.generation === generation,
+        run: async (instructions?: string) => {
+          calls.push(instructions);
+          mutate();
+          if (fail) throw new Error('Authorization: Bearer secret-canary provider/config');
+          return { summary: 'owned', firstKeptEntryId: 'leaf', tokensBefore: 1 };
         },
-      }
-    );
-    const instance = Object.create(
-      api[route === 'editor' ? 'ChatTabManager' : 'ChatPanelProvider'].prototype
-    );
-    instance.uiState = {
-      captureIdentity: () => ({}),
-      getComposerState: async () => structuredClone(state),
-      getComposerStateForIdentity: async () => structuredClone(state),
-      setComposerState: async (_c: any, s: any) => Object.assign(state, s),
-      setComposerStateForIdentity: async (_c: any, _i: any, s: any) => Object.assign(state, s),
-    };
-    instance.contextForResource = () => ({ controller, target: {}, resource: {} });
-    instance.renderResource = instance.postSnapshot = async () => {};
-    instance.preparePromptContext = () => {
-      throw new Error('expansion forbidden');
-    };
-    instance.follow = {
-      armOnce() {
-        throw new Error('follow forbidden');
-      },
-    };
-    const send = () =>
-      route === 'editor'
-        ? instance.handleRequestSend({}, 'prompt', true, 'ack')
-        : instance.handleRequestSend(controller, 'prompt', 'ack');
-    const reset = (draft = '/compact') => {
-      state.draft = draft;
-      state.commandRevision = 0;
-      state.composerResetSeq = 0;
-      state.pendingImages = structuredClone(chips);
-      delete state.localCommandAck;
-      delete state.recovery;
-      mutate = () => {};
-      fail = false;
-    };
-    for (const [draft, instructions] of [
-      ['/compact', undefined],
-      ['/compact   keep  whole\n remainder  ', 'keep  whole\n remainder'],
-    ] as const) {
-      reset(draft);
-      await send();
-      assert.equal(calls.at(-1), instructions);
-      assert.equal(calls.length > 0, true, 'native compact must be requested');
-      assert.equal(state.draft, '');
-      assert.equal(state.localCommandAck, 'ack');
-      assert.deepEqual(state.pendingImages, chips);
-    }
-    reset();
-    fail = true;
-    await send();
-    assert.equal(state.draft, '');
-    assert.equal(state.localCommandAck, undefined);
-    assert.ok(state.recovery);
-    assert.doesNotMatch(
-      JSON.stringify(state.recovery),
-      /secret-canary|Authorization|provider\/config/
-    );
-    for (const change of ['newer', 'retyped', 'generation', 'images']) {
-      reset();
-      mutate = () => {
-        if (change === 'newer') state.draft = 'fresh';
-        if (change === 'retyped') state.commandRevision = 1;
-        if (change === 'generation') controller.generation++;
-        if (change === 'images') state.pendingImages.push({ ...chips[0]!, itemId: 'new' });
       };
-      await send();
-      if (change === 'newer') assert.equal(state.draft, 'fresh');
-      else if (change !== 'images') assert.equal(state.draft, '');
-      assert.equal(state.pendingImages.length, change === 'images' ? 2 : 1);
-    }
+    },
+    prompt() {
+      throw new Error('prompt forbidden');
+    },
+  };
+  const api = await load("export {ChatTabManager} from './src/editorTabs/tabManager'; ", {
+    workspace: { isTrusted: true },
+    window: {
+      showInputBox() {
+        throw new Error('typed command dialog forbidden');
+      },
+    },
   });
+  const instance = Object.create(api['ChatTabManager'].prototype);
+  instance.uiState = {
+    captureIdentity: () => ({}),
+    getComposerState: async () => structuredClone(state),
+    getComposerStateForIdentity: async () => structuredClone(state),
+    setComposerState: async (_c: any, s: any) => Object.assign(state, s),
+    setComposerStateForIdentity: async (_c: any, _i: any, s: any) => Object.assign(state, s),
+  };
+  instance.contextForResource = () => ({ controller, target: {}, resource: {} });
+  instance.renderResource = instance.postSnapshot = async () => {};
+  instance.preparePromptContext = () => {
+    throw new Error('expansion forbidden');
+  };
+  instance.follow = {
+    armOnce() {
+      throw new Error('follow forbidden');
+    },
+  };
+  const send = () => instance.handleRequestSend({}, 'prompt', true, 'ack');
+  const reset = (draft = '/compact') => {
+    state.draft = draft;
+    state.commandRevision = 0;
+    state.composerResetSeq = 0;
+    state.pendingImages = structuredClone(chips);
+    delete state.localCommandAck;
+    delete state.recovery;
+    mutate = () => {};
+    fail = false;
+  };
+  for (const [draft, instructions] of [
+    ['/compact', undefined],
+    ['/compact   keep  whole\n remainder  ', 'keep  whole\n remainder'],
+  ] as const) {
+    reset(draft);
+    await send();
+    assert.equal(calls.at(-1), instructions);
+    assert.equal(calls.length > 0, true, 'native compact must be requested');
+    assert.equal(state.draft, '');
+    assert.equal(state.localCommandAck, 'ack');
+    assert.deepEqual(state.pendingImages, chips);
+  }
+  reset();
+  fail = true;
+  await send();
+  assert.equal(state.draft, '');
+  assert.equal(state.localCommandAck, undefined);
+  assert.ok(state.recovery);
+  assert.doesNotMatch(
+    JSON.stringify(state.recovery),
+    /secret-canary|Authorization|provider\/config/
+  );
+  for (const change of ['newer', 'retyped', 'generation', 'images']) {
+    reset();
+    mutate = () => {
+      if (change === 'newer') state.draft = 'fresh';
+      if (change === 'retyped') state.commandRevision = 1;
+      if (change === 'generation') controller.generation++;
+      if (change === 'images') state.pendingImages.push({ ...chips[0]!, itemId: 'new' });
+    };
+    await send();
+    if (change === 'newer') assert.equal(state.draft, 'fresh');
+    else if (change !== 'images') assert.equal(state.draft, '');
+    assert.equal(state.pendingImages.length, change === 'images' ? 2 : 1);
+  }
+});
 
 test('compact close/delete sibling gates run before any implicit abort or tab close', async () => {
   const { ChatTabManager } = await load(

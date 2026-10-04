@@ -11,7 +11,6 @@ function snapshot(image: Record<string, unknown>): WebviewSnapshot {
     sequence: 1,
     title: 'Current Chat',
     bindingState: 'current',
-    uiMode: 'simple',
     connectionState: 'ready',
     workspaceFolderName: 'workspace',
     sessionName: 'Demo Session',

@@ -4,12 +4,12 @@ import { createRequire } from 'node:module';
 import { build } from 'esbuild';
 import { createEmptyComposerState } from '../../src/webview/composer';
 
-test('name: actual editor/sidebar bare display, whole trimmed names, busy no-model and origin drafts', async () => {
+test('name: actual Agentic editor bare display, whole trimmed names, busy no-model and origin drafts', async () => {
   const notices: string[] = [];
   const result = await build({
     stdin: {
       contents:
-        "export {ChatTabManager} from './src/editorTabs/tabManager'; export {ChatPanelProvider} from './src/webview/provider'; export {mergeLocalCommands} from './src/commands/localCommand';",
+        "export {ChatTabManager} from './src/editorTabs/tabManager'; export {mergeLocalCommands} from './src/commands/localCommand';",
       resolveDir: process.cwd(),
     },
     bundle: true,
@@ -47,7 +47,7 @@ test('name: actual editor/sidebar bare display, whole trimmed names, busy no-mod
   assert.equal(discovered.filter((c: any) => c.name === 'name').length, 1);
   assert.equal(discovered.find((c: any) => c.name === 'name').source, 'builtin');
   assert.ok(discovered.some((c: any) => c.name === 'extension:name'));
-  for (const route of ['editor', 'sidebar']) {
+  {
     const state = createEmptyComposerState();
     state.pendingImages = [{ itemId: 'chip', name: 'chip', mimeType: 'image/png', sizeBytes: 1 }];
     let fail = false;
@@ -75,9 +75,7 @@ test('name: actual editor/sidebar bare display, whole trimmed names, busy no-mod
         throw new Error('must not prompt');
       },
     };
-    const instance = Object.create(
-      module.exports[route === 'editor' ? 'ChatTabManager' : 'ChatPanelProvider'].prototype
-    );
+    const instance = Object.create(module.exports['ChatTabManager'].prototype);
     instance.uiState = {
       captureIdentity: () => ({}),
       getComposerState: async () => structuredClone(state),
@@ -95,10 +93,7 @@ test('name: actual editor/sidebar bare display, whole trimmed names, busy no-mod
         throw new Error('must not follow');
       },
     };
-    const send = () =>
-      route === 'editor'
-        ? instance.handleRequestSend({}, 'prompt', true)
-        : instance.handleRequestSend(controller, 'prompt');
+    const send = () => instance.handleRequestSend({}, 'prompt', true);
     state.draft = '/name  ';
     await send();
     assert.equal(notices.at(-1), 'Usage: /name <name>', 'bare unnamed must display native usage');

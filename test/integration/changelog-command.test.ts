@@ -7,8 +7,8 @@ import { join } from 'node:path';
 import { build } from 'esbuild';
 import { createEmptyComposerState } from '../../src/webview/composer';
 
-for (const route of ['editor', 'sidebar']) {
-  test(`changelog: ${route} selected SDK preview, busy/no-model, bounded failures and origin safety`, async () => {
+{
+  test(`changelog: editor selected SDK preview, busy/no-model, bounded failures and origin safety`, async () => {
     const root = await mkdtemp(join(tmpdir(), 'pi-changelog-test-'));
     try {
       await mkdir(join(root, 'dist'));
@@ -30,8 +30,7 @@ for (const route of ['editor', 'sidebar']) {
       const notices: any[] = [];
       const result = await build({
         stdin: {
-          contents:
-            "export {ChatTabManager} from './src/editorTabs/tabManager'; export {ChatPanelProvider} from './src/webview/provider';",
+          contents: "export {ChatTabManager} from './src/editorTabs/tabManager'; ",
           resolveDir: process.cwd(),
         },
         bundle: true,
@@ -84,9 +83,7 @@ for (const route of ['editor', 'sidebar']) {
           throw new Error('provider prompt forbidden');
         },
       };
-      const instance = Object.create(
-        module.exports[route === 'editor' ? 'ChatTabManager' : 'ChatPanelProvider'].prototype
-      );
+      const instance = Object.create(module.exports['ChatTabManager'].prototype);
       instance.uiState = {
         captureIdentity: () => ({}),
         getComposerState: async () => structuredClone(state),
@@ -104,10 +101,7 @@ for (const route of ['editor', 'sidebar']) {
           throw new Error('follow forbidden');
         },
       };
-      const send = () =>
-        route === 'editor'
-          ? instance.handleRequestSend({}, 'prompt', true, 'ack')
-          : instance.handleRequestSend(controller, 'prompt', 'ack');
+      const send = () => instance.handleRequestSend({}, 'prompt', true, 'ack');
       const reset = () => {
         mutate = undefined;
         controller.sdkRoot = root;

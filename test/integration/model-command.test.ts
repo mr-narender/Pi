@@ -4,7 +4,7 @@ import { build } from 'esbuild';
 import { createEmptyComposerState } from '../../src/webview/composer';
 import { spawnMockPi, shutdown } from '../helpers/rpc';
 
-test('model: actual editor/sidebar direct refs, query picker, cancellation and origin-safe acknowledgement', async () => {
+test('model: actual Agentic editor direct refs, query picker, cancellation and origin-safe acknowledgement', async () => {
   let pick: any;
   let release: (() => void) | undefined;
   let opened = 0;
@@ -45,8 +45,7 @@ test('model: actual editor/sidebar direct refs, query picker, cancellation and o
   };
   const result = await build({
     stdin: {
-      contents:
-        "export { ChatTabManager } from './src/editorTabs/tabManager'; export { ChatPanelProvider } from './src/webview/provider';",
+      contents: "export { ChatTabManager } from './src/editorTabs/tabManager'; ",
       resolveDir: process.cwd(),
     },
     bundle: true,
@@ -66,7 +65,7 @@ test('model: actual editor/sidebar direct refs, query picker, cancellation and o
     { provider: 'a', id: 'same' },
     { provider: 'b', id: 'same' },
   ];
-  for (const route of ['editor', 'sidebar']) {
+  {
     const state = createEmptyComposerState();
     state.pendingImages = [{ itemId: 'chip', name: 'x', mimeType: 'image/png', sizeBytes: 1 }];
     let applied: string[] = [];
@@ -84,9 +83,7 @@ test('model: actual editor/sidebar direct refs, query picker, cancellation and o
         throw new Error('must never prompt');
       },
     };
-    const instance = Object.create(
-      module.exports[route === 'editor' ? 'ChatTabManager' : 'ChatPanelProvider'].prototype
-    );
+    const instance = Object.create(module.exports['ChatTabManager'].prototype);
     instance.uiState = {
       captureIdentity: () => ({}),
       getComposerState: async () => structuredClone(state),
@@ -105,10 +102,7 @@ test('model: actual editor/sidebar direct refs, query picker, cancellation and o
         throw new Error('must not arm');
       },
     };
-    const send = () =>
-      route === 'editor'
-        ? instance.handleRequestSend({}, 'steer', true)
-        : instance.handleRequestSend(controller, 'follow_up');
+    const send = () => instance.handleRequestSend({}, 'steer', true);
     state.draft = '/model PROXY/VENDOR/FAMILY/MODEL';
     await send();
     assert.deepEqual(applied, ['proxy/vendor/family/model']);
@@ -147,8 +141,8 @@ test('model: actual editor/sidebar direct refs, query picker, cancellation and o
     assert.equal(state.pendingImages.length, 2);
     assert.equal(
       applied.length,
-      route === 'editor' ? 1 : 2,
-      'a replaced editor controller cancels; unrelated editor focus cannot retarget sidebar'
+      1,
+      'a replaced Agentic editor controller cancels without applying a stale model'
     );
     instance.contextForResource = () => ({ controller, target: {}, resource: {} });
     fail = true;
@@ -175,7 +169,7 @@ test('model: actual editor/sidebar direct refs, query picker, cancellation and o
     await stale;
     assert.equal(applied.length, 0, 'replaced chat generation cannot apply a model');
   }
-  assert.ok(opened >= 12);
+  assert.equal(opened, 7, 'five query pickers plus origin and session invalidation pickers');
 });
 
 test('model wire: existing stock-shaped catalog and set_model RPC apply before next state query', async () => {

@@ -7,7 +7,6 @@ import type {
 } from '../rpc/protocol';
 import type {
   AcceptedSendSnapshot,
-  ChatUiMode,
   ComposerFocusTarget,
   PendingContextItem,
   RecoveryState,
@@ -211,7 +210,6 @@ export interface WebviewSnapshot {
   sequence: number;
   title: string;
   bindingState?: 'current' | 'cached' | 'draft';
-  uiMode: ChatUiMode;
   connectionState: ControllerState['connectionState'];
   /** Runtime owner epoch for read-only catalog invalidation. */
   catalogGeneration?: number;

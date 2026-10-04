@@ -16,7 +16,6 @@ for (const user of [false, true]) {
     const root = dom.window.document.querySelector('main')!;
     const project = () =>
       createWebviewSnapshot(state, 1, {
-        uiMode: 'simple',
         composer: createEmptyComposerState(),
         isTrusted: true,
         folders: [],
@@ -53,7 +52,6 @@ for (const user of [false, true]) {
     ]) {
       assert.equal(
         createWebviewSnapshot({ ...state, ...invalid }, 1, {
-          uiMode: 'simple',
           composer: createEmptyComposerState(),
           isTrusted: true,
           folders: [],

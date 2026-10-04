@@ -1,6 +1,13 @@
 # Changelog
 
-## 0.2.20 — prerelease candidate (unpublished)
+## Unreleased
+
+- Make Agentic the only Pi interface. Remove the legacy shared panel, unused
+  sessions sidebar, inspection/compatibility commands and obsolete UI settings
+  and URI aliases. Preserve the shared composer, native chat tabs and Full Chat;
+  Full Chat and Back to chats now navigate Agentic surfaces directly.
+
+## 0.2.20 — prerelease
 
 - Defer the current live empty assistant reply until meaningful content arrives;
   retain completed empty history and its Retry/Logs controls. Native assistant

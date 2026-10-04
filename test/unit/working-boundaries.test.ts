@@ -65,7 +65,7 @@ let state = {
 };
 const composer = { draft: '', pendingContextItems: [], pendingImages: [], focus: 'none' as const };
 const project = () => ({
-  ...createWebviewSnapshot(state, 1, { uiMode: 'simple', composer, isTrusted: true, folders: [] }),
+  ...createWebviewSnapshot(state, 1, { composer, isTrusted: true, folders: [] }),
   bindingState: 'current' as const,
   typewriterSpeed: 'off',
   surface: 'tab' as const,
@@ -99,7 +99,6 @@ test('producer events preserve streaming/tool/compaction/retry indicators and en
   ]) {
     s = reduceEvent(s, { type });
     const p = createWebviewSnapshot(s, 1, {
-      uiMode: 'simple',
       composer,
       isTrusted: true,
       folders: [],
@@ -283,7 +282,6 @@ test('compiled controller refresh can publish ready plus current RPC streaming t
   assert.equal(c.snapshot.connectionState, 'ready');
   assert.equal(c.snapshot.state.isStreaming, true);
   const p = createWebviewSnapshot(c.snapshot, 1, {
-    uiMode: 'simple',
     composer,
     isTrusted: true,
     folders: [],

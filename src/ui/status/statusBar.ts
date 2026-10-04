@@ -6,7 +6,6 @@ import { stripAnsiCodes } from './ansi';
 // (model, usage/cost, thinking level, etc.) lives in the chat composer toolbar
 // so controls have a single, focused home and don't compete across surfaces.
 export class StatusBarController implements vscode.Disposable {
-  private mode: 'simple' | 'advanced' = 'simple';
   private readonly connection = vscode.window.createStatusBarItem(
     vscode.StatusBarAlignment.Left,
     100
@@ -51,13 +50,6 @@ export class StatusBarController implements vscode.Disposable {
     this.mission.show();
   }
 
-  public setMode(mode: 'simple' | 'advanced'): void {
-    this.mode = mode;
-    if (this.controller) {
-      this.render(this.controller.snapshot);
-    }
-  }
-
   public bind(controller: SessionController | undefined): void {
     this.subscription?.dispose();
     this.controller = controller;
@@ -79,8 +71,7 @@ export class StatusBarController implements vscode.Disposable {
 
   private render(state: SessionController['snapshot']): void {
     const folder = this.controller?.folder.name ?? state.workspaceFolderName;
-    const visible = this.mode === 'advanced' || state.connectionState === 'faulted';
-    if (!visible) {
+    if (state.connectionState !== 'faulted') {
       this.connection.hide();
       this.clearKeyed();
       return;
@@ -119,7 +110,6 @@ export class StatusBarController implements vscode.Disposable {
 
   private createKeyedItem(key: string): vscode.StatusBarItem {
     const item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 96);
-    item.command = 'piRpc.extensionUi.setStatus';
     this.keyed.set(key, item);
     return item;
   }
