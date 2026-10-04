@@ -16,7 +16,6 @@ import {
   renderChatListShell,
 } from '../../src/webview/chatListRowHtml';
 import type { ChatListRow } from '../../src/webview/chatListShared';
-import { renderChatActionsMenu } from '../../src/webview/chatActionsMenu';
 
 const goldenDir = join(process.cwd(), 'test', 'unit', '__golden__');
 
@@ -142,7 +141,7 @@ test('Agentic New Chat and More sit beside π: Chat in the native view header', 
   const manifest = JSON.parse(
     readFileSync(join(process.cwd(), 'package.json'), 'utf8')
   ).contributes;
-  const when = 'view == piRpc.chat && piRpc.sidebarSurface == list';
+  const when = 'view == piRpc.chat';
   assert.deepEqual(
     manifest.menus['view/title'].filter((item: { when: string }) => item.when === when),
     [
@@ -163,7 +162,6 @@ test('Agentic New Chat and More sit beside π: Chat in the native view header', 
       '1_chat',
       '1_chat',
       '1_chat',
-      '1_chat',
       '2_configure',
       '2_configure',
       '2_configure',
@@ -178,7 +176,6 @@ test('Agentic New Chat and More sit beside π: Chat in the native view header', 
     manifest.menus['piRpc.agenticActions'].map((item: { command: string }) => item.command),
     [
       'piRpcInternal.agenticChatHeading',
-      'piRpcInternal.showChatInSidebar',
       'piRpc.reviewLastTurn',
       'piRpc.showChatVersions',
       'piRpc.exportHtml',
@@ -195,12 +192,11 @@ test('Agentic New Chat and More sit beside π: Chat in the native view header', 
   const more = manifest.submenus.find((item: { id: string }) => item.id === 'piRpc.agenticActions');
   assert.equal(more.label, 'More actions');
   assert.equal(more.icon, '$(ellipsis)');
-  const switchMode = manifest.commands.find(
-    (item: { command: string }) => item.command === 'piRpcInternal.showChatInSidebar'
+  assert.ok(
+    !manifest.commands.some(
+      (item: { command: string }) => item.command === 'piRpcInternal.showChatInSidebar'
+    )
   );
-  assert.equal(switchMode.title, 'Show chat in sidebar');
-  assert.equal(switchMode.icon, '$(arrow-swap)');
-  assert.ok(renderChatActionsMenu().includes('class="menu-group">Chat'), 'full Chat menu stays');
   assert.ok(!manifest.configuration.properties['piRpc.agenticTheme']);
 });
 

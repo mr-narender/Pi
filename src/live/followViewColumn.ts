@@ -4,9 +4,8 @@
 // The real bug this exists to fix: showInSidePane used to SKIP opening the
 // followed file entirely whenever a π chat tab owned the active editor
 // group, with the comment "with the sidebar chat the center is always
-// free" — true when the chat lived in the sidebar webview, but
-// editorTabsEnabled() has been the default for a while (chat itself is an
-// editor tab). In the common single-group layout, the chat tab IS the
+// free" — true when the chat lived in the old sidebar webview. Chat now lives
+// in an editor tab. In the common single-group layout, the chat tab IS the
 // active tab in the only group whenever the user is looking at it — so
 // that guard always fired, and follow silently never opened anything.
 // Reported as "file tracking/following not seems to be working" — it

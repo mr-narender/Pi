@@ -31,7 +31,6 @@ import {
 } from './resources/resourceManager';
 import { showInstructionManager } from './resources/instructionManager';
 import { InlineReview } from './review/inlineReview';
-import { SessionReplay } from './review/sessionReplay';
 import { SessionIndexService } from './sessions/sessionIndexService';
 import { ensureManagedPi, managedPiCliPath, managedPiRoot } from './process/piManaged';
 import { COMMAND_IDS, CONTRIBUTED_COMMANDS } from './config/commands';
@@ -255,82 +254,33 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const turnReview = new TurnReview(logger, context.workspaceState);
   const inlineReview = new InlineReview(turnReview);
   context.subscriptions.push(inlineReview);
-  chatTabs.inlineReview = inlineReview;
-  const sessionReplay = new SessionReplay(turnReview);
-  context.subscriptions.push(sessionReplay);
-  chatTabs.sessionReplay = sessionReplay;
   // True pre-apply approval gate (opt-in): sync on activation so a workspace
   // opened with the setting already on gets it without waiting for a toggle.
   void syncApprovalGateForWorkspace(
     context.extensionUri,
     vscode.workspace.getConfiguration('piRpc').get<boolean>('requireApprovalForEdits', false)
   );
-  chatTabs.chatListSource = () => {
+  // The sidebar always owns the Agentic chat list; conversations open in tabs.
+  let agenticListHost: AgenticChatListHost | undefined;
+  const attachSidebar = (view: vscode.WebviewView): void => {
     const folder = vscode.workspace.workspaceFolders?.[0];
     if (!folder) {
-      return { items: [], others: [] };
+      view.webview.html =
+        '<html><body style="font-family:sans-serif;padding:16px">Open a folder to see Pi chats.</body></html>';
+      return;
     }
-    void recentSessions.refresh(folder);
-    const state = recentSessions.getState(folder);
-    return { items: state.items, others: state.others ?? [] };
-  };
-  // Agentic owns both the chat list and its shared full-chat surface.
-  // Workspace state remembers the surface across reloads; there is no
-  // alternate interface setting or rollback provider.
-  let sidebarSurface: 'list' | 'full-chat' =
-    context.workspaceState.get<unknown>('piRpc.sidebarSurface') === 'full-chat'
-      ? 'full-chat'
-      : 'list';
-  let sidebarTransition = Promise.resolve();
-  let agenticListHost: AgenticChatListHost | undefined;
-  let attachedSidebarView: vscode.WebviewView | undefined;
-  let attachedSidebarSurface: 'list' | 'full-chat' | undefined;
-  const attachSidebar = async (view: vscode.WebviewView): Promise<void> => {
-    attachedSidebarView = view;
-    const folder = vscode.workspace.workspaceFolders?.[0];
-    const nextSurface = sidebarSurface;
-    if (attachedSidebarSurface === 'full-chat') {
-      chatTabs.detachSidebarChatHost();
-    } else {
-      agenticListHost?.detach();
+    if (!agenticListHost) {
+      agenticListHost = new AgenticChatListHost(
+        context.extensionUri,
+        chatTabs,
+        recentSessions,
+        folder,
+        context.globalState
+      );
+      context.subscriptions.push(agenticListHost);
     }
-    attachedSidebarSurface = nextSurface;
-    if (nextSurface === 'list' && folder) {
-      if (!agenticListHost) {
-        agenticListHost = new AgenticChatListHost(
-          context.extensionUri,
-          chatTabs,
-          recentSessions,
-          folder,
-          context.globalState
-        );
-        context.subscriptions.push(agenticListHost);
-      }
-      agenticListHost.attach(view);
-    } else {
-      await chatTabs.attachSidebarChat(context.extensionUri, view);
-    }
+    agenticListHost.attach(view);
   };
-  const showSidebarSurface = (surface: 'list' | 'full-chat'): Promise<void> => {
-    sidebarTransition = sidebarTransition
-      .catch(() => undefined)
-      .then(async () => {
-        if (surface !== sidebarSurface) {
-          // Move the conversation before replacing its host, preserving the
-          // one-visible-surface rule and the originating composer identity.
-          await chatTabs.moveSidebarConversation(surface);
-          sidebarSurface = surface;
-          await context.workspaceState.update('piRpc.sidebarSurface', surface);
-          if (attachedSidebarView) {
-            await attachSidebar(attachedSidebarView);
-          }
-        }
-        await vscode.commands.executeCommand('setContext', 'piRpc.sidebarSurface', surface);
-        await vscode.commands.executeCommand('piRpc.chat.focus');
-      });
-    return sidebarTransition;
-  };
-  void vscode.commands.executeCommand('setContext', 'piRpc.sidebarSurface', sidebarSurface);
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(
       'piRpc.chat',
@@ -672,11 +622,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       return;
     }
     // One click = deleted. No confirmation by design (Master's call).
-    chatTabs.stopControllersForSessionFile(sessionPath); // runtime down, no wait
     await chatTabs.closeForSessionFile(sessionPath);
-    try {
-      await vscode.workspace.fs.delete(vscode.Uri.file(sessionPath));
-    } catch {}
+    chatTabs.stopControllersForSessionFile(sessionPath);
+    await vscode.workspace.fs.delete(vscode.Uri.file(sessionPath));
+    recentSessions.removePath(sessionPath);
     // The full sessions-dir rescan is the slow part — never block the UI on it.
     void recentSessions.refresh().then(() => refreshViews());
     refreshViews();
@@ -925,8 +874,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   registrations.set('piRpc.manageAgentInstructions', async () => {
     await showInstructionManager();
   });
-  registrations.set('piRpcInternal.showChatInSidebar', async () => showSidebarSurface('full-chat'));
-  registrations.set('piRpcInternal.showChatList', async () => showSidebarSurface('list'));
   registrations.set('piRpc.addCustomResource', async () => {
     await addCustomResource();
   });
@@ -958,8 +905,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const next = !config.get<boolean>('requireApprovalForEdits', false);
     await config.update('requireApprovalForEdits', next, vscode.ConfigurationTarget.Workspace);
   });
-  // Sidebar chat: focus the docked π chat (Zed layout — center stays free).
-  registrations.set('piRpc.openSidebarChat', async () => showSidebarSurface('full-chat'));
   // Zed-style follow mode: cycle open → status → off from the palette.
   registrations.set('piRpc.toggleFollowAgent', async () => {
     const config = vscode.workspace.getConfiguration('piRpc');

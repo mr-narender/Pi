@@ -52,57 +52,54 @@ function snapshot(overrides: Partial<WebviewSnapshot> = {}): WebviewSnapshot {
 }
 
 test('empty assistant start defers the shared reply row until the first streaming chunk', () => {
-  for (const surface of ['tab', 'sidebar'] as const) {
-    for (const connectionState of ['busy', 'ready'] as const) {
-      const user = { id: 'u', role: 'user', text: 'PING', attachments: [] };
-      const current = snapshot({
-        surface,
-        connectionState,
-        isStreaming: true,
-        currentAssistantMessageId: 'a',
-        messages: [user],
-      });
-      const dom = new JSDOM('<main></main>');
-      const root = dom.window.document.querySelector('main')!;
-      const render = (): void => {
-        root.innerHTML = renderChatApp(current);
-      };
-      render();
-      assert.equal(root.querySelectorAll('.message-user').length, 1);
-      assert.ok(root.querySelector('.working-logo'));
-      for (const text of ['', '  \n\t']) {
-        for (const blocks of [undefined, [], [{ kind: 'text' as const, text }]]) {
-          current.messages = [user, { id: 'a', role: 'assistant', text, blocks, attachments: [] }];
-          render();
-          assert.equal(root.querySelectorAll('.message-assistant').length, 0);
-          assert.equal(root.querySelectorAll('.message-role').length, 1);
-          assert.ok(root.querySelector('.working-logo'));
-          render();
-          assert.equal(root.querySelectorAll('.message-assistant').length, 0);
-        }
-      }
-      for (const text of ['  \nP', '  \nPONG']) {
-        current.messages = [
-          user,
-          { id: 'a', role: 'assistant', text, blocks: [{ kind: 'text', text }], attachments: [] },
-        ];
+  for (const connectionState of ['busy', 'ready'] as const) {
+    const user = { id: 'u', role: 'user', text: 'PING', attachments: [] };
+    const current = snapshot({
+      connectionState,
+      isStreaming: true,
+      currentAssistantMessageId: 'a',
+      messages: [user],
+    });
+    const dom = new JSDOM('<main></main>');
+    const root = dom.window.document.querySelector('main')!;
+    const render = (): void => {
+      root.innerHTML = renderChatApp(current);
+    };
+    render();
+    assert.equal(root.querySelectorAll('.message-user').length, 1);
+    assert.ok(root.querySelector('.working-logo'));
+    for (const text of ['', '  \n\t']) {
+      for (const blocks of [undefined, [], [{ kind: 'text' as const, text }]]) {
+        current.messages = [user, { id: 'a', role: 'assistant', text, blocks, attachments: [] }];
         render();
-        assert.equal(current.isStreaming, true);
-        assert.equal(root.querySelector('.message-assistant .message-role')?.textContent, 'π');
-        assert.equal(root.querySelector('.js-stream-text')?.getAttribute('data-raw'), text);
-        assert.match(root.querySelector('.message-assistant')!.textContent!, /P/);
+        assert.equal(root.querySelectorAll('.message-assistant').length, 0);
+        assert.equal(root.querySelectorAll('.message-role').length, 1);
+        assert.ok(root.querySelector('.working-logo'));
+        render();
+        assert.equal(root.querySelectorAll('.message-assistant').length, 0);
       }
-      current.currentAssistantMessageId = 'a2';
-      current.messages.push(
-        { id: 'u2', role: 'user', text: 'again', attachments: [] },
-        { id: 'a2', role: 'assistant', text: '', blocks: [], attachments: [] }
-      );
-      render();
-      assert.equal(root.querySelectorAll('.message-assistant').length, 1);
-      assert.ok(root.querySelector('[data-mid="a"]'));
-      assert.equal(root.querySelector('[data-mid="a2"]'), null);
-      dom.window.close();
     }
+    for (const text of ['  \nP', '  \nPONG']) {
+      current.messages = [
+        user,
+        { id: 'a', role: 'assistant', text, blocks: [{ kind: 'text', text }], attachments: [] },
+      ];
+      render();
+      assert.equal(current.isStreaming, true);
+      assert.equal(root.querySelector('.message-assistant .message-role')?.textContent, 'π');
+      assert.equal(root.querySelector('.js-stream-text')?.getAttribute('data-raw'), text);
+      assert.match(root.querySelector('.message-assistant')!.textContent!, /P/);
+    }
+    current.currentAssistantMessageId = 'a2';
+    current.messages.push(
+      { id: 'u2', role: 'user', text: 'again', attachments: [] },
+      { id: 'a2', role: 'assistant', text: '', blocks: [], attachments: [] }
+    );
+    render();
+    assert.equal(root.querySelectorAll('.message-assistant').length, 1);
+    assert.ok(root.querySelector('[data-mid="a"]'));
+    assert.equal(root.querySelector('[data-mid="a2"]'), null);
+    dom.window.close();
   }
 });
 
@@ -567,40 +564,31 @@ test('working animation shows while busy with the chosen style; font overrides a
   assert.doesNotMatch(idleHtml, /class="working"/); // no animation when idle
 });
 
-test('working logo is decorative, shared across surfaces and gated by live connection state', () => {
-  for (const surface of ['tab', 'sidebar'] as const) {
-    for (const workingAnimation of [
-      'braille',
-      'earth',
-      'moon',
-      'dots',
-      'bars',
-      'dolphin',
-    ] as const) {
-      const html = renderChatApp(snapshot({ surface, connectionState: 'busy', workingAnimation }));
-      assert.match(html, /<svg class="working-logo"[^>]*aria-hidden="true"/);
-      assert.match(html, /role="status" aria-label="π is working"/);
-      assert.match(html, /class="working-label">Working/);
-      assert.match(html, new RegExp(`data-anim="${workingAnimation}"`));
-    }
-    assert.doesNotMatch(
-      renderChatApp(snapshot({ surface, connectionState: 'ready', isStreaming: false })),
-      /class="working-logo"|class="working-banner"/
-    );
-    assert.match(
-      renderChatApp(snapshot({ surface, connectionState: 'ready', isStreaming: true })),
-      /class="working-logo"/
-    );
-    for (const connectionState of [
-      'faulted',
-      'stopped',
-      'unconfigured',
-      'starting',
-      'unsupported',
-    ] as const) {
-      const html = renderChatApp(snapshot({ surface, connectionState, isStreaming: true }));
-      assert.doesNotMatch(html, /class="working-logo"|class="working-banner"/);
-    }
+test('working logo is decorative and gated by live connection state', () => {
+  for (const workingAnimation of ['braille', 'earth', 'moon', 'dots', 'bars', 'dolphin'] as const) {
+    const html = renderChatApp(snapshot({ connectionState: 'busy', workingAnimation }));
+    assert.match(html, /<svg class="working-logo"[^>]*aria-hidden="true"/);
+    assert.match(html, /role="status" aria-label="π is working"/);
+    assert.match(html, /class="working-label">Working/);
+    assert.match(html, new RegExp(`data-anim="${workingAnimation}"`));
+  }
+  assert.doesNotMatch(
+    renderChatApp(snapshot({ connectionState: 'ready', isStreaming: false })),
+    /class="working-logo"|class="working-banner"/
+  );
+  assert.match(
+    renderChatApp(snapshot({ connectionState: 'ready', isStreaming: true })),
+    /class="working-logo"/
+  );
+  for (const connectionState of [
+    'faulted',
+    'stopped',
+    'unconfigured',
+    'starting',
+    'unsupported',
+  ] as const) {
+    const html = renderChatApp(snapshot({ connectionState, isStreaming: true }));
+    assert.doesNotMatch(html, /class="working-logo"|class="working-banner"/);
   }
 });
 

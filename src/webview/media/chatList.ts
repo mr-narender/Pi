@@ -23,6 +23,10 @@ function openChat(row: ChatListRow): void {
 function deleteChat(row: ChatListRow): void {
   const message = buildDeleteMessage(row);
   if (message) {
+    const id = 'sessionPath' in message ? message.sessionPath : message.resource;
+    if (pendingDeleteIds.has(id)) return;
+    pendingDeleteIds.add(id);
+    render();
     vscode.postMessage(message);
   }
 }
@@ -55,6 +59,8 @@ const ROW_ACTIONS: Record<string, (row: ChatListRow) => void> = {
 };
 
 let currentModel: ChatListModel = { rows: [], loading: true };
+const pendingDeleteIds = new Set<string>();
+const confirmedDeleteIds = new Set<string>();
 let filterText = '';
 let filterDebounce: ReturnType<typeof setTimeout> | undefined;
 
@@ -87,8 +93,18 @@ function render(): void {
   const caret = searchHadFocus ? (searchEl?.selectionStart ?? null) : null;
   // All markup comes from chatListRowHtml.ts (pure, golden-tested) — this
   // file only wires events onto it.
+  const visibleRows = currentModel.rows.filter(
+    (row) =>
+      !(
+        (row.sessionPath && pendingDeleteIds.has(row.sessionPath)) ||
+        (row.openCommand.resource && pendingDeleteIds.has(row.openCommand.resource))
+      )
+  );
   app.innerHTML = renderChatListShell(
-    renderChatListBody(currentModel, { filterActive: filterText.trim().length > 0 }),
+    renderChatListBody(
+      { ...currentModel, rows: visibleRows },
+      { filterActive: filterText.trim().length > 0 }
+    ),
     filterText
   );
 
@@ -125,7 +141,7 @@ function render(): void {
     }
   }
 
-  for (const row of currentModel.rows) {
+  for (const row of visibleRows) {
     const el = document.querySelector<HTMLElement>(`[data-id="${row.id.replace(/"/g, '\\"')}"]`);
     el?.addEventListener('click', () => openChat(row));
     el?.addEventListener('keydown', (event: KeyboardEvent) => {
@@ -174,9 +190,34 @@ document.addEventListener('keydown', (event) => {
 });
 
 window.addEventListener('message', (event) => {
-  const message = event.data as { type?: string; model?: ChatListModel };
+  const message = event.data as { type?: string; model?: ChatListModel; id?: string };
   if (message?.type === 'listSnapshot' && message.model) {
     currentModel = message.model;
+    for (const id of confirmedDeleteIds) {
+      if (
+        !currentModel.loading &&
+        !currentModel.rows.some((row) => row.sessionPath === id || row.openCommand.resource === id)
+      ) {
+        pendingDeleteIds.delete(id);
+        confirmedDeleteIds.delete(id);
+      }
+    }
+    render();
+  } else if (message?.type === 'deleteSucceeded' && message.id) {
+    confirmedDeleteIds.add(message.id);
+    if (
+      !currentModel.loading &&
+      !currentModel.rows.some(
+        (row) => row.sessionPath === message.id || row.openCommand.resource === message.id
+      )
+    ) {
+      pendingDeleteIds.delete(message.id);
+      confirmedDeleteIds.delete(message.id);
+      render();
+    }
+  } else if (message?.type === 'deleteFailed' && message.id) {
+    pendingDeleteIds.delete(message.id);
+    confirmedDeleteIds.delete(message.id);
     render();
   }
 });

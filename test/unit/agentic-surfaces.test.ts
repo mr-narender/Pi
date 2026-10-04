@@ -1,50 +1,7 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import test from 'node:test';
-import { build, transform } from 'esbuild';
-import ts from 'typescript';
-
-// Execute maintained activation statements rather than a copy of their logic.
-async function sidebarFactory() {
-  const source = readFileSync('src/extension.ts', 'utf8');
-  const parsed = ts.createSourceFile('extension.ts', source, ts.ScriptTarget.Latest, true);
-  const activate = parsed.statements.find(
-    (node): node is ts.FunctionDeclaration =>
-      ts.isFunctionDeclaration(node) && node.name?.text === 'activate'
-  );
-  assert.ok(activate?.body);
-  const names = new Set([
-    'sidebarSurface',
-    'sidebarTransition',
-    'agenticListHost',
-    'attachedSidebarView',
-    'attachedSidebarSurface',
-    'attachSidebar',
-    'showSidebarSurface',
-  ]);
-  const statements = activate.body.statements.filter(
-    (node) =>
-      ts.isVariableStatement(node) &&
-      node.declarationList.declarations.some(
-        (declaration) => ts.isIdentifier(declaration.name) && names.has(declaration.name.text)
-      )
-  );
-  assert.equal(statements.length, names.size);
-  const compiled = await transform(
-    `${statements.map((node) => node.getText(parsed)).join('\n')}
-     return {attachSidebar, showSidebarSurface, surface: () => sidebarSurface};`,
-    { loader: 'ts', target: 'es2022' }
-  );
-  return new Function(
-    'vscode',
-    'context',
-    'chatTabs',
-    'recentSessions',
-    'AgenticChatListHost',
-    compiled.code
-  );
-}
+import { build } from 'esbuild';
 
 async function nativeClasses(vscode: unknown) {
   const compiled = await build({
@@ -69,90 +26,14 @@ async function nativeClasses(vscode: unknown) {
   return module.exports;
 }
 
-async function sidebarFixture(saved?: unknown) {
-  const events: string[] = [];
-  const data = new Map<string, unknown>();
-  if (saved !== undefined) data.set('piRpc.sidebarSurface', saved);
-  const folder = { uri: { toString: () => 'file:///workspace' }, name: 'workspace' };
-  const controller = {
-    folder,
-    snapshot: { state: { sessionFile: '/workspace/session.jsonl' } },
-    draft: 'keep draft',
-    images: ['keep chip'],
-  };
-  const vscode = {
-    workspace: { workspaceFolders: [folder] },
-    commands: {
-      executeCommand: async (...args: unknown[]) => {
-        events.push(`command:${args.join(':')}`);
-      },
-    },
-  };
-  const classes = await nativeClasses(vscode);
-  const manager = Object.create(classes.ChatTabManager.prototype);
-  manager.trackedControllers = new Set([controller]);
-  let closeGate = async () => {};
-  let active = true;
-  manager.getActiveContext = () =>
-    active ? { controller, target: { kind: 'sessionFile' } } : undefined;
-  manager.registry = { getOrCreate: () => controller };
-  manager.context = {
-    workspaceState: {
-      get: (key: string) => data.get(key),
-      update: async (key: string, value: unknown) => {
-        data.set(key, value);
-      },
-    },
-    extensionUri: {},
-    subscriptions: [],
-    globalState: {},
-  };
-  manager.closeForSessionFile = async (file: string) => {
-    events.push(`close:${file}`);
-    await closeGate();
-    active = false;
-  };
-  manager.closeResource = async () => {};
-  manager.openForSessionFile = async (owner: unknown, file: string) => {
-    assert.equal(owner, controller);
-    events.push(`open:${file}`);
-    active = true;
-  };
-  manager.attachSidebarChat = async () => {
-    events.push('attach:full-chat');
-  };
-  manager.detachSidebarChatHost = () => {
-    events.push('detach:full-chat');
-  };
-  class ListHost {
-    attach() {
-      events.push('attach:list');
-    }
-    detach() {
-      events.push('detach:list');
-    }
-  }
-  const factory = await sidebarFactory();
-  const surface = factory(vscode, manager.context, manager, {}, ListHost);
-  return {
-    surface,
-    events,
-    data,
-    controller,
-    manager,
-    setCloseGate: (gate: typeof closeGate) => {
-      closeGate = gate;
-    },
-  };
-}
-
-test('moving a sent draft to full chat closes its original draft resource', async () => {
+test('deleting a saved chat closes its original draft tab and honors a close veto', async () => {
   const resource = {
     scheme: 'pi-chat',
-    path: '/new-chat-owned.chat',
-    toString: () => 'pi-chat:/new-chat-owned.chat',
+    path: '/draft.chat',
+    toString: () => 'pi-chat:/draft.chat',
   };
   const tab = { input: { uri: resource, viewType: 'piRpc.chatEditor' } };
+  let closeAllowed = false;
   const closed: unknown[] = [];
   const classes = await nativeClasses({
     window: {
@@ -160,156 +41,55 @@ test('moving a sent draft to full chat closes its original draft resource', asyn
         all: [{ tabs: [tab] }],
         close: async (item: unknown) => {
           closed.push(item);
+          return closeAllowed;
         },
       },
     },
   });
   const manager = Object.create(classes.ChatTabManager.prototype);
-  const context = {
-    resource,
-    target: { kind: 'sessionFile', sessionFile: '/workspace/saved.jsonl' },
-    controller: {
-      folder: { uri: { toString: () => 'file:///workspace' } },
-      snapshot: { state: { sessionFile: '/workspace/saved.jsonl' } },
-    },
-  };
-  manager.getActiveContext = () => context;
-  manager.contextForResource = () => context;
-  manager.persistSidebarTarget = () => {};
   manager.assertSessionFileNotCompacting = () => {};
-  await manager.moveSidebarConversation('full-chat');
-  assert.deepEqual(closed, [tab], 'the sent draft has exactly one visible owner after moving');
-  let persisted = false;
-  manager.sidebarTarget = undefined;
-  manager.persistSidebarTarget = () => {
-    persisted = true;
-  };
-  const vetoClasses = await nativeClasses({
-    window: { tabGroups: { all: [{ tabs: [tab] }], close: async () => false } },
+  manager.contextForResource = () => ({
+    controller: { snapshot: { state: { sessionFile: '/s/a.jsonl' } } },
   });
-  manager.closeResource = vetoClasses.ChatTabManager.prototype.closeResource;
-  await assert.rejects(manager.moveSidebarConversation('full-chat'), /could not be closed/);
-  assert.equal(manager.sidebarTarget, undefined, 'a veto retains the prior sidebar target');
-  assert.equal(persisted, false, 'a veto does not commit a new sidebar identity');
-  closed.length = 0;
-  manager.closeResource = classes.ChatTabManager.prototype.closeResource;
-  manager.assertSessionFileNotCompacting =
-    classes.ChatTabManager.prototype.assertSessionFileNotCompacting;
-  manager.trackedControllers = new Set([
-    {
-      snapshot: { state: { sessionFile: '/workspace/saved.jsonl' } },
-      assertNoManualCompaction: () => {
-        throw new Error('other owner compacting');
-      },
+  await assert.rejects(manager.closeForSessionFile('/s/a.jsonl'), /could not be closed/);
+  assert.deepEqual(closed, [tab]);
+  closeAllowed = true;
+  await manager.closeForSessionFile('/s/a.jsonl');
+  assert.deepEqual(closed, [tab, tab]);
+});
+
+test('tab disposal retains the tracked controller for the delete stop safeguard', async () => {
+  const classes = await nativeClasses({});
+  const manager = Object.create(classes.ChatTabManager.prototype);
+  const events: string[] = [];
+  const controller = {
+    folder: { uri: { toString: () => 'file:///workspace' } },
+    snapshot: { state: { sessionFile: '/s/a.jsonl' } },
+    assertNoManualCompaction() {},
+    abort: async () => {
+      events.push('abort');
     },
-  ]);
-  await assert.rejects(manager.moveSidebarConversation('full-chat'), /other owner compacting/);
-  assert.deepEqual(closed, [], 'all session owners are checked before the original tab closes');
-  assert.equal(persisted, false);
-});
-
-test('Agentic defaults to list, validates saved surfaces and restores full-chat after reload', async () => {
-  for (const saved of [undefined, 'chat', 'advanced', false]) {
-    const fixture = await sidebarFixture(saved);
-    assert.equal(fixture.surface.surface(), 'list');
-    await fixture.surface.attachSidebar({});
-    assert.deepEqual(fixture.events, ['attach:list']);
-  }
-  const fixture = await sidebarFixture('full-chat');
-  assert.equal(fixture.surface.surface(), 'full-chat');
-  await fixture.surface.attachSidebar({});
-  assert.deepEqual(fixture.events, ['attach:full-chat']);
-});
-
-test('rapid full/list/full requests serialize the same saved session and detach its previous host first', async () => {
-  const fixture = await sidebarFixture();
-  await fixture.surface.attachSidebar({});
-  fixture.events.length = 0;
-  let release: () => void = () => {};
-  fixture.setCloseGate(
-    () =>
-      new Promise<void>((resolve) => {
-        release = resolve;
-      })
-  );
-  const first = fixture.surface.showSidebarSurface('full-chat');
-  const second = fixture.surface.showSidebarSurface('list');
-  const third = fixture.surface.showSidebarSurface('full-chat');
+    stop: async () => {
+      events.push('stop');
+    },
+  };
+  const resource = { toString: () => 'pi-chat:/a.chat' };
+  const host = { resource };
+  manager.trackedControllers = new Set([controller]);
+  manager.sessions = { keyFor: () => 'chat:a', unbind() {} };
+  manager.hosts = new Map([[resource.toString(), host]]);
+  manager.openChatsEmitter = { fire() {} };
+  manager.cache = { markClosed: async () => {} };
+  manager.registry = {
+    remove: () => {
+      events.push('registry-remove');
+      void controller.stop();
+    },
+  };
+  await manager.onHostDisposed(host);
+  manager.stopControllersForSessionFile('/s/a.jsonl');
   await new Promise((resolve) => setImmediate(resolve));
-  assert.deepEqual(fixture.events, ['close:/workspace/session.jsonl']);
-  assert.equal(fixture.surface.surface(), 'list');
-  fixture.setCloseGate(async () => {});
-  release();
-  await Promise.all([first, second, third]);
-  assert.deepEqual(
-    fixture.events.filter((event) => !event.startsWith('command:')),
-    [
-      'close:/workspace/session.jsonl',
-      'detach:list',
-      'attach:full-chat',
-      'open:/workspace/session.jsonl',
-      'detach:full-chat',
-      'attach:list',
-      'close:/workspace/session.jsonl',
-      'detach:list',
-      'attach:full-chat',
-    ]
-  );
-  assert.equal(fixture.surface.surface(), 'full-chat');
-  assert.equal(fixture.data.get('piRpc.sidebarSurface'), 'full-chat');
-  assert.equal(fixture.controller.draft, 'keep draft');
-  assert.deepEqual(fixture.controller.images, ['keep chip']);
-});
-
-test('duplicate Agentic surface requests do not remount or move the conversation', async () => {
-  const fixture = await sidebarFixture();
-  await fixture.surface.attachSidebar({});
-  await Promise.all([
-    fixture.surface.showSidebarSurface('full-chat'),
-    fixture.surface.showSidebarSurface('full-chat'),
-  ]);
-  assert.equal(fixture.events.filter((event) => event.startsWith('close:')).length, 1);
-  assert.equal(fixture.events.filter((event) => event === 'attach:full-chat').length, 1);
-  await Promise.all([
-    fixture.surface.showSidebarSurface('list'),
-    fixture.surface.showSidebarSurface('list'),
-  ]);
-  assert.equal(fixture.events.filter((event) => event.startsWith('open:')).length, 1);
-});
-
-test('a rejected conversation close keeps the attached surface and the next queued request recovers', async () => {
-  const fixture = await sidebarFixture();
-  await fixture.surface.attachSidebar({});
-  fixture.setCloseGate(async () => {
-    throw new Error('compaction prevents close');
-  });
-  const rejected = fixture.surface.showSidebarSurface('full-chat');
-  await assert.rejects(rejected, /compaction prevents close/);
-  assert.equal(fixture.surface.surface(), 'list');
-  assert.equal(fixture.data.has('piRpc.sidebarSurface'), false);
-  assert.deepEqual(
-    fixture.events.filter((event) => event.startsWith('attach:')),
-    ['attach:list']
-  );
-  fixture.setCloseGate(async () => {});
-  await fixture.surface.showSidebarSurface('full-chat');
-  assert.equal(fixture.surface.surface(), 'full-chat');
-  assert.equal(fixture.controller.draft, 'keep draft');
-  assert.deepEqual(fixture.controller.images, ['keep chip']);
-});
-
-test('empty Agentic drafts switch surfaces without moving or rewriting their composer', async () => {
-  const fixture = await sidebarFixture();
-  fixture.controller.snapshot.state.sessionFile = '';
-  await fixture.surface.attachSidebar({});
-  await fixture.surface.showSidebarSurface('full-chat');
-  await fixture.surface.showSidebarSurface('list');
-  assert.equal(
-    fixture.events.some((event) => /^(close|open):/.test(event)),
-    false
-  );
-  assert.equal(fixture.controller.draft, 'keep draft');
-  assert.deepEqual(fixture.controller.images, ['keep chip']);
+  assert.deepEqual(events, ['registry-remove', 'stop', 'abort', 'stop']);
 });
 
 function uiController() {

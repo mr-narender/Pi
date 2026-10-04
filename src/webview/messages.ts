@@ -11,17 +11,6 @@ export type WebviewInboundMessage =
   | { type: 'sendAcceptedSnapshotAgain' }
   | { type: 'abort' }
   | { type: 'toggleFollow' }
-  | { type: 'requestChatList' }
-  | { type: 'deleteChatSession'; path: string; title?: string }
-  | { type: 'requestReview' }
-  | {
-      type: 'reviewAction';
-      action: 'diff' | 'inline' | 'revertFile' | 'revertTurn' | 'replayTurn' | 'replaySession';
-      turn: number;
-      file?: string;
-    }
-  | { type: 'newChatSession' }
-  | { type: 'openChatSession'; path: string; workspaceFolderUri?: string }
   | { type: 'screenOpenFile'; path: string; needle?: string }
   | { type: 'screenRevert'; path: string; oldText?: string; newText?: string }
   | { type: 'setDraft'; text: string; resetSeq?: number }
@@ -92,9 +81,6 @@ export function parseWebviewMessage(value: unknown): WebviewInboundMessage | und
     case 'copyAcceptedSnapshot':
     case 'sendAcceptedSnapshotAgain':
     case 'toggleFollow':
-    case 'requestChatList':
-    case 'requestReview':
-    case 'newChatSession':
     case 'abort':
     case 'pickImages':
     case 'clearAttachments':
@@ -104,38 +90,6 @@ export function parseWebviewMessage(value: unknown): WebviewInboundMessage | und
     case 'appendPickedFile':
     case 'loadOlder':
       return { type: record.type };
-    case 'reviewAction':
-      return (record.action === 'diff' ||
-        record.action === 'inline' ||
-        record.action === 'revertFile' ||
-        record.action === 'revertTurn' ||
-        record.action === 'replayTurn' ||
-        record.action === 'replaySession') &&
-        typeof record.turn === 'number'
-        ? {
-            type: 'reviewAction',
-            action: record.action,
-            turn: record.turn,
-            file: typeof record.file === 'string' ? record.file : undefined,
-          }
-        : undefined;
-    case 'deleteChatSession':
-      return typeof record.path === 'string'
-        ? {
-            type: 'deleteChatSession',
-            path: record.path,
-            title: typeof record.title === 'string' ? record.title : undefined,
-          }
-        : undefined;
-    case 'openChatSession':
-      return typeof record.path === 'string'
-        ? {
-            type: 'openChatSession',
-            path: record.path,
-            workspaceFolderUri:
-              typeof record.workspaceFolderUri === 'string' ? record.workspaceFolderUri : undefined,
-          }
-        : undefined;
     case 'screenOpenFile':
       return typeof record.path === 'string'
         ? {

@@ -2,9 +2,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { applyPendingDeletions, type ChatListModel } from '../../src/webview/chatListShared';
 
-function modelWith(sessionPaths: string[]): ChatListModel {
+function modelWith(sessionPaths: string[], loading = false): ChatListModel {
   return {
-    loading: false,
+    loading,
     rows: sessionPaths.map((path) => ({
       id: `recent:${path}`,
       title: path,
@@ -16,51 +16,19 @@ function modelWith(sessionPaths: string[]): ChatListModel {
   };
 }
 
-test('applyPendingDeletions: hides a row whose deletion is pending and not yet reflected by the real data', () => {
-  const model = modelWith(['/s/a.jsonl', '/s/b.jsonl']);
-  const { rows, stillPending } = applyPendingDeletions(
-    model,
-    [{ id: '/s/a.jsonl', startedAt: 1000 }],
-    1100
-  );
-  assert.deepEqual(
-    rows.map((r) => r.sessionPath),
-    ['/s/b.jsonl']
-  );
-  assert.deepEqual(stillPending, [{ id: '/s/a.jsonl', startedAt: 1000 }]);
+test('pending deletion hides a session throughout a slow scan until the operation resolves', () => {
+  const pending = [{ id: '/s/a.jsonl' }];
+  for (const loading of [false, true]) {
+    const rows = applyPendingDeletions(modelWith(['/s/a.jsonl', '/s/b.jsonl'], loading), pending);
+    assert.deepEqual(
+      rows.map((row) => row.sessionPath),
+      ['/s/b.jsonl']
+    );
+  }
+  assert.deepEqual(pending, [{ id: '/s/a.jsonl' }], 'a loading snapshot cannot clear the deletion');
 });
 
-test('applyPendingDeletions: stops tracking once the real data confirms it is actually gone', () => {
-  // The row is no longer in the model at all — the rescan caught up.
-  const model = modelWith(['/s/b.jsonl']);
-  const { rows, stillPending } = applyPendingDeletions(
-    model,
-    [{ id: '/s/a.jsonl', startedAt: 1000 }],
-    1100
-  );
-  assert.deepEqual(
-    rows.map((r) => r.sessionPath),
-    ['/s/b.jsonl']
-  );
-  assert.deepEqual(stillPending, []);
-});
-
-test('applyPendingDeletions: gives up hiding after the timeout — a failed delete must not vanish forever', () => {
-  const model = modelWith(['/s/a.jsonl']);
-  const { rows, stillPending } = applyPendingDeletions(
-    model,
-    [{ id: '/s/a.jsonl', startedAt: 1000 }],
-    1000 + 5001,
-    5000
-  );
-  assert.deepEqual(
-    rows.map((r) => r.sessionPath),
-    ['/s/a.jsonl']
-  );
-  assert.deepEqual(stillPending, []);
-});
-
-test('applyPendingDeletions: also matches on an open-chat resource (no session file yet)', () => {
+test('pending deletion also hides an unsaved draft by resource and never times out', () => {
   const model: ChatListModel = {
     loading: false,
     rows: [
@@ -69,27 +37,20 @@ test('applyPendingDeletions: also matches on an open-chat resource (no session f
         title: 'A',
         active: true,
         isOpen: true,
-        openCommand: { resource: 'piRpcChat://a' },
+        openCommand: { resource: 'pi-chat:a' },
       },
       {
         id: 'open:b',
         title: 'B',
         active: false,
         isOpen: true,
-        openCommand: { resource: 'piRpcChat://b' },
+        openCommand: { resource: 'pi-chat:b' },
       },
     ],
   };
-  const { rows } = applyPendingDeletions(model, [{ id: 'piRpcChat://a', startedAt: 0 }], 10);
   assert.deepEqual(
-    rows.map((r) => r.id),
+    applyPendingDeletions(model, [{ id: 'pi-chat:a' }]).map((row) => row.id),
     ['open:b']
   );
-});
-
-test('applyPendingDeletions: no pending deletions is a no-op (same rows reference)', () => {
-  const model = modelWith(['/s/a.jsonl']);
-  const { rows, stillPending } = applyPendingDeletions(model, [], 0);
-  assert.equal(rows, model.rows);
-  assert.deepEqual(stillPending, []);
+  assert.equal(applyPendingDeletions(model, []), model.rows);
 });

@@ -69,14 +69,6 @@ export class AgenticChatListHost implements vscode.Disposable {
     };
     view.webview.html = renderChatListWebviewHtml(this.extensionUri, view.webview, __PI_BUILD__);
     this.snapshotState = { hasShownRealData: false };
-    // If the view was showing something ELSE just before (Chat mode's
-    // SidebarChatHost took it over, then the user switched back), its own
-    // message listener is still live — vscode.Event supports multiple
-    // subscribers, it does NOT replace a previous one just because
-    // onDidReceiveMessage is called again. Nothing here can dispose that
-    // other listener (it isn't ours); the mode-switch caller in
-    // extension.ts is responsible for tearing down whichever host owned
-    // this view before switching to a different one.
     this.messageSub = view.webview.onDidReceiveMessage((message) => void this.onMessage(message));
     void this.recentSessions.refresh(this.folder);
     void this.pushSnapshot();
@@ -116,9 +108,7 @@ export class AgenticChatListHost implements vscode.Disposable {
     if (this.pendingDeletions.length === 0) {
       return model;
     }
-    const { rows, stillPending } = applyPendingDeletions(model, this.pendingDeletions, Date.now());
-    this.pendingDeletions = stillPending;
-    return { ...model, rows };
+    return { ...model, rows: applyPendingDeletions(model, this.pendingDeletions) };
   }
 
   private async pushSnapshot(): Promise<void> {
@@ -266,29 +256,32 @@ export class AgenticChatListHost implements vscode.Disposable {
       case 'deleteChat': {
         const sessionPath = asString(record.sessionPath);
         const resource = asString(record.resource);
-        // Optimistic: piRpcInternal.deleteSession deletes the file
-        // immediately but only actually confirms it via a full, DELIBERATELY
-        // slow sessions-dir rescan — waiting for that before hiding the row
-        // is what reads as "takes a while to remove the deleted item". We
-        // already know it's gone; show that now, self-heals in buildModel()
-        // once the real rescan catches up (or un-hides it if the delete
-        // actually failed — see applyPendingDeletions).
-        if (sessionPath) {
-          this.pendingDeletions.push({ id: sessionPath, startedAt: Date.now() });
-        } else if (resource) {
-          this.pendingDeletions.push({ id: resource, startedAt: Date.now() });
-        }
+        const id = sessionPath ?? resource;
+        if (!id || this.pendingDeletions.some((entry) => entry.id === id)) return;
+        this.pendingDeletions.push({ id });
         void this.pushSnapshot();
-        if (sessionPath) {
-          await vscode.commands.executeCommand('piRpcInternal.deleteSession', { sessionPath });
+        try {
+          if (sessionPath) {
+            await vscode.commands.executeCommand('piRpcInternal.deleteSession', { sessionPath });
+          } else if (resource) {
+            // A fresh draft has no file to delete; closing its tab removes it.
+            await this.chatTabs.closeResource(vscode.Uri.parse(resource));
+          }
+        } catch (error) {
+          this.pendingDeletions = this.pendingDeletions.filter((entry) => entry.id !== id);
+          await this.view?.webview.postMessage({ type: 'deleteFailed', id });
+          void vscode.window.showErrorMessage(
+            `Could not delete chat: ${error instanceof Error ? error.message : String(error)}`
+          );
+          this.snapshotState.lastIdentity = undefined;
+          void this.pushSnapshot();
           return;
         }
-        // No session file yet (a fresh draft) — nothing on disk to delete
-        // via piRpcInternal.deleteSession, which requires one. Closing the
-        // tab is the only meaningful action for this case.
-        if (resource) {
-          await this.chatTabs.closeResource(vscode.Uri.parse(resource));
-        }
+        this.pendingDeletions = this.pendingDeletions.filter((entry) => entry.id !== id);
+        // For a session file, deleteSession has synchronously removed the
+        // cached record. An in-flight scan cannot reintroduce it.
+        void this.pushSnapshot();
+        await this.view?.webview.postMessage({ type: 'deleteSucceeded', id });
         return;
       }
       default:
@@ -296,12 +289,7 @@ export class AgenticChatListHost implements vscode.Disposable {
     }
   }
 
-  /** Showing a sidebar conversation: this instance is kept alive (constructed once,
-   * lazily, in extension.ts) so returning to the chat list later still
-   * has a working auto-refresh — only the view-specific wiring goes away,
-   * NOT the onDidChangeOpenChats/onDidChange subscriptions dispose() would
-   * also tear down. Clearing `view` also stops a late, already-queued
-   * scheduleRefresh() timer from posting into a view the conversation now owns. */
+  /** Release view wiring while retaining the list data subscriptions. */
   public detach(): void {
     if (this.refreshTimer) {
       clearTimeout(this.refreshTimer);

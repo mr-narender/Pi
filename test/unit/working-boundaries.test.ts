@@ -68,7 +68,6 @@ const project = () => ({
   ...createWebviewSnapshot(state, 1, { composer, isTrusted: true, folders: [] }),
   bindingState: 'current' as const,
   typewriterSpeed: 'off',
-  surface: 'tab' as const,
 });
 function send(extra: Record<string, unknown> = {}) {
   dom.window.dispatchEvent(
