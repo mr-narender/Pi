@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { build } from 'esbuild';
 import { mergeApprovalGateSetting } from '../../src/review/approvalGateSettings';
 
 test('enabling on an empty/missing settings file creates a minimal file', () => {
@@ -53,8 +54,65 @@ test('disabling when it was never enabled is a no-op that keeps other settings',
   assert.deepEqual(parsed, { sessionDir: '/tmp/sessions' });
 });
 
-test('malformed existing JSON is treated as empty rather than throwing', () => {
-  const result = mergeApprovalGateSetting('{ not valid json', true);
-  const parsed = JSON.parse(result!);
-  assert.deepEqual(parsed.extensions, ['./extensions/pi-approval-gate.ts']);
+test('existing empty/scalar/array configuration is preserved by rejecting its shape', () => {
+  for (const source of ['', 'null', '[]', '42'])
+    for (const enabled of [true, false])
+      assert.throws(() => mergeApprovalGateSetting(source, enabled), /valid JSON object/);
 });
+
+for (const enabled of [true, false]) {
+  test(`malformed settings are rejected before approval ${enabled ? 'activation' : 'deactivation'}`, async () => {
+    const settings = '/project/.pi/settings.json';
+    const gate = '/project/.pi/extensions/pi-approval-gate.ts';
+    const malformed = Buffer.from('{ "defaultProvider": "openai-codex", broken\n');
+    const originalGate = Buffer.from('existing approval policy');
+    const files = new Map<string, Buffer>([
+      [settings, malformed],
+      [gate, originalGate],
+      ['/extension/resources/pi-approval-gate.ts', Buffer.from('new approval policy')],
+    ]);
+    const mutations: string[] = [];
+    const errors: string[] = [];
+    const vscode = {
+      Uri: { joinPath: (root: string, ...parts: string[]) => [root, ...parts].join('/') },
+      workspace: {
+        isTrusted: true,
+        workspaceFolders: [{ uri: '/project' }],
+        fs: {
+          readFile: async (path: string) => files.get(path),
+          createDirectory: async (path: string) => mutations.push(path),
+          writeFile: async (path: string, value: Buffer) => {
+            mutations.push(path);
+            files.set(path, value);
+          },
+          delete: async (path: string) => {
+            mutations.push(path);
+            files.delete(path);
+          },
+        },
+      },
+      window: { showErrorMessage: async (message: string) => errors.push(message) },
+    };
+    const bundle = await build({
+      entryPoints: ['src/review/approvalGate.ts'],
+      bundle: true,
+      write: false,
+      platform: 'node',
+      format: 'cjs',
+      external: ['vscode'],
+    });
+    const module = { exports: {} as any };
+    new Function('require', 'module', 'exports', bundle.outputFiles[0]!.text)(
+      () => vscode,
+      module,
+      module.exports
+    );
+    await module.exports.syncApprovalGateForWorkspace('/extension', enabled);
+    assert.deepEqual(files.get(settings), malformed);
+    assert.deepEqual(files.get(gate), originalGate);
+    assert.deepEqual(mutations, []);
+    assert.equal(errors.length, 1);
+    assert.match(errors[0]!, /settings\.json/);
+    assert.match(errors[0]!, /fix|repair/i);
+  });
+}

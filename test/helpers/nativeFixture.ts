@@ -27,7 +27,7 @@ export async function resolveNativeCli() {
       const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
       if (
         pkg.name !== '@earendil-works/pi-coding-agent' ||
-        !['0.99.1', '0.99.2', '1.0.0'].includes(pkg.version) ||
+        !['0.99.1', '0.99.2', '1.0.0', '1.0.1'].includes(pkg.version) ||
         pkg.bin?.pi !== 'dist/bundle/cli.js'
       )
         continue;
@@ -38,7 +38,7 @@ export async function resolveNativeCli() {
     }
   }
   throw new Error(
-    'Requires installed @earendil-works/pi-coding-agent 0.99.1, 0.99.2 or 1.0.0 JS CLI'
+    'Requires installed @earendil-works/pi-coding-agent 0.99.1, 0.99.2, 1.0.0 or 1.0.1 JS CLI'
   );
 }
 

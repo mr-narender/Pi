@@ -3,7 +3,7 @@ import * as path from 'node:path';
 export function validateSdkMetadata(metadata) {
   if (
     metadata.name !== '@earendil-works/pi-coding-agent' ||
-    !['0.99.1', '0.99.2', '1.0.0'].includes(metadata.version)
+    !['0.99.1', '0.99.2', '1.0.0', '1.0.1'].includes(metadata.version)
   )
     throw new Error('SDK_HOST_VERSION_UNSUPPORTED');
 }

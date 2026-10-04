@@ -14,9 +14,43 @@ import { RpcTransport } from '../../src/rpc/transport';
 import { resolvePiLaunch } from '../../src/process/piLauncher';
 import { CORE_SLASH_NAMES } from '../../src/commands/coreSlash';
 
-test('current selected 1.0.0 JS engine is admitted by exact host and launch contracts', async () => {
+test('1.0.1 client admits disposal/engine/export; unreviewed 1.0.2 stays denied', async () => {
+  for (const version of ['1.0.1', '1.0.2']) {
+    const client = new RpcClient(1, {} as RpcTransport, {
+      shortTimeoutMs: 5000,
+      longTimeoutMs: 5000,
+    });
+    const calls: string[] = [];
+    (client as any).command = async (type: string) => {
+      if (type === 'get_capabilities')
+        return {
+          protocol: 1,
+          sdkVersion: version,
+          closeChat: true,
+          engineCommands: { contract: 1, get_project_trust: true },
+          exports: { jsonl: true },
+        };
+      calls.push(type);
+      return { accepted: true };
+    };
+    for (const operation of [
+      () => client.engineCommand('get_project_trust', {}),
+      () => client.exportJsonl('/owned-fixture/export.jsonl'),
+      () => client.closeChat(),
+    ]) {
+      if (version === '1.0.1') assert.deepEqual(await operation(), { accepted: true });
+      else await assert.rejects(operation);
+    }
+    assert.deepEqual(
+      calls,
+      version === '1.0.1' ? ['get_project_trust', 'export_jsonl', 'close_chat'] : []
+    );
+  }
+});
+
+test('current selected 1.0.1 JS engine is admitted by exact host and launch contracts', async () => {
   const selected = await resolveNativeCli();
-  assert.equal(selected.version, '1.0.0');
+  assert.equal(selected.version, '1.0.1');
   const { validateSdkMetadata } = await import(
     pathToFileURL(resolve('host/startup-adapter.mjs')).href
   );
@@ -32,7 +66,7 @@ test('current selected 1.0.0 JS engine is admitted by exact host and launch cont
     '0.99.0',
     '0.99.3',
     '0.100.0',
-    '1.0.1',
+    '1.0.2',
     '2.0.0',
     '1.0.0-next',
     '0.99.2-next',
@@ -42,7 +76,7 @@ test('current selected 1.0.0 JS engine is admitted by exact host and launch cont
 
 for (const mode of ['shared', 'dedicated'] as const) {
   test(
-    `current 1.0.0 ${mode}: actual client admits native preferences/scopes/thinking`,
+    `current 1.0.1 ${mode}: actual client admits native preferences/scopes/thinking`,
     { timeout: 15000 },
     async () => {
       const fixture = await createNativeFixture('scopes');

@@ -119,7 +119,7 @@ export class RpcClient {
     const caps = await this.command('get_capabilities', {}, 'short');
     if (
       caps?.protocol !== 1 ||
-      !['0.99.1', '0.99.2', '1.0.0'].includes(caps.sdkVersion as string) ||
+      !['0.99.1', '0.99.2', '1.0.0', '1.0.1'].includes(caps.sdkVersion as string) ||
       caps.closeChat !== true
     )
       throw new Error(
@@ -150,7 +150,7 @@ export class RpcClient {
     const engine = caps?.engineCommands as JsonObject | undefined;
     if (
       caps?.protocol !== 1 ||
-      !['0.99.1', '0.99.2', '1.0.0'].includes(caps.sdkVersion as string) ||
+      !['0.99.1', '0.99.2', '1.0.0', '1.0.1'].includes(caps.sdkVersion as string) ||
       engine?.contract !== 1 ||
       engine[type] !== true
     )
@@ -194,7 +194,7 @@ export class RpcClient {
     const preference = caps?.preferences as JsonObject | undefined;
     if (
       caps?.protocol !== 1 ||
-      !['0.99.1', '0.99.2', '1.0.0'].includes(caps.sdkVersion as string) ||
+      !['0.99.1', '0.99.2', '1.0.0', '1.0.1'].includes(caps.sdkVersion as string) ||
       preference?.contract !== 1 ||
       preference.read !== true ||
       preference.saveGlobal !== true
@@ -230,7 +230,7 @@ export class RpcClient {
     const scope = caps?.scopedModels as JsonObject | undefined;
     if (
       caps?.protocol !== 1 ||
-      !['0.99.1', '0.99.2', '1.0.0'].includes(caps?.sdkVersion as string) ||
+      !['0.99.1', '0.99.2', '1.0.0', '1.0.1'].includes(caps?.sdkVersion as string) ||
       !scope?.read ||
       !scope?.set ||
       !scope?.saveGlobal
@@ -266,7 +266,7 @@ export class RpcClient {
     const thinking = caps?.thinking as JsonObject | undefined;
     if (
       caps?.protocol !== 1 ||
-      !['0.99.1', '0.99.2', '1.0.0'].includes(caps?.sdkVersion as string) ||
+      !['0.99.1', '0.99.2', '1.0.0', '1.0.1'].includes(caps?.sdkVersion as string) ||
       thinking?.contract !== 1 ||
       thinking.read !== true ||
       thinking.strictSet !== true
@@ -357,7 +357,7 @@ export class RpcClient {
     }
     if (
       caps?.protocol !== 1 ||
-      !['0.99.1', '0.99.2', '1.0.0'].includes(caps.sdkVersion as string) ||
+      !['0.99.1', '0.99.2', '1.0.0', '1.0.1'].includes(caps.sdkVersion as string) ||
       (caps.exports as JsonObject | undefined)?.jsonl !== true
     )
       throw new Error('Native JSONL export capability is unavailable.');

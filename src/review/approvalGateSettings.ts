@@ -12,14 +12,14 @@ export function mergeApprovalGateSetting(
   enabled: boolean
 ): string | undefined {
   let settings: Record<string, unknown> = {};
-  if (existingJson) {
+  if (existingJson !== undefined) {
     try {
       const parsed: unknown = JSON.parse(existingJson);
       if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
         settings = parsed as Record<string, unknown>;
-      }
+      } else throw new Error('Expected a JSON object.');
     } catch {
-      settings = {};
+      throw new Error('Invalid project settings: expected a valid JSON object.');
     }
   }
   const current = Array.isArray(settings.extensions) ? (settings.extensions as unknown[]) : [];

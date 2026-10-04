@@ -52,7 +52,7 @@ function verifiedSdkRoot(cli: string): string | undefined {
       };
       if (
         pkg.name === '@earendil-works/pi-coding-agent' &&
-        ['0.99.1', '0.99.2', '1.0.0'].includes(pkg.version ?? '') &&
+        ['0.99.1', '0.99.2', '1.0.0', '1.0.1'].includes(pkg.version ?? '') &&
         pkg.bin?.pi &&
         realCli === realpathSync(join(dir, pkg.bin.pi))
       )

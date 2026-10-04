@@ -17,6 +17,15 @@ export async function syncApprovalGate(
   const gateFile = vscode.Uri.joinPath(piDir, GATE_DIR, GATE_FILENAME);
   const settingsFile = vscode.Uri.joinPath(piDir, 'settings.json');
 
+  // Validate configuration before changing either the settings or gate file.
+  let existing: string | undefined;
+  try {
+    existing = Buffer.from(await vscode.workspace.fs.readFile(settingsFile)).toString('utf8');
+  } catch (error) {
+    if ((error as { code?: string }).code !== 'FileNotFound') throw error;
+  }
+  const next = mergeApprovalGateSetting(existing, enabled);
+
   if (enabled) {
     await vscode.workspace.fs.createDirectory(vscode.Uri.joinPath(piDir, GATE_DIR));
     await vscode.workspace.fs.writeFile(gateFile, Buffer.from(gateSource, 'utf8'));
@@ -37,13 +46,6 @@ export async function syncApprovalGate(
     }
   }
 
-  let existing: string | undefined;
-  try {
-    existing = Buffer.from(await vscode.workspace.fs.readFile(settingsFile)).toString('utf8');
-  } catch {
-    existing = undefined;
-  }
-  const next = mergeApprovalGateSetting(existing, enabled);
   if (next === undefined) {
     try {
       await vscode.workspace.fs.delete(settingsFile);
@@ -72,5 +74,18 @@ export async function syncApprovalGateForWorkspace(
     const resource = vscode.Uri.joinPath(extensionUri, 'resources', GATE_FILENAME);
     gateSource = Buffer.from(await vscode.workspace.fs.readFile(resource)).toString('utf8');
   }
-  await Promise.all(folders.map((folder) => syncApprovalGate(folder, enabled, gateSource)));
+  await Promise.all(
+    folders.map(async (folder) => {
+      try {
+        await syncApprovalGate(folder, enabled, gateSource);
+      } catch (error) {
+        const settings = vscode.Uri.joinPath(folder.uri, '.pi', 'settings.json');
+        void vscode.window.showErrorMessage(
+          `Pi: approval configuration was not updated. Check and repair ${settings.toString()}: ${
+            error instanceof Error ? error.message : String(error)
+          }`
+        );
+      }
+    })
+  );
 }
