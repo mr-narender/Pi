@@ -84,15 +84,96 @@ test.after(() => {
   globalThis.clearInterval = originalClear;
   dom.window.close();
 });
-test('working frames stop live under reduced motion, retarget, and clean up on idle/disposal', async () => {
+test('live frame-family switches paint the new choice without accumulating timers on either surface', async () => {
   await import('../../src/webview/media/chat.js');
-  for (const workingAnimation of ['braille', 'earth', 'moon'] as const) {
+  try {
     for (const surface of ['tab', 'sidebar'] as const) {
-      render({ workingAnimation, surface });
+      render({ workingAnimation: 'braille', surface });
+      await new Promise((resolve) => setTimeout(resolve, 180));
+      assert.equal(timers.size, 1);
+      for (const [workingAnimation, glyphPattern] of [
+        ['earth', /^[🌍🌎🌏]$/u],
+        ['moon', /^[🌑🌒🌓🌔🌕🌖🌗🌘]$/u],
+        ['braille', /^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]$/],
+      ] as const) {
+        render({ workingAnimation, surface });
+        await new Promise((resolve) => setTimeout(resolve, 180));
+        assert.equal(timers.size, 1, 'live choice changes must never accumulate intervals');
+        for (const tick of timers.values()) tick();
+        assert.match(
+          dom.window.document.querySelector('.working-glyph')?.textContent ?? '',
+          glyphPattern,
+          `${workingAnimation}/${surface}: a live tick paints the current frame family`
+        );
+      }
+      render({ connectionState: 'ready', surface });
+      assert.equal(timers.size, 0);
+    }
+  } finally {
+    render({ connectionState: 'ready' });
+  }
+});
+test('live switches to CSS dots/bars/dolphin stop frame timers and switching back starts exactly one', async () => {
+  await import('../../src/webview/media/chat.js');
+  for (const surface of ['tab', 'sidebar'] as const) {
+    for (const [workingAnimation, glyph] of [
+      ['dots', ''],
+      ['bars', ''],
+      ['dolphin', '🐬'],
+    ] as const) {
+      render({ workingAnimation: 'earth', surface });
       await new Promise((resolve) => setTimeout(resolve, 180));
       assert.equal(timers.size, 1);
       render({ workingAnimation, surface });
+      await new Promise((resolve) => setTimeout(resolve, 180));
+      assert.equal(timers.size, 0, `${workingAnimation}/${surface}: CSS owns the animation`);
+      assert.equal(dom.window.document.querySelector('.working-glyph')?.textContent, glyph);
+      render({ workingAnimation: 'earth', surface });
+      await new Promise((resolve) => setTimeout(resolve, 180));
       assert.equal(timers.size, 1);
+      for (const tick of timers.values()) tick();
+      assert.match(
+        dom.window.document.querySelector('.working-glyph')?.textContent ?? '',
+        /^[🌍🌎🌏]$/u
+      );
+      render({ connectionState: 'ready', surface });
+      assert.equal(timers.size, 0);
+    }
+  }
+});
+test('all six working choices honor timer ownership, reduced motion and idle/disposal on both surfaces', async () => {
+  await import('../../src/webview/media/chat.js');
+  for (const [workingAnimation, intervalCount, glyphPattern] of [
+    ['braille', 1, /^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]$/],
+    ['earth', 1, /^[🌍🌎🌏]$/u],
+    ['moon', 1, /^[🌑🌒🌓🌔🌕🌖🌗🌘]$/u],
+    ['dots', 0, /^$/],
+    ['bars', 0, /^$/],
+    ['dolphin', 0, /^🐬$/u],
+  ] as const) {
+    for (const surface of ['tab', 'sidebar'] as const) {
+      render({ workingAnimation, surface });
+      await new Promise((resolve) => setTimeout(resolve, 180));
+      assert.equal(
+        timers.size,
+        intervalCount,
+        `${workingAnimation}/${surface}: owns only its expected timer`
+      );
+      assert.equal(
+        dom.window.document.querySelector('.working')?.getAttribute('data-anim'),
+        workingAnimation
+      );
+      assert.match(
+        dom.window.document.querySelector('.working-glyph')?.textContent ?? '',
+        glyphPattern
+      );
+      for (const tick of timers.values()) tick();
+      assert.match(
+        dom.window.document.querySelector('.working-glyph')?.textContent ?? '',
+        glyphPattern
+      );
+      render({ workingAnimation, surface });
+      assert.equal(timers.size, intervalCount);
       preference(true);
       assert.equal(timers.size, 0);
       const glyph = dom.window.document.querySelector('.working-glyph')?.textContent;
@@ -100,7 +181,7 @@ test('working frames stop live under reduced motion, retarget, and clean up on i
       assert.equal(timers.size, 0);
       assert.equal(dom.window.document.querySelector('.working-glyph')?.textContent, glyph);
       preference(false);
-      assert.equal(timers.size, 1);
+      assert.equal(timers.size, intervalCount);
       render({ connectionState: 'faulted', isStreaming: true });
       assert.equal(timers.size, 0);
       assert.equal(dom.window.document.querySelector('.working-logo'), null);

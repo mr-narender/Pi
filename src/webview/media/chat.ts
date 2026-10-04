@@ -2343,7 +2343,7 @@ function startWorkingAnimation(): void {
         return;
       }
       workingFrame = (workingFrame + 1) % 1_000_000;
-      paint();
+      startWorkingAnimation();
     }, 110);
   }
 }

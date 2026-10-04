@@ -865,7 +865,9 @@ export class ChatTabManager implements vscode.Disposable {
           | { uri?: vscode.Uri; viewType?: string }
           | undefined;
         if (input?.viewType === CHAT_EDITOR_VIEW_TYPE && input.uri?.toString() === key) {
-          await vscode.window.tabGroups.close(tab);
+          if ((await vscode.window.tabGroups.close(tab)) === false) {
+            throw new Error('Pi chat could not be closed.');
+          }
         }
       }
     }
@@ -887,7 +889,9 @@ export class ChatTabManager implements vscode.Disposable {
           target.sessionFile &&
           normalizeSessionFilePath(target.sessionFile) === normalizeSessionFilePath(sessionFile)
         ) {
-          await vscode.window.tabGroups.close(tab);
+          if ((await vscode.window.tabGroups.close(tab)) === false) {
+            throw new Error('Pi chat could not be closed.');
+          }
         }
       }
     }
@@ -2217,13 +2221,15 @@ export class ChatTabManager implements vscode.Disposable {
       if (!active || !sessionFile) {
         return;
       }
+      this.assertSessionFileNotCompacting(sessionFile);
+      await this.closeResource(active.resource);
+      await this.closeForSessionFile(sessionFile);
       this.sidebarTarget = {
         workspaceFolderUri: active.controller.folder.uri.toString(),
         kind: 'sessionFile',
         sessionFile,
       };
       this.persistSidebarTarget();
-      await this.closeForSessionFile(sessionFile);
       return;
     }
     const target = this.sidebarTarget;

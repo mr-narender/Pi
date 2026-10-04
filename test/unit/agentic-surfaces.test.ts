@@ -90,9 +90,11 @@ async function sidebarFixture(saved?: unknown) {
   };
   const classes = await nativeClasses(vscode);
   const manager = Object.create(classes.ChatTabManager.prototype);
+  manager.trackedControllers = new Set([controller]);
   let closeGate = async () => {};
   let active = true;
-  manager.getActiveContext = () => (active ? { controller } : undefined);
+  manager.getActiveContext = () =>
+    active ? { controller, target: { kind: 'sessionFile' } } : undefined;
   manager.registry = { getOrCreate: () => controller };
   manager.context = {
     workspaceState: {
@@ -110,6 +112,7 @@ async function sidebarFixture(saved?: unknown) {
     await closeGate();
     active = false;
   };
+  manager.closeResource = async () => {};
   manager.openForSessionFile = async (owner: unknown, file: string) => {
     assert.equal(owner, controller);
     events.push(`open:${file}`);
@@ -142,6 +145,68 @@ async function sidebarFixture(saved?: unknown) {
     },
   };
 }
+
+test('moving a sent draft to full chat closes its original draft resource', async () => {
+  const resource = {
+    scheme: 'pi-chat',
+    path: '/new-chat-owned.chat',
+    toString: () => 'pi-chat:/new-chat-owned.chat',
+  };
+  const tab = { input: { uri: resource, viewType: 'piRpc.chatEditor' } };
+  const closed: unknown[] = [];
+  const classes = await nativeClasses({
+    window: {
+      tabGroups: {
+        all: [{ tabs: [tab] }],
+        close: async (item: unknown) => {
+          closed.push(item);
+        },
+      },
+    },
+  });
+  const manager = Object.create(classes.ChatTabManager.prototype);
+  const context = {
+    resource,
+    target: { kind: 'sessionFile', sessionFile: '/workspace/saved.jsonl' },
+    controller: {
+      folder: { uri: { toString: () => 'file:///workspace' } },
+      snapshot: { state: { sessionFile: '/workspace/saved.jsonl' } },
+    },
+  };
+  manager.getActiveContext = () => context;
+  manager.contextForResource = () => context;
+  manager.persistSidebarTarget = () => {};
+  manager.assertSessionFileNotCompacting = () => {};
+  await manager.moveSidebarConversation('full-chat');
+  assert.deepEqual(closed, [tab], 'the sent draft has exactly one visible owner after moving');
+  let persisted = false;
+  manager.sidebarTarget = undefined;
+  manager.persistSidebarTarget = () => {
+    persisted = true;
+  };
+  const vetoClasses = await nativeClasses({
+    window: { tabGroups: { all: [{ tabs: [tab] }], close: async () => false } },
+  });
+  manager.closeResource = vetoClasses.ChatTabManager.prototype.closeResource;
+  await assert.rejects(manager.moveSidebarConversation('full-chat'), /could not be closed/);
+  assert.equal(manager.sidebarTarget, undefined, 'a veto retains the prior sidebar target');
+  assert.equal(persisted, false, 'a veto does not commit a new sidebar identity');
+  closed.length = 0;
+  manager.closeResource = classes.ChatTabManager.prototype.closeResource;
+  manager.assertSessionFileNotCompacting =
+    classes.ChatTabManager.prototype.assertSessionFileNotCompacting;
+  manager.trackedControllers = new Set([
+    {
+      snapshot: { state: { sessionFile: '/workspace/saved.jsonl' } },
+      assertNoManualCompaction: () => {
+        throw new Error('other owner compacting');
+      },
+    },
+  ]);
+  await assert.rejects(manager.moveSidebarConversation('full-chat'), /other owner compacting/);
+  assert.deepEqual(closed, [], 'all session owners are checked before the original tab closes');
+  assert.equal(persisted, false);
+});
 
 test('Agentic defaults to list, validates saved surfaces and restores full-chat after reload', async () => {
   for (const saved of [undefined, 'chat', 'advanced', false]) {

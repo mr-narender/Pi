@@ -6,6 +6,9 @@
   sessions sidebar, inspection/compatibility commands and obsolete UI settings
   and URI aliases. Preserve the shared composer, native chat tabs and Full Chat;
   Full Chat and Back to chats now navigate Agentic surfaces directly.
+- Fix installed Agentic chat-list readiness, live animation choice changes,
+  saved-draft movement and narrow-sidebar composer controls. Respect native tab
+  close refusal and compaction guards before committing a surface transition.
 
 ## 0.2.20 — prerelease
 
@@ -17,7 +20,7 @@
 - Locally accepted Marketplace prerelease candidate: 565 unit and 345 integration
   passes. One optional legacy archived-workflow discovery test remains skipped
   because its peer range excludes SDK 1.0. No full native parity claim.
-- Not yet published. Pi is an external, user-managed runtime dependency; its SDK
+- Pi is an external, user-managed runtime dependency; its SDK
   advisory is not bundled VSIX code. Preserve original 0.2.16–0.2.19 artifacts.
 
 ## 0.2.19 — LOCAL ONLY Working Animation menu test preview

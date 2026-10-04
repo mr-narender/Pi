@@ -214,6 +214,7 @@ export class AgenticChatListHost implements vscode.Disposable {
     const record = asRecord(message);
     switch (record?.type) {
       case 'requestListSnapshot':
+        this.snapshotState.lastIdentity = undefined;
         return this.pushSnapshot();
       case 'showChatChanges':
         if (typeof record.rowId === 'string') await this.showChatChanges(record.rowId);
