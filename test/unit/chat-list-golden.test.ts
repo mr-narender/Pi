@@ -9,6 +9,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { JSDOM } from 'jsdom';
 import {
   SIZE_WARN_BYTES,
   renderChatListBody,
@@ -239,6 +240,25 @@ test('chat-list shell: filter text is escaped into the search input value', () =
   const html = renderChatListShell('<div></div>', `"><script>alert(1)</script>`);
   assert.ok(!html.includes('<script>'), 'raw script must not appear');
   assert.ok(html.includes('value="&quot;&gt;&lt;script&gt;'), 'escaped value expected');
+});
+
+test('hostile chat title and filter remain text when parsed by the browser', () => {
+  const title = `<img src=x onerror="alert(1)"> 'chat'`;
+  const filter = `"><script>alert(2)</script><svg onload="alert(3)">`;
+  const html = renderChatListShell(
+    renderChatListBody({ rows: [row({ title, detail: '<b>project</b>' })], loading: false }),
+    filter
+  );
+  const dom = new JSDOM(html);
+  try {
+    const document = dom.window.document;
+    assert.equal(document.querySelectorAll('img, script, [onerror], [onload]').length, 0);
+    assert.equal(document.querySelector('.chat-list-row-title')?.textContent, title);
+    assert.equal(document.querySelector('.chat-list-row-detail')?.textContent, '<b>project</b>');
+    assert.equal(document.querySelector<HTMLInputElement>('#chat-list-search')?.value, filter);
+  } finally {
+    dom.window.close();
+  }
 });
 
 test('golden: chat-list row — oversized session paints the size warning', () => {

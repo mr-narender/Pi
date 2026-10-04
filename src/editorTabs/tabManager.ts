@@ -797,7 +797,7 @@ export class ChatTabManager implements vscode.Disposable {
   public async closeForSessionFile(sessionFile: string): Promise<void> {
     this.assertSessionFileNotCompacting(sessionFile);
     for (const group of vscode.window.tabGroups.all) {
-      for (const tab of group.tabs) {
+      for (const tab of [...group.tabs]) {
         const input = (tab.input ?? undefined) as
           | { uri?: vscode.Uri; viewType?: string }
           | undefined;

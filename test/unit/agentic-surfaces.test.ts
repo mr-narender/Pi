@@ -58,6 +58,38 @@ test('deleting a saved chat closes its original draft tab and honors a close vet
   assert.deepEqual(closed, [tab, tab]);
 });
 
+test('deleting a session closes adjacent matching tabs when VS Code mutates the tab list', async () => {
+  const tabs = ['/first.chat', '/second.chat'].map((path) => ({
+    input: {
+      uri: { scheme: 'pi-chat', path, toString: () => `pi-chat:${path}` },
+      viewType: 'piRpc.chatEditor',
+    },
+  }));
+  const expected = [...tabs];
+  const group = { tabs };
+  const closed: unknown[] = [];
+  const classes = await nativeClasses({
+    window: {
+      tabGroups: {
+        all: [group],
+        close: async (tab: (typeof tabs)[number]) => {
+          closed.push(tab);
+          group.tabs.splice(group.tabs.indexOf(tab), 1);
+          return true;
+        },
+      },
+    },
+  });
+  const manager = Object.create(classes.ChatTabManager.prototype);
+  manager.assertSessionFileNotCompacting = () => {};
+  manager.contextForResource = () => ({
+    controller: { snapshot: { state: { sessionFile: '/s/a.jsonl' } } },
+  });
+  await manager.closeForSessionFile('/s/a.jsonl');
+  assert.deepEqual(closed, expected, 'every matching tab must be closed');
+  assert.deepEqual(group.tabs, []);
+});
+
 test('tab disposal retains the tracked controller for the delete stop safeguard', async () => {
   const classes = await nativeClasses({});
   const manager = Object.create(classes.ChatTabManager.prototype);
