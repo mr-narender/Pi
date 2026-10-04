@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.22
+
+- Keep the Agentic sidebar on the chat list. Chats open in native editor tabs;
+  remove the sidebar conversation, its switch commands and saved surface state.
+- Remove a deleted chat from the list immediately. Restore it and report an error
+  if closing its tab or deleting its file fails; prevent older session scans
+  from bringing a successfully deleted chat back.
+
 ## 0.2.21
 
 - Make Agentic the only Pi interface. Remove the legacy shared panel, unused

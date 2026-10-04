@@ -1,5 +1,8 @@
 # Agentic-only hard cut
 
+Historical 0.2.21 implementation record. The 0.2.22 release removes the sidebar
+conversation surface that this task retained; current behavior is in README.md.
+
 Task: LOCAL-pi-agentic-only-hard-cut-20261003.
 
 ## Discovery

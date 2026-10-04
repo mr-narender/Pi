@@ -9,6 +9,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { JSDOM } from 'jsdom';
 import {
   SIZE_WARN_BYTES,
   renderChatListBody,
@@ -16,7 +17,6 @@ import {
   renderChatListShell,
 } from '../../src/webview/chatListRowHtml';
 import type { ChatListRow } from '../../src/webview/chatListShared';
-import { renderChatActionsMenu } from '../../src/webview/chatActionsMenu';
 
 const goldenDir = join(process.cwd(), 'test', 'unit', '__golden__');
 
@@ -142,7 +142,7 @@ test('Agentic New Chat and More sit beside π: Chat in the native view header', 
   const manifest = JSON.parse(
     readFileSync(join(process.cwd(), 'package.json'), 'utf8')
   ).contributes;
-  const when = 'view == piRpc.chat && piRpc.sidebarSurface == list';
+  const when = 'view == piRpc.chat';
   assert.deepEqual(
     manifest.menus['view/title'].filter((item: { when: string }) => item.when === when),
     [
@@ -163,7 +163,6 @@ test('Agentic New Chat and More sit beside π: Chat in the native view header', 
       '1_chat',
       '1_chat',
       '1_chat',
-      '1_chat',
       '2_configure',
       '2_configure',
       '2_configure',
@@ -178,7 +177,6 @@ test('Agentic New Chat and More sit beside π: Chat in the native view header', 
     manifest.menus['piRpc.agenticActions'].map((item: { command: string }) => item.command),
     [
       'piRpcInternal.agenticChatHeading',
-      'piRpcInternal.showChatInSidebar',
       'piRpc.reviewLastTurn',
       'piRpc.showChatVersions',
       'piRpc.exportHtml',
@@ -195,12 +193,11 @@ test('Agentic New Chat and More sit beside π: Chat in the native view header', 
   const more = manifest.submenus.find((item: { id: string }) => item.id === 'piRpc.agenticActions');
   assert.equal(more.label, 'More actions');
   assert.equal(more.icon, '$(ellipsis)');
-  const switchMode = manifest.commands.find(
-    (item: { command: string }) => item.command === 'piRpcInternal.showChatInSidebar'
+  assert.ok(
+    !manifest.commands.some(
+      (item: { command: string }) => item.command === 'piRpcInternal.showChatInSidebar'
+    )
   );
-  assert.equal(switchMode.title, 'Show chat in sidebar');
-  assert.equal(switchMode.icon, '$(arrow-swap)');
-  assert.ok(renderChatActionsMenu().includes('class="menu-group">Chat'), 'full Chat menu stays');
   assert.ok(!manifest.configuration.properties['piRpc.agenticTheme']);
 });
 
@@ -243,6 +240,25 @@ test('chat-list shell: filter text is escaped into the search input value', () =
   const html = renderChatListShell('<div></div>', `"><script>alert(1)</script>`);
   assert.ok(!html.includes('<script>'), 'raw script must not appear');
   assert.ok(html.includes('value="&quot;&gt;&lt;script&gt;'), 'escaped value expected');
+});
+
+test('hostile chat title and filter remain text when parsed by the browser', () => {
+  const title = `<img src=x onerror="alert(1)"> 'chat'`;
+  const filter = `"><script>alert(2)</script><svg onload="alert(3)">`;
+  const html = renderChatListShell(
+    renderChatListBody({ rows: [row({ title, detail: '<b>project</b>' })], loading: false }),
+    filter
+  );
+  const dom = new JSDOM(html);
+  try {
+    const document = dom.window.document;
+    assert.equal(document.querySelectorAll('img, script, [onerror], [onload]').length, 0);
+    assert.equal(document.querySelector('.chat-list-row-title')?.textContent, title);
+    assert.equal(document.querySelector('.chat-list-row-detail')?.textContent, '<b>project</b>');
+    assert.equal(document.querySelector<HTMLInputElement>('#chat-list-search')?.value, filter);
+  } finally {
+    dom.window.close();
+  }
 });
 
 test('golden: chat-list row — oversized session paints the size warning', () => {

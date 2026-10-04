@@ -67,7 +67,6 @@ function render(overrides: Partial<WebviewSnapshot> = {}) {
     isTrusted: true,
     folders: [],
     typewriterSpeed: 'off',
-    surface: 'sidebar',
     ...overrides,
   };
   dom.window.dispatchEvent(
@@ -84,11 +83,11 @@ test.after(() => {
   globalThis.clearInterval = originalClear;
   dom.window.close();
 });
-test('live frame-family switches paint the new choice without accumulating timers on either surface', async () => {
+test('live frame-family switches paint the new choice without accumulating timers on editor tabs', async () => {
   await import('../../src/webview/media/chat.js');
   try {
-    for (const surface of ['tab', 'sidebar'] as const) {
-      render({ workingAnimation: 'braille', surface });
+    {
+      render({ workingAnimation: 'braille' });
       await new Promise((resolve) => setTimeout(resolve, 180));
       assert.equal(timers.size, 1);
       for (const [workingAnimation, glyphPattern] of [
@@ -96,17 +95,17 @@ test('live frame-family switches paint the new choice without accumulating timer
         ['moon', /^[🌑🌒🌓🌔🌕🌖🌗🌘]$/u],
         ['braille', /^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]$/],
       ] as const) {
-        render({ workingAnimation, surface });
+        render({ workingAnimation });
         await new Promise((resolve) => setTimeout(resolve, 180));
         assert.equal(timers.size, 1, 'live choice changes must never accumulate intervals');
         for (const tick of timers.values()) tick();
         assert.match(
           dom.window.document.querySelector('.working-glyph')?.textContent ?? '',
           glyphPattern,
-          `${workingAnimation}/${surface}: a live tick paints the current frame family`
+          `${workingAnimation}: a live tick paints the current frame family`
         );
       }
-      render({ connectionState: 'ready', surface });
+      render({ connectionState: 'ready' });
       assert.equal(timers.size, 0);
     }
   } finally {
@@ -115,20 +114,20 @@ test('live frame-family switches paint the new choice without accumulating timer
 });
 test('live switches to CSS dots/bars/dolphin stop frame timers and switching back starts exactly one', async () => {
   await import('../../src/webview/media/chat.js');
-  for (const surface of ['tab', 'sidebar'] as const) {
+  {
     for (const [workingAnimation, glyph] of [
       ['dots', ''],
       ['bars', ''],
       ['dolphin', '🐬'],
     ] as const) {
-      render({ workingAnimation: 'earth', surface });
+      render({ workingAnimation: 'earth' });
       await new Promise((resolve) => setTimeout(resolve, 180));
       assert.equal(timers.size, 1);
-      render({ workingAnimation, surface });
+      render({ workingAnimation });
       await new Promise((resolve) => setTimeout(resolve, 180));
-      assert.equal(timers.size, 0, `${workingAnimation}/${surface}: CSS owns the animation`);
+      assert.equal(timers.size, 0, `${workingAnimation}: CSS owns the animation`);
       assert.equal(dom.window.document.querySelector('.working-glyph')?.textContent, glyph);
-      render({ workingAnimation: 'earth', surface });
+      render({ workingAnimation: 'earth' });
       await new Promise((resolve) => setTimeout(resolve, 180));
       assert.equal(timers.size, 1);
       for (const tick of timers.values()) tick();
@@ -136,12 +135,12 @@ test('live switches to CSS dots/bars/dolphin stop frame timers and switching bac
         dom.window.document.querySelector('.working-glyph')?.textContent ?? '',
         /^[🌍🌎🌏]$/u
       );
-      render({ connectionState: 'ready', surface });
+      render({ connectionState: 'ready' });
       assert.equal(timers.size, 0);
     }
   }
 });
-test('all six working choices honor timer ownership, reduced motion and idle/disposal on both surfaces', async () => {
+test('all six working choices honor timer ownership, reduced motion and idle/disposal on editor tabs', async () => {
   await import('../../src/webview/media/chat.js');
   for (const [workingAnimation, intervalCount, glyphPattern] of [
     ['braille', 1, /^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]$/],
@@ -151,14 +150,10 @@ test('all six working choices honor timer ownership, reduced motion and idle/dis
     ['bars', 0, /^$/],
     ['dolphin', 0, /^🐬$/u],
   ] as const) {
-    for (const surface of ['tab', 'sidebar'] as const) {
-      render({ workingAnimation, surface });
+    {
+      render({ workingAnimation });
       await new Promise((resolve) => setTimeout(resolve, 180));
-      assert.equal(
-        timers.size,
-        intervalCount,
-        `${workingAnimation}/${surface}: owns only its expected timer`
-      );
+      assert.equal(timers.size, intervalCount, `${workingAnimation}: owns only its expected timer`);
       assert.equal(
         dom.window.document.querySelector('.working')?.getAttribute('data-anim'),
         workingAnimation
@@ -172,12 +167,12 @@ test('all six working choices honor timer ownership, reduced motion and idle/dis
         dom.window.document.querySelector('.working-glyph')?.textContent ?? '',
         glyphPattern
       );
-      render({ workingAnimation, surface });
+      render({ workingAnimation });
       assert.equal(timers.size, intervalCount);
       preference(true);
       assert.equal(timers.size, 0);
       const glyph = dom.window.document.querySelector('.working-glyph')?.textContent;
-      render({ workingAnimation, surface });
+      render({ workingAnimation });
       assert.equal(timers.size, 0);
       assert.equal(dom.window.document.querySelector('.working-glyph')?.textContent, glyph);
       preference(false);

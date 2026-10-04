@@ -101,7 +101,7 @@ shared Pi runtime pool     configurable workers host sessions (per-session exten
 
 ### While Pi is working
 
-In both sidebar chats and editor tabs, your sent message stays visible with a
+In native editor chat tabs, your sent message stays visible with a
 **Working…** indicator while Pi prepares a reply. The current empty assistant
 container and its **π** role label are deferred until the first meaningful reply
 content arrives; the reply then streams normally, without waiting for completion.
@@ -153,11 +153,8 @@ In the current source tree, the sidebar **ellipsis** menu groups actions as:
   describes your current preference)
 - **System** — Restart π
 
-The Agentic chat-list title menu also offers **Show chat in sidebar**. The sidebar
-conversation title bar offers **Show chat list**; both surfaces belong to Agentic and remember
-your chosen surface for this workspace. Agentic is the only Pi interface; chats
-always use native editor tabs or the sidebar conversation.
-The sidebar conversation's in-webview ellipsis uses the same groups. The richer **editor-title Pi Chat Actions**
+The sidebar always shows the Agentic chat list. Opening a chat or starting a new
+one uses a native editor tab. The **editor-title Pi Chat Actions**
 menu additionally offers rename, retry (including with another model), find, copy as
 Markdown, thinking level, compaction, attachments, health, logs, and help.
 Model and thinking controls live in the composer status chip; there is no composer gear.
@@ -200,9 +197,9 @@ Model and thinking controls live in the composer status chip; there is no compos
 
 - Workspace folders are isolated. `piRpc.runtimeWorkers` sizes the shared worker pool
   (`auto`, or 1–8); disabling shared runtime or a host startup failure uses per-chat processes.
-- Agentic is the sole interface in 0.2.21. Its 27 supported command paths have
-  automated coverage, with additional installed VS Code checks for navigation,
-  draft preservation, animations and composer layout. Terminal-only extension UI
+- Agentic is the sole interface in 0.2.22. Its 27 supported command paths have
+  automated coverage, with additional installed VS Code checks for chat-list
+  navigation, deletion and composer layout. Terminal-only extension UI
   and physical OS input methods retain their documented limits; this does not
   establish universal native TUI parity.
 - The Activity Bar icon and gallery logo are an original Pi × VS Code fusion mark.

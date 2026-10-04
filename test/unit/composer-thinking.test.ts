@@ -61,7 +61,6 @@ function render(overrides: Partial<WebviewSnapshot> = {}) {
     isTrusted: true,
     folders: [],
     typewriterSpeed: 'off',
-    surface: 'sidebar',
     ...overrides,
   };
   message({ type: 'snapshot', snapshot });

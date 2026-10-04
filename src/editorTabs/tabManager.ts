@@ -147,24 +147,15 @@ const WEBVIEW_COMMAND_ALLOWLIST = new Set<string>([
   'piRpc.remote.stop',
   'piRpc.chatSettings',
   'piRpc.cycleThinkingLevel',
-  'piRpc.reviewLastTurn',
-  'piRpc.showChatVersions',
-  'piRpc.exportHtml',
   'piRpc.showPiCommands',
   'piRpc.switchSession',
   'piRpcInternal.restart',
   'piRpcInternal.retryLast',
   'piRpcInternal.showLogs',
   'piRpcInternal.start',
-  'piRpc.manageExtensions',
-  'piRpc.manageSkills',
-  'piRpc.managePrompts',
-  'piRpc.manageAgentInstructions',
-  'piRpcInternal.setWorkingAnimation',
 ]);
 
-/** Common surface for chat hosts: editor-tab panels AND the sidebar view.
- * tabManager treats both identically; only construction differs. */
+/** A native editor-tab chat host. */
 export interface ChatHost extends vscode.Disposable {
   readonly resource: vscode.Uri;
   readonly panel: {
@@ -249,76 +240,6 @@ class ChatEditorHost implements vscode.Disposable {
 
   public reveal(): void {
     this.panel.reveal(this.panel.viewColumn, false);
-  }
-
-  public dispose(): void {
-    for (const disposable of this.disposables) {
-      disposable.dispose();
-    }
-  }
-}
-
-/** The π sidebar chat: same webview, same pipeline, docked in the activity
- * bar — the editor area stays free for real files (Zed layout). Binds to a
- * stable synthetic resource so its session persists across reloads. */
-class SidebarChatHost implements ChatHost {
-  private readonly disposables: vscode.Disposable[] = [];
-  private attachmentFileUris = new Set<string>();
-  public readonly panel: ChatHost['panel'];
-
-  public constructor(
-    extensionUri: vscode.Uri,
-    private readonly view: vscode.WebviewView,
-    private readonly manager: ChatTabManager,
-    public readonly resource: vscode.Uri
-  ) {
-    view.webview.options = {
-      enableScripts: true,
-      localResourceRoots: [extensionUri, vscode.Uri.joinPath(extensionUri, 'dist')],
-    };
-    view.webview.html = renderChatWebviewHtml(extensionUri, view.webview, 'Pi Chat', __PI_BUILD__);
-    const self = this;
-    this.panel = {
-      webview: view.webview,
-      get visible() {
-        return self.view.visible;
-      },
-      get active() {
-        return self.view.visible;
-      },
-      viewColumn: undefined,
-      title: '',
-      reveal: () => self.view.show?.(true),
-    };
-    this.disposables.push(
-      view.webview.onDidReceiveMessage((message: unknown) => void manager.onMessage(this, message)),
-      view.onDidDispose(() => void manager.onHostDisposed(this)),
-      view.onDidChangeVisibility(() => void manager.onHostViewStateChanged(this, view.visible))
-    );
-  }
-
-  public async postSnapshot(snapshot: WebviewSnapshot, title: string): Promise<void> {
-    this.view.description = title.replace(/\u2007+$/g, '').trim();
-    this.attachmentFileUris = new Set(
-      snapshot.messages.flatMap((message) =>
-        message.attachments
-          .map((attachment) => attachment.fileRef?.uri)
-          .filter((uri): uri is string => typeof uri === 'string')
-      )
-    );
-    void this.view.webview.postMessage({ type: 'snapshot', snapshot });
-  }
-
-  public post(message: unknown): void {
-    void this.view.webview.postMessage(message);
-  }
-
-  public hasAttachment(uri: string): boolean {
-    return this.attachmentFileUris.has(uri);
-  }
-
-  public reveal(): void {
-    this.view.show?.(true);
   }
 
   public dispose(): void {
@@ -876,7 +797,7 @@ export class ChatTabManager implements vscode.Disposable {
   public async closeForSessionFile(sessionFile: string): Promise<void> {
     this.assertSessionFileNotCompacting(sessionFile);
     for (const group of vscode.window.tabGroups.all) {
-      for (const tab of group.tabs) {
+      for (const tab of [...group.tabs]) {
         const input = (tab.input ?? undefined) as
           | { uri?: vscode.Uri; viewType?: string }
           | undefined;
@@ -884,10 +805,12 @@ export class ChatTabManager implements vscode.Disposable {
           continue;
         }
         const target = parseChatUri(input.uri);
+        const currentFile = this.contextForResource(input.uri)?.controller.snapshot.state
+          .sessionFile;
+        const sessionFileForTab = target?.kind === 'sessionFile' ? target.sessionFile : currentFile;
         if (
-          target?.kind === 'sessionFile' &&
-          target.sessionFile &&
-          normalizeSessionFilePath(target.sessionFile) === normalizeSessionFilePath(sessionFile)
+          typeof sessionFileForTab === 'string' &&
+          normalizeSessionFilePath(sessionFileForTab) === normalizeSessionFilePath(sessionFile)
         ) {
           if ((await vscode.window.tabGroups.close(tab)) === false) {
             throw new Error('Pi chat could not be closed.');
@@ -1235,19 +1158,6 @@ export class ChatTabManager implements vscode.Disposable {
         return this.handleCopyAcceptedSnapshot(context, host.resource);
       case 'sendAcceptedSnapshotAgain':
         return this.handleSendAcceptedSnapshotAgain(context, host.resource);
-      case 'requestReview':
-        return this.handleRequestReview(host);
-      case 'reviewAction':
-        return this.handleReviewAction(parsed.action, parsed.turn, parsed.file);
-      case 'requestChatList':
-        this.sendChatList(host);
-        return;
-      case 'deleteChatSession':
-        return this.handleDeleteChatSession(host, parsed.path, parsed.title);
-      case 'openChatSession':
-        return this.handleOpenChatSession(host, parsed.workspaceFolderUri, parsed.path);
-      case 'newChatSession':
-        return this.handleNewChatSession(host);
       case 'screenOpenFile':
         return this.handleScreenOpenFile(parsed.path, parsed.needle);
       case 'screenRevert':
@@ -1403,8 +1313,6 @@ export class ChatTabManager implements vscode.Disposable {
       // has focused another tab before asynchronous RPC work finishes.
       if (command === 'piRpc.cycleThinkingLevel') {
         await controller.cycleThinkingLevel();
-      } else if (command === 'piRpcInternal.setWorkingAnimation') {
-        await vscode.commands.executeCommand(command);
       } else {
         await vscode.commands.executeCommand(command, argument);
       }
@@ -1477,158 +1385,6 @@ export class ChatTabManager implements vscode.Disposable {
         `Undo failed: ${error instanceof Error ? error.message : String(error)}`
       );
     }
-  }
-
-  // Batch 4 of the onMessage de-bloat (A4): review/replay handlers.
-  private async handleRequestReview(host: ChatHost): Promise<void> {
-    const relative = (at: number): string => {
-      const mins = Math.max(1, Math.round((Date.now() - at) / 60_000));
-      return mins < 60
-        ? `${mins}m`
-        : mins < 1440
-          ? `${Math.round(mins / 60)}h`
-          : `${Math.round(mins / 1440)}d`;
-    };
-    host.post({
-      type: 'reviewData',
-      turns: (this.turnReview?.history ?? []).map((record, index) => ({
-        index,
-        title: record.title,
-        time: relative(record.at),
-        files: record.changes.map((change) => ({
-          file: change.file,
-          kind: change.kind,
-          added: change.added,
-          deleted: change.deleted,
-        })),
-      })),
-    });
-  }
-
-  private async handleReviewAction(
-    action: 'diff' | 'inline' | 'revertFile' | 'revertTurn' | 'replayTurn' | 'replaySession',
-    turn: number,
-    file: string | undefined
-  ): Promise<void> {
-    const record = this.turnReview?.history[turn];
-    if (!record || !this.turnReview) {
-      return;
-    }
-    if (action === 'diff' && file) {
-      const change = record.changes.find((entry) => entry.file === file);
-      if (change) {
-        await this.turnReview.openDiff(record, change);
-      }
-    } else if (action === 'inline' && file) {
-      const change = record.changes.find((entry) => entry.file === file);
-      if (change) {
-        await this.inlineReview?.start(record, change);
-      }
-    } else if (action === 'replayTurn') {
-      void this.sessionReplay?.replayTurn(record);
-    } else if (action === 'replaySession') {
-      void this.sessionReplay?.replaySession(this.turnReview?.history ?? []);
-    } else if (action === 'revertFile' && file) {
-      const change = record.changes.find((entry) => entry.file === file);
-      if (!change) {
-        return;
-      }
-      const confirm = await vscode.window.showWarningMessage(
-        `Revert ${change.file} to its state before this turn?`,
-        { modal: true },
-        'Revert'
-      );
-      if (confirm === 'Revert') {
-        await this.turnReview.revertFile(record, change);
-      }
-    } else if (action === 'revertTurn') {
-      const confirm = await vscode.window.showWarningMessage(
-        `Revert all ${record.changes.length} file(s) from this turn?`,
-        { modal: true },
-        'Revert All'
-      );
-      if (confirm === 'Revert All') {
-        for (const change of record.changes) {
-          await this.turnReview.revertFile(record, change).catch(() => undefined);
-        }
-      }
-    }
-  }
-
-  // Batch 3 of the onMessage de-bloat (A4): sidebar chat-list handlers.
-  private async handleDeleteChatSession(
-    host: ChatHost,
-    path: string,
-    title: string | undefined
-  ): Promise<void> {
-    if (host.resource.scheme !== 'piRpcSidebar') {
-      return;
-    }
-    const wasCurrent =
-      this.sidebarTarget?.kind === 'sessionFile' && this.sidebarTarget.sessionFile === path;
-    await vscode.commands.executeCommand('piRpcInternal.deleteSession', {
-      sessionPath: path,
-      sessionLabel: title,
-    });
-    if (wasCurrent) {
-      // The chat being viewed was deleted — hand the surface a fresh draft.
-      const folder = vscode.workspace.workspaceFolders?.[0];
-      if (folder) {
-        this.sidebarTarget = {
-          workspaceFolderUri: folder.uri.toString(),
-          kind: 'workspaceDraft',
-          draftId: `sidebar-${Date.now()}`,
-        };
-        this.persistSidebarTarget();
-        await this.activateResource(host.resource, { startIfStopped: true });
-        await this.renderResource(host.resource, { active: true });
-      }
-    }
-    this.sendChatList(host, path); // optimistic: gone immediately
-  }
-
-  private async handleOpenChatSession(
-    host: ChatHost,
-    workspaceFolderUri: string | undefined,
-    path: string
-  ): Promise<void> {
-    if (host.resource.scheme !== 'piRpcSidebar') {
-      return;
-    }
-    const folder =
-      vscode.workspace.workspaceFolders?.find(
-        (candidate) => workspaceFolderUri === candidate.uri.toString()
-      ) ?? vscode.workspace.workspaceFolders?.[0];
-    if (!folder) {
-      return;
-    }
-    this.sidebarTarget = {
-      workspaceFolderUri: folder.uri.toString(),
-      kind: 'sessionFile',
-      sessionFile: path,
-    };
-    this.persistSidebarTarget();
-    this.logger.info(`[sidebar] switch → ${path.split('/').pop() ?? ''}`);
-    await this.activateResource(host.resource, { startIfStopped: true });
-    await this.renderResource(host.resource, { active: true });
-  }
-
-  private async handleNewChatSession(host: ChatHost): Promise<void> {
-    if (host.resource.scheme !== 'piRpcSidebar') {
-      return;
-    }
-    const folder = vscode.workspace.workspaceFolders?.[0];
-    if (!folder) {
-      return;
-    }
-    this.sidebarTarget = {
-      workspaceFolderUri: folder.uri.toString(),
-      kind: 'workspaceDraft',
-      draftId: `sidebar-${Date.now()}`,
-    };
-    this.persistSidebarTarget();
-    await this.activateResource(host.resource, { startIfStopped: true });
-    await this.renderResource(host.resource, { active: true });
   }
 
   // Batch 2 of the onMessage de-bloat (A4): composer/send-flow handlers.
@@ -2198,184 +1954,11 @@ export class ChatTabManager implements vscode.Disposable {
   // hardening review) — bindings, owners, effective targets, registry keys.
   private readonly sessions: SessionIndex;
 
-  private sidebarTarget: ChatTabTarget | undefined;
-  private static readonly SIDEBAR_LAST_TARGET_KEY = 'piRpc.sidebarLastTarget';
-
-  /** Remember the sidebar's current chat so a reload restores it instead of
-   * always landing on a blank draft — the sidebar is the primary surface. */
-  private persistSidebarTarget(): void {
-    if (this.sidebarTarget) {
-      void this.context.workspaceState.update(
-        ChatTabManager.SIDEBAR_LAST_TARGET_KEY,
-        this.sidebarTarget
-      );
-    }
-  }
-
-  /** Move a saved conversation between Agentic's full-chat sidebar and editor
-   * tab without showing it in both places. Empty drafts keep their own identity. */
-  public async moveSidebarConversation(surface: 'list' | 'full-chat'): Promise<void> {
-    if (surface === 'full-chat') {
-      const active = this.getActiveContext();
-      const sessionFile = active?.controller.snapshot.state.sessionFile;
-      if (!active || !sessionFile) {
-        return;
-      }
-      this.assertSessionFileNotCompacting(sessionFile);
-      await this.closeResource(active.resource);
-      await this.closeForSessionFile(sessionFile);
-      this.sidebarTarget = {
-        workspaceFolderUri: active.controller.folder.uri.toString(),
-        kind: 'sessionFile',
-        sessionFile,
-      };
-      this.persistSidebarTarget();
-      return;
-    }
-    const target = this.sidebarTarget;
-    if (target?.kind !== 'sessionFile' || !target.sessionFile) {
-      return;
-    }
-    const folder =
-      vscode.workspace.workspaceFolders?.find(
-        (f) => f.uri.toString() === target.workspaceFolderUri
-      ) ?? vscode.workspace.workspaceFolders?.[0];
-    if (!folder) {
-      return;
-    }
-    await this.openForSessionFile(this.registry.getOrCreate(folder), target.sessionFile);
-  }
-
-  /** Injected: line-by-line review engine. */
-  public inlineReview: { start(record: unknown, change: unknown): Promise<void> } | undefined;
-  /** Injected: session replay (walk past turns' files, oldest or single). */
-  public sessionReplay:
-    | {
-        replayTurn(record: unknown): Promise<void>;
-        replaySession(history: unknown[]): Promise<void>;
-      }
-    | undefined;
-  /** Injected by extension.ts: recent-session data for the sidebar switcher. */
-  public chatListSource:
-    | (() => {
-        items: Array<{ path: string; displayName: string; modifiedAt: number }>;
-        others: Array<{
-          path: string;
-          displayName: string;
-          modifiedAt: number;
-          cwd: string;
-          workspaceLabel: string;
-        }>;
-      })
-    | undefined;
-
-  private sendChatList(host: ChatHost, excludePath?: string): void {
-    const source = this.chatListSource?.();
-    const relative = (at: number): string => {
-      const mins = Math.max(1, Math.round((Date.now() - at) / 60_000));
-      if (mins < 60) {
-        return `${mins}m`;
-      }
-      if (mins < 60 * 24) {
-        return `${Math.round(mins / 60)}h`;
-      }
-      return `${Math.round(mins / (60 * 24))}d`;
-    };
-    const currentFile =
-      this.sidebarTarget?.kind === 'sessionFile' ? this.sidebarTarget.sessionFile : undefined;
-    host.post({
-      type: 'chatList',
-      current: (source?.items ?? [])
-        .filter((item) => item.path !== excludePath)
-        .slice(0, 30)
-        .map((item) => ({
-          path: item.path,
-          title: item.displayName,
-          time: relative(item.modifiedAt),
-          current: item.path === currentFile,
-        })),
-      others: (source?.others ?? [])
-        .filter((item) => item.path !== excludePath)
-        .slice(0, 20)
-        .map((item) => ({
-          path: item.path,
-          title: item.displayName,
-          time: relative(item.modifiedAt),
-          workspace: item.workspaceLabel,
-          cwd: item.cwd,
-        })),
-    });
-  }
-
-  /** Mount the sidebar chat view onto the shared pipeline. */
-  public async attachSidebarChat(
-    extensionUri: vscode.Uri,
-    view: vscode.WebviewView
-  ): Promise<void> {
-    const resource = vscode.Uri.parse('piRpcSidebar://chat/main');
-    const folder = vscode.workspace.workspaceFolders?.[0];
-    if (!folder) {
-      view.webview.html =
-        '<html><body style="font-family:sans-serif;padding:16px">Open a folder to chat with π.</body></html>';
-      return;
-    }
-    // Restore whatever chat was last showing here — otherwise every reload
-    // silently drops you onto a blank draft, which read as "nothing restores".
-    const openFolders = new Set(
-      (vscode.workspace.workspaceFolders ?? []).map((f) => f.uri.toString())
-    );
-    const saved = this.context.workspaceState.get<ChatTabTarget>(
-      ChatTabManager.SIDEBAR_LAST_TARGET_KEY
-    );
-    this.sidebarTarget =
-      saved && openFolders.has(saved.workspaceFolderUri)
-        ? saved
-        : {
-            workspaceFolderUri: folder.uri.toString(),
-            kind: 'workspaceDraft',
-            draftId: 'sidebar', // constant → same session key across reloads
-          };
-    this.persistSidebarTarget();
-    this.logger.info(
-      `[sidebar] attach (restored=${Boolean(saved && openFolders.has(saved.workspaceFolderUri))}, kind=${this.sidebarTarget.kind}, draft=${this.sidebarTarget.draftId ?? ''})`
-    );
-    const host = new SidebarChatHost(extensionUri, view, this, resource);
-    this.hosts.set(resource.toString(), host);
-    this.openChatsEmitter.fire();
-    // START the controller — rendering alone leaves it "Connecting…" forever
-    // (editor tabs start via activateResource; the sidebar must too).
-    await this.activateResource(resource, { startIfStopped: true });
-    await this.renderResource(resource, { active: true });
-  }
-
-  /** Release the full-chat host when Agentic's list takes over the same view.
-   * VS Code does not dispose the view on reassignment. Keep the controller:
-   * the conversation moves to its editor tab before detaching this wrapper. */
-  public detachSidebarChatHost(): void {
-    // Same parse+toString as attachSidebarChat's own registration — URI
-    // normalization means a hand-typed string literal isn't guaranteed to
-    // match the key that was actually used to store it.
-    const key = vscode.Uri.parse('piRpcSidebar://chat/main').toString();
-    if (this.hosts.delete(key)) {
-      this.openChatsEmitter.fire();
-    }
-  }
-
   private resolveTarget(resource: vscode.Uri): ChatTabTarget | undefined {
-    if (resource.scheme === 'piRpcSidebar') {
-      return this.sidebarTarget;
-    }
     return this.sessions.resolveTarget(resource);
   }
 
   private keyFor(resource: vscode.Uri): string {
-    if (resource.scheme === 'piRpcSidebar') {
-      // Key follows the BINDING: switching chats must resolve to that
-      // session's own controller (a constant key pinned the first controller
-      // forever — clicking a chat in the switcher silently did nothing).
-      const target = this.sidebarTarget;
-      return `piRpcSidebar:${target?.sessionFile ?? target?.draftId ?? 'main'}`;
-    }
     return this.sessions.keyFor(resource);
   }
 
@@ -2491,8 +2074,7 @@ export class ChatTabManager implements vscode.Disposable {
       this.busySince.delete(controller);
       const ownerResource = this.sessions.ownerOf(controller);
       const ownerHost = ownerResource ? this.hosts.get(ownerResource.toString()) : undefined;
-      // "Watching" = the window is focused AND this chat is visible anywhere —
-      // active editor tab OR the sidebar surface. Watched chats stay silent.
+      // Watched chats stay silent while their editor tab is visible.
       const watching =
         vscode.window.state.focused &&
         (this.getActiveContext()?.controller === controller || ownerHost?.panel.visible === true);
@@ -2670,7 +2252,6 @@ export class ChatTabManager implements vscode.Disposable {
     if (sharingInfo) {
       snapshot.sharing = sharingInfo;
     }
-    snapshot.surface = resource.scheme === 'piRpcSidebar' ? 'sidebar' : 'tab';
 
     // Best-effort display formatting for fenced code in the visible tail of
     // the transcript (user pastes crammed one-liners; assistants emit minified
@@ -2690,7 +2271,6 @@ export class ChatTabManager implements vscode.Disposable {
       snapshot.formattedCode = this.codeFormat.snapshotMap();
     }
 
-    snapshot.reviewCount = this.turnReview?.history.length ?? 0;
     snapshot.followMode = vscode.workspace
       .getConfiguration('piRpc')
       .get<'open' | 'status' | 'off'>('followAgent', 'off');

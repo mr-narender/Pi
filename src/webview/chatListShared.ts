@@ -97,50 +97,23 @@ export function formatRelativeTime(value: number, now = Date.now()): string {
 
 export interface PendingDeletion {
   id: string;
-  startedAt: number;
 }
 
-/** Deleting a chat deletes its file immediately, but the row only actually
- * disappears from the list once RecentSessionService's full sessions-dir
- * rescan completes and reports the shorter list back — and that rescan is
- * DELIBERATELY never awaited before returning (a full directory scan is
- * slow; blocking the UI on it would be worse), so the row visibly lingers
- * until it finishes in the background. Reported as "takes a while to
- * remove the deleted item".
- *
- * Fix: hide it from the model immediately (we already know it's gone —
- * we just deleted it), and self-heal once the real data catches up:
- *  - not in the model anymore → confirmed gone for real, stop tracking it.
- *  - still in the model past `timeoutMs` → give up hiding it; if the
- *    delete actually failed, the user should see the stale entry again
- *    rather than have it vanish from view forever with no explanation. */
+/** Keep rows hidden while a delete is in flight, including during a slow scan.
+ * The host ends each pending operation explicitly on success or failure. */
 export function applyPendingDeletions(
   model: ChatListModel,
-  pending: PendingDeletion[],
-  now: number,
-  timeoutMs = 5000
-): { rows: ChatListRow[]; stillPending: PendingDeletion[] } {
+  pending: PendingDeletion[]
+): ChatListRow[] {
   if (pending.length === 0) {
-    return { rows: model.rows, stillPending: pending };
+    return model.rows;
   }
-  const idsInModel = new Set(
-    model.rows.flatMap((row) =>
-      [row.sessionPath, row.openCommand.resource].filter((value): value is string => Boolean(value))
-    )
-  );
-  const stillPending = pending.filter(
-    (entry) => idsInModel.has(entry.id) && now - entry.startedAt <= timeoutMs
-  );
-  if (stillPending.length === 0) {
-    return { rows: model.rows, stillPending };
-  }
-  const hidden = new Set(stillPending.map((entry) => entry.id));
-  const rows = model.rows.filter(
+  const hidden = new Set(pending.map((entry) => entry.id));
+  return model.rows.filter(
     (row) =>
       !(row.sessionPath && hidden.has(row.sessionPath)) &&
       !(row.openCommand.resource && hidden.has(row.openCommand.resource))
   );
-  return { rows, stillPending };
 }
 
 export interface SnapshotDecisionState {

@@ -20,6 +20,7 @@ export interface RecentSessionsState {
 export class RecentSessionService implements vscode.Disposable {
   private readonly emitter = new vscode.EventEmitter<void>();
   private readonly state = new Map<string, RecentSessionsState>();
+  private readonly revision = new Map<string, number>();
 
   public constructor(
     // Optional off-thread accelerator; every use falls back to the inline scan.
@@ -35,6 +36,7 @@ export class RecentSessionService implements vscode.Disposable {
   public dispose(): void {
     this.emitter.dispose();
     this.state.clear();
+    this.revision.clear();
   }
 
   public getState(folder: vscode.WorkspaceFolder): RecentSessionsState {
@@ -67,8 +69,25 @@ export class RecentSessionService implements vscode.Disposable {
     this.setFilter(folder, '');
   }
 
+  /** Drop a successfully deleted file from every cached project immediately.
+   * Invalidate scans that began before the deletion so they cannot restore it. */
+  public removePath(sessionPath: string): void {
+    for (const [key, current] of this.state) {
+      this.revision.set(key, (this.revision.get(key) ?? 0) + 1);
+      this.state.set(key, {
+        ...current,
+        loading: false,
+        items: current.items.filter((item) => item.path !== sessionPath),
+        others: current.others?.filter((item) => item.path !== sessionPath),
+      });
+    }
+    this.emitter.fire();
+  }
+
   private async refreshFolder(folder: vscode.WorkspaceFolder): Promise<void> {
     const key = folder.uri.toString();
+    const revision = (this.revision.get(key) ?? 0) + 1;
+    this.revision.set(key, revision);
     const current = this.state.get(key) ?? { loading: false, filterText: '', items: [] };
     this.state.set(key, { ...current, loading: true, error: undefined });
     this.emitter.fire();
@@ -90,17 +109,23 @@ export class RecentSessionService implements vscode.Disposable {
           : readAllProjectsSessions(workspaceCwds)
         ).catch(() => []),
       ]);
+      if (this.revision.get(key) !== revision) {
+        return;
+      }
       this.state.set(key, {
         loading: false,
-        filterText: current.filterText,
+        filterText: this.state.get(key)?.filterText ?? current.filterText,
         sessionDir: index.sessionDir,
         items: index.sessions,
         others,
       });
     } catch (error) {
+      if (this.revision.get(key) !== revision) {
+        return;
+      }
       this.state.set(key, {
         loading: false,
-        filterText: current.filterText,
+        filterText: this.state.get(key)?.filterText ?? current.filterText,
         sessionDir: current.sessionDir,
         items: current.items,
         error: error instanceof Error ? error.message : String(error),

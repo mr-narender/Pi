@@ -2,7 +2,7 @@
   "name": "pi",
   "displayName": "Pi – this one is (y)ours",
   "description": "An unofficial, personal VS Code chat UI for the Pi coding agent (pi.dev). Not affiliated with pi.dev — shared for anyone who wants it.",
-  "version": "0.2.21",
+  "version": "0.2.22",
   "publisher": "mr-narender",
   "license": "MIT",
   "private": true,
@@ -232,12 +232,6 @@
         "category": "Pi"
       },
       {
-        "command": "piRpcInternal.showChatInSidebar",
-        "title": "Show chat in sidebar",
-        "category": "Pi",
-        "icon": "$(arrow-swap)"
-      },
-      {
         "command": "piRpcInternal.agenticChatHeading",
         "title": "Chat",
         "category": "Pi",
@@ -368,11 +362,6 @@
       {
         "command": "piRpc.toggleFollowAgent",
         "title": "Toggle Follow Agent (Live File Activity)",
-        "category": "Pi"
-      },
-      {
-        "command": "piRpc.openSidebarChat",
-        "title": "Open Chat in Sidebar",
         "category": "Pi"
       },
       {
@@ -552,12 +541,6 @@
         "title": "Pi Settings",
         "category": "Pi",
         "icon": "$(gear)"
-      },
-      {
-        "command": "piRpcInternal.showChatList",
-        "title": "Show chat list",
-        "category": "Pi",
-        "icon": "$(arrow-swap)"
       }
     ],
     "configuration": {
@@ -905,18 +888,13 @@
     "menus": {
       "view/title": [
         {
-          "command": "piRpcInternal.showChatList",
-          "when": "view == piRpc.chat && piRpc.sidebarSurface == full-chat",
-          "group": "navigation@0"
-        },
-        {
           "command": "piRpc.newSession",
-          "when": "view == piRpc.chat && piRpc.sidebarSurface == list",
+          "when": "view == piRpc.chat",
           "group": "navigation@1"
         },
         {
           "submenu": "piRpc.agenticActions",
-          "when": "view == piRpc.chat && piRpc.sidebarSurface == list",
+          "when": "view == piRpc.chat",
           "group": "navigation@2"
         }
       ],
@@ -941,10 +919,6 @@
         {
           "command": "piRpcInternal.agenticChatHeading",
           "group": "1_chat@0"
-        },
-        {
-          "command": "piRpcInternal.showChatInSidebar",
-          "group": "1_chat@1"
         },
         {
           "command": "piRpc.reviewLastTurn",

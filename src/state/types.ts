@@ -191,17 +191,13 @@ export interface WebviewPendingImageItem {
 }
 
 export interface WebviewSnapshot {
-  /** Turns with reviewable file changes (deck badge; 0 = hide). */
-  reviewCount?: number;
   /** Display-time formatted code blocks: formatKey(lang, code) → formatted text. */
   formattedCode?: Record<string, string>;
-  /** Which host renders this: the sidebar one-surface or an editor tab. */
-  surface?: 'sidebar' | 'tab';
   /** Most recent task list π wrote — rendered as the plan strip. */
   plan?: { items: Array<{ text: string; done: boolean }>; done: number };
   /** Zed-style follow toggle state (crosshair button). */
   followMode?: 'open' | 'status' | 'off';
-  /** True pre-apply approval mode — surfaced as a one-click deck toggle. */
+  /** True pre-apply approval mode. */
   requireApprovalForEdits?: boolean;
   /** Chats still running on whatever approval-gate setting was active when
    * they started (passive tooltip detail only — never an interruption). */

@@ -1,5 +1,8 @@
 # Installed VS Code regression validation
 
+Historical 0.2.21 installed-test record. Its sidebar conversation checks describe
+that release; 0.2.22 keeps the sidebar on the chat list and opens chats in tabs.
+
 The Agentic-only VSIX was installed through the normal VS Code CLI, without
 `extensionDevelopmentPath`. The original Pi 0.2.20 installation was backed up.
 Test windows used separate user-data profiles and fixture workspaces. Subsequent

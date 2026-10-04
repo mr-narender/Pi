@@ -1,6 +1,5 @@
 import type { WebviewSnapshot } from '../state/types';
 import { isLiveWorking } from './working';
-import { renderChatActionsMenu } from './chatActionsMenu';
 import { friendlyApiStatus, parseProviderError } from './apiError';
 import { formatKey } from './codeFormat';
 import { highlightCode } from './highlight';
@@ -1046,27 +1045,6 @@ function renderFollowToggle(snapshot: WebviewSnapshot): string {
 
 // Plan strip: π's own task list, pinned above the chat as live progress.
 
-// One-surface sidebar: the command deck. ☰/title▾ open the in-view switcher
-// (webview-local), ✚ rebinds fresh, ⌖ is the follow crosshair, ⋯ holds the
-// rest. Rendered ONLY for the sidebar surface.
-function renderSidebarHeader(snapshot: WebviewSnapshot): string {
-  // ☰ is the ONLY switcher trigger. The title is a passive label shown only
-  // when a named chat is active (drafts show nothing).
-  const name = snapshot.sessionName?.trim();
-  const label = name
-    ? `<span class="sb-title" title="${escapeHtml(name)}"><span class="sb-title-text">${escapeHtml(name)}</span></span>`
-    : '';
-  const review =
-    (snapshot.reviewCount ?? 0) > 0
-      ? `<button type="button" class="sb-btn sb-review" data-action="toggleReview" title="Review π's changes (${snapshot.reviewCount} turn${snapshot.reviewCount === 1 ? '' : 's'})" aria-label="Review changes">⧉<span class="sb-review-count">${snapshot.reviewCount}</span></button>`
-      : '';
-  // Follow (⌖) and approval-mode (🛡) toggles live ONLY in the composer now
-  // (composer-actions-right) — they were duplicated here in the top deck too,
-  // which cluttered it for no reason since they're already one click away at
-  // the input. Top deck stays to session-level actions only.
-  return `<header class="sb-deck"><button type="button" class="sb-btn" data-action="toggleChatList" title="All chats" aria-label="All chats">☰</button>${label}<span class="sb-spacer"></span>${review}<button type="button" class="sb-btn" data-action="newChatSession" title="New chat" aria-label="New chat">✚</button>${renderChatActionsMenu()}</header>`;
-}
-
 function renderPlanStrip(snapshot: WebviewSnapshot): string {
   const plan = snapshot.plan;
   if (!plan || plan.items.length === 0) {
@@ -1523,7 +1501,6 @@ export function renderChatApp(snapshot: WebviewSnapshot): string {
       ${renderShareBar(snapshot)}
       ${renderRecovery(snapshot)}
 
-      ${snapshot.surface === 'sidebar' ? renderSidebarHeader(snapshot) : ''}
       ${renderPlanStrip(snapshot)}
       <main class="conversation" id="messages" role="log" aria-live="off" aria-relevant="additions text">${
         connecting && snapshot.messages.length === 0

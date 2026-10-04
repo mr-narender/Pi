@@ -36,24 +36,24 @@ test('Agentic native chat identity rejects obsolete path and query aliases', () 
   assert.match(uri, /return lookupChatUri\(uri.path\)/);
 });
 
-test('Agentic exposes sidebar chat and chat list with direct labels and no old interface command', () => {
+test('Agentic sidebar only contributes the chat list and tab navigation', () => {
   const ids: string[] = packageJson.contributes.commands.map((entry) => entry.command);
-  assert.ok(ids.includes('piRpcInternal.showChatInSidebar'));
-  assert.equal(ids.includes('piRpcInternal.switchToFullChat'), false);
-  assert.ok(ids.includes('piRpcInternal.showChatList'));
-  assert.equal(
-    packageJson.contributes.commands.find(
-      (entry) => entry.command === 'piRpcInternal.showChatInSidebar'
-    )?.title,
-    'Show chat in sidebar'
-  );
-  assert.equal(
-    packageJson.contributes.commands.find((entry) => entry.command === 'piRpcInternal.showChatList')
-      ?.title,
-    'Show chat list'
+  for (const id of [
+    'piRpcInternal.showChatInSidebar',
+    'piRpcInternal.showChatList',
+    'piRpc.openSidebarChat',
+    'piRpcInternal.switchToFullChat',
+  ])
+    assert.equal(ids.includes(id), false, id);
+  assert.equal(JSON.stringify(packageJson.contributes.menus).includes('sidebarSurface'), false);
+  assert.deepEqual(
+    packageJson.contributes.menus['view/title'].map((entry) => entry.command ?? entry.submenu),
+    ['piRpc.newSession', 'piRpc.agenticActions']
   );
   const extension = source('src/extension.ts');
-  assert.equal(extension.includes('piRpcInternal.switchToFullChat'), false);
-  assert.match(extension, /sidebarSurface/);
+  assert.equal(/sidebarSurface|attachSidebarChat|showSidebarSurface/.test(extension), false);
+  assert.match(extension, /agenticListHost\.attach\(view\)/);
+  assert.equal(source('src/editorTabs/tabManager.ts').includes('piRpcSidebar'), false);
+  assert.equal(source('src/webview/media/chat.ts').includes('toggleChatListOverlay'), false);
   assert.equal(extension.includes("get<'agentic' | 'chat'>('sidebarMode'"), false);
 });

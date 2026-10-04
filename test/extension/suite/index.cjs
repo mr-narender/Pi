@@ -11,7 +11,6 @@ async function run() {
     'piRpc.prompt',
     'piRpc.showModels',
     'piRpc.newSession',
-    'piRpcInternal.showChatInSidebar',
     'piRpc.switchSession',
     'piRpcInternal.start',
     'piRpcInternal.openChat',
@@ -20,22 +19,18 @@ async function run() {
     'piRpc.fixSelection',
     'piRpc.refactorSelection',
     'piRpcInternal.showHelp',
-    'piRpcInternal.showChatList',
   ]) {
     assert.ok(commands.includes(id), `missing registered command ${id}`);
   }
 
   const all = extension.packageJSON.contributes.commands.map((command) => command.command);
-  assert.ok(!commands.includes('piRpcInternal.switchToFullChat'));
-  for (const [command, title] of [
-    ['piRpcInternal.showChatInSidebar', 'Show chat in sidebar'],
-    ['piRpcInternal.showChatList', 'Show chat list'],
-  ]) {
-    assert.equal(
-      extension.packageJSON.contributes.commands.find((item) => item.command === command)?.title,
-      title
-    );
-  }
+  for (const id of [
+    'piRpcInternal.switchToFullChat',
+    'piRpcInternal.showChatInSidebar',
+    'piRpcInternal.showChatList',
+    'piRpc.openSidebarChat',
+  ])
+    assert.ok(!commands.includes(id), `removed sidebar conversation command ${id}`);
   assert.ok(all.includes('piRpc.prompt'));
   assert.ok(!all.some((id) => /^piRpc\.(inspect|extensionUi)/.test(id)));
   assert.ok(all.includes('piRpc.newSession'));
@@ -44,9 +39,7 @@ async function run() {
   const views = extension.packageJSON.contributes.views.piRpc.map((view) => view.id);
   assert.deepEqual(views, ['piRpc.chat']);
   const viewTitle = extension.packageJSON.contributes.menus['view/title'];
-  const agentic = viewTitle.filter(
-    (item) => item.when === 'view == piRpc.chat && piRpc.sidebarSurface == list'
-  );
+  const agentic = viewTitle.filter((item) => item.when === 'view == piRpc.chat');
   assert.deepEqual(
     agentic.map((item) => item.command || item.submenu),
     ['piRpc.newSession', 'piRpc.agenticActions']
