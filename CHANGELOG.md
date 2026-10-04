@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.21
 
 - Make Agentic the only Pi interface. Remove the legacy shared panel, unused
   sessions sidebar, inspection/compatibility commands and obsolete UI settings
