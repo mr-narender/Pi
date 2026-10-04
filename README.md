@@ -200,12 +200,11 @@ Model and thinking controls live in the composer status chip; there is no compos
 
 - Workspace folders are isolated. `piRpc.runtimeWorkers` sizes the shared worker pool
   (`auto`, or 1–8); disabling shared runtime or a host startup failure uses per-chat processes.
-- This README describes the current development source; Marketplace builds may be older.
-  Prefer the stable channel for normal use. The prerelease remains under verification:
-  all 27 meaningful command paths do not establish full native TUI parity or release readiness.
-  Terminal-only extension UI still has limits, and ExtensionHost/manual visual checks remain
-  separate gates. The two reviewed lifecycle defects are fixed in current source, not in the
-  historical local 0.2.17 preview artifact; that artifact did not include this logo.
+- Agentic is the sole interface in 0.2.21. Its 27 supported command paths have
+  automated coverage, with additional installed VS Code checks for navigation,
+  draft preservation, animations and composer layout. Terminal-only extension UI
+  and physical OS input methods retain their documented limits; this does not
+  establish universal native TUI parity.
 - The Activity Bar icon and gallery logo are an original Pi × VS Code fusion mark.
 
 ## Credits & affiliation
