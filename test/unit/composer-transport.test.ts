@@ -14,7 +14,6 @@ function snapshot(overrides: Partial<WebviewSnapshot> = {}): WebviewSnapshot {
   return {
     sequence: 1,
     title: 'Current Chat',
-    uiMode: 'simple',
     connectionState: 'ready',
     workspaceFolderName: 'workspace',
     sessionName: 'Demo Session',
@@ -124,8 +123,9 @@ test('buildSendPreview appends deterministic envelope and exact rpc images', () 
   assert.deepEqual(preview.rpcImages, [{ type: 'image', data: 'AAAA', mimeType: 'image/png' }]);
 });
 
-test('default simple mode keeps the composer primary controls; chat actions are native', () => {
+test('Agentic keeps the composer primary controls; chat actions are native', () => {
   const html = renderChatApp(snapshot());
+  assert.doesNotMatch(html, /data-ui-mode/);
   // Composer keeps the model chip (New/History live in the sidebar; the ⋯ chat
   // actions moved to the native editor title bar — piRpc.chatActions submenu).
   assert.match(html, /class="composer-status" id="status-chip" data-command="piRpc.chatSettings"/);

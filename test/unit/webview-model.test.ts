@@ -60,7 +60,6 @@ test('createWebviewSnapshot serializes transcript and composer ui state', () => 
   });
 
   const snapshot = createWebviewSnapshot(state, 7, {
-    uiMode: 'simple',
     composer,
     isTrusted: true,
     folders: [{ name: 'workspace', uri: 'file:///tmp/workspace', active: true }],
@@ -97,7 +96,6 @@ function stateWithMessages(count: number) {
 }
 
 const baseExtra = {
-  uiMode: 'simple' as const,
   composer: createEmptyComposerState(),
   isTrusted: true,
   folders: [],

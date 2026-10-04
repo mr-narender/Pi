@@ -9,7 +9,7 @@ const actionIds = [...coverage.matchAll(/`(piRpc\.[^`]+)`/g)].map((match) => mat
 test('coverage matrix action ids are unique and fully contributed', () => {
   const unique = new Set(actionIds);
   assert.equal(actionIds.length, unique.size);
-  assert.equal(unique.size, 82);
+  assert.equal(unique.size, 31);
   const contributed = new Set(packageJson.contributes.commands.map((command) => command.command));
   for (const id of unique) {
     assert.ok(typeof id === 'string');
@@ -21,7 +21,7 @@ test('coverage row inventory totals stay stable', () => {
   assert.equal((coverage.match(/\| C-\d+/g) ?? []).length, 34);
   assert.equal((coverage.match(/\| E-\d+/g) ?? []).length, 20);
   assert.equal((coverage.match(/\| U-\d+/g) ?? []).length, 9);
-  assert.equal((coverage.match(/\| X-\d+/g) ?? []).length, 19);
+  assert.equal((coverage.match(/\| X-\d+/g) ?? []).length, 0);
   assert.equal((coverage.match(/\| D-\d+/g) ?? []).length, 8);
 });
 
@@ -32,8 +32,7 @@ test('manifest contributes exactly one always-visible Chat webview; mode is cont
   // VS Code's own source (listView.ts row-height options are internal,
   // never exposed to extensions) and the VS Code team's own admission that
   // list/tree isn't a good fit for chat UI (microsoft/vscode#268858). One
-  // webview now renders EITHER the list or the full chat depending on
-  // piRpc.sidebarMode — no `when`-gated second view needed.
+  // Agentic owns both surfaces without a second contributed view.
   const view = packageJson.contributes.views.piRpc;
   assert.deepEqual(
     view.map((entry) => entry.id),

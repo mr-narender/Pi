@@ -249,7 +249,7 @@
   },
   {
     "id": "C-032",
-    "surface": "Dialog broker / piRpc.respondExtensionUi",
+    "surface": "Native dialog broker and inline approval",
     "sourceFile": "src/rpc/client.ts",
     "symbol": "RpcClient.respondExtensionUi",
     "testFile": "test/unit/rpc-coverage.test.ts",
@@ -257,7 +257,7 @@
   },
   {
     "id": "C-033",
-    "surface": "RPC error inspection / piRpc.inspectRpcError",
+    "surface": "RPC error inspection",
     "sourceFile": "src/rpc/client.ts",
     "symbol": "RpcClient.command",
     "testFile": "test/unit/rpc-coverage.test.ts",
@@ -265,7 +265,7 @@
   },
   {
     "id": "C-034",
-    "surface": "Parse error inspection / piRpc.inspectParseError",
+    "surface": "Parse error inspection",
     "sourceFile": "src/rpc/transport.ts",
     "symbol": "RpcTransport.handleResponse",
     "testFile": "test/unit/rpc-coverage.test.ts",
@@ -273,7 +273,7 @@
   },
   {
     "id": "E-001",
-    "surface": "Running indicator / piRpc.inspectAgentStart",
+    "surface": "Running indicator",
     "sourceFile": "src/state/reducer.ts",
     "symbol": "reduceEvent",
     "testFile": "test/unit/rpc-coverage.test.ts",
@@ -281,7 +281,7 @@
   },
   {
     "id": "E-002",
-    "surface": "Run phase / piRpc.inspectAgentEnd",
+    "surface": "Run phase",
     "sourceFile": "src/state/reducer.ts",
     "symbol": "reduceEvent",
     "testFile": "test/unit/rpc-coverage.test.ts",
@@ -289,7 +289,7 @@
   },
   {
     "id": "E-003",
-    "surface": "Idle status / piRpc.inspectAgentSettled",
+    "surface": "Idle status",
     "sourceFile": "src/state/reducer.ts",
     "symbol": "reduceEvent",
     "testFile": "test/unit/rpc-coverage.test.ts",
@@ -297,7 +297,7 @@
   },
   {
     "id": "E-004",
-    "surface": "Turn card / piRpc.inspectTurnStart",
+    "surface": "Turn card",
     "sourceFile": "src/state/reducer.ts",
     "symbol": "reduceEvent",
     "testFile": "test/unit/rpc-coverage.test.ts",
@@ -305,7 +305,7 @@
   },
   {
     "id": "E-005",
-    "surface": "Turn card / piRpc.inspectTurnEnd",
+    "surface": "Turn card",
     "sourceFile": "src/state/reducer.ts",
     "symbol": "reduceEvent",
     "testFile": "test/unit/rpc-coverage.test.ts",
@@ -313,7 +313,7 @@
   },
   {
     "id": "E-006",
-    "surface": "Transcript / piRpc.inspectMessageStart",
+    "surface": "Transcript",
     "sourceFile": "src/state/reducer.ts",
     "symbol": "reduceEvent",
     "testFile": "test/unit/rpc-coverage.test.ts",
@@ -321,7 +321,7 @@
   },
   {
     "id": "E-007",
-    "surface": "Streaming transcript / piRpc.inspectMessageUpdate",
+    "surface": "Streaming transcript",
     "sourceFile": "src/state/reducer.ts",
     "symbol": "reduceEvent",
     "testFile": "test/unit/rpc-coverage.test.ts",
@@ -329,7 +329,7 @@
   },
   {
     "id": "E-008",
-    "surface": "Transcript / piRpc.inspectMessageEnd",
+    "surface": "Transcript",
     "sourceFile": "src/state/reducer.ts",
     "symbol": "reduceEvent",
     "testFile": "test/unit/rpc-coverage.test.ts",
@@ -337,7 +337,7 @@
   },
   {
     "id": "E-009",
-    "surface": "Tool card / piRpc.inspectToolStart",
+    "surface": "Tool card",
     "sourceFile": "src/state/reducer.ts",
     "symbol": "reduceEvent",
     "testFile": "test/unit/rpc-coverage.test.ts",
@@ -345,7 +345,7 @@
   },
   {
     "id": "E-010",
-    "surface": "Tool card / piRpc.inspectToolUpdate",
+    "surface": "Tool card",
     "sourceFile": "src/state/reducer.ts",
     "symbol": "reduceEvent",
     "testFile": "test/unit/rpc-coverage.test.ts",
@@ -353,7 +353,7 @@
   },
   {
     "id": "E-011",
-    "surface": "Tool card / piRpc.inspectToolEnd",
+    "surface": "Tool card",
     "sourceFile": "src/state/reducer.ts",
     "symbol": "reduceEvent",
     "testFile": "test/unit/rpc-coverage.test.ts",
@@ -361,7 +361,7 @@
   },
   {
     "id": "E-012",
-    "surface": "Queue tree / piRpc.inspectQueueUpdate",
+    "surface": "Queue tree",
     "sourceFile": "src/state/reducer.ts",
     "symbol": "reduceEvent",
     "testFile": "test/unit/rpc-coverage.test.ts",
@@ -369,7 +369,7 @@
   },
   {
     "id": "E-013",
-    "surface": "Context loader / piRpc.inspectCompactionStart",
+    "surface": "Context loader",
     "sourceFile": "src/state/reducer.ts",
     "symbol": "reduceEvent",
     "testFile": "test/unit/rpc-coverage.test.ts",
@@ -377,7 +377,7 @@
   },
   {
     "id": "E-014",
-    "surface": "Context card / piRpc.inspectCompactionEnd",
+    "surface": "Context card",
     "sourceFile": "src/state/reducer.ts",
     "symbol": "reduceEvent",
     "testFile": "test/unit/rpc-coverage.test.ts",
@@ -385,7 +385,7 @@
   },
   {
     "id": "E-015",
-    "surface": "Retry countdown / piRpc.inspectRetryStart",
+    "surface": "Retry countdown",
     "sourceFile": "src/state/reducer.ts",
     "symbol": "reduceEvent",
     "testFile": "test/unit/rpc-coverage.test.ts",
@@ -393,7 +393,7 @@
   },
   {
     "id": "E-016",
-    "surface": "Retry card / piRpc.inspectRetryEnd",
+    "surface": "Retry card",
     "sourceFile": "src/state/reducer.ts",
     "symbol": "reduceEvent",
     "testFile": "test/unit/rpc-coverage.test.ts",
@@ -401,7 +401,7 @@
   },
   {
     "id": "E-017",
-    "surface": "Diagnostics / piRpc.inspectExtensionError",
+    "surface": "Diagnostics",
     "sourceFile": "src/state/reducer.ts",
     "symbol": "reduceEvent",
     "testFile": "test/unit/rpc-coverage.test.ts",
@@ -409,7 +409,7 @@
   },
   {
     "id": "E-018",
-    "surface": "Outline refresh / piRpc.inspectEntryAppended",
+    "surface": "Outline refresh",
     "sourceFile": "src/state/reducer.ts",
     "symbol": "reduceEvent",
     "testFile": "test/unit/rpc-coverage.test.ts",
@@ -417,7 +417,7 @@
   },
   {
     "id": "E-019",
-    "surface": "Session label / piRpc.inspectSessionInfoChanged",
+    "surface": "Session label",
     "sourceFile": "src/state/reducer.ts",
     "symbol": "reduceEvent",
     "testFile": "test/unit/rpc-coverage.test.ts",
@@ -425,7 +425,7 @@
   },
   {
     "id": "E-020",
-    "surface": "Thinking status / piRpc.inspectThinkingChanged",
+    "surface": "Thinking status",
     "sourceFile": "src/state/reducer.ts",
     "symbol": "reduceEvent",
     "testFile": "test/unit/rpc-coverage.test.ts",
@@ -433,7 +433,7 @@
   },
   {
     "id": "U-001",
-    "surface": "Quick Pick / piRpc.extensionUi.select",
+    "surface": "Quick Pick",
     "sourceFile": "src/state/reducer.ts",
     "symbol": "reduceExtensionUiRequest",
     "testFile": "test/unit/rpc-coverage.test.ts",
@@ -441,7 +441,7 @@
   },
   {
     "id": "U-002",
-    "surface": "Modal confirmation / piRpc.extensionUi.confirm",
+    "surface": "Modal confirmation",
     "sourceFile": "src/state/reducer.ts",
     "symbol": "reduceExtensionUiRequest",
     "testFile": "test/unit/rpc-coverage.test.ts",
@@ -449,7 +449,7 @@
   },
   {
     "id": "U-003",
-    "surface": "Input Box / piRpc.extensionUi.input",
+    "surface": "Input Box",
     "sourceFile": "src/state/reducer.ts",
     "symbol": "reduceExtensionUiRequest",
     "testFile": "test/unit/rpc-coverage.test.ts",
@@ -457,7 +457,7 @@
   },
   {
     "id": "U-004",
-    "surface": "Editor flow / piRpc.extensionUi.editor",
+    "surface": "Editor flow",
     "sourceFile": "src/state/reducer.ts",
     "symbol": "reduceExtensionUiRequest",
     "testFile": "test/unit/rpc-coverage.test.ts",
@@ -465,7 +465,7 @@
   },
   {
     "id": "U-005",
-    "surface": "Native notification / piRpc.extensionUi.notify",
+    "surface": "Native notification",
     "sourceFile": "src/state/reducer.ts",
     "symbol": "reduceExtensionUiRequest",
     "testFile": "test/unit/rpc-coverage.test.ts",
@@ -473,7 +473,7 @@
   },
   {
     "id": "U-006",
-    "surface": "Keyed status bar / piRpc.extensionUi.setStatus",
+    "surface": "Keyed status bar",
     "sourceFile": "src/state/reducer.ts",
     "symbol": "reduceExtensionUiRequest",
     "testFile": "test/unit/rpc-coverage.test.ts",
@@ -481,7 +481,7 @@
   },
   {
     "id": "U-007",
-    "surface": "Accessible widget / piRpc.extensionUi.setWidget",
+    "surface": "Accessible widget",
     "sourceFile": "src/state/reducer.ts",
     "symbol": "reduceExtensionUiRequest",
     "testFile": "test/unit/rpc-coverage.test.ts",
@@ -489,7 +489,7 @@
   },
   {
     "id": "U-008",
-    "surface": "Chat panel title / piRpc.extensionUi.setTitle",
+    "surface": "Chat panel title",
     "sourceFile": "src/state/reducer.ts",
     "symbol": "reduceExtensionUiRequest",
     "testFile": "test/unit/rpc-coverage.test.ts",
@@ -497,163 +497,11 @@
   },
   {
     "id": "U-009",
-    "surface": "Composer draft / piRpc.extensionUi.setEditorText",
+    "surface": "Composer draft",
     "sourceFile": "src/state/reducer.ts",
     "symbol": "reduceExtensionUiRequest",
     "testFile": "test/unit/rpc-coverage.test.ts",
     "testTitle": "rpc.ui.setEditorText"
-  },
-  {
-    "id": "X-001",
-    "surface": "Compatibility fixture / piRpc.extensionUiLocal.onTerminalInput",
-    "sourceFile": "src/ui/localExtensionUi.ts",
-    "symbol": "LocalExtensionUiContext.onTerminalInput",
-    "testFile": "test/unit/rpc-coverage.test.ts",
-    "testTitle": "rpc.ui.local.onTerminalInput"
-  },
-  {
-    "id": "X-002",
-    "surface": "Compatibility fixture / piRpc.extensionUiLocal.setWorkingMessage",
-    "sourceFile": "src/ui/localExtensionUi.ts",
-    "symbol": "LocalExtensionUiContext.setWorkingMessage",
-    "testFile": "test/unit/rpc-coverage.test.ts",
-    "testTitle": "rpc.ui.local.setWorkingMessage"
-  },
-  {
-    "id": "X-003",
-    "surface": "Compatibility fixture / piRpc.extensionUiLocal.setWorkingVisible",
-    "sourceFile": "src/ui/localExtensionUi.ts",
-    "symbol": "LocalExtensionUiContext.setWorkingVisible",
-    "testFile": "test/unit/rpc-coverage.test.ts",
-    "testTitle": "rpc.ui.local.setWorkingVisible"
-  },
-  {
-    "id": "X-004",
-    "surface": "Compatibility fixture / piRpc.extensionUiLocal.setWorkingIndicator",
-    "sourceFile": "src/ui/localExtensionUi.ts",
-    "symbol": "LocalExtensionUiContext.setWorkingIndicator",
-    "testFile": "test/unit/rpc-coverage.test.ts",
-    "testTitle": "rpc.ui.local.setWorkingIndicator"
-  },
-  {
-    "id": "X-005",
-    "surface": "Compatibility fixture / piRpc.extensionUiLocal.setHiddenThinkingLabel",
-    "sourceFile": "src/ui/localExtensionUi.ts",
-    "symbol": "LocalExtensionUiContext.setHiddenThinkingLabel",
-    "testFile": "test/unit/rpc-coverage.test.ts",
-    "testTitle": "rpc.ui.local.setHiddenThinkingLabel"
-  },
-  {
-    "id": "X-006",
-    "surface": "Compatibility fixture / piRpc.extensionUiLocal.setFooter",
-    "sourceFile": "src/ui/localExtensionUi.ts",
-    "symbol": "LocalExtensionUiContext.setFooter",
-    "testFile": "test/unit/rpc-coverage.test.ts",
-    "testTitle": "rpc.ui.local.setFooter"
-  },
-  {
-    "id": "X-007",
-    "surface": "Compatibility fixture / piRpc.extensionUiLocal.setHeader",
-    "sourceFile": "src/ui/localExtensionUi.ts",
-    "symbol": "LocalExtensionUiContext.setHeader",
-    "testFile": "test/unit/rpc-coverage.test.ts",
-    "testTitle": "rpc.ui.local.setHeader"
-  },
-  {
-    "id": "X-008",
-    "surface": "Compatibility fixture / piRpc.extensionUiLocal.custom",
-    "sourceFile": "src/ui/localExtensionUi.ts",
-    "symbol": "LocalExtensionUiContext.custom",
-    "testFile": "test/unit/rpc-coverage.test.ts",
-    "testTitle": "rpc.ui.local.custom"
-  },
-  {
-    "id": "X-009",
-    "surface": "Compatibility fixture / piRpc.extensionUiLocal.pasteToEditor",
-    "sourceFile": "src/ui/localExtensionUi.ts",
-    "symbol": "LocalExtensionUiContext.pasteToEditor",
-    "testFile": "test/unit/rpc-coverage.test.ts",
-    "testTitle": "rpc.ui.local.pasteToEditor"
-  },
-  {
-    "id": "X-010",
-    "surface": "Compatibility fixture / piRpc.extensionUiLocal.getEditorText",
-    "sourceFile": "src/ui/localExtensionUi.ts",
-    "symbol": "LocalExtensionUiContext.getEditorText",
-    "testFile": "test/unit/rpc-coverage.test.ts",
-    "testTitle": "rpc.ui.local.getEditorText"
-  },
-  {
-    "id": "X-011",
-    "surface": "Compatibility fixture / piRpc.extensionUiLocal.addAutocompleteProvider",
-    "sourceFile": "src/ui/localExtensionUi.ts",
-    "symbol": "LocalExtensionUiContext.addAutocompleteProvider",
-    "testFile": "test/unit/rpc-coverage.test.ts",
-    "testTitle": "rpc.ui.local.addAutocompleteProvider"
-  },
-  {
-    "id": "X-012",
-    "surface": "Compatibility fixture / piRpc.extensionUiLocal.setEditorComponent",
-    "sourceFile": "src/ui/localExtensionUi.ts",
-    "symbol": "LocalExtensionUiContext.setEditorComponent",
-    "testFile": "test/unit/rpc-coverage.test.ts",
-    "testTitle": "rpc.ui.local.setEditorComponent"
-  },
-  {
-    "id": "X-013",
-    "surface": "Compatibility fixture / piRpc.extensionUiLocal.getEditorComponent",
-    "sourceFile": "src/ui/localExtensionUi.ts",
-    "symbol": "LocalExtensionUiContext.getEditorComponent",
-    "testFile": "test/unit/rpc-coverage.test.ts",
-    "testTitle": "rpc.ui.local.getEditorComponent"
-  },
-  {
-    "id": "X-014",
-    "surface": "Compatibility fixture / piRpc.extensionUiLocal.themeGetter",
-    "sourceFile": "src/ui/localExtensionUi.ts",
-    "symbol": "LocalExtensionUiContext.theme",
-    "testFile": "test/unit/rpc-coverage.test.ts",
-    "testTitle": "rpc.ui.local.themeGetter"
-  },
-  {
-    "id": "X-015",
-    "surface": "Compatibility fixture / piRpc.extensionUiLocal.getAllThemes",
-    "sourceFile": "src/ui/localExtensionUi.ts",
-    "symbol": "LocalExtensionUiContext.getAllThemes",
-    "testFile": "test/unit/rpc-coverage.test.ts",
-    "testTitle": "rpc.ui.local.getAllThemes"
-  },
-  {
-    "id": "X-016",
-    "surface": "Compatibility fixture / piRpc.extensionUiLocal.getTheme",
-    "sourceFile": "src/ui/localExtensionUi.ts",
-    "symbol": "LocalExtensionUiContext.getTheme",
-    "testFile": "test/unit/rpc-coverage.test.ts",
-    "testTitle": "rpc.ui.local.getTheme"
-  },
-  {
-    "id": "X-017",
-    "surface": "Compatibility fixture / piRpc.extensionUiLocal.setTheme",
-    "sourceFile": "src/ui/localExtensionUi.ts",
-    "symbol": "LocalExtensionUiContext.setTheme",
-    "testFile": "test/unit/rpc-coverage.test.ts",
-    "testTitle": "rpc.ui.local.setTheme"
-  },
-  {
-    "id": "X-018",
-    "surface": "Compatibility fixture / piRpc.extensionUiLocal.getToolsExpanded",
-    "sourceFile": "src/ui/localExtensionUi.ts",
-    "symbol": "LocalExtensionUiContext.getToolsExpanded",
-    "testFile": "test/unit/rpc-coverage.test.ts",
-    "testTitle": "rpc.ui.local.getToolsExpanded"
-  },
-  {
-    "id": "X-019",
-    "surface": "Compatibility fixture / piRpc.extensionUiLocal.setToolsExpanded",
-    "sourceFile": "src/ui/localExtensionUi.ts",
-    "symbol": "LocalExtensionUiContext.setToolsExpanded",
-    "testFile": "test/unit/rpc-coverage.test.ts",
-    "testTitle": "rpc.ui.local.setToolsExpanded"
   },
   {
     "id": "D-001",

@@ -766,7 +766,6 @@ export class ChatTabManager implements vscode.Disposable {
       return undefined;
     }
     const snapshot = createWebviewSnapshot(context.controller.snapshot, 0, {
-      uiMode: this.uiState.getMode(),
       composer: createEmptyComposerState(),
       isTrusted: vscode.workspace.isTrusted,
       folders: [],
@@ -785,7 +784,6 @@ export class ChatTabManager implements vscode.Disposable {
       return undefined;
     }
     const snapshot = createWebviewSnapshot(context.controller.snapshot, 0, {
-      uiMode: this.uiState.getMode(),
       composer: createEmptyComposerState(),
       isTrusted: vscode.workspace.isTrusted,
       folders: [],
@@ -867,7 +865,9 @@ export class ChatTabManager implements vscode.Disposable {
           | { uri?: vscode.Uri; viewType?: string }
           | undefined;
         if (input?.viewType === CHAT_EDITOR_VIEW_TYPE && input.uri?.toString() === key) {
-          await vscode.window.tabGroups.close(tab);
+          if ((await vscode.window.tabGroups.close(tab)) === false) {
+            throw new Error('Pi chat could not be closed.');
+          }
         }
       }
     }
@@ -889,7 +889,9 @@ export class ChatTabManager implements vscode.Disposable {
           target.sessionFile &&
           normalizeSessionFilePath(target.sessionFile) === normalizeSessionFilePath(sessionFile)
         ) {
-          await vscode.window.tabGroups.close(tab);
+          if ((await vscode.window.tabGroups.close(tab)) === false) {
+            throw new Error('Pi chat could not be closed.');
+          }
         }
       }
     }
@@ -2210,27 +2212,24 @@ export class ChatTabManager implements vscode.Disposable {
     }
   }
 
-  /** Agentic Mode's sidebar shows only a chat LIST — "current chat" moves to
-   * an editor tab instead. Switching modes must never leave the SAME
-   * conversation visible in both places at once (an explicit regression
-   * report) — this closes the tab when its chat becomes the sidebar's, and
-   * opens a tab when the sidebar's chat needs to become one. Scoped to
-   * chats with a real session file; a brand-new empty draft has nothing
-   * worth migrating (Agentic Mode's own New Chat button covers that). */
-  public async syncSidebarModeTransition(toMode: 'agentic' | 'chat'): Promise<void> {
-    if (toMode === 'chat') {
+  /** Move a saved conversation between Agentic's full-chat sidebar and editor
+   * tab without showing it in both places. Empty drafts keep their own identity. */
+  public async moveSidebarConversation(surface: 'list' | 'full-chat'): Promise<void> {
+    if (surface === 'full-chat') {
       const active = this.getActiveContext();
       const sessionFile = active?.controller.snapshot.state.sessionFile;
       if (!active || !sessionFile) {
         return;
       }
+      this.assertSessionFileNotCompacting(sessionFile);
+      await this.closeResource(active.resource);
+      await this.closeForSessionFile(sessionFile);
       this.sidebarTarget = {
         workspaceFolderUri: active.controller.folder.uri.toString(),
         kind: 'sessionFile',
         sessionFile,
       };
       this.persistSidebarTarget();
-      await this.closeForSessionFile(sessionFile);
       return;
     }
     const target = this.sidebarTarget;
@@ -2349,19 +2348,9 @@ export class ChatTabManager implements vscode.Disposable {
     await this.renderResource(resource, { active: true });
   }
 
-  /** Agentic Mode takes over the SAME WebviewView to show the chat list
-   * instead (AgenticChatListHost, extension.ts) — it never calls
-   * attachSidebarChat, so this SidebarChatHost is never constructed fresh
-   * for a session already in agentic mode. But switching FROM Chat mode TO
-   * Agentic mode reuses the already-resolved view, and VS Code never fires
-   * onDidDispose just because a view's content was reassigned — so without
-   * this, the OLD SidebarChatHost stays registered in `hosts` forever,
-   * making listOpenChats() (and so the chat list itself) keep reporting a
-   * chat as "open" with no tab or view actually showing it anywhere.
-   * Deliberately NOT onHostDisposed: the underlying controller isn't being
-   * closed, just this view wrapper — the same session may still be in use
-   * via a different tab (syncSidebarModeTransition opens one for exactly
-   * this reason). */
+  /** Release the full-chat host when Agentic's list takes over the same view.
+   * VS Code does not dispose the view on reassignment. Keep the controller:
+   * the conversation moves to its editor tab before detaching this wrapper. */
   public detachSidebarChatHost(): void {
     // Same parse+toString as attachSidebarChat's own registration — URI
     // normalization means a hand-typed string literal isn't guaranteed to
@@ -2807,7 +2796,6 @@ export class ChatTabManager implements vscode.Disposable {
     if (isCurrent) {
       const settings = getSettings();
       const snapshot = createWebviewSnapshot(context.controller.snapshot, sequence, {
-        uiMode: this.uiState.getMode(),
         composer,
         isTrusted: vscode.workspace.isTrusted,
         folders,
@@ -2828,7 +2816,6 @@ export class ChatTabManager implements vscode.Disposable {
       return {
         ...cached.lastSnapshot,
         sequence,
-        uiMode: this.uiState.getMode(),
         draft: composer.draft,
         pendingContextItems: composer.pendingContextItems,
         // stale=true: images without live bytes demand reselect, but a fresh
@@ -2847,7 +2834,6 @@ export class ChatTabManager implements vscode.Disposable {
     return {
       sequence,
       title: tabTitleFromTarget(context.target, context.controller.folder.name),
-      uiMode: this.uiState.getMode(),
       connectionState: context.controller.snapshot.connectionState,
       workspaceFolderName: context.controller.folder.name,
       sessionName:

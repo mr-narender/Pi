@@ -4,12 +4,11 @@ import { build } from 'esbuild';
 import { createRequire } from 'node:module';
 import { createEmptyComposerState } from '../../src/webview/composer';
 
-for (const route of ['editor', 'sidebar']) {
-  test(`compiled engine ${route}: every mode captures before composer read, no prompt/follow/image preparation, no stale ACK`, async () => {
+{
+  test(`compiled engine editor: every mode captures before composer read, no prompt/follow/image preparation, no stale ACK`, async () => {
     const output = await build({
       stdin: {
-        contents:
-          "export {ChatTabManager} from './src/editorTabs/tabManager'; export {ChatPanelProvider} from './src/webview/provider';",
+        contents: "export {ChatTabManager} from './src/editorTabs/tabManager'; ",
         resolveDir: process.cwd(),
       },
       bundle: true,
@@ -76,9 +75,7 @@ for (const route of ['editor', 'sidebar']) {
         };
       },
     };
-    const instance = Object.create(
-      module.exports[route === 'editor' ? 'ChatTabManager' : 'ChatPanelProvider'].prototype
-    );
+    const instance = Object.create(module.exports['ChatTabManager'].prototype);
     const resource = { toString: () => 'owned-resource' };
     instance.uiState = {
       captureIdentity: () => ({}),
@@ -99,10 +96,7 @@ for (const route of ['editor', 'sidebar']) {
     instance.preparePromptContext = () => {
       throw new Error('No local prompt/context/images');
     };
-    const send = (mode: string) =>
-      route === 'editor'
-        ? instance.handleRequestSend(resource, mode, true, 'ack')
-        : instance.handleRequestSend(controller, mode, 'ack');
+    const send = (mode: string) => instance.handleRequestSend(resource, mode, true, 'ack');
     for (const command of ['tree', 'trust', 'reload'])
       for (const mode of ['prompt', 'steer', 'follow_up']) {
         order.length = 0;
@@ -122,8 +116,7 @@ for (const route of ['editor', 'sidebar']) {
         if (outcome === 'retype') state.commandRevision = (state.commandRevision ?? 0) + 1;
         if (outcome === 'generation') generation++;
         if (outcome === 'surface') {
-          if (route === 'editor') instance.hosts = new Map([['owned-resource', {}]]);
-          else instance.panel = {};
+          instance.hosts = new Map([['owned-resource', {}]]);
         }
       };
       await send('follow_up');

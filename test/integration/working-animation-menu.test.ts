@@ -135,7 +135,6 @@ test('Working Animation routes allowlisted action to existing six-choice picker 
         sequence: 1,
         title: 'Chat',
         bindingState: 'current',
-        uiMode: 'simple',
         connectionState: 'ready',
         workspaceFolderName: 'workspace',
         isStreaming: false,

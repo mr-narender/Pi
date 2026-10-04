@@ -18,7 +18,6 @@ import { createInitialControllerState } from '../../src/state/types';
 import { reduceEvent, reduceExtensionUiRequest } from '../../src/state/reducer';
 import { createWebviewSnapshot, normalizeAttachment } from '../../src/webview/model';
 import { createEmptyComposerState } from '../../src/webview/composer';
-import { LocalExtensionUiContext } from '../../src/ui/localExtensionUi';
 import evidence from '../../docs/RPC_COVERAGE_EVIDENCE.json';
 
 interface MockTransport {
@@ -1047,114 +1046,6 @@ test('rpc.ui.setEditorText', () => {
   assert.equal(next.draft, 'draft body');
 });
 
-test('rpc.ui.local.onTerminalInput', () => {
-  const ui = new LocalExtensionUiContext();
-  assert.equal(typeof ui.onTerminalInput().dispose, 'function');
-});
-
-test('rpc.ui.local.setWorkingMessage', () => {
-  const ui = new LocalExtensionUiContext();
-  assert.equal(ui.setWorkingMessage(), undefined);
-});
-
-test('rpc.ui.local.setWorkingVisible', () => {
-  const ui = new LocalExtensionUiContext();
-  assert.equal(ui.setWorkingVisible(), undefined);
-});
-
-test('rpc.ui.local.setWorkingIndicator', () => {
-  const ui = new LocalExtensionUiContext();
-  assert.equal(ui.setWorkingIndicator(), undefined);
-});
-
-test('rpc.ui.local.setHiddenThinkingLabel', () => {
-  const ui = new LocalExtensionUiContext();
-  assert.equal(ui.setHiddenThinkingLabel(), undefined);
-});
-
-test('rpc.ui.local.setFooter', () => {
-  const ui = new LocalExtensionUiContext();
-  assert.equal(ui.setFooter(), undefined);
-});
-
-test('rpc.ui.local.setHeader', () => {
-  const ui = new LocalExtensionUiContext();
-  assert.equal(ui.setHeader(), undefined);
-});
-
-test('rpc.ui.local.custom', async () => {
-  const ui = new LocalExtensionUiContext();
-  assert.equal(await ui.custom(), undefined);
-});
-
-test('rpc.ui.local.pasteToEditor', () => {
-  const ui = new LocalExtensionUiContext();
-  let seen: JsonObject | undefined;
-  const request = ui.pasteToEditor(
-    {
-      applyExtensionUiRequest(value: JsonObject) {
-        seen = value;
-      },
-    } as never,
-    'hello'
-  );
-  assert.equal(request.method, 'set_editor_text');
-  assert.equal(seen?.text, 'hello');
-});
-
-test('rpc.ui.local.getEditorText', () => {
-  const ui = new LocalExtensionUiContext();
-  assert.equal(ui.getEditorText(), '');
-});
-
-test('rpc.ui.local.addAutocompleteProvider', () => {
-  const ui = new LocalExtensionUiContext();
-  assert.equal(ui.addAutocompleteProvider(), undefined);
-});
-
-test('rpc.ui.local.setEditorComponent', () => {
-  const ui = new LocalExtensionUiContext();
-  assert.equal(ui.setEditorComponent(), undefined);
-});
-
-test('rpc.ui.local.getEditorComponent', () => {
-  const ui = new LocalExtensionUiContext();
-  assert.equal(ui.getEditorComponent(), undefined);
-});
-
-test('rpc.ui.local.themeGetter', () => {
-  const ui = new LocalExtensionUiContext();
-  assert.equal(ui.theme.mode, 'rpc');
-});
-
-test('rpc.ui.local.getAllThemes', () => {
-  const ui = new LocalExtensionUiContext();
-  assert.deepEqual(ui.getAllThemes(), []);
-});
-
-test('rpc.ui.local.getTheme', () => {
-  const ui = new LocalExtensionUiContext();
-  assert.equal(ui.getTheme(), undefined);
-});
-
-test('rpc.ui.local.setTheme', () => {
-  const ui = new LocalExtensionUiContext();
-  assert.deepEqual(ui.setTheme(), {
-    success: false,
-    error: 'Themes are not switchable through the Pi VS Code compatibility mode.',
-  });
-});
-
-test('rpc.ui.local.getToolsExpanded', () => {
-  const ui = new LocalExtensionUiContext();
-  assert.equal(ui.getToolsExpanded(), false);
-});
-
-test('rpc.ui.local.setToolsExpanded', () => {
-  const ui = new LocalExtensionUiContext();
-  assert.equal(ui.setToolsExpanded(), undefined);
-});
-
 test('rpc.shape.state', () => {
   const parsed = parseEnvelope({
     type: 'response',
@@ -1231,7 +1122,6 @@ test('rpc.shape.blocks', () => {
     },
   ];
   const snapshot = createWebviewSnapshot(state, 1, {
-    uiMode: 'simple',
     composer: createEmptyComposerState(),
     isTrusted: true,
     folders: [{ name: 'workspace', uri: 'file:///tmp/workspace', active: true }],
@@ -1255,7 +1145,6 @@ test('rpc.shape.messages', () => {
     { id: 'cs1', role: 'compactionSummary', content: 'compacted' },
   ];
   const snapshot = createWebviewSnapshot(state, 1, {
-    uiMode: 'simple',
     composer: createEmptyComposerState(),
     isTrusted: true,
     folders: [{ name: 'workspace', uri: 'file:///tmp/workspace', active: true }],
@@ -1447,7 +1336,6 @@ test('rpc.shape.attachment', () => {
     previewDataUrl: 'data:image/png;base64,AAAA',
   });
   const snapshot = createWebviewSnapshot(state, 2, {
-    uiMode: 'simple',
     composer,
     isTrusted: true,
     folders: [{ name: 'workspace', uri: 'file:///tmp/workspace', active: true }],
@@ -1510,7 +1398,7 @@ test('coverage evidence rows remain unique', () => {
     assert.equal(ids.has(row.id), false, `duplicate evidence row ${row.id}`);
     ids.add(row.id);
   }
-  assert.equal(ids.size, 90);
+  assert.equal(ids.size, 71);
   const validatorOutput = JSON.parse(
     execFileSync('node', ['./scripts/validateCoverage.mjs'], { encoding: 'utf8' })
   );

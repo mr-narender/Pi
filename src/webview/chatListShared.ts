@@ -188,7 +188,7 @@ export function decideSnapshotPush(
       row.title,
     ])
   );
-  if (identity === state.lastIdentity && !model.loading) {
+  if (identity === state.lastIdentity && !model.loading && state.hasShownRealData) {
     return {
       push: false,
       lastIdentity: state.lastIdentity,

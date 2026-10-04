@@ -4,7 +4,6 @@ import { exportCommand } from './commands/exportCommand';
 import { compactMenu } from './commands/compactCommand';
 import { existsSync } from 'node:fs';
 import { basename } from 'node:path';
-
 import {
   setBundledPiCliPath,
   setManagedPiCliPath,
@@ -39,19 +38,14 @@ import { COMMAND_IDS, CONTRIBUTED_COMMANDS } from './config/commands';
 import { getSettings } from './config/settings';
 import { previewDiagnostics } from './commands/debugCommand';
 import { DiagnosticsLogger } from './diagnostics/logger';
-import { redactJsonValue } from './diagnostics/redaction';
 import { ensureWorkspaceAvailable, ensureTrustedForMutation } from './security/trust';
 import { RecentSessionService } from './sessions/recentSessionService';
-
 import { formatRelativeTimestamp } from './sessions/recentSessions';
 import { SessionRegistry } from './sessions/sessionRegistry';
 import { ExtensionUiBroker } from './ui/extensionUiBroker';
-import { LocalExtensionUiContext } from './ui/localExtensionUi';
 import { openPathInNewWindow } from './ui/navigation';
-import { SessionsWebviewProvider } from './ui/sidebar/sessionsWebview';
 import { SessionDirWatcher } from './sessions/sessionDirWatcher';
 import { StatusBarController } from './ui/status/statusBar';
-import { ChatPanelProvider } from './webview/provider';
 import { ChatUiState } from './webview/composerState';
 import { ChatEditorProvider } from './editorTabs/provider';
 import { ChatFileSystemProvider } from './editorTabs/fileSystemProvider';
@@ -63,18 +57,14 @@ import { RemoteHostClient } from './remote/hostClient';
 import { pairingLink } from './remote/remoteConfig';
 import { showPairingPanel, closePairingPanel, setPairingStatus } from './remote/pairingPanel';
 import type { SessionController } from './sessions/sessionController';
-import type { ExtensionUiRequest } from './rpc/protocol';
-
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : undefined;
 }
-
 function asString(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined;
 }
-
 async function appendSessionInfoName(sessionPath: string, name: string): Promise<void> {
   const { readFile, appendFile } = await import('node:fs/promises');
   let parentId: string | null = null;
@@ -83,18 +73,16 @@ async function appendSessionInfoName(sessionPath: string, name: string): Promise
     const lines = text.split('\n').filter((line) => line.trim());
     for (let i = lines.length - 1; i >= 0; i--) {
       try {
-        const obj = JSON.parse(lines[i] as string) as { id?: unknown };
+        const obj = JSON.parse(lines[i] as string) as {
+          id?: unknown;
+        };
         if (typeof obj.id === 'string') {
           parentId = obj.id;
           break;
         }
-      } catch {
-        /* skip unparseable line */
-      }
+      } catch {}
     }
-  } catch {
-    /* new or unreadable file */
-  }
+  } catch {}
   const id = Math.random().toString(16).slice(2, 10).padEnd(8, '0');
   const entry = {
     type: 'session_info',
@@ -105,24 +93,6 @@ async function appendSessionInfoName(sessionPath: string, name: string): Promise
   };
   await appendFile(sessionPath, `${JSON.stringify(entry)}\n`, 'utf8');
 }
-
-function recentRequests(controller: SessionController, method?: ExtensionUiRequest['method']) {
-  return controller.snapshot.uiHistory
-    .filter((item) => (method ? item.method === method : true))
-    .map((item) => item.data);
-}
-
-function compatibilityEvents(controller: SessionController) {
-  return controller.snapshot.eventHistory
-    .filter((item) => item.data.compatibility === true)
-    .map((item) => ({
-      id: item.id,
-      type: item.type,
-      timestamp: item.timestamp,
-      data: redactJsonValue(item.data),
-    }));
-}
-
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const logger = new DiagnosticsLogger();
   // Point the launcher at the Pi bundled inside this extension (vendor/pi). When
@@ -264,18 +234,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // Record the loaded build in the output channel only (no user-facing toast).
   logger.info(
     `Pi extension activating: v${String(
-      (context.extension.packageJSON as { version?: unknown }).version ?? 'unknown'
+      (
+        context.extension.packageJSON as {
+          version?: unknown;
+        }
+      ).version ?? 'unknown'
     )}`
   );
   const registry = new SessionRegistry(logger);
   const settings = getSettings();
-  const editorTabsEnabled = () => getSettings().editorTabsEnabled;
   const statusBar = new StatusBarController();
   const sessionIndex = new SessionIndexService(context.extensionPath, logger);
   context.subscriptions.push({ dispose: () => sessionIndex.dispose() });
   const recentSessions = new RecentSessionService(sessionIndex);
   const uiState = new ChatUiState(context);
-  const chat = new ChatPanelProvider(context, registry, uiState);
   // Rehydrate the chat URI short-id map before any custom-editor tab is
   // restored, so restored tabs resolve to their session identity.
   initChatUriRegistry(context.workspaceState);
@@ -287,7 +259,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const sessionReplay = new SessionReplay(turnReview);
   context.subscriptions.push(sessionReplay);
   chatTabs.sessionReplay = sessionReplay;
-
   // True pre-apply approval gate (opt-in): sync on activation so a workspace
   // opened with the setting already on gets it without waiting for a toggle.
   void syncApprovalGateForWorkspace(
@@ -303,58 +274,69 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const state = recentSessions.getState(folder);
     return { items: state.items, others: state.others ?? [] };
   };
-  // Agentic Mode: the SAME view (piRpc.chat) renders either the chat list
-  // or the full chat, chosen by piRpc.sidebarMode — not two views gated by
-  // `when` (that was the earlier attempt; see AgenticChatListHost's own
-  // comment for why a native tree view was dropped for the list itself).
-  // VS Code calls resolveWebviewView once per view lifetime (retained
-  // across hide/show), so switching modes later needs its own explicit
-  // re-attach — sidebarModeChanged below does that.
-  const sidebarMode = (): 'agentic' | 'chat' =>
-    vscode.workspace.getConfiguration('piRpc').get<'agentic' | 'chat'>('sidebarMode', 'agentic');
+  // Agentic owns both the chat list and its shared full-chat surface.
+  // Workspace state remembers the surface across reloads; there is no
+  // alternate interface setting or rollback provider.
+  let sidebarSurface: 'list' | 'full-chat' =
+    context.workspaceState.get<unknown>('piRpc.sidebarSurface') === 'full-chat'
+      ? 'full-chat'
+      : 'list';
+  let sidebarTransition = Promise.resolve();
   let agenticListHost: AgenticChatListHost | undefined;
   let attachedSidebarView: vscode.WebviewView | undefined;
-  // Which host currently owns the ONE WebviewView instance. VS Code never
-  // fires onDidDispose just because a view's content is reassigned to a
-  // different host, so switching modes must explicitly tear down whichever
-  // host owned it before — otherwise the old one stays registered forever
-  // (a stale SidebarChatHost kept reporting a chat as "open" with no tab or
-  // view actually showing it — the exact bug this fixes) and, separately,
-  // a stale message listener would keep firing alongside the new one
-  // (vscode.Event supports multiple subscribers; it doesn't replace one).
-  let attachedSidebarKind: 'agentic' | 'chat' | undefined;
-  const attachSidebarForCurrentMode = (view: vscode.WebviewView): void => {
+  let attachedSidebarSurface: 'list' | 'full-chat' | undefined;
+  const attachSidebar = async (view: vscode.WebviewView): Promise<void> => {
     attachedSidebarView = view;
     const folder = vscode.workspace.workspaceFolders?.[0];
-    const nextKind: 'agentic' | 'chat' = sidebarMode() === 'agentic' && folder ? 'agentic' : 'chat';
-    if (attachedSidebarKind && attachedSidebarKind !== nextKind) {
-      if (attachedSidebarKind === 'chat') {
-        chatTabs.detachSidebarChatHost();
-      } else {
-        agenticListHost?.detach();
-      }
+    const nextSurface = sidebarSurface;
+    if (attachedSidebarSurface === 'full-chat') {
+      chatTabs.detachSidebarChatHost();
+    } else {
+      agenticListHost?.detach();
     }
-    attachedSidebarKind = nextKind;
-    if (nextKind === 'agentic') {
+    attachedSidebarSurface = nextSurface;
+    if (nextSurface === 'list' && folder) {
       if (!agenticListHost) {
         agenticListHost = new AgenticChatListHost(
           context.extensionUri,
           chatTabs,
           recentSessions,
-          folder!,
+          folder,
           context.globalState
         );
         context.subscriptions.push(agenticListHost);
       }
       agenticListHost.attach(view);
-      return;
+    } else {
+      await chatTabs.attachSidebarChat(context.extensionUri, view);
     }
-    void chatTabs.attachSidebarChat(context.extensionUri, view);
   };
+  const showSidebarSurface = (surface: 'list' | 'full-chat'): Promise<void> => {
+    sidebarTransition = sidebarTransition
+      .catch(() => undefined)
+      .then(async () => {
+        if (surface !== sidebarSurface) {
+          // Move the conversation before replacing its host, preserving the
+          // one-visible-surface rule and the originating composer identity.
+          await chatTabs.moveSidebarConversation(surface);
+          sidebarSurface = surface;
+          await context.workspaceState.update('piRpc.sidebarSurface', surface);
+          if (attachedSidebarView) {
+            await attachSidebar(attachedSidebarView);
+          }
+        }
+        await vscode.commands.executeCommand('setContext', 'piRpc.sidebarSurface', surface);
+        await vscode.commands.executeCommand('piRpc.chat.focus');
+      });
+    return sidebarTransition;
+  };
+  void vscode.commands.executeCommand('setContext', 'piRpc.sidebarSurface', sidebarSurface);
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(
       'piRpc.chat',
-      { resolveWebviewView: (view) => attachSidebarForCurrentMode(view) },
+      {
+        resolveWebviewView: (view) => attachSidebar(view),
+      },
       { webviewOptions: { retainContextWhenHidden: true } }
     )
   );
@@ -392,15 +374,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     (controller) => chatTabs.isControllerVisible(controller),
     (controller) => chatTabs.revealController(controller)
   );
-  const localUi = new LocalExtensionUiContext();
-
   context.subscriptions.push(
     logger,
     registry,
     statusBar,
     recentSessions,
     uiState,
-    chat,
     chatTabs,
     broker,
     ChatFileSystemProvider.register(),
@@ -411,40 +390,23 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       },
     })
   );
-
   for (const folder of vscode.workspace.workspaceFolders ?? []) {
     const controller = registry.getOrCreate(folder);
     broker.track(controller);
     chatTabs.trackController(controller);
   }
-  statusBar.setMode(uiState.getMode());
+
   statusBar.bind(registry.getActive());
   void recentSessions.refresh();
-
   // No global warm-start: with the PER-TAB controller model each chat tab owns
   // and starts its own Pi process on activation (parallel sessions), so a
   // folder-level warm-start would only spawn an orphan Pi + session. Tabs start
   // on demand in activateResource.
-
-  const sessionsView = new SessionsWebviewProvider(
-    context.extensionUri,
-    registry,
-    recentSessions,
-    context.workspaceState,
-    (controller) => chatTabs.contextPercent.get(controller),
-    sessionIndex
-  );
-
   // Keep the chat list in sync with the terminal (TUI): watch the on-disk
   // sessions dir and refresh live when Pi writes to it from a terminal.
   const sessionDirWatcher = new SessionDirWatcher(registry, recentSessions, logger);
   sessionDirWatcher.start();
-
-  context.subscriptions.push(
-    sessionDirWatcher,
-    recentSessions.onDidChange(() => sessionsView.refresh())
-  );
-
+  context.subscriptions.push(sessionDirWatcher);
   const chatStatus = (controller: SessionController): 'busy' | 'waiting' | 'idle' | 'faulted' => {
     const snap = controller.snapshot;
     if (snap.connectionState === 'faulted') {
@@ -458,10 +420,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }
     return 'idle';
   };
-
   const refreshViews = (): void => {
-    sessionsView.refresh();
-    statusBar.setMode(uiState.getMode());
     statusBar.bind(registry.getActive());
     statusBar.updateMission(
       chatTabs.listOpenChats().map((chat) => ({
@@ -469,13 +428,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         status: chatStatus(chat.controller),
       }))
     );
-    if (editorTabsEnabled()) {
-      void chatTabs.refreshVisibleTabs();
-    } else {
-      void chat.refresh();
-    }
+    void chatTabs.refreshVisibleTabs();
   };
-
   const trackNameChanges = (controller: SessionController): void => {
     context.subscriptions.push(
       trackSessionName(controller, (folder) => recentSessions.refresh(folder), refreshViews)
@@ -495,7 +449,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       refreshViews();
     })
   );
-
   // Never open JSON/Markdown editors for information. Show a notification and
   // offer to copy the raw JSON to the clipboard for anyone who wants the detail.
   // Fire-and-forget so callers that await it never block on the notification's
@@ -508,11 +461,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
     });
   };
-
   const pickRecentSession = async (
     controller: SessionController,
     title = 'Resume Chat'
-  ): Promise<{ sessionPath: string; label: string } | undefined> => {
+  ): Promise<
+    | {
+        sessionPath: string;
+        label: string;
+      }
+    | undefined
+  > => {
     let state = recentSessions.getState(controller.folder);
     if (!state.loading && state.items.length === 0 && !state.error) {
       await recentSessions.refresh(controller.folder);
@@ -552,27 +510,28 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       ? { sessionPath: picked.session.path, label: picked.session.displayName }
       : undefined;
   };
-
   const withController = async (
     action: (controller: SessionController) => Promise<unknown>,
-    options?: { requireTrust?: boolean; autoStart?: boolean; forcePicker?: boolean }
+    options?: {
+      requireTrust?: boolean;
+      autoStart?: boolean;
+      forcePicker?: boolean;
+    }
   ): Promise<unknown> => {
     ensureWorkspaceAvailable();
     if (options?.requireTrust) {
       ensureTrustedForMutation();
     }
-    if (editorTabsEnabled()) {
-      const activeContext = chatTabs.getActiveContext();
-      if (activeContext) {
-        registry.setActive(activeContext.controller);
-        statusBar.bind(activeContext.controller);
-        await chatTabs.activateResource(activeContext.resource, {
-          startIfStopped: options?.autoStart !== false,
-        });
-        const result = await action(activeContext.controller);
-        refreshViews();
-        return result;
-      }
+    const activeContext = chatTabs.getActiveContext();
+    if (activeContext) {
+      registry.setActive(activeContext.controller);
+      statusBar.bind(activeContext.controller);
+      await chatTabs.activateResource(activeContext.resource, {
+        startIfStopped: options?.autoStart !== false,
+      });
+      const result = await action(activeContext.controller);
+      refreshViews();
+      return result;
     }
     const controller = await registry.getSelectedOrPick({ forcePicker: options?.forcePicker });
     if (!controller) {
@@ -587,21 +546,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     refreshViews();
     return result;
   };
-
   // Resolve the active chat's controller WITHOUT re-rendering the webview.
   // Rendering before opening a QuickPick/InputBox lets the webview steal focus
   // back and dismiss the picker (a flicker), so menu commands use this instead.
   const activeController = (): SessionController | undefined =>
     chatTabs.getActiveContext()?.controller ?? registry.getActive();
-
   const registrations = new Map<string, (...args: unknown[]) => Promise<unknown>>();
-
   // Native menus have no section-heading API. These disabled, palette-hidden
   // labels only restore the names of Agentic More's existing flat groups.
   registrations.set('piRpcInternal.agenticChatHeading', async () => undefined);
   registrations.set('piRpcInternal.agenticConfigureHeading', async () => undefined);
   registrations.set('piRpcInternal.agenticSystemHeading', async () => undefined);
-
   registrations.set('piRpcInternal.selectWorkspaceFolder', async (folderUri?: unknown) => {
     const selected =
       typeof folderUri === 'string'
@@ -611,16 +566,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       statusBar.bind(selected);
       await recentSessions.refresh(selected.folder);
       await restoreDraft(selected);
-      if (editorTabsEnabled()) {
-        await chatTabs.openCurrentChat({ folderUri: selected.folder.uri.toString() });
-      } else {
-        await chat.refresh();
-      }
+      await chatTabs.openCurrentChat({ folderUri: selected.folder.uri.toString() });
       refreshViews();
     }
     return selected?.folder.uri.toString();
   });
-
   registrations.set('piRpcInternal.filterRecentSessions', async () => {
     const controller = await registry.getSelectedOrPick({
       title: 'Choose workspace for session search',
@@ -639,7 +589,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     refreshViews();
     return filterText.trim();
   });
-
   registrations.set('piRpcInternal.clearRecentSessionFilter', async () => {
     const controller = await registry.getSelectedOrPick({
       title: 'Choose workspace to clear search',
@@ -651,7 +600,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     refreshViews();
     return '';
   });
-
   registrations.set('piRpcInternal.renameSession', async (value?: unknown) => {
     const rec = asRecord(value);
     const sessionPath = asString(rec?.sessionPath);
@@ -686,7 +634,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     refreshViews();
     void vscode.window.showInformationMessage(`Renamed chat to “${trimmed}”.`);
   });
-
   // Open a chat that belongs to ANOTHER project (sidebar "Other projects"). The
   // chat runs with its OWN cwd via a synthesized folder handle — controllers and
   // the shared host only need uri.fsPath + name, not a real workspace folder.
@@ -718,7 +665,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       .activateResource(resource, { startIfStopped: false })
       .finally(() => refreshViews());
   });
-
   registrations.set('piRpcInternal.deleteSession', async (value?: unknown) => {
     const node = asRecord(value);
     const sessionPath = asString(node?.sessionPath);
@@ -730,14 +676,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     await chatTabs.closeForSessionFile(sessionPath);
     try {
       await vscode.workspace.fs.delete(vscode.Uri.file(sessionPath));
-    } catch {
-      /* file may already be gone; still refresh the list */
-    }
+    } catch {}
     // The full sessions-dir rescan is the slow part — never block the UI on it.
     void recentSessions.refresh().then(() => refreshViews());
     refreshViews();
   });
-
   registrations.set('piRpcInternal.refreshRecentSessions', async () => {
     const controller = await registry.getSelectedOrPick({
       title: 'Choose workspace to refresh recent sessions',
@@ -749,17 +692,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     refreshViews();
     return controller.folder.uri.toString();
   });
-
   registrations.set('piRpcInternal.start', async () => {
-    if (editorTabsEnabled()) {
-      const activeContext = chatTabs.getActiveContext();
-      if (activeContext) {
-        await chatTabs.startResource(activeContext.resource);
-        await recentSessions.refresh(activeContext.controller.folder);
-        await restoreDraft(activeContext.controller);
-        refreshViews();
-        return activeContext.controller.folder.uri.toString();
-      }
+    const activeContext = chatTabs.getActiveContext();
+    if (activeContext) {
+      await chatTabs.startResource(activeContext.resource);
+      await recentSessions.refresh(activeContext.controller.folder);
+      await restoreDraft(activeContext.controller);
+      refreshViews();
+      return activeContext.controller.folder.uri.toString();
     }
     return withController(
       async (controller) => {
@@ -771,7 +711,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       { autoStart: false, forcePicker: true }
     );
   });
-
   registrations.set('piRpcInternal.stop', async () => {
     return withController(
       async (controller) => {
@@ -780,7 +719,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       { autoStart: false }
     );
   });
-
   registrations.set('piRpcInternal.restart', async () => {
     return withController(
       async (controller) => {
@@ -789,16 +727,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       { autoStart: false }
     );
   });
-
   registrations.set('piRpcInternal.openChat', async () => {
-    if (editorTabsEnabled()) {
-      await chatTabs.openCurrentChat({ focusComposer: true });
-      return;
-    }
-    await chat.show();
-    await chat.focusComposer();
+    await chatTabs.openCurrentChat({ focusComposer: true });
+    return;
   });
-
   registrations.set('piRpcInternal.showHelp', async () => {
     const detail = [
       'New Chat: sidebar (+ New Chat) or the Command Palette.',
@@ -821,27 +753,24 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }
     return 'help';
   });
-
   registrations.set('piRpc.prompt', async (value?: unknown) => {
-    if (editorTabsEnabled()) {
-      const activeContext = chatTabs.getActiveContext();
-      if (activeContext) {
-        ensureTrustedForMutation();
-        const record = asRecord(value);
-        const message =
-          asString(value) ??
-          asString(record?.message) ??
-          (await vscode.window.showInputBox({ title: 'Prompt Pi' }));
-        if (message) {
-          const prepared = await chatTabs.preparePromptContext(activeContext.resource);
-          if (prepared) {
-            await prepared.controller.prompt(message, 'prompt');
-            await chatTabs.focusComposer(prepared.resource);
-          }
+    const activeContext = chatTabs.getActiveContext();
+    if (activeContext) {
+      ensureTrustedForMutation();
+      const record = asRecord(value);
+      const message =
+        asString(value) ??
+        asString(record?.message) ??
+        (await vscode.window.showInputBox({ title: 'Prompt Pi' }));
+      if (message) {
+        const prepared = await chatTabs.preparePromptContext(activeContext.resource);
+        if (prepared) {
+          await prepared.controller.prompt(message, 'prompt');
+          await chatTabs.focusComposer(prepared.resource);
         }
-        refreshViews();
-        return undefined;
       }
+      refreshViews();
+      return undefined;
     }
     return withController(
       async (controller) => {
@@ -852,34 +781,27 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           (await vscode.window.showInputBox({ title: 'Prompt Pi' }));
         if (message) {
           await controller.prompt(message, 'prompt');
-          if (editorTabsEnabled()) {
-            await chatTabs.openCurrentChat({ focusComposer: true });
-          } else {
-            await chat.show();
-          }
+          await chatTabs.openCurrentChat({ focusComposer: true });
         }
       },
       { requireTrust: true }
     );
   });
-
   registrations.set('piRpc.steer', async (value?: unknown) => {
-    if (editorTabsEnabled()) {
-      const activeContext = chatTabs.getActiveContext();
-      if (activeContext) {
-        ensureTrustedForMutation();
-        const record = asRecord(value);
-        const message =
-          asString(value) ??
-          asString(record?.message) ??
-          (await vscode.window.showInputBox({ title: 'Steer message' }));
-        if (message) {
-          const prepared = await chatTabs.preparePromptContext(activeContext.resource);
-          await prepared?.controller.prompt(message, 'steer');
-        }
-        refreshViews();
-        return undefined;
+    const activeContext = chatTabs.getActiveContext();
+    if (activeContext) {
+      ensureTrustedForMutation();
+      const record = asRecord(value);
+      const message =
+        asString(value) ??
+        asString(record?.message) ??
+        (await vscode.window.showInputBox({ title: 'Steer message' }));
+      if (message) {
+        const prepared = await chatTabs.preparePromptContext(activeContext.resource);
+        await prepared?.controller.prompt(message, 'steer');
       }
+      refreshViews();
+      return undefined;
     }
     return withController(
       async (controller) => {
@@ -895,24 +817,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       { requireTrust: true }
     );
   });
-
   registrations.set('piRpc.followUp', async (value?: unknown) => {
-    if (editorTabsEnabled()) {
-      const activeContext = chatTabs.getActiveContext();
-      if (activeContext) {
-        ensureTrustedForMutation();
-        const record = asRecord(value);
-        const message =
-          asString(value) ??
-          asString(record?.message) ??
-          (await vscode.window.showInputBox({ title: 'Follow-up message' }));
-        if (message) {
-          const prepared = await chatTabs.preparePromptContext(activeContext.resource);
-          await prepared?.controller.prompt(message, 'followUp');
-        }
-        refreshViews();
-        return undefined;
+    const activeContext = chatTabs.getActiveContext();
+    if (activeContext) {
+      ensureTrustedForMutation();
+      const record = asRecord(value);
+      const message =
+        asString(value) ??
+        asString(record?.message) ??
+        (await vscode.window.showInputBox({ title: 'Follow-up message' }));
+      if (message) {
+        const prepared = await chatTabs.preparePromptContext(activeContext.resource);
+        await prepared?.controller.prompt(message, 'followUp');
       }
+      refreshViews();
+      return undefined;
     }
     return withController(
       async (controller) => {
@@ -928,84 +847,44 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       { requireTrust: true }
     );
   });
-
   registrations.set('piRpc.abort', async () => withController((controller) => controller.abort()));
-
   registrations.set('piRpc.newSession', async (value?: unknown) => {
-    if (editorTabsEnabled()) {
-      ensureWorkspaceAvailable();
-      ensureTrustedForMutation();
-      const activeContext = chatTabs.getActiveContext();
-      const controller =
-        activeContext?.controller ?? (await registry.getSelectedOrPick({ forcePicker: false }));
-      if (!controller) {
-        return undefined;
-      }
-      // PER-TAB model: New Chat = just open a fresh DRAFT tab. The draft owns its
-      // own controller (it adopts the prewarmed session and starts in the
-      // background); the first message promotes it to a real session via
-      // preparePromptContext. The old flow called newSession() on the ACTIVE
-      // chat's controller — yanking that chat onto a new session and leaving the
-      // draft tab's controller orphaned ("Connecting to Pi…" forever).
-      await chatTabs.openDraftForWorkspace(controller, { focusComposer: true });
-      const parentSession = asString(asRecord(value)?.parentSession);
-      if (parentSession) {
-        // Programmatic "continue from parent": promote the DRAFT's own controller.
-        const draft = chatTabs.getActiveContext();
-        if (draft && draft.target.kind === 'workspaceDraft') {
-          if (draft.controller.snapshot.connectionState === 'stopped') {
-            await draft.controller.start();
-            await draft.controller.reconcile();
-          }
-          await draft.controller.whenReady();
-          const result = await draft.controller.newSession(parentSession);
-          await chatTabs.nameSessionIfUnnamed(draft.controller);
-          await chatTabs.promoteDraftToCurrentSession(draft.controller);
-          await recentSessions.refresh(draft.controller.folder);
-          refreshViews();
-          return result;
-        }
-      }
-      refreshViews();
-      return { started: true };
+    ensureWorkspaceAvailable();
+    ensureTrustedForMutation();
+    const activeContext = chatTabs.getActiveContext();
+    const controller =
+      activeContext?.controller ?? (await registry.getSelectedOrPick({ forcePicker: false }));
+    if (!controller) {
+      return undefined;
     }
-    return withController(
-      async (controller) => {
-        const record = asRecord(value);
-        const currentSession = asString(controller.snapshot.state.sessionFile);
-        const composer = await uiState.getComposerState(controller);
-        await captureDraft(controller);
-        let parentSession = asString(record?.parentSession);
-        if (currentSession && !parentSession) {
-          const warning =
-            composer.draft.trim() ||
-            composer.pendingContextItems.length ||
-            composer.pendingImages.length
-              ? "\n\nUnsent draft and attachments stay in the active chat tab. They won't be sent or copied."
-              : '';
-          const confirm = await vscode.window.showWarningMessage(
-            `Start a new chat from this workspace.${warning}`,
-            { modal: true },
-            'Start fresh',
-            'Continue from current as parent'
-          );
-          if (!confirm) {
-            await chat.focusComposer();
-            return { cancelled: true };
-          }
-          parentSession =
-            confirm === 'Continue from current as parent' ? currentSession : undefined;
+    // PER-TAB model: New Chat = just open a fresh DRAFT tab. The draft owns its
+    // own controller (it adopts the prewarmed session and starts in the
+    // background); the first message promotes it to a real session via
+    // preparePromptContext. The old flow called newSession() on the ACTIVE
+    // chat's controller — yanking that chat onto a new session and leaving the
+    // draft tab's controller orphaned ("Connecting to Pi…" forever).
+    await chatTabs.openDraftForWorkspace(controller, { focusComposer: true });
+    const parentSession = asString(asRecord(value)?.parentSession);
+    if (parentSession) {
+      // Programmatic "continue from parent": promote the DRAFT's own controller.
+      const draft = chatTabs.getActiveContext();
+      if (draft && draft.target.kind === 'workspaceDraft') {
+        if (draft.controller.snapshot.connectionState === 'stopped') {
+          await draft.controller.start();
+          await draft.controller.reconcile();
         }
-        const result = await controller.newSession(parentSession);
-        await recentSessions.refresh(controller.folder);
-        await restoreDraft(controller);
-        await chat.focusComposer();
+        await draft.controller.whenReady();
+        const result = await draft.controller.newSession(parentSession);
+        await chatTabs.nameSessionIfUnnamed(draft.controller);
+        await chatTabs.promoteDraftToCurrentSession(draft.controller);
+        await recentSessions.refresh(draft.controller.folder);
+        refreshViews();
         return result;
-      },
-      { requireTrust: true }
-    );
+      }
+    }
+    refreshViews();
+    return { started: true };
   });
-
   registrations.set('piRpc.refreshState', async () =>
     withController((controller) => controller.refreshState())
   );
@@ -1046,21 +925,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   registrations.set('piRpc.manageAgentInstructions', async () => {
     await showInstructionManager();
   });
-  // Toggling just updates the setting — the onDidChangeConfiguration
-  // listener (registered later, near the other config-sync context keys)
-  // picks up ANY change to piRpc.sidebarMode, from this command or from
-  // manually editing settings.json, and syncs the context key either way.
-  registrations.set('piRpc.toggleSidebarMode', async () => {
-    const config = vscode.workspace.getConfiguration('piRpc');
-    const current = config.get<'agentic' | 'chat'>('sidebarMode', 'agentic');
-    const next = current === 'agentic' ? 'chat' : 'agentic';
-    await config.update('sidebarMode', next, vscode.ConfigurationTarget.Global);
-  });
-  registrations.set('piRpcInternal.switchToFullChat', async () => {
-    if (sidebarMode() === 'agentic') {
-      await vscode.commands.executeCommand('piRpc.toggleSidebarMode');
-    }
-  });
+  registrations.set('piRpcInternal.showChatInSidebar', async () => showSidebarSurface('full-chat'));
+  registrations.set('piRpcInternal.showChatList', async () => showSidebarSurface('list'));
   registrations.set('piRpc.addCustomResource', async () => {
     await addCustomResource();
   });
@@ -1083,7 +949,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   registrations.set('piRpcInternal.hunkRevertAll', async (fsPath?: unknown) => {
     await inlineReview.revertAll(String(fsPath));
   });
-
   // Claude-style mode switch: one click flips Auto <-> Approve-every-edit.
   // Reuses the existing onDidChangeConfiguration sync (writes .pi/settings.json
   // + .pi/extensions/pi-approval-gate.ts, offers a runtime restart).
@@ -1093,12 +958,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const next = !config.get<boolean>('requireApprovalForEdits', false);
     await config.update('requireApprovalForEdits', next, vscode.ConfigurationTarget.Workspace);
   });
-
   // Sidebar chat: focus the docked π chat (Zed layout — center stays free).
-  registrations.set('piRpc.openSidebarChat', async () => {
-    await vscode.commands.executeCommand('piRpc.chat.focus');
-  });
-
+  registrations.set('piRpc.openSidebarChat', async () => showSidebarSurface('full-chat'));
   // Zed-style follow mode: cycle open → status → off from the palette.
   registrations.set('piRpc.toggleFollowAgent', async () => {
     const config = vscode.workspace.getConfiguration('piRpc');
@@ -1109,7 +970,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       `π follow agent: ${next === 'open' ? 'open files + glow edits' : next === 'status' ? 'status bar only' : 'off'}`
     );
   });
-
   // Chat settings, guided: 1) provider → 2) that provider's models → 3) that
   // model's thinking capability (skipped when the model can't reason).
   registrations.set('piRpc.chatSettings', async () => {
@@ -1121,7 +981,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     await pickChatModel(controller);
     refreshViews();
   });
-
   registrations.set('piRpc.setThinkingLevel', async () => {
     const controller = activeController();
     if (!controller) {
@@ -1238,131 +1097,84 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }
   });
   registrations.set('piRpc.switchSession', async (value?: unknown) => {
-    if (editorTabsEnabled()) {
-      ensureWorkspaceAvailable();
-      ensureTrustedForMutation();
-      const activeContext = chatTabs.getActiveContext();
-      const controller =
-        activeContext?.controller ??
-        (await registry.getSelectedOrPick({
-          title: 'Choose workspace for session history',
-        }));
-      if (!controller) {
-        return undefined;
-      }
-      const record = asRecord(value);
-      const picked =
-        asString(record?.sessionPath) && asString(record?.label)
+    ensureWorkspaceAvailable();
+    ensureTrustedForMutation();
+    const activeContext = chatTabs.getActiveContext();
+    const controller =
+      activeContext?.controller ??
+      (await registry.getSelectedOrPick({
+        title: 'Choose workspace for session history',
+      }));
+    if (!controller) {
+      return undefined;
+    }
+    const record = asRecord(value);
+    const picked =
+      asString(record?.sessionPath) && asString(record?.label)
+        ? {
+            sessionPath: asString(record?.sessionPath)!,
+            label: asString(record?.label)!,
+          }
+        : asString(record?.sessionPath)
           ? {
               sessionPath: asString(record?.sessionPath)!,
-              label: asString(record?.label)!,
+              label: asString(record?.label) ?? 'Saved chat',
             }
-          : asString(record?.sessionPath)
-            ? {
-                sessionPath: asString(record?.sessionPath)!,
-                label: asString(record?.label) ?? 'Saved chat',
-              }
-            : await pickRecentSession(controller, 'Resume Chat');
-      if (!picked) {
-        return { cancelled: true };
-      }
-      // Open the tab IMMEDIATELY for instant feedback. The webview renders a
-      // "Loading chat…" loader (switchSession sets a handshaking state) while the
-      // session reconciles. The recent-list refresh and the reconcile run in the
-      // background so neither blocks the tab from appearing.
-      void recentSessions.refresh(controller.folder);
-      const resource = await chatTabs.openForSessionFile(controller, picked.sessionPath, {
-        focusComposer: true,
-      });
-      void chatTabs
-        .activateResource(resource, { startIfStopped: false })
-        .finally(() => refreshViews());
-      return picked;
+          : await pickRecentSession(controller, 'Resume Chat');
+    if (!picked) {
+      return { cancelled: true };
     }
-    return withController(
-      async (controller) => {
-        const record = asRecord(value);
-        const picked =
-          asString(record?.sessionPath) && asString(record?.label)
-            ? {
-                sessionPath: asString(record?.sessionPath)!,
-                label: asString(record?.label)!,
-              }
-            : asString(record?.sessionPath)
-              ? {
-                  sessionPath: asString(record?.sessionPath)!,
-                  label: asString(record?.label) ?? 'Saved chat',
-                }
-              : await pickRecentSession(controller, 'Resume Chat');
-        if (!picked) {
-          return { cancelled: true };
-        }
-        const currentSession = asString(controller.snapshot.state.sessionFile);
-        if (currentSession === picked.sessionPath) {
-          void vscode.window.showInformationMessage(`${picked.label} is already open.`);
-          return { cancelled: true, alreadyCurrent: true };
-        }
-        await captureDraft(controller);
-        if (currentSession) {
-          const confirm = await vscode.window.showWarningMessage(
-            `Resume ${picked.label}? Your current chat stays saved and you can come back from Resume Chat.`,
-            { modal: true },
-            'Resume Chat'
-          );
-          if (confirm !== 'Resume Chat') {
-            await chat.focusComposer();
-            return { cancelled: true };
-          }
-        }
-        const result = await controller.switchSession(picked.sessionPath);
-        await recentSessions.refresh(controller.folder);
-        await restoreDraft(controller);
-        await chat.focusComposer();
-        return result;
-      },
-      { requireTrust: true }
-    );
+    // Open the tab IMMEDIATELY for instant feedback. The webview renders a
+    // "Loading chat…" loader (switchSession sets a handshaking state) while the
+    // session reconciles. The recent-list refresh and the reconcile run in the
+    // background so neither blocks the tab from appearing.
+    void recentSessions.refresh(controller.folder);
+    const resource = await chatTabs.openForSessionFile(controller, picked.sessionPath, {
+      focusComposer: true,
+    });
+    void chatTabs
+      .activateResource(resource, { startIfStopped: false })
+      .finally(() => refreshViews());
+    return picked;
   });
   registrations.set('piRpc.forkSession', async (value?: unknown) => {
-    if (editorTabsEnabled()) {
-      const activeContext = chatTabs.getActiveContext();
-      if (activeContext) {
-        ensureTrustedForMutation();
-        const live = await chatTabs.activateResource(activeContext.resource, {
-          startIfStopped: true,
-        });
-        if (!live) {
-          return undefined;
-        }
-        const entryId = asString(asRecord(value)?.entryId);
-        const pickForkEntryId = async (): Promise<string | undefined> => {
-          if (entryId) {
-            return entryId;
-          }
-          const entries = await live.controller.getForkMessages();
-          const picked = await vscode.window.showQuickPick(
-            entries.map((entry) => ({
-              label: 'Start Branch',
-              description: String(entry.text ?? '').slice(0, 120),
-              detail: String(entry.entryId ?? 'entry'),
-              entry,
-            })),
-            { title: 'Start Branch from User Message', matchOnDescription: true }
-          );
-          return typeof picked?.entry.entryId === 'string' ? picked.entry.entryId : undefined;
-        };
-        const chosenEntryId = await pickForkEntryId();
-        if (!chosenEntryId) {
-          return { cancelled: true };
-        }
-        await uiState.captureControllerDraftForIdentity(live.controller, live.target);
-        const result = await live.controller.fork(chosenEntryId);
-        await recentSessions.refresh(live.controller.folder);
-        await captureDraft(live.controller);
-        const resource = await chatTabs.openCurrentChat({ focusComposer: true });
-        refreshViews();
-        return resource ? result : { cancelled: true };
+    const activeContext = chatTabs.getActiveContext();
+    if (activeContext) {
+      ensureTrustedForMutation();
+      const live = await chatTabs.activateResource(activeContext.resource, {
+        startIfStopped: true,
+      });
+      if (!live) {
+        return undefined;
       }
+      const entryId = asString(asRecord(value)?.entryId);
+      const pickForkEntryId = async (): Promise<string | undefined> => {
+        if (entryId) {
+          return entryId;
+        }
+        const entries = await live.controller.getForkMessages();
+        const picked = await vscode.window.showQuickPick(
+          entries.map((entry) => ({
+            label: 'Start Branch',
+            description: String(entry.text ?? '').slice(0, 120),
+            detail: String(entry.entryId ?? 'entry'),
+            entry,
+          })),
+          { title: 'Start Branch from User Message', matchOnDescription: true }
+        );
+        return typeof picked?.entry.entryId === 'string' ? picked.entry.entryId : undefined;
+      };
+      const chosenEntryId = await pickForkEntryId();
+      if (!chosenEntryId) {
+        return { cancelled: true };
+      }
+      await uiState.captureControllerDraftForIdentity(live.controller, live.target);
+      const result = await live.controller.fork(chosenEntryId);
+      await recentSessions.refresh(live.controller.folder);
+      await captureDraft(live.controller);
+      const resource = await chatTabs.openCurrentChat({ focusComposer: true });
+      refreshViews();
+      return resource ? result : { cancelled: true };
     }
     return withController(
       async (controller) => {
@@ -1372,7 +1184,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           const result = await controller.fork(entryId);
           await recentSessions.refresh(controller.folder);
           await captureDraft(controller);
-          await chat.focusComposer();
+          await chatTabs.focusComposer();
           return result;
         }
         const entries = await controller.getForkMessages();
@@ -1390,7 +1202,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           const result = await controller.fork(picked.entry.entryId);
           await recentSessions.refresh(controller.folder);
           await captureDraft(controller);
-          await chat.focusComposer();
+          await chatTabs.focusComposer();
           return result;
         }
         return { cancelled: true };
@@ -1399,24 +1211,22 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     );
   });
   registrations.set('piRpc.cloneSession', async () => {
-    if (editorTabsEnabled()) {
-      const activeContext = chatTabs.getActiveContext();
-      if (activeContext) {
-        ensureTrustedForMutation();
-        const live = await chatTabs.activateResource(activeContext.resource, {
-          startIfStopped: true,
-        });
-        if (!live) {
-          return undefined;
-        }
-        await uiState.captureControllerDraftForIdentity(live.controller, live.target);
-        const result = await live.controller.clone();
-        await recentSessions.refresh(live.controller.folder);
-        await captureDraft(live.controller);
-        await chatTabs.openCurrentChat({ focusComposer: true });
-        refreshViews();
-        return result;
+    const activeContext = chatTabs.getActiveContext();
+    if (activeContext) {
+      ensureTrustedForMutation();
+      const live = await chatTabs.activateResource(activeContext.resource, {
+        startIfStopped: true,
+      });
+      if (!live) {
+        return undefined;
       }
+      await uiState.captureControllerDraftForIdentity(live.controller, live.target);
+      const result = await live.controller.clone();
+      await recentSessions.refresh(live.controller.folder);
+      await captureDraft(live.controller);
+      await chatTabs.openCurrentChat({ focusComposer: true });
+      refreshViews();
+      return result;
     }
     return withController(
       async (controller) => {
@@ -1424,7 +1234,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         const result = await controller.clone();
         await recentSessions.refresh(controller.folder);
         await captureDraft(controller);
-        await chat.focusComposer();
+        await chatTabs.focusComposer();
         return result;
       },
       { requireTrust: true }
@@ -1482,7 +1292,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     chatStatus,
     subscriptions: context.subscriptions,
   });
-
   // Shared-runtime self-heal: tear the host down; chats respawn it on next start.
   registrations.set('piRpc.restartSharedRuntime', async () => {
     if (!getSettings().sharedRuntime) {
@@ -1504,7 +1313,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       'Pi shared runtime restarted. Open chats will reconnect on their next action.'
     );
   });
-
   registrations.set('piRpc.showPiCommands', async () => {
     const activeContext = chatTabs.getActiveContext();
     const controller = activeContext?.controller ?? registry.getActive();
@@ -1541,23 +1349,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }
     return commands;
   });
-  registrations.set('piRpc.respondExtensionUi', async () => {
-    return withController(
-      async (controller) => {
-        const payload = {
-          pending: controller.snapshot.pendingUi,
-          history: controller.snapshot.uiHistory,
-        };
-        await showJson('extension-ui', payload);
-        return payload;
-      },
-      { autoStart: false }
-    );
-  });
   registrations.set('piRpcInternal.showLogs', async () => {
     logger.show();
   });
-
   const adjustChatFont = async (delta: number): Promise<void> => {
     const config = vscode.workspace.getConfiguration('piRpc');
     const current = config.get<number>('chatFontSize', 0) || 13;
@@ -1566,11 +1360,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   };
   registrations.set('piRpcInternal.increaseChatFont', () => adjustChatFont(1));
   registrations.set('piRpcInternal.decreaseChatFont', () => adjustChatFont(-1));
-
   // The Settings gear (top of the sidebar) opens this menu of global/app + system
   // actions. Per-chat actions live in the chat header “…” menu instead.
   registrations.set('piRpcInternal.openSettingsMenu', async () => {
-    const items: Array<vscode.QuickPickItem & { command: string }> = [
+    const items: Array<
+      vscode.QuickPickItem & {
+        command: string;
+      }
+    > = [
       { label: '$(add) Increase chat font size', command: 'piRpcInternal.increaseChatFont' },
       { label: '$(remove) Decrease chat font size', command: 'piRpcInternal.decreaseChatFont' },
       { label: '$(watch) Working animation…', command: 'piRpcInternal.setWorkingAnimation' },
@@ -1590,7 +1387,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       await vscode.commands.executeCommand(pick.command);
     }
   });
-
   const pickSetting = async (key: string, title: string, options: string[]): Promise<void> => {
     const config = vscode.workspace.getConfiguration('piRpc');
     const current = config.get<string>(key);
@@ -1621,7 +1417,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   registrations.set('piRpcInternal.openSettings', async () => {
     await vscode.commands.executeCommand('workbench.action.openSettings', '@ext:mr-narender.pi');
   });
-
   // Debounce for the approval-gate config-change reaction (worker recycling +
   // notification) — rapid toggling must settle to ONE outcome, not one per
   // click (VS Code has no API to dismiss an already-shown toast).
@@ -1673,14 +1468,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
     })
   );
-
   const askPiWithSelection = (instruction: string) => async () => {
-    if (!editorTabsEnabled()) {
-      void vscode.window.showInformationMessage(
-        'Ask Pi needs the chat editor. Enable piRpc.editorTabs.enabled.'
-      );
-      return;
-    }
     ensureWorkspaceAvailable();
     await chatTabs.askWithSelection(instruction);
   };
@@ -1689,9 +1477,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.languages.registerCodeLensProvider({ scheme: 'file' }, codeLensProvider)
   );
   registrations.set('piRpcInternal.askSymbol', async (arg?: unknown) => {
-    if (!editorTabsEnabled()) {
-      return;
-    }
     const args = arg as AskSymbolArgs | undefined;
     if (!args?.uri || !args.range) {
       return;
@@ -1726,7 +1511,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       await chatTabs.askWithSelection(pick.instruction);
     }
   });
-
   registrations.set(
     'piRpc.explainSelection',
     askPiWithSelection('Explain what this selected code does, step by step.')
@@ -1743,9 +1527,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       'Refactor this selected code to improve clarity and maintainability while preserving its behavior.'
     )
   );
-
   registrations.set('piRpc.commandPalette', async () => {
-    const actions: Array<{ label: string; description: string; command: string }> = [
+    const actions: Array<{
+      label: string;
+      description: string;
+      command: string;
+    }> = [
       { label: '$(add) New Chat', description: 'Start a new Pi chat', command: 'piRpc.newSession' },
       {
         label: '$(history) Resume Chat…',
@@ -1801,11 +1588,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       await vscode.commands.executeCommand(pick.command);
     }
   });
-
   registrations.set('piRpcInternal.continue', async () => {
     await withController((controller) => controller.prompt('Continue.'), { requireTrust: true });
   });
-
   // Remote broker: apply prompts from a remote driver to the active chat.
   remoteHost.onPrompt((message) => {
     void withController((controller) => controller.prompt(message), { requireTrust: true });
@@ -1940,7 +1725,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     await remoteHost.stop();
     void vscode.window.showInformationMessage('Pi remote session stopped.');
   });
-
   const modelKeyOf = (controller: SessionController | undefined): string => {
     const model = asRecord(controller?.snapshot.state.model);
     return model ? `${asString(model.provider)}/${asString(model.id)}` : '';
@@ -1962,7 +1746,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }
     await withController((controller) => controller.prompt(text), { requireTrust: true });
   });
-
   registrations.set('piRpcInternal.retryLast', async () => {
     const text = chatTabs.getLastUserPrompt();
     if (!text) {
@@ -1971,7 +1754,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }
     await withController((controller) => controller.prompt(text), { requireTrust: true });
   });
-
   registrations.set('piRpcInternal.copyConversationMarkdown', async () => {
     const result = chatTabs.getActiveConversationMarkdown();
     if (!result) {
@@ -1981,7 +1763,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     await vscode.env.clipboard.writeText(result.markdown);
     void vscode.window.showInformationMessage('Pi: conversation copied as Markdown.');
   });
-
   registrations.set('piRpcInternal.showHealth', async () => {
     const controller = registry.getActive();
     return previewDiagnostics(controller);
@@ -1998,353 +1779,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }
     return path;
   });
-
-  const inspectEvent = (type: string) => async () =>
-    withController(
-      async (controller) => {
-        const payload = controller.snapshot.eventHistory.filter((event) => event.type === type);
-        await showJson(type, payload);
-        return payload;
-      },
-      { autoStart: false }
-    );
-
-  registrations.set('piRpc.inspectAgentStart', inspectEvent('agent_start'));
-  registrations.set('piRpc.inspectAgentEnd', inspectEvent('agent_end'));
-  registrations.set('piRpc.inspectAgentSettled', inspectEvent('agent_settled'));
-  registrations.set('piRpc.inspectTurnStart', inspectEvent('turn_start'));
-  registrations.set('piRpc.inspectTurnEnd', inspectEvent('turn_end'));
-  registrations.set('piRpc.inspectMessageStart', inspectEvent('message_start'));
-  registrations.set('piRpc.inspectMessageUpdate', inspectEvent('message_update'));
-  registrations.set('piRpc.inspectMessageEnd', inspectEvent('message_end'));
-  registrations.set('piRpc.inspectToolStart', inspectEvent('tool_execution_start'));
-  registrations.set('piRpc.inspectToolUpdate', inspectEvent('tool_execution_update'));
-  registrations.set('piRpc.inspectToolEnd', inspectEvent('tool_execution_end'));
-  registrations.set('piRpc.inspectQueueUpdate', inspectEvent('queue_update'));
-  registrations.set('piRpc.inspectCompactionStart', inspectEvent('compaction_start'));
-  registrations.set('piRpc.inspectCompactionEnd', inspectEvent('compaction_end'));
-  registrations.set('piRpc.inspectRetryStart', inspectEvent('auto_retry_start'));
-  registrations.set('piRpc.inspectRetryEnd', inspectEvent('auto_retry_end'));
-  registrations.set('piRpc.inspectEntryAppended', inspectEvent('entry_appended'));
-  registrations.set('piRpc.inspectSessionInfoChanged', inspectEvent('session_info_changed'));
-  registrations.set('piRpc.inspectThinkingChanged', inspectEvent('thinking_level_changed'));
-  registrations.set('piRpc.inspectExtensionError', async () =>
-    withController(
-      async (controller) => {
-        const payload = controller.snapshot.diagnostics.filter((item) =>
-          item.message.includes('Extension')
-        );
-        await showJson('extension-errors', payload);
-        return payload;
-      },
-      { autoStart: false }
-    )
-  );
-  registrations.set('piRpc.inspectCompatibilityEvents', async () =>
-    withController(
-      async (controller) => {
-        const payload = compatibilityEvents(controller);
-        await showJson('compatibility-events', payload);
-        return payload;
-      },
-      { autoStart: false }
-    )
-  );
-  registrations.set('piRpc.inspectRpcError', async () =>
-    withController(
-      async (controller) => {
-        const payload = controller.snapshot.diagnostics.filter((item) =>
-          item.message.includes('RPC response failed')
-        );
-        await showJson('rpc-errors', payload);
-        return payload;
-      },
-      { autoStart: false }
-    )
-  );
-  registrations.set('piRpc.inspectParseError', async () =>
-    withController(
-      async (controller) => {
-        const payload = controller.snapshot.diagnostics.filter(
-          (item) => item.message.includes('parse') || item.detail?.includes('parse')
-        );
-        await showJson('parse-errors', payload);
-        return payload;
-      },
-      { autoStart: false }
-    )
-  );
-
-  const previewRequest = async (
-    method: ExtensionUiRequest['method'],
-    seed: (controller: SessionController, value?: unknown) => Promise<ExtensionUiRequest>
-  ) =>
-    withController(
-      async (controller) => {
-        const request = await seed(controller);
-        const result = await broker.previewRequest(controller, request);
-        await showJson(`extension-ui-${method}`, {
-          recent: recentRequests(controller, method),
-          result,
-        });
-        return result;
-      },
-      { autoStart: false }
-    );
-
-  registrations.set('piRpc.extensionUi.select', async () =>
-    previewRequest('select', async (controller) => ({
-      type: 'extension_ui_request',
-      id: `preview-select-${Date.now()}`,
-      method: 'select',
-      title: 'Pi preview select',
-      options: recentRequests(controller, 'select').at(-1)?.options ?? [
-        'Open session tree',
-        'Show models',
-        'Cancel',
-      ],
-      timeout: 5000,
-    }))
-  );
-  registrations.set('piRpc.extensionUi.confirm', async () =>
-    previewRequest('confirm', async () => ({
-      type: 'extension_ui_request',
-      id: `preview-confirm-${Date.now()}`,
-      method: 'confirm',
-      title: 'Pi preview confirm',
-      message: 'Confirm a preview action',
-      timeout: 5000,
-    }))
-  );
-  registrations.set('piRpc.extensionUi.input', async () =>
-    previewRequest('input', async () => ({
-      type: 'extension_ui_request',
-      id: `preview-input-${Date.now()}`,
-      method: 'input',
-      title: 'Pi preview input',
-      placeholder: 'type a value',
-      timeout: 5000,
-    }))
-  );
-  registrations.set('piRpc.extensionUi.editor', async () =>
-    previewRequest('editor', async () => ({
-      type: 'extension_ui_request',
-      id: `preview-editor-${Date.now()}`,
-      method: 'editor',
-      title: 'Pi preview editor',
-      prefill: registry.getActive()?.snapshot.draft ?? '',
-    }))
-  );
-  registrations.set('piRpc.extensionUi.notify', async () =>
-    previewRequest('notify', async () => ({
-      type: 'extension_ui_request',
-      id: `preview-notify-${Date.now()}`,
-      method: 'notify',
-      message: 'Pi preview notification',
-      notifyType: 'info',
-    }))
-  );
-  registrations.set('piRpc.extensionUi.setStatus', async (value?: unknown) =>
-    withController(
-      async (controller) => {
-        const record = asRecord(value);
-        const key =
-          asString(record?.key) ?? (await vscode.window.showInputBox({ title: 'Status key' }));
-        if (!key) {
-          return undefined;
-        }
-        const text =
-          'text' in (record ?? {})
-            ? (asString(record?.text) ?? '')
-            : ((await vscode.window.showInputBox({ title: 'Status text (blank clears)' })) ?? '');
-        const request: ExtensionUiRequest = {
-          type: 'extension_ui_request',
-          id: `preview-status-${Date.now()}`,
-          method: 'setStatus',
-          statusKey: key,
-          statusText: text || undefined,
-        };
-        controller.applyExtensionUiRequest(request);
-        await showJson('status', {
-          statuses: controller.snapshot.statuses,
-          recent: recentRequests(controller, 'setStatus'),
-        });
-        return controller.snapshot.statuses;
-      },
-      { autoStart: false }
-    )
-  );
-  registrations.set('piRpc.extensionUi.setWidget', async (value?: unknown) =>
-    withController(
-      async (controller) => {
-        const record = asRecord(value);
-        const key =
-          asString(record?.key) ?? (await vscode.window.showInputBox({ title: 'Widget key' }));
-        if (!key) {
-          return undefined;
-        }
-        const placement =
-          asString(record?.placement) === 'belowEditor' ? 'belowEditor' : 'aboveEditor';
-        const linesValue =
-          asString(record?.lines) ??
-          (await vscode.window.showInputBox({ title: 'Widget lines (use | as separator)' }));
-        const request: ExtensionUiRequest = {
-          type: 'extension_ui_request',
-          id: `preview-widget-${Date.now()}`,
-          method: 'setWidget',
-          widgetKey: key,
-          widgetLines: linesValue
-            ? linesValue
-                .split(/\r?\n|\|/)
-                .map((item) => item.trim())
-                .filter(Boolean)
-            : undefined,
-          widgetPlacement: placement,
-        };
-        controller.applyExtensionUiRequest(request);
-        await showJson('widget', {
-          widgets: controller.snapshot.widgets,
-          recent: recentRequests(controller, 'setWidget'),
-        });
-        return controller.snapshot.widgets;
-      },
-      { autoStart: false }
-    )
-  );
-  registrations.set('piRpc.extensionUi.setTitle', async (value?: unknown) =>
-    withController(
-      async (controller) => {
-        const title =
-          asString(asRecord(value)?.title) ??
-          (await vscode.window.showInputBox({ title: 'Chat title' }));
-        if (!title) {
-          return undefined;
-        }
-        controller.applyExtensionUiRequest({
-          type: 'extension_ui_request',
-          id: `preview-title-${Date.now()}`,
-          method: 'setTitle',
-          title,
-        });
-        if (editorTabsEnabled()) {
-          await chatTabs.refreshVisibleTabs();
-        } else {
-          await chat.refresh();
-        }
-        return controller.snapshot.title;
-      },
-      { autoStart: false }
-    )
-  );
-  registrations.set('piRpc.extensionUi.setEditorText', async (value?: unknown) =>
-    withController(
-      async (controller) => {
-        const text =
-          asString(asRecord(value)?.text) ??
-          (await vscode.window.showInputBox({ title: 'Draft text' }));
-        if (text === undefined) {
-          return undefined;
-        }
-        const request: ExtensionUiRequest = {
-          type: 'extension_ui_request',
-          id: `preview-set-editor-${Date.now()}`,
-          method: 'set_editor_text',
-          text,
-        };
-        return broker.previewRequest(controller, request);
-      },
-      { requireTrust: true, autoStart: false }
-    )
-  );
-
-  const capability = async (title: string, data: unknown): Promise<unknown> => {
-    await showJson(title, data);
-    return data;
-  };
-
-  registrations.set('piRpc.extensionUiLocal.onTerminalInput', async () =>
-    capability('onTerminalInput', { disposer: typeof localUi.onTerminalInput().dispose })
-  );
-  registrations.set('piRpc.extensionUiLocal.setWorkingMessage', async () =>
-    capability('setWorkingMessage', { ignored: true })
-  );
-  registrations.set('piRpc.extensionUiLocal.setWorkingVisible', async () =>
-    capability('setWorkingVisible', { ignored: true })
-  );
-  registrations.set('piRpc.extensionUiLocal.setWorkingIndicator', async () =>
-    capability('setWorkingIndicator', { ignored: true })
-  );
-  registrations.set('piRpc.extensionUiLocal.setHiddenThinkingLabel', async () =>
-    capability('setHiddenThinkingLabel', { ignored: true })
-  );
-  registrations.set('piRpc.extensionUiLocal.setFooter', async () =>
-    capability('setFooter', { ignored: true })
-  );
-  registrations.set('piRpc.extensionUiLocal.setHeader', async () =>
-    capability('setHeader', { ignored: true })
-  );
-  registrations.set('piRpc.extensionUiLocal.custom', async () =>
-    capability('custom', await localUi.custom())
-  );
-  registrations.set('piRpc.extensionUiLocal.pasteToEditor', async () =>
-    withController(
-      async (controller) => {
-        const request = localUi.pasteToEditor(controller, 'Pasted from compatibility surface');
-        if (editorTabsEnabled()) {
-          await chatTabs.refreshVisibleTabs();
-        } else {
-          await chat.refresh();
-        }
-        return capability('pasteToEditor', request);
-      },
-      { requireTrust: true, autoStart: false }
-    )
-  );
-  registrations.set('piRpc.extensionUiLocal.getEditorText', async () =>
-    capability('getEditorText', localUi.getEditorText())
-  );
-  registrations.set('piRpc.extensionUiLocal.addAutocompleteProvider', async () =>
-    capability('addAutocompleteProvider', { ignored: true })
-  );
-  registrations.set('piRpc.extensionUiLocal.setEditorComponent', async () =>
-    capability('setEditorComponent', { ignored: true })
-  );
-  registrations.set('piRpc.extensionUiLocal.getEditorComponent', async () =>
-    capability('getEditorComponent', localUi.getEditorComponent())
-  );
-  registrations.set('piRpc.extensionUiLocal.themeGetter', async () =>
-    capability('themeGetter', localUi.theme)
-  );
-  registrations.set('piRpc.extensionUiLocal.getAllThemes', async () =>
-    capability('getAllThemes', localUi.getAllThemes())
-  );
-  registrations.set('piRpc.extensionUiLocal.getTheme', async () =>
-    capability('getTheme', localUi.getTheme())
-  );
-  registrations.set('piRpc.extensionUiLocal.setTheme', async () =>
-    capability('setTheme', localUi.setTheme())
-  );
-  registrations.set('piRpc.extensionUiLocal.getToolsExpanded', async () =>
-    capability('getToolsExpanded', localUi.getToolsExpanded())
-  );
-  registrations.set('piRpc.extensionUiLocal.setToolsExpanded', async () =>
-    capability('setToolsExpanded', { ignored: true })
-  );
-
   const missing = COMMAND_IDS.filter((id) => !registrations.has(id));
   if (missing.length > 0) {
     throw new Error(`Missing command handlers: ${missing.join(', ')}`);
   }
-
   for (const [id, handler] of registrations) {
     context.subscriptions.push(vscode.commands.registerCommand(id, handler));
   }
-
   const contributedIds = new Set(CONTRIBUTED_COMMANDS.map((command) => command.id));
   logger.info(
     `Registered ${registrations.size} command handlers for ${contributedIds.size} contributed commands`
   );
-
   // Reattach the host socket after VS Code reload without creating a new
   // pairing session. The persisted session is cleared only by explicit Stop.
   if (await remoteHost.restore()) {
@@ -2354,7 +1799,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       await chatTabs.remoteSharing.pushActiveSnapshotToRemote();
     }
   }
-
   // Gate the phone/remote feature behind an opt-in setting: drive the
   // command-palette `when` clause via a context key and keep it in sync.
   const applyRemoteEnabledContext = (): void => {
@@ -2369,42 +1813,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.workspace.onDidChangeConfiguration((event) => {
       if (event.affectsConfiguration('piRpc.remote.enabled')) {
         applyRemoteEnabledContext();
-        sessionsView.refresh();
       }
     })
   );
-
-  // Agentic/Chat sidebar mode: the piRpc.chat view's context key (used by a
-  // couple of `when` clauses elsewhere, e.g. the mode-toggle button itself
-  // needing to know which icon to show). The COMMAND handler is registered
-  // earlier (with the other commands, before the registration loop).
-  let lastKnownSidebarMode = sidebarMode();
-  const applySidebarModeContext = (): void => {
-    void vscode.commands.executeCommand('setContext', 'piRpc.sidebarMode', sidebarMode());
-  };
-  applySidebarModeContext();
-  context.subscriptions.push(
-    vscode.workspace.onDidChangeConfiguration((event) => {
-      if (event.affectsConfiguration('piRpc.sidebarMode')) {
-        applySidebarModeContext();
-        const mode = sidebarMode();
-        if (mode !== lastKnownSidebarMode) {
-          lastKnownSidebarMode = mode;
-          // Never leave the same chat visible in the sidebar AND an editor
-          // tab at once — move it (close the tab it came from, or open the
-          // tab it's going to) BEFORE re-rendering the sidebar's content,
-          // so a switch to Chat mode shows the chat that just closed, not
-          // whatever the sidebar last happened to have.
-          void chatTabs.syncSidebarModeTransition(mode).then(() => {
-            if (attachedSidebarView) {
-              attachSidebarForCurrentMode(attachedSidebarView);
-            }
-          });
-        }
-      }
-    })
-  );
-
   const firstFolder = vscode.workspace.workspaceFolders?.[0];
   if (settings.autoStart && vscode.workspace.isTrusted && firstFolder) {
     const controller = registry.getOrCreate(firstFolder);
@@ -2415,7 +1826,4 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     refreshViews();
   }
 }
-
-export function deactivate(): void {
-  // VS Code disposes subscriptions.
-}
+export function deactivate(): void {}

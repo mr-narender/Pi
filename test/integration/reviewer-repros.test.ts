@@ -66,7 +66,7 @@ test('reviewer repro 3: reducer replaces streamed partials instead of duplicatin
 });
 
 test('reviewer repro 4: webview send path is trust-gated and validated', () => {
-  const provider = readFileSync('src/webview/provider.ts', 'utf8');
+  const provider = readFileSync('src/editorTabs/tabManager.ts', 'utf8');
   assert.ok(provider.includes('ensureTrustedForMutation();'));
   assert.equal(
     parseWebviewMessage({ type: 'requestSend', command: 'prompt' })?.type,
@@ -273,7 +273,6 @@ function webviewSnapshot(overrides: Partial<WebviewSnapshot> = {}): WebviewSnaps
   return {
     sequence: 1,
     title: 'Current Chat',
-    uiMode: 'simple',
     connectionState: 'ready',
     workspaceFolderName: 'workspace',
     sessionName: 'Demo Session',

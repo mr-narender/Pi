@@ -101,7 +101,7 @@ shared Pi runtime pool     configurable workers host sessions (per-session exten
 
 ### While Pi is working
 
-In both the sidebar chat and Full Chat, your sent message stays visible with a
+In both sidebar chats and editor tabs, your sent message stays visible with a
 **Working…** indicator while Pi prepares a reply. The current empty assistant
 container and its **π** role label are deferred until the first meaningful reply
 content arrives; the reply then streams normally, without waiting for completion.
@@ -153,8 +153,11 @@ In the current source tree, the sidebar **ellipsis** menu groups actions as:
   describes your current preference)
 - **System** — Restart π
 
-The Agentic chat-list title menu also offers **Switch to full chat**. Full Chat's
-in-webview ellipsis uses the same groups. The richer **editor-title Pi Chat Actions**
+The Agentic chat-list title menu also offers **Show chat in sidebar**. The sidebar
+conversation title bar offers **Show chat list**; both surfaces belong to Agentic and remember
+your chosen surface for this workspace. Agentic is the only Pi interface; chats
+always use native editor tabs or the sidebar conversation.
+The sidebar conversation's in-webview ellipsis uses the same groups. The richer **editor-title Pi Chat Actions**
 menu additionally offers rename, retry (including with another model), find, copy as
 Markdown, thinking level, compaction, attachments, health, logs, and help.
 Model and thinking controls live in the composer status chip; there is no composer gear.

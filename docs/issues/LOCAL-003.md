@@ -12,7 +12,7 @@ Closed with: `8a3d712`
 - [x] Sidebar uses no more than three primary destinations and one clear primary action per view.
 - [x] New users receive an obvious empty state and can start or resume in one click.
 - [x] Chat is the dominant surface; session navigation preserves drafts, state, and focus.
-- [x] Attachment/chip transport, preview, persistence, invalidation, and recovery follow the deterministic composer/send-snapshot spec in `docs/UX_REDESIGN.md`.
+- [x] Attachment/chip transport, preview, persistence, invalidation, and recovery followed the deterministic composer/send-snapshot specification (retired with the legacy interface).
 - [x] Advanced mode is opt-in, persistent, reversible, and does not alter protocol capability.
 - [x] Visual system follows VS Code theme tokens, consistent spacing/type/icon hierarchy, accessible contrast, keyboard navigation, and reduced motion.
 - [x] User testing scenarios for start, resume, message, stop, attach, and advanced discovery pass without Command Palette knowledge.

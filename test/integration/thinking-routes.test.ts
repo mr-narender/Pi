@@ -3,13 +3,13 @@ import test from 'node:test';
 import { build } from 'esbuild';
 import { createEmptyComposerState } from '../../src/webview/composer';
 
-test('thinking editor/sidebar picker cancellation, stale model, errors and newer draft ownership', async () => {
+test('thinking Agentic editor picker cancellation, stale model, errors and newer draft ownership', async () => {
   let resolvePick: ((p: any) => void) | undefined;
   let items: any[] = [];
   const result = await build({
     stdin: {
       contents:
-        "export { ChatTabManager } from './src/editorTabs/tabManager'; export { ChatPanelProvider } from './src/webview/provider'; export { pickThinkingLevel } from './src/commands/thinkingPicker';",
+        "export { ChatTabManager } from './src/editorTabs/tabManager'; export { pickThinkingLevel } from './src/commands/thinkingPicker';",
       resolveDir: process.cwd(),
     },
     bundle: true,
@@ -34,7 +34,7 @@ test('thinking editor/sidebar picker cancellation, stale model, errors and newer
     module,
     module.exports
   );
-  for (const route of ['editor', 'sidebar']) {
+  {
     const state = createEmptyComposerState();
     state.pendingImages = [{ itemId: 'chip', name: 'chip', mimeType: 'image/png', sizeBytes: 1 }];
     let applied = 0;
@@ -51,9 +51,7 @@ test('thinking editor/sidebar picker cancellation, stale model, errors and newer
         throw new Error('must not prompt');
       },
     };
-    const instance = Object.create(
-      module.exports[route === 'editor' ? 'ChatTabManager' : 'ChatPanelProvider'].prototype
-    );
+    const instance = Object.create(module.exports['ChatTabManager'].prototype);
     instance.uiState = {
       captureIdentity: () => ({}),
       getComposerState: async () => structuredClone(state),
@@ -71,10 +69,7 @@ test('thinking editor/sidebar picker cancellation, stale model, errors and newer
         throw new Error('must not arm');
       },
     };
-    const send = () =>
-      route === 'editor'
-        ? instance.handleRequestSend({}, 'prompt', true)
-        : instance.handleRequestSend(controller, 'prompt');
+    const send = () => instance.handleRequestSend({}, 'prompt', true);
     state.draft = '/thinking  MAX  ';
     await send();
     assert.equal(applied, 1);

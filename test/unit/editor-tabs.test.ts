@@ -1,15 +1,10 @@
 import test from 'node:test';
+import { createRequire } from 'node:module';
+import { build } from 'esbuild';
+import { chatPathFor, rememberChatUri, lookupChatUri } from '../../src/editorTabs/uriRegistry';
 import assert from 'node:assert/strict';
 import packageJson from '../../package.json';
-import {
-  buildChatPath,
-  parseChatPath,
-  chatPathLabel,
-  buildChatQuery,
-  parseChatQuery,
-  chatTargetSessionKey,
-  normalizeSessionFilePath,
-} from '../../src/editorTabs/uriContract';
+import { chatTargetSessionKey, normalizeSessionFilePath } from '../../src/editorTabs/uriContract';
 import { renderChatApp } from '../../src/webview/render';
 import { toPersistedChatSnapshot } from '../../src/editorTabs/persistedSnapshot';
 import type { WebviewSnapshot } from '../../src/state/types';
@@ -19,7 +14,6 @@ function snapshot(overrides: Partial<WebviewSnapshot> = {}): WebviewSnapshot {
     sequence: 1,
     title: 'Current Chat',
     bindingState: 'current',
-    uiMode: 'simple',
     connectionState: 'ready',
     workspaceFolderName: 'workspace',
     sessionName: 'Demo Session',
@@ -81,7 +75,7 @@ test('editorTabs.api.customReadonlyDecision', () => {
   assert.equal(contribution.displayName, 'π Chat');
 });
 
-test('editorTabs.uri.parseRoundTrip', () => {
+test('editorTabs.uri.shortIdMapRoundTrip', () => {
   const targets = [
     {
       workspaceFolderUri: 'file:///workspace-a',
@@ -100,9 +94,72 @@ test('editorTabs.uri.parseRoundTrip', () => {
   ];
 
   for (const target of targets) {
-    const path = buildChatPath(target);
-    assert.deepEqual(parseChatPath(path), target);
+    const path = chatPathFor(target);
+    rememberChatUri(path, target);
+    assert.deepEqual(lookupChatUri(path), target);
   }
+});
+
+test('native chat URIs restore current mappings and reject obsolete path/query identities', async () => {
+  const result = await build({
+    stdin: {
+      contents:
+        "export * from './src/editorTabs/uri'; export {initChatUriRegistry, __resetChatUriRegistry} from './src/editorTabs/uriRegistry';",
+      resolveDir: process.cwd(),
+    },
+    bundle: true,
+    write: false,
+    platform: 'node',
+    format: 'cjs',
+    external: ['vscode'],
+  });
+  const require = createRequire(`${process.cwd()}/package.json`);
+  const module = { exports: {} as Record<string, any> };
+  new Function('require', 'module', 'exports', result.outputFiles[0]!.text)(
+    (id: string) => (id === 'vscode' ? { Uri: { from: (value: unknown) => value } } : require(id)),
+    module,
+    module.exports
+  );
+  const api = module.exports;
+  const data = new Map<string, unknown>();
+  const memento = {
+    get: (key: string, fallback: unknown) => data.get(key) ?? fallback,
+    update: async (key: string, value: unknown) => {
+      data.set(key, value);
+    },
+  };
+  api.initChatUriRegistry(memento);
+  const target = {
+    workspaceFolderUri: 'file:///workspace',
+    kind: 'sessionFile',
+    sessionFile: '/tmp/session.jsonl',
+  };
+  const current = api.buildChatUri(target);
+  assert.match(current.path, /^\/chat-[0-9a-f]{10}\.chat$/);
+  assert.deepEqual(api.parseChatUri(current), target);
+  api.__resetChatUriRegistry();
+  assert.equal(api.parseChatUri(current), undefined);
+  api.initChatUriRegistry(memento);
+  assert.deepEqual(api.parseChatUri(current), target, 'persisted short-id map restores the tab');
+  const workspace = Buffer.from(target.workspaceFolderUri).toString('base64url');
+  const session = Buffer.from(target.sessionFile).toString('base64url');
+  assert.equal(
+    api.parseChatUri({
+      scheme: 'pi-chat',
+      path: `/${workspace}/session-file/${session}.chat`,
+      query: '',
+    }),
+    undefined
+  );
+  assert.equal(
+    api.parseChatUri({
+      scheme: 'pi-chat',
+      path: '/unknown.chat',
+      query: `w=${workspace}&k=sessionFile&f=${session}`,
+    }),
+    undefined
+  );
+  assert.equal(api.parseChatUri({ ...current, scheme: 'file' }), undefined);
 });
 
 test('editorTabs.manifest.customEditorContribution', () => {
@@ -125,11 +182,11 @@ test('editorTabs.manifest.customEditorContribution', () => {
 });
 
 test('editorTabs.open.oneDraftPerWorkspace', () => {
-  const first = buildChatPath({
+  const first = chatPathFor({
     workspaceFolderUri: 'file:///workspace-a',
     kind: 'workspaceDraft',
   });
-  const second = buildChatPath({
+  const second = chatPathFor({
     workspaceFolderUri: 'file:///workspace-a',
     kind: 'workspaceDraft',
   });
@@ -137,12 +194,12 @@ test('editorTabs.open.oneDraftPerWorkspace', () => {
 });
 
 test('editorTabs.open.multiRootIsolation', () => {
-  const left = buildChatPath({
+  const left = chatPathFor({
     workspaceFolderUri: 'file:///workspace-a',
     kind: 'sessionFile',
     sessionFile: '/tmp/shared/session.jsonl',
   });
-  const right = buildChatPath({
+  const right = chatPathFor({
     workspaceFolderUri: 'file:///workspace-b',
     kind: 'sessionFile',
     sessionFile: '/tmp/shared/session.jsonl',
@@ -174,60 +231,13 @@ test('editorTabs.revive.noPromptReplay', () => {
   assert.equal(persisted.pendingImages[0]?.requiresReselect, true);
 });
 
-test('chatPathLabel is short, friendly, and deterministic (drives the breadcrumb)', () => {
-  const sessionFile =
-    '/Users/x/.pi/agent/sessions/--Users-x-proj--/2026-07-19T03-37-09-995Z_019f7872-fe6b-7ddd.jsonl';
-  const target = {
-    workspaceFolderUri: 'file:///Users/x/proj',
-    kind: 'sessionFile' as const,
-    sessionFile,
-  };
-  assert.equal(chatPathLabel(target), 'Chat 019f7872');
-  assert.equal(chatPathLabel(target), chatPathLabel(target));
-  assert.equal(
-    chatPathLabel({ workspaceFolderUri: 'file:///w', kind: 'workspaceDraft' }),
-    'New Chat'
-  );
-  assert.equal(
-    chatPathLabel({
-      workspaceFolderUri: 'file:///w',
-      kind: 'sessionId',
-      sessionId: 'abcdefgh1234',
-    }),
-    'Chat abcdefgh'
-  );
-  // The label never contains the long encoded workspace/session path.
-  assert.ok(!chatPathLabel(target).includes('Users'));
-});
-
-test('buildChatQuery/parseChatQuery round-trips full identity for every kind', () => {
-  const cases = [
-    { workspaceFolderUri: 'file:///Users/x/proj', kind: 'workspaceDraft' as const },
-    {
-      workspaceFolderUri: 'file:///Users/x/proj',
-      kind: 'sessionFile' as const,
-      sessionFile: '/Users/x/.pi/agent/sessions/--Users-x-proj--/2026_abc.jsonl',
-    },
-    {
-      workspaceFolderUri: 'file:///Users/x/proj',
-      kind: 'sessionId' as const,
-      sessionId: '019f7872-fe6b',
-    },
-  ];
-  for (const target of cases) {
-    assert.deepEqual(parseChatQuery(buildChatQuery(target)), target);
-  }
-  assert.equal(parseChatQuery(''), undefined);
-  assert.equal(parseChatQuery('k=sessionFile'), undefined);
-});
-
 test('different sessions keep distinct identity even if the short label collides', () => {
-  const a = buildChatQuery({
+  const a = chatPathFor({
     workspaceFolderUri: 'file:///w',
     kind: 'sessionFile',
     sessionFile: '/s/2026_019f7872-aaaa.jsonl',
   });
-  const b = buildChatQuery({
+  const b = chatPathFor({
     workspaceFolderUri: 'file:///w',
     kind: 'sessionFile',
     sessionFile: '/s/2026_019f7872-bbbb.jsonl',
@@ -235,18 +245,18 @@ test('different sessions keep distinct identity even if the short label collides
   assert.notEqual(a, b);
 });
 
-test('regression: session identity survives a query-less restore (path is source of truth)', () => {
+test('regression: session identity survives a query-less restore through the short-id map', () => {
   // VS Code may drop a custom URI's query when it restores a tab, so the full
-  // identity must be recoverable from the PATH alone. This guards against the
-  // "Blocked vscode-webview request" failure when reopening old sessions.
+  // identity is recovered from the persisted short-id map by its path.
   const target = {
     workspaceFolderUri: 'file:///Users/x/proj',
     kind: 'sessionFile' as const,
     sessionFile: '/Users/x/.pi/agent/sessions/--Users-x-proj--/2026_abc.jsonl',
   };
-  const path = buildChatPath(target);
+  const path = chatPathFor(target);
   assert.equal(path.includes('?'), false, 'path must not depend on a query');
-  assert.deepEqual(parseChatPath(path), target);
+  rememberChatUri(path, target);
+  assert.deepEqual(lookupChatUri(path), target);
 });
 
 test('chatTargetSessionKey ignores path-slash/normalization drift (fixes Windows resume binding)', () => {

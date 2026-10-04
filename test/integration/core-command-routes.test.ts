@@ -4,11 +4,10 @@ import { createRequire } from 'node:module';
 import { build } from 'esbuild';
 import { createEmptyComposerState } from '../../src/webview/composer';
 
-test('core safety: real editor/sidebar handlers retain origin drafts/chips across two chats without starting Pi', async () => {
+test('core safety: real Agentic editor handlers retain origin drafts/chips across two chats without starting Pi', async () => {
   const result = await build({
     stdin: {
-      contents:
-        "export { ChatTabManager } from './src/editorTabs/tabManager'; export { ChatPanelProvider } from './src/webview/provider';",
+      contents: "export { ChatTabManager } from './src/editorTabs/tabManager'; ",
       resolveDir: process.cwd(),
     },
     bundle: true,
@@ -25,7 +24,6 @@ test('core safety: real editor/sidebar handlers retain origin drafts/chips acros
     module.exports
   );
   const editor = Object.create(module.exports.ChatTabManager.prototype);
-  const sidebar = Object.create(module.exports.ChatPanelProvider.prototype);
   const controllers = ['origin', 'other'].map((id) => ({
     id,
     captureEngineIntent: () => ({
@@ -95,22 +93,12 @@ test('core safety: real editor/sidebar handlers retain origin drafts/chips acros
     startCalls++;
     throw new Error('Unexpected native start');
   };
-  sidebar.uiState = {
-    captureIdentity: () => ({}),
-    getComposerState: getState,
-    getComposerStateForIdentity: getState,
-    setComposerStateForIdentity: async (controller: any, _identity: any, next: any) =>
-      Object.assign(states[controllers.indexOf(controller)]!, next),
-    setComposerState: async () => {},
-  };
-  sidebar.postSnapshot = async () => {};
-  for (const route of ['editor', 'sidebar']) {
+  {
     for (const index of [0, 1]) {
       for (const command of ['prompt', 'steer', 'follow_up']) {
         states[index]!.draft = '/tree';
         const before = structuredClone(states);
-        if (route === 'editor') await editor.handleRequestSend({ index }, command, true);
-        else await sidebar.handleRequestSend(controllers[index], command);
+        await editor.handleRequestSend({ index }, command, true);
         for (const i of [0, 1]) {
           assert.equal(states[i]!.draft, i === index ? '' : before[i]!.draft);
           assert.deepEqual(states[i]!.pendingImages, before[i]!.pendingImages);

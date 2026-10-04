@@ -7,7 +7,6 @@ import {
   cloneComposerState,
   createEmptyComposerState,
   fingerprint,
-  type ChatUiMode,
   type ComposerSessionState,
   type PendingContextItem,
   type PendingImageItem,
@@ -20,7 +19,6 @@ import type { SessionController } from '../sessions/sessionController';
 import type { ChatTabTarget } from '../editorTabs/uri';
 
 const STORAGE_KEY = 'piRpc.composerState.v1';
-const UI_MODE_KEY = 'piRpc.uiMode';
 
 function workspaceFolderUri(controller: SessionController): string {
   return controller.folder.uri.toString();
@@ -71,26 +69,6 @@ export class ChatUiState implements vscode.Disposable {
     this.emitter.dispose();
     this.composerStates.clear();
     this.loadedKeys.clear();
-  }
-
-  public getMode(): ChatUiMode {
-    const stored = this.context.globalState.get<ChatUiMode | undefined>(UI_MODE_KEY);
-    if (stored === 'simple' || stored === 'advanced') {
-      return stored;
-    }
-    const configured = vscode.workspace.getConfiguration('piRpc').get<string>('defaultViewMode');
-    return configured === 'advanced' ? 'advanced' : 'simple';
-  }
-
-  public async setMode(mode: ChatUiMode): Promise<void> {
-    await this.context.globalState.update(UI_MODE_KEY, mode);
-    this.emitter.fire();
-  }
-
-  public async toggleMode(): Promise<ChatUiMode> {
-    const next = this.getMode() === 'advanced' ? 'simple' : 'advanced';
-    await this.setMode(next);
-    return next;
   }
 
   public captureIdentity(controller: SessionController): ChatTabTarget {

@@ -1515,7 +1515,7 @@ export function renderChatApp(snapshot: WebviewSnapshot): string {
 
   return `
     <a class="skip-link" href="#composer-field">Skip to composer</a>
-    <div class="layout" data-testid="chat-app" data-ui-mode="${escapeHtml(snapshot.uiMode)}"${chatFontStyle(snapshot)}>
+    <div class="layout" data-testid="chat-app"${chatFontStyle(snapshot)}>
       <div class="header-summary visually-hidden" aria-label="Current chat summary">${escapeHtml(summaryLine)}</div>
       <div id="a11y-status" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></div>
 

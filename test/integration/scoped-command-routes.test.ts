@@ -3,7 +3,7 @@ import test from 'node:test';
 import { build } from 'esbuild';
 import { createEmptyComposerState } from '../../src/webview/composer';
 
-test('scopes: actual editor/sidebar UI staging, cancellation, newer draft, two-chat origin, chips and explicit global save', async () => {
+test('scopes: actual Agentic editor UI staging, cancellation, newer draft, two-chat origin, chips and explicit global save', async () => {
   const stages: Array<{ items: any[]; options: any; resolve: (value: any) => void }> = [];
   const vscode = {
     workspace: { isTrusted: true },
@@ -14,8 +14,7 @@ test('scopes: actual editor/sidebar UI staging, cancellation, newer draft, two-c
   };
   const built = await build({
     stdin: {
-      contents:
-        "export { ChatTabManager } from './src/editorTabs/tabManager'; export { ChatPanelProvider } from './src/webview/provider';",
+      contents: "export { ChatTabManager } from './src/editorTabs/tabManager'; ",
       resolveDir: process.cwd(),
     },
     bundle: true,
@@ -35,7 +34,7 @@ test('scopes: actual editor/sidebar UI staging, cancellation, newer draft, two-c
     assert.ok(stages.length, 'native picker stage opens');
     return stages.shift()!;
   };
-  for (const route of ['editor', 'sidebar']) {
+  {
     const state = createEmptyComposerState();
     state.pendingImages = [{ itemId: 'chip', name: 'x', mimeType: 'image/png', sizeBytes: 1 }];
     const applied: any[] = [];
@@ -67,9 +66,7 @@ test('scopes: actual editor/sidebar UI staging, cancellation, newer draft, two-c
         throw new Error('must not prompt');
       },
     };
-    const instance = Object.create(
-      mod.exports[route === 'editor' ? 'ChatTabManager' : 'ChatPanelProvider'].prototype
-    );
+    const instance = Object.create(mod.exports['ChatTabManager'].prototype);
     instance.uiState = {
       captureIdentity: () => ({}),
       getComposerState: async () => structuredClone(state),
@@ -88,10 +85,7 @@ test('scopes: actual editor/sidebar UI staging, cancellation, newer draft, two-c
         throw new Error('must not arm follow');
       },
     };
-    const send = () =>
-      route === 'editor'
-        ? instance.handleRequestSend({}, 'steer', true)
-        : instance.handleRequestSend(controller, 'follow_up');
+    const send = () => instance.handleRequestSend({}, 'steer', true);
     for (const cancelAt of [1, 2]) {
       state.draft = '/scoped-models';
       const pending = send();
@@ -150,11 +144,11 @@ test('scopes: actual editor/sidebar UI staging, cancellation, newer draft, two-c
     ld.resolve(ld.items[0]);
     await late;
     assert.equal(state.draft, 'new typed draft');
-    const expectedApplied = route === 'editor' ? 1 : 2;
+    const expectedApplied = 1;
     assert.equal(
       applied.length,
       expectedApplied,
-      'a replaced editor controller cancels; unrelated editor focus cannot retarget sidebar'
+      'a replaced Agentic editor controller cancels without applying stale scopes'
     );
     instance.contextForResource = () => ({ controller, target: {}, resource: {} });
     state.draft = '/scoped-models';

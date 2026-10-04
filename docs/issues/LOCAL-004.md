@@ -23,7 +23,7 @@ The user rejected assumptions and requested direct analysis of the official Clau
 ## Planning links
 
 - [Claude Code pattern analysis](../CLAUDE_CODE_PATTERN_ANALYSIS.md)
-- [Editor-tab migration plan](../EDITOR_TAB_MIGRATION_PLAN.md)
+- Historical editor-tab migration plan retired by the Agentic-only hard cut.
 
 ## Proof
 

@@ -8,7 +8,7 @@ async function load(vscode: any) {
   const result = await build({
     stdin: {
       contents:
-        "export {ChatTabManager} from './src/editorTabs/tabManager'; export {ChatPanelProvider} from './src/webview/provider'; export {SessionController} from './src/sessions/sessionController'; export {mergeLocalCommands} from './src/commands/localCommand'; export {showChatSession} from './src/commands/sessionCommand';",
+        "export {ChatTabManager} from './src/editorTabs/tabManager'; export {SessionController} from './src/sessions/sessionController'; export {mergeLocalCommands} from './src/commands/localCommand'; export {showChatSession} from './src/commands/sessionCommand';",
       resolveDir: process.cwd(),
     },
     bundle: true,
@@ -41,7 +41,7 @@ const stats = {
   sessionName: 'Owned name',
 };
 
-test('session: actual editor/sidebar bare busy no-model info, privacy, errors, origin and draft ACKs', async () => {
+test('session: actual Agentic editor bare busy no-model info, privacy, errors, origin and draft ACKs', async () => {
   const notices: any[] = [];
   const copies: string[] = [];
   let choice: string | undefined;
@@ -57,7 +57,7 @@ test('session: actual editor/sidebar bare busy no-model info, privacy, errors, o
     },
     env: { clipboard: { writeText: async (text: string) => copies.push(text) } },
   });
-  for (const route of ['editor', 'sidebar']) {
+  {
     const state = createEmptyComposerState();
     state.pendingImages = [{ itemId: 'chip', name: 'chip', mimeType: 'image/png', sizeBytes: 1 }];
     let calls = 0;
@@ -83,9 +83,7 @@ test('session: actual editor/sidebar bare busy no-model info, privacy, errors, o
         throw new Error('must not prompt');
       },
     };
-    const instance = Object.create(
-      api[route === 'editor' ? 'ChatTabManager' : 'ChatPanelProvider'].prototype
-    );
+    const instance = Object.create(api['ChatTabManager'].prototype);
     instance.uiState = {
       captureIdentity: () => ({}),
       getComposerState: async () => structuredClone(state),
@@ -103,10 +101,7 @@ test('session: actual editor/sidebar bare busy no-model info, privacy, errors, o
         throw new Error('must not follow');
       },
     };
-    const send = () =>
-      route === 'editor'
-        ? instance.handleRequestSend({}, 'prompt', true)
-        : instance.handleRequestSend(controller, 'prompt');
+    const send = () => instance.handleRequestSend({}, 'prompt', true);
     state.draft = ' /session  ';
     choice = 'Copy JSON';
     await send();
@@ -188,8 +183,8 @@ test('session: actual editor/sidebar bare busy no-model info, privacy, errors, o
   assert.ok(discovered.some((c: any) => c.name === 'extension:session'));
 });
 
-for (const route of ['editor', 'sidebar']) {
-  test(`session correction: compiled ${route} Cancel, Done, Copy and guarded ACKs`, async () => {
+{
+  test(`session correction: compiled editor Cancel, Done, Copy and guarded ACKs`, async () => {
     let choice: string | undefined;
     let clipboardError = false;
     let onDialog: (() => void) | undefined;
@@ -226,9 +221,7 @@ for (const route of ['editor', 'sidebar']) {
         throw new Error('must not prompt');
       },
     };
-    const instance = Object.create(
-      api[route === 'editor' ? 'ChatTabManager' : 'ChatPanelProvider'].prototype
-    );
+    const instance = Object.create(api['ChatTabManager'].prototype);
     instance.uiState = {
       captureIdentity: () => ({}),
       getComposerState: async () => structuredClone(state),
@@ -246,10 +239,7 @@ for (const route of ['editor', 'sidebar']) {
         throw new Error('must not follow');
       },
     };
-    const send = () =>
-      route === 'editor'
-        ? instance.handleRequestSend({}, 'prompt', true, 'owned-ack')
-        : instance.handleRequestSend(controller, 'prompt', 'owned-ack');
+    const send = () => instance.handleRequestSend({}, 'prompt', true, 'owned-ack');
     const reset = () => {
       delete state.localCommandAck;
       delete state.recovery;

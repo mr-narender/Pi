@@ -52,7 +52,6 @@ async function frame() {
     sequence: 1,
     title: 'Chat',
     bindingState: 'current',
-    uiMode: 'simple',
     connectionState: 'ready',
     workspaceFolderName: 'workspace',
     sessionId: 'sid',
