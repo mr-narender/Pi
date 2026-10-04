@@ -178,7 +178,7 @@ test('Agentic New Chat and More sit beside π: Chat in the native view header', 
     manifest.menus['piRpc.agenticActions'].map((item: { command: string }) => item.command),
     [
       'piRpcInternal.agenticChatHeading',
-      'piRpcInternal.switchToFullChat',
+      'piRpcInternal.showChatInSidebar',
       'piRpc.reviewLastTurn',
       'piRpc.showChatVersions',
       'piRpc.exportHtml',
@@ -196,9 +196,9 @@ test('Agentic New Chat and More sit beside π: Chat in the native view header', 
   assert.equal(more.label, 'More actions');
   assert.equal(more.icon, '$(ellipsis)');
   const switchMode = manifest.commands.find(
-    (item: { command: string }) => item.command === 'piRpcInternal.switchToFullChat'
+    (item: { command: string }) => item.command === 'piRpcInternal.showChatInSidebar'
   );
-  assert.equal(switchMode.title, 'Switch to full chat');
+  assert.equal(switchMode.title, 'Show chat in sidebar');
   assert.equal(switchMode.icon, '$(arrow-swap)');
   assert.ok(renderChatActionsMenu().includes('class="menu-group">Chat'), 'full Chat menu stays');
   assert.ok(!manifest.configuration.properties['piRpc.agenticTheme']);

@@ -29,7 +29,7 @@ const vscode = acquireVsCodeApi();
 const root = document.getElementById('app');
 let currentSnapshot: WebviewSnapshot | undefined;
 installCustomTooltips();
-// The shared More menu should dismiss the same way in Chat and Agentic modes.
+// The shared More menu dismisses the same way in sidebar and editor chats.
 document.addEventListener('pointerdown', (event) => {
   const menu = document.querySelector<HTMLDetailsElement>('.sb-more[open]');
   if (menu && event.target instanceof Node && !menu.contains(event.target)) menu.open = false;

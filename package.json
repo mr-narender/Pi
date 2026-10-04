@@ -232,8 +232,8 @@
         "category": "Pi"
       },
       {
-        "command": "piRpcInternal.switchToFullChat",
-        "title": "Switch to full chat",
+        "command": "piRpcInternal.showChatInSidebar",
+        "title": "Show chat in sidebar",
         "category": "Pi",
         "icon": "$(arrow-swap)"
       },
@@ -555,7 +555,7 @@
       },
       {
         "command": "piRpcInternal.showChatList",
-        "title": "Back to chats",
+        "title": "Show chat list",
         "category": "Pi",
         "icon": "$(arrow-swap)"
       }
@@ -833,7 +833,7 @@
           ],
           "enumDescriptions": [
             "Every π tab gets the same width: long titles ellipsize, short ones pad. Keeps the tab strip even.",
-            "Tabs size naturally to the full chat title."
+            "Tabs size naturally to the complete chat title."
           ],
           "default": "consistent",
           "description": "How π chat tab titles are sized in the editor tab strip."
@@ -943,7 +943,7 @@
           "group": "1_chat@0"
         },
         {
-          "command": "piRpcInternal.switchToFullChat",
+          "command": "piRpcInternal.showChatInSidebar",
           "group": "1_chat@1"
         },
         {

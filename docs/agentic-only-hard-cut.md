@@ -42,7 +42,7 @@ reply fixes, which remain preservation requirements.
 - Shared, characterize then simplify: `sidebarMode` chooses Agentic list versus
   the same shared full-chat SidebarChatHost. Keep both required surfaces and
   session visibility safety, replace the legacy interface setting/toggle with
-  direct Agentic Full Chat/Back to Chats routing. Store the chosen surface in
+  direct Agentic sidebar conversation/chat-list routing. Store the chosen surface in
   workspace state to preserve reload behavior; new workspaces start at the list.
 - Legacy-only: dead simple/advanced UI state and unused display attribute; its
   public command/setting were removed previously. Retain actual shared chat
@@ -74,7 +74,7 @@ integration), plus 10 retained tests renamed with exact replacement IDs. Native
 command assertions, including lifecycle close/compaction refusal and all 27
 CORE_SLASH_NAMES reservations, remain tested. Twelve new test names guard the
 hard cut, current URI persistence/rejection, passive status and the real native
-surface/broker behavior. They include queued rapid Full Chat/Back to chats,
+surface/broker behavior. They include queued rapid sidebar conversation/chat-list navigation,
 failed-close recovery, draft preservation and exact native Extension UI replies.
 
 The removed inspection/extensionUi command IDs had only debugger registration

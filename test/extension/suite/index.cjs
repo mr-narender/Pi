@@ -11,7 +11,7 @@ async function run() {
     'piRpc.prompt',
     'piRpc.showModels',
     'piRpc.newSession',
-    'piRpcInternal.switchToFullChat',
+    'piRpcInternal.showChatInSidebar',
     'piRpc.switchSession',
     'piRpcInternal.start',
     'piRpcInternal.openChat',
@@ -26,6 +26,16 @@ async function run() {
   }
 
   const all = extension.packageJSON.contributes.commands.map((command) => command.command);
+  assert.ok(!commands.includes('piRpcInternal.switchToFullChat'));
+  for (const [command, title] of [
+    ['piRpcInternal.showChatInSidebar', 'Show chat in sidebar'],
+    ['piRpcInternal.showChatList', 'Show chat list'],
+  ]) {
+    assert.equal(
+      extension.packageJSON.contributes.commands.find((item) => item.command === command)?.title,
+      title
+    );
+  }
   assert.ok(all.includes('piRpc.prompt'));
   assert.ok(!all.some((id) => /^piRpc\.(inspect|extensionUi)/.test(id)));
   assert.ok(all.includes('piRpc.newSession'));

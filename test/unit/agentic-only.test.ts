@@ -36,11 +36,24 @@ test('Agentic native chat identity rejects obsolete path and query aliases', () 
   assert.match(uri, /return lookupChatUri\(uri.path\)/);
 });
 
-test('Agentic exposes full chat and return-to-list surfaces without an interface selector', () => {
+test('Agentic exposes sidebar chat and chat list with direct labels and no old interface command', () => {
   const ids: string[] = packageJson.contributes.commands.map((entry) => entry.command);
-  assert.ok(ids.includes('piRpcInternal.switchToFullChat'));
+  assert.ok(ids.includes('piRpcInternal.showChatInSidebar'));
+  assert.equal(ids.includes('piRpcInternal.switchToFullChat'), false);
   assert.ok(ids.includes('piRpcInternal.showChatList'));
+  assert.equal(
+    packageJson.contributes.commands.find(
+      (entry) => entry.command === 'piRpcInternal.showChatInSidebar'
+    )?.title,
+    'Show chat in sidebar'
+  );
+  assert.equal(
+    packageJson.contributes.commands.find((entry) => entry.command === 'piRpcInternal.showChatList')
+      ?.title,
+    'Show chat list'
+  );
   const extension = source('src/extension.ts');
+  assert.equal(extension.includes('piRpcInternal.switchToFullChat'), false);
   assert.match(extension, /sidebarSurface/);
   assert.equal(extension.includes("get<'agentic' | 'chat'>('sidebarMode'"), false);
 });

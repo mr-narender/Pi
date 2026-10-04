@@ -4,11 +4,13 @@
 
 - Make Agentic the only Pi interface. Remove the legacy shared panel, unused
   sessions sidebar, inspection/compatibility commands and obsolete UI settings
-  and URI aliases. Preserve the shared composer, native chat tabs and Full Chat;
-  Full Chat and Back to chats now navigate Agentic surfaces directly.
+  and URI aliases. Preserve the shared composer, native chat tabs and sidebar
+  conversations; Show chat in sidebar and Show chat list navigate Agentic surfaces directly.
 - Fix installed Agentic chat-list readiness, live animation choice changes,
   saved-draft movement and narrow-sidebar composer controls. Respect native tab
   close refusal and compaction guards before committing a surface transition.
+- Label navigation directly as Show chat in sidebar and Show chat list; remove
+  the obsolete internal switch-to-full-chat command identifier.
 
 ## 0.2.20 — prerelease
 
@@ -25,7 +27,7 @@
 
 ## 0.2.19 — LOCAL ONLY Working Animation menu test preview
 
-- Agentic sidebar Configure and Full Chat menus invoke the existing six-style
+- Agentic sidebar Configure and conversation menus invoke the existing six-style
   Working Animation picker. Original handler, braille default, current-preference
   description and decorative π semantics are preserved; notifications unchanged.
 - Independent isolated verification passed 552 unit and 345 integration tests
@@ -95,8 +97,8 @@
 
 - Agentic theme picker now previews as you navigate with keyboard or mouse;
   Enter saves the preference and Escape restores the previous theme.
-- Agentic toolbar now shows New Chat then More; Switch to full chat moved
-  into the Chat section of More. Full Chat mode is unchanged.
+- Agentic toolbar now shows New Chat then More; the sidebar conversation action
+  moved into the Chat section of More. The conversation view is unchanged.
 
 ## 0.2.11 — local test build (PR #2)
 

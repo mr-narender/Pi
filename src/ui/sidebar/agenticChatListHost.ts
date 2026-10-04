@@ -22,7 +22,7 @@ function asString(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined;
 }
 
-/** Agentic Mode's chat list — the sidebar's only content in that mode. A
+/** Agentic's chat list in the sidebar. A
  * dedicated webview, not the native TreeView the first two attempts used:
  * a vscode.TreeDataProvider has no extension-facing API for row spacing,
  * font size, or custom (non-Codicon) icons/buttons — verified against
@@ -296,12 +296,12 @@ export class AgenticChatListHost implements vscode.Disposable {
     }
   }
 
-  /** Switching to Chat mode: this instance is kept alive (constructed once,
-   * lazily, in extension.ts) so switching back to Agentic mode later still
+  /** Showing a sidebar conversation: this instance is kept alive (constructed once,
+   * lazily, in extension.ts) so returning to the chat list later still
    * has a working auto-refresh — only the view-specific wiring goes away,
    * NOT the onDidChangeOpenChats/onDidChange subscriptions dispose() would
    * also tear down. Clearing `view` also stops a late, already-queued
-   * scheduleRefresh() timer from posting into a view Chat mode now owns. */
+   * scheduleRefresh() timer from posting into a view the conversation now owns. */
   public detach(): void {
     if (this.refreshTimer) {
       clearTimeout(this.refreshTimer);

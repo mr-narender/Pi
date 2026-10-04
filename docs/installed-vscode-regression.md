@@ -17,7 +17,7 @@ reloaded and no user credentials or conversations were changed by those tests.
   reverted to braille on the next tick. Timer ticks now select current rendered
   frames while retaining a single timer. Tests cover all six choices and both surfaces.
 - A sent draft keeps its original editor URI even when its target becomes a saved
-  session. Full Chat now closes that exact resource before attaching the sidebar.
+  session. Show chat in sidebar now closes that exact resource before attaching the sidebar.
   Whole-session compaction checks run before closing anything; native boolean close
   refusal aborts the move before persisting a new sidebar target.
 - Intrinsic grid/flex widths clipped Send in a 297px sidebar. Existing grid tracks
@@ -34,7 +34,7 @@ no paid/public provider requests were needed.
 Installed checks exercised immediate slash activation, native model/settings
 pickers, Follow Agent off, trusted Chromium held Enter/composition handling,
 all six live working animations, deferred empty assistant rendering, saved-session
-Full Chat/Back to chats, draft/image preservation across moves and window reload,
+Show chat in sidebar/Show chat list, draft/image preservation across moves and window reload,
 and trusted Shift+Tab thinking changes. A fixture input hook recorded `source:"rpc"`.
 Accepted plain-text input cleared its draft. Reloaded image chips displayed the
 existing “Reselect image” contract.

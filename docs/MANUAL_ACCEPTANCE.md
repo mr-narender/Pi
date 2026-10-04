@@ -22,7 +22,7 @@ Use isolated `--user-data-dir` and `--extensions-dir`.
 
 1. Install the VSIX with `code --install-extension <vsix> --force` (or the matching remote CLI when testing remote).
 2. Launch the throwaway workspace with Extension Development Host logging disabled for secrets.
-3. Confirm the Agentic Chat view, New Chat/recent chat list, native editor tabs, Full Chat and Back to chats, commands and shared settings. Prewarming must preserve trust/resource/runtime options without sending a prompt.
+3. Confirm the Agentic Chat view, New Chat/recent chat list, native editor tabs, Show chat in sidebar and Show chat list, commands and shared settings. Prewarming must preserve trust/resource/runtime options without sending a prompt.
 4. Configure mock executable; run `Pi RPC: Start`. Confirm version check, handshake, ready state, and Health report.
 5. Reload window. Confirm safe reattach prompt, no duplicate process/views/listeners, and successful reconciliation.
 6. Stop, uninstall, relaunch, reinstall, and relaunch. Confirm clean deactivation, no orphan child, and no secret/session content in global state.
@@ -129,7 +129,7 @@ Acceptance: no cross-controller state or path leakage; host labeling and process
 ## Accessibility and UX
 
 Agentic is the only interface. Verify the default chat list, its native New Chat
-and More actions, native editor tabs, Full Chat and Back to chats. Confirm the
+and More actions, native editor tabs, Show chat in sidebar and Show chat list. Confirm the
 chosen surface restores within the workspace and a conversation never appears
 in both the sidebar and an editor tab after moving it.
 

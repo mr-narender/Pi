@@ -925,7 +925,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   registrations.set('piRpc.manageAgentInstructions', async () => {
     await showInstructionManager();
   });
-  registrations.set('piRpcInternal.switchToFullChat', async () => showSidebarSurface('full-chat'));
+  registrations.set('piRpcInternal.showChatInSidebar', async () => showSidebarSurface('full-chat'));
   registrations.set('piRpcInternal.showChatList', async () => showSidebarSurface('list'));
   registrations.set('piRpc.addCustomResource', async () => {
     await addCustomResource();
