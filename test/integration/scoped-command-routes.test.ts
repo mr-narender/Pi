@@ -80,12 +80,7 @@ test('scopes: actual Agentic editor UI staging, cancellation, newer draft, two-c
     instance.preparePromptContext = () => {
       throw new Error('must not prepare');
     };
-    instance.follow = {
-      armOnce: () => {
-        throw new Error('must not arm follow');
-      },
-    };
-    const send = () => instance.handleRequestSend({}, 'steer', true);
+    const send = () => instance.handleRequestSend({}, 'steer');
     for (const cancelAt of [1, 2]) {
       state.draft = '/scoped-models';
       const pending = send();

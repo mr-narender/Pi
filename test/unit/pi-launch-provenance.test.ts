@@ -12,7 +12,7 @@ import {
   setBundledPiCliPath,
 } from '../../src/process/piLauncher';
 
-test('launch provenance: cached A → PATH B; async drift and explicit/managed/worker/wrapper matrix', async () => {
+test('launch provenance: current PATH, async drift and explicit/managed/worker/wrapper matrix', async () => {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), 'pi-launch-metadata-')));
   const originalPath = process.env.PATH;
   const settings = { piSource: 'external', executable: 'pi' } as PiRpcSettings;
@@ -40,6 +40,7 @@ test('launch provenance: cached A → PATH B; async drift and explicit/managed/w
     process.env.PATH = join(a, 'bin');
     assert.equal(detectPathPi()?.packageRoot, a);
     process.env.PATH = join(b, 'bin');
+    assert.equal(detectPathPi()?.packageRoot, b);
     const plan = resolvePiLaunch(settings);
     assert.equal(plan.command, join(b, 'dist/cli.js')); // Genuine pre-fix RED.
     assert.equal(selectedSdkRoot(settings), b);
@@ -67,14 +68,14 @@ test('launch provenance: cached A → PATH B; async drift and explicit/managed/w
     assert.equal(resolvePiLaunch(settings).command, join(b, 'dist/cli.js'));
     assert.equal((resolvePiLaunch(settings) as any).sdkRoot, b);
     settings.executable = 'pi';
-    process.env.PATH = join(b, 'bin');
-    assert.equal(resolvePiLaunch(settings).command, join(b, 'dist/cli.js'));
-    assert.equal((resolvePiLaunch(settings) as any).sdkRoot, b);
+    process.env.PATH = join(a, 'bin');
+    assert.equal(resolvePiLaunch(settings).command, join(a, 'dist/cli.js'));
+    assert.equal((resolvePiLaunch(settings) as any).sdkRoot, a);
     settings.piSource = 'bundled';
-    assert.equal((resolvePiLaunch(settings) as any).sdkRoot, b);
+    assert.equal((resolvePiLaunch(settings) as any).sdkRoot, a);
     settings.piSource = 'inprocess';
-    assert.equal(resolvePiLaunch(settings).cliPath, join(b, 'dist/cli.js'));
-    assert.equal((resolvePiLaunch(settings) as any).sdkRoot, b);
+    assert.equal(resolvePiLaunch(settings).cliPath, undefined);
+    assert.equal((resolvePiLaunch(settings) as any).sdkRoot, a);
     const wrapper = join(dir, 'wrapper');
     writeFileSync(wrapper, '', { mode: 0o555 });
     settings.piSource = 'external';
@@ -82,6 +83,25 @@ test('launch provenance: cached A → PATH B; async drift and explicit/managed/w
     assert.equal(resolvePiLaunch(settings).command, wrapper);
     assert.equal((resolvePiLaunch(settings) as any).sdkRoot, undefined);
     assert.equal(selectedSdkRoot(settings), undefined);
+
+    const stale = join(dir, 'stale');
+    mkdirSync(join(stale, 'dist'), { recursive: true });
+    writeFileSync(
+      join(stale, 'package.json'),
+      JSON.stringify({
+        name: '@earendil-works/pi-coding-agent',
+        version: '0.84.2',
+        bin: { pi: 'dist/cli.js' },
+      })
+    );
+    writeFileSync(join(stale, 'dist/cli.js'), '', { mode: 0o555 });
+    setBundledPiCliPath(undefined);
+    setManagedPiCliPath(join(stale, 'dist/cli.js'));
+    settings.piSource = 'managed';
+    settings.executable = 'pi';
+    const rejected = resolvePiLaunch(settings, { PATH: '' }, dir);
+    assert.equal(rejected.usingBundled, false, 'unsupported managed SDK must never launch');
+    assert.equal(rejected.sdkRoot, undefined);
   } finally {
     if (originalPath === undefined) delete process.env.PATH;
     else process.env.PATH = originalPath;

@@ -122,7 +122,7 @@ async function load(vscode: unknown) {
         instance.contextForResource = () => ({ controller: active, target });
         instance.renderResource = instance.postSnapshot = async () => {};
         const beforeEffects = effects;
-        const sending = instance.handleRequestSend({}, 'prompt', true, 'ack');
+        const sending = instance.handleRequestSend({}, 'prompt', 'ack');
         await started;
         if (change === 'generation') controller.supervisor.currentGeneration++;
         if (change === 'session') controller.state.state.sessionId = 'replacement';

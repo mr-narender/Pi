@@ -57,9 +57,9 @@ export class SessionController implements vscode.Disposable {
   public constructor(
     public readonly folder: vscode.WorkspaceFolder,
     private readonly logger: DiagnosticsLogger,
-    settings = getSettings()
+    settings?: PiRpcSettings
   ) {
-    this.settings = settings;
+    this.settings = settings ?? getSettings();
     this.state = createInitialControllerState(folder.name, folder.uri.fsPath);
     this.supervisor = new PiProcessSupervisor(folder, logger, settings);
     this.supervisor.on('exit', () => {

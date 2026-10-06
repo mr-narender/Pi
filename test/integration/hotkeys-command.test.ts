@@ -68,12 +68,7 @@ import { createEmptyComposerState } from '../../src/webview/composer';
     instance.preparePromptContext = () => {
       throw new Error('must not expand');
     };
-    instance.follow = {
-      armOnce: () => {
-        throw new Error('must not follow');
-      },
-    };
-    const send = () => instance.handleRequestSend({}, 'prompt', true, 'ack');
+    const send = () => instance.handleRequestSend({}, 'prompt', 'ack');
     const reset = () => {
       delete state.localCommandAck;
       delete state.recovery;

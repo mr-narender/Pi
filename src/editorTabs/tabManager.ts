@@ -1144,12 +1144,7 @@ export class ChatTabManager implements vscode.Disposable {
       case 'newFileFromCode':
         return this.openCodeInNewFile(parsed.text, parsed.language);
       case 'requestSend':
-        return this.handleRequestSend(
-          host.resource,
-          parsed.command,
-          parsed.follow === true,
-          parsed.submissionId
-        );
+        return this.handleRequestSend(host.resource, parsed.command, parsed.submissionId);
       case 'acceptPreview':
         return this.acceptPreview(host.resource);
       case 'cancelPreview':
@@ -1673,7 +1668,6 @@ export class ChatTabManager implements vscode.Disposable {
   private async handleRequestSend(
     resource: vscode.Uri,
     command: 'prompt' | 'follow_up' | 'steer',
-    followOnce?: boolean,
     submissionId?: string
   ): Promise<void> {
     ensureTrustedForMutation();
@@ -1786,9 +1780,6 @@ export class ChatTabManager implements vscode.Disposable {
       // async session work below: nothing sent may linger into the next message,
       // and the draft→session identity promotion copies an already-clean state.
       const { preview, accepted } = beginSend(command, state);
-      if (followOnce) {
-        this.follow.armOnce(this.keyFor(resource));
-      }
       context.controller.setDraft('');
       await this.uiState.setComposerStateForIdentity(context.controller, context.target, state);
       context = await this.preparePromptContext(resource);

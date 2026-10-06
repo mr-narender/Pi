@@ -3,7 +3,7 @@ import { createRequire } from 'node:module';
 import test from 'node:test';
 import { build } from 'esbuild';
 
-test('turning Follow Agent off cancels an in-flight automatic file open', async () => {
+test('Follow Agent off cancels in-flight opens and cannot be force-enabled per send', async () => {
   let mode = 'open';
   let releaseRead!: (value: Uint8Array) => void;
   let signalReadStarted!: () => void;
@@ -12,12 +12,23 @@ test('turning Follow Agent off cancels an in-flight automatic file open', async 
   });
   const opened: unknown[] = [];
   const shown: unknown[] = [];
+  let revealed = 0;
   let holdRead = true;
   const group = { activeTab: undefined, tabs: [], viewColumn: 1 };
+  const document = {
+    uri: { fsPath: '/workspace/file.ts', scheme: 'file' },
+    languageId: 'typescript',
+    getText: () => 'content',
+    positionAt: () => ({ line: 0 }),
+  };
   const vscode = {
     StatusBarAlignment: { Right: 1 },
     OverviewRulerLane: { Full: 1, Center: 2 },
     ViewColumn: { Active: 1 },
+    TextEditorRevealType: { InCenterIfOutsideViewport: 1 },
+    Range: class {
+      public constructor(..._args: unknown[]) {}
+    },
     Uri: { file: (fsPath: string) => ({ fsPath, scheme: 'file' }) },
     TabInputCustom: class {},
     TabInputText: class {},
@@ -40,13 +51,22 @@ test('turning Follow Agent off cancels an in-flight automatic file open', async 
       },
       openTextDocument: async (uri: unknown) => {
         opened.push(uri);
-        return { languageId: 'typescript' };
+        return document;
       },
     },
     window: {
       createTextEditorDecorationType: () => ({ dispose() {} }),
       createStatusBarItem: () => ({ show() {}, hide() {}, dispose() {} }),
       tabGroups: { activeTabGroup: group, all: [group], close: async () => true },
+      visibleTextEditors: [
+        {
+          document,
+          revealRange: () => {
+            revealed++;
+          },
+          setDecorations() {},
+        },
+      ],
       showTextDocument: async (...args: unknown[]) => {
         shown.push(args);
         return {};
@@ -79,7 +99,9 @@ test('turning Follow Agent off cancels an in-flight automatic file open', async 
   assert.equal(shown.length, 0);
   holdRead = false;
   await service.showInSidePane('editing', '/workspace/file.ts', 'chat', undefined, undefined, true);
-  assert.equal(opened.length, 1);
-  assert.equal(shown.length, 1);
+  assert.equal(opened.length, 0);
+  assert.equal(shown.length, 0);
+  await service.glowEdit('/workspace/file.ts', 'content', 'chat');
+  assert.equal(revealed, 0, 'turning follow off must cancel deferred editor reveals');
   service.dispose();
 });

@@ -96,12 +96,7 @@ import { createEmptyComposerState } from '../../src/webview/composer';
       instance.preparePromptContext = () => {
         throw new Error('expansion forbidden');
       };
-      instance.follow = {
-        armOnce: () => {
-          throw new Error('follow forbidden');
-        },
-      };
-      const send = () => instance.handleRequestSend({}, 'prompt', true, 'ack');
+      const send = () => instance.handleRequestSend({}, 'prompt', 'ack');
       const reset = () => {
         mutate = undefined;
         controller.sdkRoot = root;

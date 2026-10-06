@@ -97,12 +97,7 @@ test('model: actual Agentic editor direct refs, query picker, cancellation and o
     instance.preparePromptContext = () => {
       throw new Error('must not prepare');
     };
-    instance.follow = {
-      armOnce: () => {
-        throw new Error('must not arm');
-      },
-    };
-    const send = () => instance.handleRequestSend({}, 'steer', true);
+    const send = () => instance.handleRequestSend({}, 'steer');
     state.draft = '/model PROXY/VENDOR/FAMILY/MODEL';
     await send();
     assert.deepEqual(applied, ['proxy/vendor/family/model']);
@@ -184,4 +179,82 @@ test('model wire: existing stock-shaped catalog and set_model RPC apply before n
   } finally {
     await shutdown(spawned);
   }
+});
+
+test('model picker changes only the model and never turns optional thinking into a failure', async () => {
+  let accepted: (() => void) | undefined;
+  const vscode = {
+    QuickPickItemKind: { Separator: -1 },
+    window: {
+      createQuickPick: () => {
+        let onAccept: () => void;
+        let onHide: () => void;
+        return {
+          items: [] as any[],
+          selectedItems: [] as any[],
+          onDidChangeValue() {},
+          onDidAccept(fn: () => void) {
+            onAccept = fn;
+          },
+          onDidHide(fn: () => void) {
+            onHide = fn;
+          },
+          show() {
+            accepted = () => {
+              this.selectedItems = [this.items.find((item: any) => item.model)!];
+              onAccept();
+            };
+          },
+          hide() {
+            onHide();
+          },
+          dispose() {},
+        };
+      },
+      showErrorMessage() {},
+      showWarningMessage() {},
+    },
+  };
+  const built = await build({
+    stdin: {
+      contents: "export { pickChatModel } from './src/commands/modelPicker';",
+      resolveDir: process.cwd(),
+    },
+    bundle: true,
+    write: false,
+    platform: 'node',
+    format: 'cjs',
+    external: ['vscode'],
+  });
+  const mod = { exports: {} as any };
+  new Function('require', 'module', 'exports', built.outputFiles[0]!.text)(
+    () => vscode,
+    mod,
+    mod.exports
+  );
+  let thinkingCalls = 0;
+  const controller = {
+    snapshot: {
+      generation: 1,
+      state: { sessionId: 'one', sessionFile: '/one.jsonl', model: { provider: 'old', id: 'old' } },
+    },
+    modelEpoch: 0,
+    getAvailableModels: async () => [
+      { provider: 'openai', id: 'reasoning', reasoning: true, name: 'Reasoning' },
+    ],
+    selectModel: async (provider: string, id: string) => {
+      controller.snapshot.state.model = { provider, id };
+    },
+    getThinkingCapabilities: async () => {
+      thinkingCalls++;
+      throw new Error('/thinking is unsupported by this backend');
+    },
+    refreshState: async () => {},
+  };
+  const pending = mod.exports.pickChatModel(controller);
+  for (let i = 0; i < 20 && !accepted; i++) await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.ok(accepted);
+  accepted!();
+  assert.deepEqual(await pending, { provider: 'openai', id: 'reasoning' });
+  assert.equal(thinkingCalls, 0);
 });

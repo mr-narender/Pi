@@ -68,13 +68,8 @@ function verifiedSdkRoot(cli: string): string | undefined {
   return undefined;
 }
 
-let cachedPathPi: PathPiInfo | null | undefined;
-
-/** Find an EXISTING `pi` on PATH and resolve its npm package root. Cached. */
+/** Find the current `pi` on PATH and resolve its npm package root. */
 export function detectPathPi(): PathPiInfo | undefined {
-  if (cachedPathPi !== undefined) {
-    return cachedPathPi ?? undefined;
-  }
   const names = process.platform === 'win32' ? ['pi.cmd', 'pi.exe', 'pi'] : ['pi'];
   let bin: string | undefined;
   for (const dir of (process.env.PATH ?? '').split(delimiter)) {
@@ -93,7 +88,6 @@ export function detectPathPi(): PathPiInfo | undefined {
     }
   }
   if (!bin) {
-    cachedPathPi = null;
     return undefined;
   }
   let packageRoot: string | undefined;
@@ -122,8 +116,7 @@ export function detectPathPi(): PathPiInfo | undefined {
   } catch {
     /* realpath failed — binary still usable as an external subprocess */
   }
-  cachedPathPi = { binPath: bin, packageRoot, version };
-  return cachedPathPi;
+  return { binPath: bin, packageRoot, version };
 }
 
 // cli.js locations, set at activation. `bundled` = vendored in the VSIX;
@@ -135,7 +128,7 @@ export function setBundledPiCliPath(path: string | undefined): void {
   bundledCliPath = path;
 }
 export function setManagedPiCliPath(path: string | undefined): void {
-  managedCliPath = path;
+  managedCliPath = path && verifiedSdkRoot(path) ? path : undefined;
 }
 export function bundledPiAvailable(): boolean {
   return typeof bundledCliPath === 'string' && existsSync(bundledCliPath);
@@ -191,14 +184,8 @@ function externalSubprocess(settings: PiRpcSettings): LaunchChoice {
   };
 }
 
-/**
- * Decide how to launch Pi based on `piRpc.piSource`:
- * - `bundled` (default): vendored cli.js in an OS subprocess (VS Code Node).
- * - `inprocess`: vendored cli.js in an in-process worker thread (no subprocess).
- * - `managed`: cli.js auto-installed into globalStorage, in an OS subprocess.
- * - `external`: the user's `pi` on PATH / `piRpc.executable`.
- * Each falls back to the external `pi` if its target is unavailable.
- */
+/** Resolve one authoritative runtime: explicit executable, current PATH, then
+ * the selected managed/dev fallback when neither external source exists. */
 export function resolvePiLaunch(
   settings: PiRpcSettings,
   env: NodeJS.ProcessEnv = process.env,
@@ -206,16 +193,14 @@ export function resolvePiLaunch(
 ): PiLaunchPlan {
   const configuredExecutable = settings.executable !== 'pi';
   const pathExecutable = resolveExecutable(settings.executable, env, cwd);
-  const existingPathPi =
-    settings.piSource === 'managed' &&
-    (() => {
-      try {
-        accessSync(pathExecutable, process.platform === 'win32' ? constants.F_OK : constants.X_OK);
-        return statSync(pathExecutable).isFile();
-      } catch {
-        return false;
-      }
-    })();
+  const existingPathPi = (() => {
+    try {
+      accessSync(pathExecutable, process.platform === 'win32' ? constants.F_OK : constants.X_OK);
+      return statSync(pathExecutable).isFile();
+    } catch {
+      return false;
+    }
+  })();
   const choice =
     configuredExecutable || existingPathPi
       ? externalSubprocess(settings)

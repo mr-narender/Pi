@@ -64,12 +64,7 @@ test('copy: actual Agentic editor clipboard, busy no-model, empty, arguments and
     instance.preparePromptContext = () => {
       throw new Error('must not prepare');
     };
-    instance.follow = {
-      armOnce: () => {
-        throw new Error('must not follow');
-      },
-    };
-    const send = () => instance.handleRequestSend({}, 'prompt', true);
+    const send = () => instance.handleRequestSend({}, 'prompt');
     state.draft = '/copy';
     await send();
     assert.equal(calls, 1, 'copy must invoke the actual controller backend');

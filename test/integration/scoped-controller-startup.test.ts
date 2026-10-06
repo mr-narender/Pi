@@ -4,6 +4,7 @@ import { build } from 'esbuild';
 import { PassThrough } from 'node:stream';
 
 test('scopes controller and supervisor: shared/dedicated startup carry argv/env before first session; correlated controller mutation', async () => {
+  const liveSettings: Record<string, unknown> = {};
   const opens: any[] = [];
   const handle = {
     stdin: new PassThrough(),
@@ -19,7 +20,14 @@ test('scopes controller and supervisor: shared/dedicated startup carry argv/env 
       return handle;
     },
   };
-  const vscode = { workspace: { isTrusted: false } };
+  const vscode = {
+    workspace: {
+      isTrusted: false,
+      getConfiguration: () => ({
+        get: (key: string, fallback: unknown) => liveSettings[key] ?? fallback,
+      }),
+    },
+  };
   const built = await build({
     stdin: {
       contents:
@@ -41,7 +49,9 @@ test('scopes controller and supervisor: shared/dedicated startup carry argv/env 
             export function resolvePiLaunch(settings, env, cwd) {
               return Object.freeze({ command: settings.executable, prefixArgs: [],
                 mode: 'subprocess', usingBundled: false, label: 'owned stub',
-                sdkRoot: '/owned/sdk-metadata', env: Object.freeze({...env}), cwd });
+                sdkRoot: settings.executable === 'unexecuted-owned-stub'
+                  ? '/owned/sdk-metadata' : settings.executable,
+                env: Object.freeze({...env}), cwd });
             }`,
             loader: 'ts',
           }));
@@ -117,6 +127,23 @@ test('scopes controller and supervisor: shared/dedicated startup carry argv/env 
     assert.equal(open.env.PI_SKIP_VERSION_CHECK, '1');
     await supervisor.stop();
   }
+
+  Object.assign(liveSettings, {
+    piSource: 'external',
+    executable: '/old/pi',
+    sharedRuntime: true,
+    additionalArgs: [],
+    offline: false,
+    launchShell: '',
+  });
+  const liveSupervisor = new mod.exports.PiProcessSupervisor(
+    { name: 'Owned', uri: { fsPath: '/owned/workspace' } },
+    logger
+  );
+  liveSettings.executable = '/configured/pi-1.0.4';
+  await liveSupervisor.start();
+  assert.equal(opens.at(-1).sdkRoot, '/configured/pi-1.0.4');
+  await liveSupervisor.stop();
   const controller = Object.create(mod.exports.SessionController.prototype);
   const calls: any[] = [];
   let release: (() => void) | undefined;

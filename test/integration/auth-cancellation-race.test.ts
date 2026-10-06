@@ -155,15 +155,10 @@ for (const mode of ['prompt', 'steer', 'follow_up'])
         };
         instance.contextForResource = () => ({ controller, target: {}, resource });
         instance.renderResource = instance.postSnapshot = async () => {};
-        instance.follow = {
-          armOnce: () => {
-            throw new Error('No follow');
-          },
-        };
         instance.preparePromptContext = () => {
           throw new Error('No prompt preparation');
         };
-        const send = instance.handleRequestSend(resource, mode, true, 'owned-ack');
+        const send = instance.handleRequestSend(resource, mode, 'owned-ack');
         await inputEntered;
         if (reason === 'late') {
           await command('release');

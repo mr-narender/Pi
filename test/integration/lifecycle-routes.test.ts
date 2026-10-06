@@ -85,15 +85,10 @@ import { createEmptyComposerState } from '../../src/webview/composer';
       bound++;
     };
     instance.renderResource = instance.postSnapshot = async () => {};
-    instance.follow = {
-      armOnce: () => {
-        throw new Error('No follow for local commands');
-      },
-    };
     instance.preparePromptContext = () => {
       throw new Error('No prompt/context/image preparation');
     };
-    const send = (mode: string) => instance.handleRequestSend({}, mode, true, 'ack');
+    const send = (mode: string) => instance.handleRequestSend({}, mode, 'ack');
     for (const command of ['new', 'resume', 'fork', 'clone'])
       for (const mode of ['prompt', 'steer', 'follow_up']) {
         state.draft = `/${command}`;

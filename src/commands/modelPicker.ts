@@ -12,7 +12,6 @@ import * as vscode from 'vscode';
 import { compareModelRankDesc, fuzzyModelMatch } from './modelSearch';
 import type { JsonObject } from '../rpc/protocol';
 import type { SessionController } from '../sessions/sessionController';
-import { pickThinkingLevel } from './thinkingPicker';
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -92,7 +91,8 @@ export interface PickedModel {
   id: string;
 }
 
-/** Guided model → thinking flow. Returns the picked model's identity so a
+/** Guided model selection. Thinking remains an explicit, independent control.
+ * Returns the picked model's identity so a
  * caller can re-assert it later (e.g. AFTER forking a session — forking may
  * reconcile controller state, and re-applying the model right before sending
  * is the robust way to guarantee the resend actually uses what was picked).
@@ -207,9 +207,6 @@ export async function pickChatModel(
     );
   }
 
-  if (!options?.modelOnly) {
-    await pickThinkingLevel(controller);
-  }
   await controller.refreshState();
   return { provider, id };
 }

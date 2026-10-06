@@ -66,8 +66,6 @@ export class AgentFollowService implements vscode.Disposable {
   /** Paths the tool-layer just acted on — the watcher skips these (dedupe). */
   private readonly recentlyActed = new Map<string, number>();
   private readonly fsDebounce = new Map<string, ReturnType<typeof setTimeout>>();
-  /** Cmd/Ctrl+Enter: follow THIS turn even when the crosshair is off. */
-  private readonly followOnceKeys = new Set<string>();
   private awakeProcess: import('node:child_process').ChildProcess | undefined;
   /** The moving "π is here" caret — updated every snapshot while a turn runs,
    * so you watch the agent's position travel through the file in realtime. */
@@ -93,11 +91,6 @@ export class AgentFollowService implements vscode.Disposable {
   }
 
   /** Feed every rendered snapshot through here; new tool calls become activity. */
-  /** Arm follow for the next turn of this chat regardless of the setting. */
-  public armOnce(key: string): void {
-    this.followOnceKeys.add(key);
-  }
-
   public handleSnapshot(
     key: string,
     chatTitle: string,
@@ -113,7 +106,6 @@ export class AgentFollowService implements vscode.Disposable {
       this.ensureAwake();
     } else {
       this.busyChats.delete(key);
-      this.followOnceKeys.delete(key); // one turn only
       this.clearLiveCaret();
       this.scheduleWatcherIdle();
       if (this.busyChats.size === 0) {
@@ -152,8 +144,7 @@ export class AgentFollowService implements vscode.Disposable {
         isActiveChat,
         workspaceRoot,
         candidate.args,
-        post,
-        key
+        post
       );
     }
     if (isActiveChat && this.mode() === 'open') {
@@ -179,7 +170,7 @@ export class AgentFollowService implements vscode.Disposable {
     if (seen.size > 2000) {
       this.seen.set(key, new Map(Array.from(seen.entries()).slice(-500)));
     }
-    this.updateLiveFocus(snapshot, isActiveChat, workspaceRoot, busy === true, key);
+    this.updateLiveFocus(snapshot, isActiveChat, workspaceRoot, busy === true);
   }
 
   /** Move the realtime caret to π's current position (newest file-touching call
@@ -190,11 +181,9 @@ export class AgentFollowService implements vscode.Disposable {
     snapshot: SnapshotLike,
     isActiveChat: boolean,
     workspaceRoot: string | undefined,
-    busy: boolean,
-    key: string
+    busy: boolean
   ): void {
-    const followForced = this.followOnceKeys.has(key);
-    if (!busy || !isActiveChat || (this.mode() !== 'open' && !followForced)) {
+    if (!busy || !isActiveChat || this.mode() !== 'open') {
       this.clearLiveCaret();
       return;
     }
@@ -381,8 +370,7 @@ export class AgentFollowService implements vscode.Disposable {
     isActiveChat: boolean,
     workspaceRoot: string | undefined,
     args: string | undefined,
-    post?: (payload: unknown) => void,
-    key?: string
+    post?: (payload: unknown) => void
   ): void {
     const absolute = this.resolve(filePath, workspaceRoot);
     this.recentlyActed.set(absolute, Date.now());
@@ -418,7 +406,6 @@ export class AgentFollowService implements vscode.Disposable {
     // The side pane opens ONLY files the agent actually CHANGES — reads and
     // searches narrate in the status bar without opening tabs. And only for
     // the chat you're looking at; background chats stay in the status bar.
-    const followForced = key !== undefined && this.followOnceKeys.has(key);
     if (kind !== 'editing') {
       return;
     }
@@ -428,13 +415,13 @@ export class AgentFollowService implements vscode.Disposable {
       this.logger?.info(`[follow] pane skipped: ${absolute} outside workspace root`);
       return;
     }
-    if ((this.mode() !== 'open' && !followForced) || !isActiveChat) {
+    if (this.mode() !== 'open' || !isActiveChat) {
       this.logger?.info(
         `[follow] pane skipped: ${this.mode() !== 'open' ? `mode=${this.mode()}` : 'chat not visible'}`
       );
       return;
     }
-    void this.showInSidePane(kind, absolute, chatTitle, args, post, followForced);
+    void this.showInSidePane(kind, absolute, chatTitle, args, post);
   }
 
   private isChatTab(tab: vscode.Tab | undefined): boolean {
@@ -515,10 +502,9 @@ export class AgentFollowService implements vscode.Disposable {
     absolute: string,
     chatTitle: string,
     args: string | undefined,
-    _post?: (payload: unknown) => void,
-    followForced = false
+    _post?: (payload: unknown) => void
   ): Promise<void> {
-    const enabled = () => this.mode() === 'open' || followForced;
+    const enabled = () => this.mode() === 'open';
     if (!enabled()) return;
     const viewColumn = await this.followTargetViewColumn();
     if (!enabled()) return;
@@ -642,11 +628,14 @@ export class AgentFollowService implements vscode.Disposable {
     needle: string | undefined,
     chatTitle: string
   ): Promise<void> {
-    if (!needle) {
+    if (!needle || this.mode() !== 'open') {
       return;
     }
     try {
       const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(absolute));
+      if (this.mode() !== 'open') {
+        return;
+      }
       const editor = vscode.window.visibleTextEditors.find(
         (candidate) => candidate.document.uri.fsPath === absolute
       );

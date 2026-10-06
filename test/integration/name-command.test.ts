@@ -88,12 +88,7 @@ test('name: actual Agentic editor bare display, whole trimmed names, busy no-mod
     instance.preparePromptContext = () => {
       throw new Error('must not prepare');
     };
-    instance.follow = {
-      armOnce: () => {
-        throw new Error('must not follow');
-      },
-    };
-    const send = () => instance.handleRequestSend({}, 'prompt', true);
+    const send = () => instance.handleRequestSend({}, 'prompt');
     state.draft = '/name  ';
     await send();
     assert.equal(notices.at(-1), 'Usage: /name <name>', 'bare unnamed must display native usage');

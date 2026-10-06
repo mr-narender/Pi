@@ -96,12 +96,7 @@ test('session: actual Agentic editor bare busy no-model info, privacy, errors, o
     instance.preparePromptContext = () => {
       throw new Error('must not expand');
     };
-    instance.follow = {
-      armOnce: () => {
-        throw new Error('must not follow');
-      },
-    };
-    const send = () => instance.handleRequestSend({}, 'prompt', true);
+    const send = () => instance.handleRequestSend({}, 'prompt');
     state.draft = ' /session  ';
     choice = 'Copy JSON';
     await send();
@@ -234,12 +229,7 @@ test('session: actual Agentic editor bare busy no-model info, privacy, errors, o
     instance.preparePromptContext = () => {
       throw new Error('must not expand');
     };
-    instance.follow = {
-      armOnce: () => {
-        throw new Error('must not follow');
-      },
-    };
-    const send = () => instance.handleRequestSend({}, 'prompt', true, 'owned-ack');
+    const send = () => instance.handleRequestSend({}, 'prompt', 'owned-ack');
     const reset = () => {
       delete state.localCommandAck;
       delete state.recovery;

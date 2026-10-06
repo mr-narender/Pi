@@ -245,12 +245,7 @@ test(`compact editor: bare/whole arguments, no expansion, origin ACK, failure sa
   instance.preparePromptContext = () => {
     throw new Error('expansion forbidden');
   };
-  instance.follow = {
-    armOnce() {
-      throw new Error('follow forbidden');
-    },
-  };
-  const send = () => instance.handleRequestSend({}, 'prompt', true, 'ack');
+  const send = () => instance.handleRequestSend({}, 'prompt', 'ack');
   const reset = (draft = '/compact') => {
     state.draft = draft;
     state.commandRevision = 0;

@@ -88,15 +88,10 @@ import { createEmptyComposerState } from '../../src/webview/composer';
     };
     instance.contextForResource = () => ({ controller, target: {}, resource });
     instance.renderResource = instance.postSnapshot = async () => {};
-    instance.follow = {
-      armOnce: () => {
-        throw new Error('No local follow');
-      },
-    };
     instance.preparePromptContext = () => {
       throw new Error('No local prompt/context/images');
     };
-    const send = (mode: string) => instance.handleRequestSend(resource, mode, true, 'ack');
+    const send = (mode: string) => instance.handleRequestSend(resource, mode, 'ack');
     for (const command of ['tree', 'trust', 'reload'])
       for (const mode of ['prompt', 'steer', 'follow_up']) {
         order.length = 0;

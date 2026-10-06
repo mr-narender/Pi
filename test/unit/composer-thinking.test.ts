@@ -127,6 +127,13 @@ test('thinking dynamic discovery, completion Enter and local execution retain ow
   assert.equal(composer().value.trim(), '');
 });
 
+test('modified Enter sends without bypassing Follow Agent', () => {
+  press(composer(), { key: 'Enter', shiftKey: false, ctrlKey: true });
+  const request = posted.find((message) => message.type === 'requestSend');
+  assert.ok(request);
+  assert.equal(Object.hasOwn(request, 'follow'), false);
+});
+
 test('Shift+Tab precedes completion; plain Tab still accepts slash and mention', () => {
   composer().value = '/he';
   composer().dispatchEvent(new dom.window.Event('input', { bubbles: true }));
