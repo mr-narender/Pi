@@ -441,7 +441,6 @@ let pendingLocalCommand:
 let lastMessageKey: string | undefined;
 let lastWindowOffset: number | undefined;
 let loadOlderPending = false;
-let followOnceRequested = false;
 // When a chat is opened/switched, we must land at the bottom. The first render
 // for a resource is often the empty "loading" state (no messages yet), so we
 // remember the intent and perform the scroll on the render where messages
@@ -535,10 +534,8 @@ function submitComposer(command: string): void {
   vscode.postMessage({
     type: 'requestSend',
     command,
-    follow: followOnceRequested || undefined,
     submissionId: pendingLocalCommand?.id,
   });
-  followOnceRequested = false;
 }
 
 function focusElement(id: string | undefined): boolean {
@@ -1128,9 +1125,6 @@ function renderNow(snapshot: WebviewSnapshot): void {
       // Enter submits (TUI-style); Shift+Enter inserts a newline. Cmd/Ctrl+Enter
       // also submits. IME composition Enter is ignored so it doesn't send mid-word.
       if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
-        if (event.metaKey || event.ctrlKey) {
-          followOnceRequested = true;
-        }
         event.preventDefault();
         const sendButton = document.getElementById(SEND_BUTTON_ID) as HTMLButtonElement | null;
         if (!sendButton || sendButton.disabled) {

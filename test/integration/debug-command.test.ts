@@ -166,12 +166,7 @@ test('debug strict recursive whitelist: raw logs/names/config/auth/tool/custom s
     instance.preparePromptContext = () => {
       throw new Error('no context expansion');
     };
-    instance.follow = {
-      armOnce() {
-        throw new Error('no follow');
-      },
-    };
-    const send = (mode = 'prompt') => instance.handleRequestSend({}, mode, true, 'ack');
+    const send = (mode = 'prompt') => instance.handleRequestSend({}, mode, 'ack');
     const reset = () => {
       state.draft = '/debug';
       state.commandRevision = 0;

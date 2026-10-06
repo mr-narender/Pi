@@ -64,12 +64,7 @@ test('thinking Agentic editor picker cancellation, stale model, errors and newer
     instance.preparePromptContext = () => {
       throw new Error('must not prepare');
     };
-    instance.follow = {
-      armOnce: () => {
-        throw new Error('must not arm');
-      },
-    };
-    const send = () => instance.handleRequestSend({}, 'prompt', true);
+    const send = () => instance.handleRequestSend({}, 'prompt');
     state.draft = '/thinking  MAX  ';
     await send();
     assert.equal(applied, 1);

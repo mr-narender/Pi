@@ -46,9 +46,16 @@ sessions, skills, prompts, and extensions all work unchanged.
 PATH and runs on it directly (no duplicate copy, no surprise npm installs; you manage
 updates). **No `pi` yet?** Either install it yourself (`npm install -g
 @earendil-works/pi-coding-agent`) or set **`piRpc.autoInstall`: `true`** and the
-extension installs the latest Pi into its own storage and keeps it updated (staged
-downloads, applied on reload). Auto-install is **off by default** — nothing is ever
-downloaded without your consent. You also need:
+extension installs the newest Pi version supported by its native host into its own
+storage. Auto-install is **off by default** — nothing is ever
+downloaded without your consent.
+
+Resolution is deterministic: an explicit `piRpc.executable` wins, otherwise the
+current `pi` on `PATH` wins, and only then can a compatible managed installation
+be used. With `piRpc.autoInstall: false`, the extension performs no npm check,
+download, replacement, or staged-update application.
+
+You also need:
 
 1. **Authenticate Pi** once (either is fine):
    - Subscription / OAuth: run `pi` in a terminal and use `/login`, **or**

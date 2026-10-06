@@ -139,7 +139,7 @@ for (const mode of ['prompt', 'steer', 'follow_up'])
           };
           let settled = false;
           const send = instance
-            .handleRequestSend(resource, mode, false, 'ack')
+            .handleRequestSend(resource, mode, 'ack')
             .finally(() => (settled = true));
           await inputEntered;
           await command('release');

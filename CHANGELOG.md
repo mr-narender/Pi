@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.2.24
+
+- Keep the scroll-to-bottom control compact and anchored to the transcript floor
+  as the composer grows.
+- Make Follow Agent off authoritative: modified Enter still sends, but no longer
+  opens files through a hidden one-turn follow override.
+- Use the current `piRpc.executable` on every start, reject stale unsupported
+  managed SDK caches, and keep model switching independent from `/thinking`.
+- Prefer the configured executable and current PATH across activation, warmup,
+  and sessions; auto-install off now also blocks applying a staged update.
+- Refresh the reviewed upstream RPC drift baseline for the identical
+  `rpc-mode.js` shipped by every supported Pi SDK from 0.99.1 through 1.0.4.
+
 ## 0.2.23
 
 - Cancel pending automatic file reveals when Follow Agent is turned off, while

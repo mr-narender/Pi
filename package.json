@@ -2,7 +2,7 @@
   "name": "pi",
   "displayName": "Pi – this one is (y)ours",
   "description": "An unofficial, personal VS Code chat UI for the Pi coding agent (pi.dev). Not affiliated with pi.dev — shared for anyone who wants it.",
-  "version": "0.2.23",
+  "version": "0.2.24",
   "publisher": "mr-narender",
   "license": "MIT",
   "private": true,
@@ -555,18 +555,18 @@
             "external"
           ],
           "enumDescriptions": [
-            "Run a vendored Pi when present (dev builds; the Marketplace VSIX no longer bundles Pi).",
-            "Run a vendored Pi in-process on a worker thread (dev builds). Experimental.",
-            "Bootstrap the LATEST Pi into the extension storage on first use and keep it updated (needs npm + network once).",
+            "Use a vendored Pi only when no explicit executable or PATH `pi` exists (dev builds; Marketplace does not bundle Pi).",
+            "Use a vendored Pi in-process only when no explicit executable or PATH `pi` exists (dev builds). Experimental.",
+            "Use a compatible managed Pi only when no explicit executable or PATH `pi` exists (installation needs explicit auto-install consent).",
             "Run the `pi` on your PATH or the 'Pi: Executable' override."
           ],
           "default": "managed",
-          "description": "Where to run the Pi agent from. 'managed' (default) auto-installs the latest Pi on first use and self-updates; 'external' uses your installed `pi`. Each falls back to external `pi` if unavailable."
+          "description": "Where to run the Pi agent from. An explicit Pi Executable always wins; otherwise the default managed mode uses `pi` from PATH before a compatible managed install."
         },
         "piRpc.autoInstall": {
           "type": "boolean",
           "default": false,
-          "description": "Allow the extension to install (and self-update) Pi from npm when no `pi` is found on PATH. Off by default: an existing `pi` installation is always used as-is; without one, chats stay offline until you install Pi yourself or enable this."
+          "description": "Allow npm version checks, managed installation and managed updates when no explicit executable or PATH `pi` exists. Off by default; when off, no staged update is applied."
         },
         "piRpc.runtimeWorkers": {
           "type": [

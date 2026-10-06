@@ -45,9 +45,13 @@ export class PiProcessSupervisor extends TypedEmitter implements vscode.Disposab
   public constructor(
     private readonly folder: vscode.WorkspaceFolder,
     private readonly logger: DiagnosticsLogger,
-    private readonly settings: PiRpcSettings = getSettings()
+    private readonly settingsOverride?: PiRpcSettings
   ) {
     super();
+  }
+
+  private get settings(): PiRpcSettings {
+    return this.settingsOverride ?? getSettings();
   }
 
   public get currentClient(): RpcClient | undefined {

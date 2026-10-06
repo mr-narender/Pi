@@ -5,8 +5,10 @@ import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 import type { DiagnosticsLogger } from '../diagnostics/logger';
 import { getSettings } from '../config/settings';
+import { isSupportedPiSdkVersion, SUPPORTED_PI_SDK_VERSIONS } from './piLauncher';
 
 const PI_PACKAGE = '@earendil-works/pi-coding-agent';
+const MANAGED_PI_VERSION = SUPPORTED_PI_SDK_VERSIONS.at(-1)!;
 
 function managedDir(context: vscode.ExtensionContext): string {
   return join(context.globalStorageUri.fsPath, 'pi');
@@ -38,10 +40,9 @@ let preparePromise: Promise<string | undefined> | undefined;
 
 /**
  * #3 (managed, now the default): bootstrap Pi into globalStorage so the VSIX
- * stays tiny (~1 MB, no vendored agent). First run installs the LATEST Pi from
- * npm (needs npm + network once); later runs return instantly and check npm in
- * the same pass — if a newer Pi exists it is updated before the first session
- * starts. Returns the cli.js path, or undefined if bootstrap failed.
+ * stays tiny (~1 MB, no vendored agent). First run installs the newest Pi that
+ * passed this host's exact SDK contract. Later checks never stage an unaudited
+ * version. Returns the cli.js path, or undefined if bootstrap failed.
  */
 export function ensureManagedPi(
   context: vscode.ExtensionContext,
@@ -58,13 +59,38 @@ async function prepareManagedPi(
 ): Promise<string | undefined> {
   // A previously staged update applies NOW (fast dir renames), before anything
   // has imported Pi in this window — the running window is never hot-swapped.
-  applyStagedUpdate(context, logger);
+  const autoInstall = getSettings().autoInstall;
+  if (autoInstall) applyStagedUpdate(context, logger);
   const cli = managedPiCliPath(context);
   const dir = managedDir(context);
   const installed = existsSync(cli) ? installedManagedVersion(context) : undefined;
 
+  if (installed && !isSupportedPiSdkVersion(installed)) {
+    if (!autoInstall) {
+      logger.warn(
+        `Managed Pi ${installed} is unsupported and will not be launched. ` +
+          `Set piRpc.executable to a supported Pi or enable piRpc.autoInstall.`
+      );
+      preparePromise = undefined;
+      return undefined;
+    }
+    logger.info(`Replacing unsupported managed Pi ${installed} with ${MANAGED_PI_VERSION}…`);
+    try {
+      await npmInstall(dir, MANAGED_PI_VERSION, logger);
+    } catch (error) {
+      logger.error(
+        `Managed Pi replacement failed: ${error instanceof Error ? error.message : String(error)}`
+      );
+      preparePromise = undefined;
+      return undefined;
+    }
+    return existsSync(cli) && isSupportedPiSdkVersion(installedManagedVersion(context))
+      ? cli
+      : undefined;
+  }
+
   if (!installed) {
-    if (!getSettings().autoInstall) {
+    if (!autoInstall) {
       // Explicit user consent required for any npm activity (piRpc.autoInstall).
       logger.warn(
         'Pi is NOT installed and piRpc.autoInstall is disabled — nothing was downloaded. ' +
@@ -74,7 +100,7 @@ async function prepareManagedPi(
       preparePromise = undefined; // re-evaluate on the next attempt (flag may change)
       return undefined;
     }
-    logger.info(`Bootstrapping managed Pi (latest) into ${dir}…`);
+    logger.info(`Bootstrapping supported managed Pi ${MANAGED_PI_VERSION} into ${dir}…`);
     try {
       mkdirSync(dir, { recursive: true });
       writeFileSync(
@@ -87,7 +113,7 @@ async function prepareManagedPi(
           title: 'Pi: installing the agent (first run)…',
           cancellable: false,
         },
-        () => npmInstall(dir, 'latest', logger)
+        () => npmInstall(dir, MANAGED_PI_VERSION, logger)
       );
     } catch (error) {
       logger.error(
@@ -109,7 +135,7 @@ async function prepareManagedPi(
   // STAGED to a side directory; the staged copy is applied on the next window
   // (re)load by applyStagedUpdate above. Both are gated on piRpc.autoInstall —
   // when it's off, NO npm activity happens at all.
-  if (getSettings().autoInstall) {
+  if (autoInstall) {
     void backgroundUpdateCheck(context, logger, installed);
   } else {
     logger.info(
@@ -169,6 +195,12 @@ async function backgroundUpdateCheck(
   }
   updateCheckStarted = true;
   const latest = await latestPiVersion(logger);
+  if (latest && !isSupportedPiSdkVersion(latest)) {
+    logger.info(
+      `Managed Pi ${installed} retained; npm latest ${latest} has not passed the SDK host contract.`
+    );
+    return;
+  }
   if (!latest || latest === installed) {
     logger.info(
       `Managed Pi ${installed} is current${latest ? '' : ' (npm check unavailable/offline)'}`

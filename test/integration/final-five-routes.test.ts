@@ -104,15 +104,10 @@ test(`compiled final five editor all send modes preserve chips and intercept bef
     };
     instance.contextForResource = () => ({ controller, target: {}, resource });
     instance.renderResource = instance.postSnapshot = async () => {};
-    instance.follow = {
-      armOnce: () => {
-        throw new Error('No follow effects');
-      },
-    };
     instance.preparePromptContext = () => {
       throw new Error('No prompt/image/context effects');
     };
-    const send = (mode: string) => instance.handleRequestSend(resource, mode, true, 'owned-ack');
+    const send = (mode: string) => instance.handleRequestSend(resource, mode, 'owned-ack');
     for (const name of ['login', 'logout', 'share', 'bug', 'import'])
       for (const mode of ['prompt', 'steer', 'follow_up']) {
         order.length = 0;

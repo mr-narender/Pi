@@ -68,7 +68,6 @@ test('core safety: real Agentic editor handlers retain origin drafts/chips acros
     ];
     return state;
   });
-  let armed = 0;
   let startCalls = 0;
   const getState = async (controller: unknown) =>
     states[controllers.indexOf(controller as (typeof controllers)[number])]!;
@@ -84,11 +83,6 @@ test('core safety: real Agentic editor handlers retain origin drafts/chips acros
   });
   editor.renderResource = async () => {};
   editor.keyFor = () => 'origin';
-  editor.follow = {
-    armOnce: () => {
-      armed++;
-    },
-  };
   editor.preparePromptContext = async () => {
     startCalls++;
     throw new Error('Unexpected native start');
@@ -98,7 +92,7 @@ test('core safety: real Agentic editor handlers retain origin drafts/chips acros
       for (const command of ['prompt', 'steer', 'follow_up']) {
         states[index]!.draft = '/tree';
         const before = structuredClone(states);
-        await editor.handleRequestSend({ index }, command, true);
+        await editor.handleRequestSend({ index }, command);
         for (const i of [0, 1]) {
           assert.equal(states[i]!.draft, i === index ? '' : before[i]!.draft);
           assert.deepEqual(states[i]!.pendingImages, before[i]!.pendingImages);
@@ -110,5 +104,4 @@ test('core safety: real Agentic editor handlers retain origin drafts/chips acros
     }
   }
   assert.equal(startCalls, 0);
-  assert.equal(armed, 0, 'a rejected local command must not arm follow-agent for the next prompt');
 });

@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   ATTACH_TRIGGER_ID,
   COMPOSER_FIELD_ID,
@@ -13,6 +14,24 @@ import {
   shouldClearSnapshotFocus,
 } from '../../src/webview/render';
 import type { WebviewSnapshot } from '../../src/state/types';
+
+test('scroll-to-bottom stays compact at the transcript floor', () => {
+  const css = readFileSync('src/webview/media/chat.css', 'utf8');
+  const blocks = Array.from(css.matchAll(/\.jump-latest\s*\{([^}]*)\}/g), (match) => match[1]!);
+  const lastValue = (property: string): string | undefined =>
+    blocks
+      .flatMap((block) =>
+        Array.from(
+          block.matchAll(new RegExp(`(?:^|;)\\s*${property}\\s*:\\s*([^;]+)`, 'g')),
+          (match) => match[1]!.trim()
+        )
+      )
+      .at(-1);
+
+  assert.equal(lastValue('bottom'), '14px');
+  assert.equal(lastValue('width'), '30px');
+  assert.equal(lastValue('height'), '30px');
+});
 
 function snapshot(overrides: Partial<WebviewSnapshot> = {}): WebviewSnapshot {
   return {

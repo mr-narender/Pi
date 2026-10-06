@@ -2,7 +2,6 @@ export type WebviewInboundMessage =
   | {
       type: 'requestSend';
       command: 'prompt' | 'follow_up' | 'steer';
-      follow?: boolean;
       submissionId?: string;
     }
   | { type: 'acceptPreview' }
@@ -70,7 +69,6 @@ export function parseWebviewMessage(value: unknown): WebviewInboundMessage | und
       ) {
         return {
           submissionId: typeof record.submissionId === 'string' ? record.submissionId : undefined,
-          follow: record.follow === true ? true : undefined,
           type: 'requestSend',
           command: record.command,
         };

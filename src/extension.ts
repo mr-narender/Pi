@@ -10,6 +10,7 @@ import {
   detectPathPi,
   usablePathPiRoot,
   selectedSdkRoot,
+  isSupportedPiSdkVersion,
 } from './process/piLauncher';
 import { registerChatOps } from './commands/chatOps';
 import { promptChatName, trackSessionName } from './commands/nameCommand';
@@ -32,7 +33,12 @@ import {
 import { showInstructionManager } from './resources/instructionManager';
 import { InlineReview } from './review/inlineReview';
 import { SessionIndexService } from './sessions/sessionIndexService';
-import { ensureManagedPi, managedPiCliPath, managedPiRoot } from './process/piManaged';
+import {
+  ensureManagedPi,
+  installedManagedVersion,
+  managedPiCliPath,
+  managedPiRoot,
+} from './process/piManaged';
 import { COMMAND_IDS, CONTRIBUTED_COMMANDS } from './config/commands';
 import { getSettings } from './config/settings';
 import { previewDiagnostics } from './commands/debugCommand';
@@ -125,8 +131,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     logger.info('No `pi` found on PATH.');
   }
   const managedCli = managedPiCliPath(context);
-  setManagedPiCliPath(existsSync(managedCli) ? managedCli : undefined);
-  if (getSettings().piSource === 'managed' && !usablePathPiRoot(logger)) {
+  const managedSupported = isSupportedPiSdkVersion(installedManagedVersion(context));
+  setManagedPiCliPath(existsSync(managedCli) && managedSupported ? managedCli : undefined);
+  const activationSettings = getSettings();
+  const configuredExecutable = activationSettings.executable !== 'pi';
+  if (activationSettings.piSource === 'managed' && !configuredExecutable && !pathPi) {
     if (existsSync(managedCli) || getSettings().autoInstall) {
       void ensureManagedPi(context, logger).then((cli) => setManagedPiCliPath(cli));
     } else if (!pathPi) {
@@ -140,7 +149,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // (many AgentSessions, one runtime) instead of one OS process per chat. This
   // is the parallel-sessions engine; supervisors fall back to a per-chat process
   // if it can't open. Toggle with piRpc.sharedRuntime. The host imports Pi from
-  // a runtime-resolved root: PATH pi > managed install > vendored (dev).
+  // a runtime-resolved root: configured executable > PATH pi > selected fallback.
   let piMissingNotified = false;
   const resolvePiRoot = async (): Promise<string> => {
     const vendorRoot = vscode.Uri.joinPath(context.extensionUri, 'vendor', 'pi').fsPath;
@@ -151,27 +160,32 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       'dist',
       'cli.js'
     ).fsPath;
-    const source = getSettings().piSource;
-    if (source === 'external') {
-      const selected = selectedSdkRoot(getSettings());
+    const settings = getSettings();
+    const source = settings.piSource;
+    if (settings.executable !== 'pi' || source === 'external') {
+      const selected = selectedSdkRoot(settings);
       if (!selected)
         throw new Error(
           'SDK_ROOT_UNRESOLVABLE: selected executable is stock-only; native commands require a supported resolvable Pi JavaScript CLI.'
         );
       return selected;
     }
+    // 1. An existing PATH install always wins — never duplicate it via npm or
+    //    silently switch the host to a different installation.
+    const currentPathPi = detectPathPi();
+    if (currentPathPi) {
+      const usable = usablePathPiRoot(logger);
+      if (usable) return usable;
+      throw new Error(
+        'SDK_ROOT_UNRESOLVABLE: PATH pi is stock-only; native commands require a supported resolvable Pi JavaScript CLI.'
+      );
+    }
     if ((source === 'bundled' || source === 'inprocess') && existsSync(vendorCli)) {
       return vendorRoot;
     }
-    // 1. An existing PATH install always wins — never duplicate it via npm.
-    //    (Gated: a different-MAJOR pi is not fed to the host fork — #5.)
-    const usable = usablePathPiRoot(logger);
-    if (usable) {
-      return usable;
-    }
     // 2. Managed copy (existing, or installable when piRpc.autoInstall allows).
     const cli = await ensureManagedPi(context, logger);
-    if (cli) {
+    if (cli && isSupportedPiSdkVersion(installedManagedVersion(context))) {
       setManagedPiCliPath(cli);
       return managedPiRoot(context);
     }
@@ -220,12 +234,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // background so the runtime is standing before the first click, then a
     // draft session is parked for instant New Chat. User opens arriving
     // mid-warmup ride the booting worker (never a second cold boot).
+    const warmSettings = getSettings();
+    const warmPathPi = detectPathPi();
     const piAvailable =
-      usablePathPiRoot(logger) !== undefined ||
-      existsSync(managedCli) ||
-      getSettings().autoInstall ||
-      existsSync(bundledCli);
-    if (piAvailable && getSettings().sharedRuntime && getSettings().piSource !== 'external') {
+      selectedSdkRoot(warmSettings) !== undefined ||
+      (warmSettings.piSource === 'managed' &&
+        warmSettings.executable === 'pi' &&
+        !warmPathPi &&
+        warmSettings.autoInstall);
+    if (piAvailable && warmSettings.sharedRuntime && warmSettings.piSource !== 'external') {
       // Session prewarming cannot silently omit its actual CLI/trust/resource options.
       sharedHost.warmPool();
     }
@@ -915,8 +932,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       `π follow agent: ${next === 'open' ? 'open files + glow edits' : next === 'status' ? 'status bar only' : 'off'}`
     );
   });
-  // Chat settings, guided: 1) provider → 2) that provider's models → 3) that
-  // model's thinking capability (skipped when the model can't reason).
+  // Model selection and thinking are independent controls. A successful model
+  // change must not fail because an optional thinking capability is unavailable.
   registrations.set('piRpc.chatSettings', async () => {
     const controller = activeController();
     if (!controller) {
