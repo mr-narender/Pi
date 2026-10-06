@@ -12,6 +12,10 @@ export interface PathPiInfo {
 
 // Exact audited contracts only: never admit a new minor/major by semver range.
 export const TESTED_PI_VERSION = { major: 1, minor: 0 };
+export const SUPPORTED_PI_SDK_VERSIONS = ['0.99.1', '0.99.2', '1.0.0', '1.0.4'] as const;
+export function isSupportedPiSdkVersion(version: unknown): version is string {
+  return SUPPORTED_PI_SDK_VERSIONS.includes(version as (typeof SUPPORTED_PI_SDK_VERSIONS)[number]);
+}
 let compatLogged = false;
 
 /** PATH pi's package root, gated on host-fork compatibility. */
@@ -52,7 +56,7 @@ function verifiedSdkRoot(cli: string): string | undefined {
       };
       if (
         pkg.name === '@earendil-works/pi-coding-agent' &&
-        ['0.99.1', '0.99.2', '1.0.0'].includes(pkg.version ?? '') &&
+        isSupportedPiSdkVersion(pkg.version) &&
         pkg.bin?.pi &&
         realCli === realpathSync(join(dir, pkg.bin.pi))
       )
@@ -200,7 +204,22 @@ export function resolvePiLaunch(
   env: NodeJS.ProcessEnv = process.env,
   cwd = process.cwd()
 ): PiLaunchPlan {
-  const choice = choosePiLaunch(settings);
+  const configuredExecutable = settings.executable !== 'pi';
+  const pathExecutable = resolveExecutable(settings.executable, env, cwd);
+  const existingPathPi =
+    settings.piSource === 'managed' &&
+    (() => {
+      try {
+        accessSync(pathExecutable, process.platform === 'win32' ? constants.F_OK : constants.X_OK);
+        return statSync(pathExecutable).isFile();
+      } catch {
+        return false;
+      }
+    })();
+  const choice =
+    configuredExecutable || existingPathPi
+      ? externalSubprocess(settings)
+      : choosePiLaunch(settings);
   const launchCwd = resolve(cwd);
   const launchEnv = Object.freeze({ ...env, ...choice.extraEnv });
   const cliPath = choice.cliPath ? realpathSync(choice.cliPath) : undefined;

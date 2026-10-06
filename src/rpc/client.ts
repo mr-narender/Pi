@@ -13,6 +13,7 @@ import type {
   RpcResponse,
   SessionState,
 } from './protocol';
+import { isSupportedPiSdkVersion } from '../process/piLauncher';
 
 export interface RpcClientOptions {
   shortTimeoutMs: number;
@@ -119,7 +120,7 @@ export class RpcClient {
     const caps = await this.command('get_capabilities', {}, 'short');
     if (
       caps?.protocol !== 1 ||
-      !['0.99.1', '0.99.2', '1.0.0'].includes(caps.sdkVersion as string) ||
+      !isSupportedPiSdkVersion(caps.sdkVersion) ||
       caps.closeChat !== true
     )
       throw new Error(
@@ -150,7 +151,7 @@ export class RpcClient {
     const engine = caps?.engineCommands as JsonObject | undefined;
     if (
       caps?.protocol !== 1 ||
-      !['0.99.1', '0.99.2', '1.0.0'].includes(caps.sdkVersion as string) ||
+      !isSupportedPiSdkVersion(caps.sdkVersion) ||
       engine?.contract !== 1 ||
       engine[type] !== true
     )
@@ -188,13 +189,13 @@ export class RpcClient {
       caps = await this.command('get_capabilities', {}, 'short');
     } catch {
       throw new Error(
-        '/settings engine preferences are unsupported by this backend; select a resolved Pi SDK 0.99.1, 0.99.2 or 1.0.0 installation.'
+        '/settings engine preferences are unsupported by this backend; select a resolved Pi SDK 0.99.1, 0.99.2, 1.0.0 or 1.0.4 installation.'
       );
     }
     const preference = caps?.preferences as JsonObject | undefined;
     if (
       caps?.protocol !== 1 ||
-      !['0.99.1', '0.99.2', '1.0.0'].includes(caps.sdkVersion as string) ||
+      !isSupportedPiSdkVersion(caps.sdkVersion) ||
       preference?.contract !== 1 ||
       preference.read !== true ||
       preference.saveGlobal !== true
@@ -224,13 +225,13 @@ export class RpcClient {
       caps = await this.command('get_capabilities', {}, 'short');
     } catch {
       throw new Error(
-        '/scoped-models is unsupported by this backend. Select a resolvable Pi SDK 0.99.1, 0.99.2 or 1.0.0 JavaScript installation; ordinary stock RPC operations remain available.'
+        '/scoped-models is unsupported by this backend. Select a resolvable Pi SDK 0.99.1, 0.99.2, 1.0.0 or 1.0.4 JavaScript installation; ordinary stock RPC operations remain available.'
       );
     }
     const scope = caps?.scopedModels as JsonObject | undefined;
     if (
       caps?.protocol !== 1 ||
-      !['0.99.1', '0.99.2', '1.0.0'].includes(caps?.sdkVersion as string) ||
+      !isSupportedPiSdkVersion(caps?.sdkVersion) ||
       !scope?.read ||
       !scope?.set ||
       !scope?.saveGlobal
@@ -260,13 +261,13 @@ export class RpcClient {
       caps = await this.command('get_capabilities', {}, 'short');
     } catch {
       throw new Error(
-        '/thinking is unsupported by this backend; use a resolved Pi SDK 0.99.1, 0.99.2 or 1.0.0 installation.'
+        '/thinking is unsupported by this backend; use a resolved Pi SDK 0.99.1, 0.99.2, 1.0.0 or 1.0.4 installation.'
       );
     }
     const thinking = caps?.thinking as JsonObject | undefined;
     if (
       caps?.protocol !== 1 ||
-      !['0.99.1', '0.99.2', '1.0.0'].includes(caps?.sdkVersion as string) ||
+      !isSupportedPiSdkVersion(caps?.sdkVersion) ||
       thinking?.contract !== 1 ||
       thinking.read !== true ||
       thinking.strictSet !== true
@@ -357,7 +358,7 @@ export class RpcClient {
     }
     if (
       caps?.protocol !== 1 ||
-      !['0.99.1', '0.99.2', '1.0.0'].includes(caps.sdkVersion as string) ||
+      !isSupportedPiSdkVersion(caps.sdkVersion) ||
       (caps.exports as JsonObject | undefined)?.jsonl !== true
     )
       throw new Error('Native JSONL export capability is unavailable.');

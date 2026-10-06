@@ -9,6 +9,7 @@ test('scopes SDK capability gate rejects mismatched package/version and missing 
   );
   validateSdkMetadata({ name: '@earendil-works/pi-coding-agent', version: '0.99.1' });
   validateSdkMetadata({ name: '@earendil-works/pi-coding-agent', version: '0.99.2' });
+  validateSdkMetadata({ name: '@earendil-works/pi-coding-agent', version: '1.0.4' });
   for (const metadata of [
     { name: 'unknown', version: '0.99.1' },
     { name: '@earendil-works/pi-coding-agent', version: '0.99.3' },

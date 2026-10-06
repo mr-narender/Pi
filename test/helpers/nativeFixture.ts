@@ -16,6 +16,7 @@ import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { isSupportedPiSdkVersion } from '../../src/process/piLauncher';
 
 // Public package metadata only: never execute the PATH wrapper or read user config.
 export async function resolveNativeCli() {
@@ -27,7 +28,7 @@ export async function resolveNativeCli() {
       const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
       if (
         pkg.name !== '@earendil-works/pi-coding-agent' ||
-        !['0.99.1', '0.99.2', '1.0.0'].includes(pkg.version) ||
+        !isSupportedPiSdkVersion(pkg.version) ||
         pkg.bin?.pi !== 'dist/bundle/cli.js'
       )
         continue;
@@ -37,9 +38,7 @@ export async function resolveNativeCli() {
       /* Not the selected public SDK package. */
     }
   }
-  throw new Error(
-    'Requires installed @earendil-works/pi-coding-agent 0.99.1, 0.99.2 or 1.0.0 JS CLI'
-  );
+  throw new Error('Requires an installed supported @earendil-works/pi-coding-agent JS CLI');
 }
 
 export interface NativeFixture {
