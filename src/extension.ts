@@ -156,7 +156,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const selected = selectedSdkRoot(getSettings());
       if (!selected)
         throw new Error(
-          'SDK_ROOT_UNRESOLVABLE: selected executable is stock-only; /scoped-models requires a resolvable Pi SDK 0.99.1 or 0.99.2 JavaScript CLI.'
+          'SDK_ROOT_UNRESOLVABLE: selected executable is stock-only; native commands require a supported resolvable Pi JavaScript CLI.'
         );
       return selected;
     }

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.23
+
+- Cancel pending automatic file reveals when Follow Agent is turned off, while
+  preserving the explicit one-turn follow shortcut.
+- Make a configured Pi executable authoritative and prefer an existing PATH Pi
+  over a stale managed copy. Admit the audited Pi 1.0.4 SDK across native host,
+  capabilities, changelog and `/thinking` checks.
+- Use Pi 1.0.4's upstream fix to preserve existing encrypted reasoning items in
+  Responses replay payloads when visible thinking is empty. The extension keeps
+  signed session history unchanged.
+
 ## 0.2.22
 
 - Keep the Agentic sidebar on the chat list. Chats open in native editor tabs;

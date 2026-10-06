@@ -2,7 +2,7 @@
   "name": "pi",
   "displayName": "Pi – this one is (y)ours",
   "description": "An unofficial, personal VS Code chat UI for the Pi coding agent (pi.dev). Not affiliated with pi.dev — shared for anyone who wants it.",
-  "version": "0.2.22",
+  "version": "0.2.23",
   "publisher": "mr-narender",
   "license": "MIT",
   "private": true,
@@ -594,7 +594,7 @@
         "piRpc.executable": {
           "type": "string",
           "default": "pi",
-          "description": "Pi executable (used when Pi Source = external, or as a fallback if the bundled Pi is missing)."
+          "description": "Pi executable. A value other than `pi` is authoritative and overrides Pi Source; the default resolves `pi` from PATH before a managed copy."
         },
         "piRpc.additionalArgs": {
           "type": "array",

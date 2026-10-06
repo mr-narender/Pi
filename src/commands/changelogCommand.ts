@@ -3,6 +3,7 @@ import { constants } from 'node:fs';
 import { open, realpath } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { SessionController } from '../sessions/sessionController';
+import { isSupportedPiSdkVersion } from '../process/piLauncher';
 
 /** No SDK import, PATH discovery, installation, provider call or internal parser. */
 async function boundedFile(path: string, limit: number): Promise<string> {
@@ -48,7 +49,7 @@ export async function changelogCommand(
     };
     if (
       pkg.name !== '@earendil-works/pi-coding-agent' ||
-      !['0.99.1', '0.99.2', '1.0.0'].includes(pkg.version ?? '') ||
+      !isSupportedPiSdkVersion(pkg.version) ||
       !['dist/cli.js', 'dist/bundle/cli.js'].includes(pkg.bin?.pi ?? '')
     )
       throw new Error('Unverified Pi package metadata.');

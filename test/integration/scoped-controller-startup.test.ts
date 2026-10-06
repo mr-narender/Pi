@@ -37,7 +37,8 @@ test('scopes controller and supervisor: shared/dedicated startup carry argv/env 
         setup(b) {
           // This startup test owns a fake host; no executable or SDK discovery authority.
           b.onLoad({ filter: /piLauncher\.ts$/ }, () => ({
-            contents: `export function resolvePiLaunch(settings, env, cwd) {
+            contents: `export function isSupportedPiSdkVersion() { return true; }
+            export function resolvePiLaunch(settings, env, cwd) {
               return Object.freeze({ command: settings.executable, prefixArgs: [],
                 mode: 'subprocess', usingBundled: false, label: 'owned stub',
                 sdkRoot: '/owned/sdk-metadata', env: Object.freeze({...env}), cwd });

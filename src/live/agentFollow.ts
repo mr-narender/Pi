@@ -434,7 +434,7 @@ export class AgentFollowService implements vscode.Disposable {
       );
       return;
     }
-    void this.showInSidePane(kind, absolute, chatTitle, args, post);
+    void this.showInSidePane(kind, absolute, chatTitle, args, post, followForced);
   }
 
   private isChatTab(tab: vscode.Tab | undefined): boolean {
@@ -515,10 +515,15 @@ export class AgentFollowService implements vscode.Disposable {
     absolute: string,
     chatTitle: string,
     args: string | undefined,
-    _post?: (payload: unknown) => void
+    _post?: (payload: unknown) => void,
+    followForced = false
   ): Promise<void> {
+    const enabled = () => this.mode() === 'open' || followForced;
+    if (!enabled()) return;
     const viewColumn = await this.followTargetViewColumn();
+    if (!enabled()) return;
     const content = await this.readWithRetry(absolute);
+    if (!enabled()) return;
     if (content === undefined) {
       this.logger?.info(`[follow] ${absolute} not on disk after retries`);
       return;
@@ -528,6 +533,7 @@ export class AgentFollowService implements vscode.Disposable {
       // file the user already has open is theirs, never tracked, never closed.
       const preExisting = this.findTabForPath(absolute) !== undefined;
       const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(absolute));
+      if (!enabled()) return;
       const editor = await vscode.window.showTextDocument(doc, {
         // Persistent tabs (not the cycling preview slot) so recent files stay
         // reachable — but bounded: oldest follow-opened tabs are closed past

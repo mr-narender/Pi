@@ -62,6 +62,14 @@ test('launch provenance: cached A → PATH B; async drift and explicit/managed/w
     settings.executable = './b/bin/pi';
     assert.equal((resolvePiLaunch as any)(settings, process.env, dir).sdkRoot, b);
     setBundledPiCliPath(join(b, 'dist/cli.js'));
+    settings.executable = join(b, 'bin/pi');
+    settings.piSource = 'managed';
+    assert.equal(resolvePiLaunch(settings).command, join(b, 'dist/cli.js'));
+    assert.equal((resolvePiLaunch(settings) as any).sdkRoot, b);
+    settings.executable = 'pi';
+    process.env.PATH = join(b, 'bin');
+    assert.equal(resolvePiLaunch(settings).command, join(b, 'dist/cli.js'));
+    assert.equal((resolvePiLaunch(settings) as any).sdkRoot, b);
     settings.piSource = 'bundled';
     assert.equal((resolvePiLaunch(settings) as any).sdkRoot, b);
     settings.piSource = 'inprocess';
