@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.25
+
+- Restore provider-first model selection: choose a provider, then search only
+  that provider's available models. Single-provider setups open the model list
+  directly.
+- Preserve provider/model identity separately so slash-bearing identifiers
+  cannot collide, and reject stale selections before applying a model change.
+
 ## 0.2.24
 
 - Keep the scroll-to-bottom control compact and anchored to the transcript floor
