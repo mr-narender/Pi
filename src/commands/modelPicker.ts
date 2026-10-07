@@ -95,7 +95,7 @@ export async function pickChatModel(
   const models = options?.models ?? (await controller.getAvailableModels());
   const current = asRecord(controller.snapshot.state.model);
   const currentProvider = current ? asString(current.provider) : undefined;
-  const currentKey = current ? `${asString(current.provider)}/${asString(current.id)}` : undefined;
+  const currentId = current ? asString(current.id) : undefined;
 
   const byProvider = new Map<string, JsonObject[]>();
   for (const model of models) {
@@ -158,7 +158,7 @@ export async function pickChatModel(
         inputs.includes('image') ? 'images' : undefined,
       ].filter(Boolean);
       return {
-        label: `${`${provider}/${id}` === currentKey ? '$(check) ' : ''}${id}`,
+        label: `${provider === currentProvider && id === currentId ? '$(check) ' : ''}${id}`,
         description: name,
         detail: bits.join('  \u00b7  '),
         // Any punctuation/spacing you type — "claude 4.8", "claude-4-8",
@@ -201,10 +201,11 @@ export async function pickChatModel(
   // proceeding as if the pick worked — reported once as "it still uses
   // the old model" with no visible way to tell whether that was true.
   const applied = asRecord(controller.snapshot.state.model);
-  const appliedKey = applied ? `${asString(applied.provider)}/${asString(applied.id)}` : undefined;
-  if (appliedKey && appliedKey !== `${provider}/${id}`) {
+  const appliedProvider = applied ? asString(applied.provider) : undefined;
+  const appliedId = applied ? asString(applied.id) : undefined;
+  if (applied && (appliedProvider !== provider || appliedId !== id)) {
     void vscode.window.showWarningMessage(
-      `Pi: asked for ${provider}/${id}, session reports ${appliedKey} — the switch may not have applied.`
+      `Pi: asked for provider "${provider}", model "${id}"; session reports provider "${appliedProvider}", model "${appliedId}" — the switch may not have applied.`
     );
   }
 
