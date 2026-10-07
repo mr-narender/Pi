@@ -181,6 +181,115 @@ test('model wire: existing stock-shaped catalog and set_model RPC apply before n
   }
 });
 
+test('model picker chooses a provider before showing only that provider models', async () => {
+  const pickers: any[] = [];
+  const vscode = {
+    QuickPickItemKind: { Separator: -1 },
+    window: {
+      createQuickPick: () => {
+        let onAccept = () => {};
+        let onHide = () => {};
+        const picker = {
+          items: [] as any[],
+          selectedItems: [] as any[],
+          value: '',
+          title: '',
+          onDidChangeValue() {},
+          onDidAccept(fn: () => void) {
+            onAccept = fn;
+          },
+          onDidHide(fn: () => void) {
+            onHide = fn;
+          },
+          show() {
+            pickers.push(picker);
+          },
+          accept(item: any) {
+            picker.selectedItems = [item];
+            onAccept();
+          },
+          hide() {
+            onHide();
+          },
+          dispose() {},
+        };
+        return picker;
+      },
+      showErrorMessage() {},
+      showWarningMessage() {},
+    },
+  };
+  const built = await build({
+    stdin: {
+      contents: "export { pickChatModel } from './src/commands/modelPicker';",
+      resolveDir: process.cwd(),
+    },
+    bundle: true,
+    write: false,
+    platform: 'node',
+    format: 'cjs',
+    external: ['vscode'],
+  });
+  const mod = { exports: {} as any };
+  new Function('require', 'module', 'exports', built.outputFiles[0]!.text)(
+    () => vscode,
+    mod,
+    mod.exports
+  );
+  const controller = {
+    snapshot: { state: { model: { provider: 'alpha', id: 'old' } } },
+    getAvailableModels: async () => [
+      { provider: 'alpha', id: 'old' },
+      { provider: 'beta', id: 'beta-2' },
+      { provider: 'beta', id: 'beta-10' },
+    ],
+    selectModel: async (provider: string, id: string) => {
+      controller.snapshot.state.model = { provider, id };
+    },
+    refreshState: async () => {},
+  };
+
+  const pending = mod.exports.pickChatModel(controller);
+  for (let i = 0; i < 20 && pickers.length < 1; i++) await new Promise((r) => setTimeout(r, 0));
+  assert.equal(pickers[0].title, 'Chat Settings — Provider');
+  assert.deepEqual(
+    pickers[0].items.map((item: any) => item.name),
+    ['alpha', 'beta']
+  );
+  assert.equal(
+    pickers[0].items.some((item: any) => item.model),
+    false
+  );
+  pickers[0].accept(pickers[0].items.find((item: any) => item.name === 'beta'));
+
+  for (let i = 0; i < 20 && pickers.length < 2; i++) await new Promise((r) => setTimeout(r, 0));
+  assert.equal(pickers[1].title, 'Chat Settings — Model (beta)');
+  assert.equal(pickers[1].value, '');
+  assert.deepEqual(
+    pickers[1].items.map((item: any) => item.model.provider),
+    ['beta', 'beta']
+  );
+  assert.deepEqual(
+    pickers[1].items.map((item: any) => item.model.id),
+    ['beta-10', 'beta-2']
+  );
+  pickers[1].accept(pickers[1].items[0]);
+
+  assert.deepEqual(await pending, { provider: 'beta', id: 'beta-10' });
+
+  const queried = mod.exports.pickChatModel(controller, { query: 'beta 10' });
+  for (let i = 0; i < 20 && pickers.length < 3; i++) await new Promise((r) => setTimeout(r, 0));
+  pickers[2].accept(pickers[2].items.find((item: any) => item.name === 'beta'));
+  for (let i = 0; i < 20 && pickers.length < 4; i++) await new Promise((r) => setTimeout(r, 0));
+  assert.equal(pickers[3].value, 'beta 10');
+  assert.deepEqual(
+    pickers[3].items.map((item: any) => item.model.id),
+    ['beta-10']
+  );
+  pickers[3].hide();
+  assert.equal(await queried, undefined);
+});
+
 test('model picker changes only the model and never turns optional thinking into a failure', async () => {
   let accepted: (() => void) | undefined;
   const vscode = {
