@@ -2,11 +2,11 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFile, writeFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
-import { join } from 'node:path';
 import {
   createNativeFixture,
   spawnNativeSdkHost,
   resolveNativeCli,
+  resolveNativeSdkDependency,
 } from '../helpers/nativeFixture';
 
 async function ownedHost(
@@ -102,7 +102,9 @@ for (const mode of ['shared', 'dedicated'] as const) {
     async () => {
       const sdk = await resolveNativeCli();
       const native = await import(
-        pathToFileURL(join(sdk.root, 'node_modules/@earendil-works/pi-ai/dist/models.js')).href
+        pathToFileURL(
+          await resolveNativeSdkDependency(sdk.root, '@earendil-works/pi-ai/dist/models.js')
+        ).href
       );
       await ownedHost(mode, async (f, rpc) => {
         const config = JSON.parse(await readFile(f.modelsFile, 'utf8'));

@@ -6,6 +6,7 @@ import { pathToFileURL } from 'node:url';
 import { PassThrough, Writable } from 'node:stream';
 import {
   resolveNativeCli,
+  resolveNativeSdkDependency,
   createNativeFixture,
   spawnNativeSdkHost,
 } from '../helpers/nativeFixture';
@@ -44,7 +45,10 @@ test('selected Pi replays signed reasoning before its paired response message', 
   const selected = await resolveNativeCli();
   const { convertResponsesMessages } = await import(
     pathToFileURL(
-      join(selected.root, 'node_modules/@earendil-works/pi-ai/dist/api/openai-responses-shared.js')
+      await resolveNativeSdkDependency(
+        selected.root,
+        '@earendil-works/pi-ai/dist/api/openai-responses-shared.js'
+      )
     ).href
   );
   const signature = JSON.stringify({
