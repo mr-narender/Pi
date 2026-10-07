@@ -2,12 +2,9 @@
 // "Retry with a different model", and "resend with a different model" on an
 // edited message. Extracted so all three stay in sync — one picker.
 //
-// ONE combined, always-fully-visible list across every provider (grouped by
-// section headers, not a forced "pick provider first" step — that hid models
-// behind an extra click and made "I don't see all models" a real complaint),
-// sorted highest-version-first, and searchable via our own separator-agnostic
-// fuzzy matcher (createQuickPick + alwaysShow fully replaces VS Code's native
-// filter — otherwise "claude 4.8" can never match an id like "claude-4-8").
+// Provider-first selection keeps large model catalogs manageable. Both steps
+// use our separator-agnostic fuzzy matcher so "claude 4.8" still matches an id
+// like "claude-4-8" within the selected provider.
 import * as vscode from 'vscode';
 import { compareModelRankDesc, fuzzyModelMatch } from './modelSearch';
 import type { JsonObject } from '../rpc/protocol';
@@ -34,22 +31,18 @@ function formatTokenCount(count: number): string {
 }
 
 interface FuzzyItem extends vscode.QuickPickItem {
-  /** Raw, icon-free text matched against (separate from the decorated `label`).
-   * Absent on separators, which are never matched or filtered out. */
-  searchText?: string;
+  /** Raw, icon-free text matched against (separate from the decorated `label`). */
+  searchText: string;
 }
 
 /** A QuickPick whose visible items are decided ENTIRELY by our own
- * separator-agnostic fuzzy matcher. Empty query restores the full grouped
- * list (with section headers); typing narrows to matching models only. */
+ * separator-agnostic fuzzy matcher. */
 function showFuzzyQuickPick<T extends FuzzyItem>(
   items: T[],
   options: { title: string; placeHolder: string; query?: string }
 ): Promise<T | undefined> {
   return new Promise((resolve) => {
-    const decorated = items.map((item) =>
-      item.kind === vscode.QuickPickItemKind.Separator ? item : { ...item, alwaysShow: true }
-    );
+    const decorated = items.map((item) => ({ ...item, alwaysShow: true }));
     const qp = vscode.window.createQuickPick<T>();
     qp.title = options.title;
     qp.placeholder = options.placeHolder;
@@ -59,11 +52,7 @@ function showFuzzyQuickPick<T extends FuzzyItem>(
         qp.items = decorated;
         return;
       }
-      qp.items = decorated.filter(
-        (item) =>
-          item.kind !== vscode.QuickPickItemKind.Separator &&
-          fuzzyModelMatch(value, item.searchText ?? '')
-      );
+      qp.items = decorated.filter((item) => fuzzyModelMatch(value, item.searchText));
     });
     let picked: T | undefined;
     qp.onDidAccept(() => {
@@ -76,11 +65,7 @@ function showFuzzyQuickPick<T extends FuzzyItem>(
     });
     qp.value = options.query ?? '';
     if (options.query) {
-      qp.items = decorated.filter(
-        (item) =>
-          item.kind !== vscode.QuickPickItemKind.Separator &&
-          fuzzyModelMatch(options.query!, item.searchText ?? '')
-      );
+      qp.items = decorated.filter((item) => fuzzyModelMatch(options.query!, item.searchText));
     }
     qp.show();
   });
@@ -109,7 +94,8 @@ export async function pickChatModel(
 ): Promise<PickedModel | undefined> {
   const models = options?.models ?? (await controller.getAvailableModels());
   const current = asRecord(controller.snapshot.state.model);
-  const currentKey = current ? `${asString(current.provider)}/${asString(current.id)}` : undefined;
+  const currentProvider = current ? asString(current.provider) : undefined;
+  const currentId = current ? asString(current.id) : undefined;
 
   const byProvider = new Map<string, JsonObject[]>();
   for (const model of models) {
@@ -118,15 +104,32 @@ export async function pickChatModel(
   }
   const providers = Array.from(byProvider.keys()).sort();
 
+  let provider = providers[0];
+  if (providers.length > 1) {
+    const providerPick = await showFuzzyQuickPick(
+      providers.map((name) => ({
+        label: `${name === currentProvider ? '$(check) ' : ''}$(server) ${name}`,
+        description: `${byProvider.get(name)?.length ?? 0} model(s)`,
+        searchText: name,
+        name,
+      })),
+      {
+        title: 'Chat Settings — Provider',
+        placeHolder: 'Choose a model provider',
+      }
+    );
+    if (!providerPick) return undefined;
+    if (options?.valid && !options.valid()) {
+      throw new Error('The originating chat changed; model selection cancelled.');
+    }
+    provider = providerPick.name;
+  }
+  if (!provider) return undefined;
+
   type ModelItem = FuzzyItem & { model: JsonObject };
-  const flatItems: ModelItem[] = [];
-  for (const provider of providers) {
-    flatItems.push({
-      label: provider,
-      kind: vscode.QuickPickItemKind.Separator,
-      model: undefined as never,
-    });
-    const sorted = (byProvider.get(provider) ?? []).slice().sort((a, b) =>
+  const modelItems: ModelItem[] = (byProvider.get(provider) ?? [])
+    .slice()
+    .sort((a, b) =>
       compareModelRankDesc(
         {
           id: String(a.id ?? ''),
@@ -139,8 +142,8 @@ export async function pickChatModel(
           contextWindow: Number(b.contextWindow) || 0,
         }
       )
-    );
-    for (const model of sorted) {
+    )
+    .map((model) => {
       const id = String(model.id ?? 'model');
       const name = String(model.name ?? '');
       const inputs = Array.isArray(model.input) ? model.input.map(String) : [];
@@ -154,22 +157,21 @@ export async function pickChatModel(
           : undefined,
         inputs.includes('image') ? 'images' : undefined,
       ].filter(Boolean);
-      flatItems.push({
-        label: `${`${provider}/${id}` === currentKey ? '$(check) ' : ''}${id}`,
+      return {
+        label: `${provider === currentProvider && id === currentId ? '$(check) ' : ''}${id}`,
         description: name,
         detail: bits.join('  \u00b7  '),
         // Any punctuation/spacing you type — "claude 4.8", "claude-4-8",
-        // "claude.4.8" — matches this the same way, across every provider.
+        // "claude.4.8" — matches this the same way.
         searchText: [provider, id, name].filter(Boolean).join(' '),
         model,
-      });
-    }
-  }
+      };
+    });
 
-  const modelPick = await showFuzzyQuickPick(flatItems, {
+  const modelPick = await showFuzzyQuickPick(modelItems, {
     query: options?.query,
-    title: 'Chat Settings — Model (all providers)',
-    placeHolder: 'Every model, highest version first — type to search across all of them',
+    title: `Chat Settings — Model (${provider})`,
+    placeHolder: 'Choose a model from this provider',
   });
   if (!modelPick) {
     return undefined;
@@ -177,7 +179,6 @@ export async function pickChatModel(
   if (options?.valid && !options.valid()) {
     throw new Error('The originating chat changed; model selection cancelled.');
   }
-  const provider = String(modelPick.model.provider ?? '');
   const id = String(modelPick.model.id ?? '');
   try {
     if (options?.apply) {
@@ -200,10 +201,11 @@ export async function pickChatModel(
   // proceeding as if the pick worked — reported once as "it still uses
   // the old model" with no visible way to tell whether that was true.
   const applied = asRecord(controller.snapshot.state.model);
-  const appliedKey = applied ? `${asString(applied.provider)}/${asString(applied.id)}` : undefined;
-  if (appliedKey && appliedKey !== `${provider}/${id}`) {
+  const appliedProvider = applied ? asString(applied.provider) : undefined;
+  const appliedId = applied ? asString(applied.id) : undefined;
+  if (applied && (appliedProvider !== provider || appliedId !== id)) {
     void vscode.window.showWarningMessage(
-      `Pi: asked for ${provider}/${id}, session reports ${appliedKey} — the switch may not have applied.`
+      `Pi: asked for provider "${provider}", model "${id}"; session reports provider "${appliedProvider}", model "${appliedId}" — the switch may not have applied.`
     );
   }
 
