@@ -16,6 +16,7 @@ import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { isSupportedPiSdkVersion } from '../../src/process/piLauncher';
 
 // Public package metadata only: never execute the PATH wrapper or read user config.
@@ -39,6 +40,13 @@ export async function resolveNativeCli() {
     }
   }
   throw new Error('Requires an installed supported @earendil-works/pi-coding-agent JS CLI');
+}
+
+export async function resolveNativeSdkDependency(sdkRoot: string, dependencyFile: string) {
+  const { resolveSdkDependencyFile } = await import(
+    pathToFileURL(resolve('host/startup-adapter.mjs')).href
+  );
+  return resolveSdkDependencyFile(sdkRoot, dependencyFile) as string;
 }
 
 export interface NativeFixture {
@@ -88,15 +96,18 @@ const sdkContractFiles = [
   'dist/modes/interactive/theme/theme.js',
   'dist/modes/json-event.js',
   'dist/modes/rpc/jsonl.js',
-  'node_modules/@earendil-works/pi-ai/dist/models.js',
 ];
 async function sdkIdentity(sdk: Awaited<ReturnType<typeof resolveNativeCli>>) {
   const root = await lstat(sdk.root);
   const cli = await lstat(sdk.cli);
+  const files = [
+    ...sdkContractFiles.map((name) => join(sdk.root, name)),
+    await resolveNativeSdkDependency(sdk.root, '@earendil-works/pi-ai/dist/models.js'),
+  ];
   const hashes = await Promise.all(
-    sdkContractFiles.map(async (name) =>
+    files.map(async (file) =>
       createHash('sha256')
-        .update(await readFile(join(sdk.root, name)))
+        .update(await readFile(file))
         .digest('hex')
     )
   );

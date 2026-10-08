@@ -177,10 +177,14 @@ test('native select/confirm approvals stay pending until the real chat response 
   broker.dispose();
 });
 
-test('native input/editor callbacks send real responses while notify stays a one-way notification', async () => {
+test('native input and inline multiline editor callbacks respond without opening tabs', async () => {
   const notifications: unknown[] = [];
   const vscode = {
-    workspace: { openTextDocument: async () => ({ getText: () => 'edited native text' }) },
+    workspace: {
+      openTextDocument: async () => {
+        throw new Error('extension UI must not create an untitled editor');
+      },
+    },
     window: {
       createInputBox: () => {
         let accept = () => {};
@@ -202,8 +206,9 @@ test('native input/editor callbacks send real responses while notify stays a one
           dispose() {},
         };
       },
-      showTextDocument: async () => {},
-      showInformationMessage: async () => 'Submit',
+      showTextDocument: async () => {
+        throw new Error('extension UI must not show an editor tab');
+      },
       setStatusBarMessage: (...args: unknown[]) => {
         notifications.push(args);
       },
@@ -215,16 +220,23 @@ test('native input/editor callbacks send real responses while notify stays a one
   const classes = await nativeClasses(vscode);
   const controller = uiController();
   const broker = new classes.ExtensionUiBroker({ list: () => [] });
+  const manager = Object.create(classes.ChatTabManager.prototype);
   assert.deepEqual(await broker.handleRequest(controller, { id: 'input', method: 'input' }), {
     value: 'native input',
   });
   assert.deepEqual(
-    await broker.handleRequest(controller, { id: 'editor', method: 'editor', prefill: 'prefill' }),
-    { value: 'edited native text' }
+    await broker.handleRequest(controller, {
+      id: 'editor',
+      method: 'editor',
+      prefill: 'first\nsecond',
+    }),
+    { inline: true }
   );
+  assert.equal(controller.pending.has('editor'), true);
+  await manager.handleRespondUi({ controller }, 'editor', 'first\nsecond\nthird', undefined, false);
   assert.deepEqual(controller.replies, [
     { id: 'input', value: 'native input' },
-    { id: 'editor', value: 'edited native text' },
+    { id: 'editor', value: 'first\nsecond\nthird' },
   ]);
   assert.deepEqual(controller.completed, ['input', 'editor']);
   await broker.handleRequest(controller, {

@@ -37,8 +37,6 @@ export type WebviewInboundMessage =
   | { type: 'openAttachment'; uri: string }
   | { type: 'switchFolder'; folderUri: string }
   | { type: 'loadOlder' }
-  | { type: 'insertCode'; text: string; language?: string }
-  | { type: 'newFileFromCode'; text: string; language?: string }
   | { type: 'openExternal'; url: string }
   | { type: 'openFile'; path: string }
   | { type: 'openDiff'; path: string }
@@ -47,7 +45,7 @@ export type WebviewInboundMessage =
   | { type: 'requestSlashCommands'; requestId?: string }
   | { type: 'pasteImage'; data: string; mimeType: string }
   | { type: 'diag'; scope: string; detail: string }
-  | { type: 'respondUi'; id: string; value?: string; confirmed?: boolean };
+  | { type: 'respondUi'; id: string; value?: string; confirmed?: boolean; cancelled?: boolean };
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -185,7 +183,13 @@ export function parseWebviewMessage(value: unknown): WebviewInboundMessage | und
       if (typeof record.id !== 'string') {
         return undefined;
       }
-      const response: { type: 'respondUi'; id: string; value?: string; confirmed?: boolean } = {
+      const response: {
+        type: 'respondUi';
+        id: string;
+        value?: string;
+        confirmed?: boolean;
+        cancelled?: boolean;
+      } = {
         type: 'respondUi',
         id: record.id,
       };
@@ -195,17 +199,11 @@ export function parseWebviewMessage(value: unknown): WebviewInboundMessage | und
       if (typeof record.confirmed === 'boolean') {
         response.confirmed = record.confirmed;
       }
+      if (record.cancelled === true) {
+        response.cancelled = true;
+      }
       return response;
     }
-    case 'insertCode':
-    case 'newFileFromCode':
-      return typeof record.text === 'string'
-        ? {
-            type: record.type,
-            text: record.text,
-            language: typeof record.language === 'string' ? record.language : undefined,
-          }
-        : undefined;
     case 'switchFolder':
       return typeof record.folderUri === 'string'
         ? { type: 'switchFolder', folderUri: record.folderUri }

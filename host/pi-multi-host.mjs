@@ -21,7 +21,12 @@ import { createImportCommands } from './import-commands.mjs';
 import { createAuthCommands } from './auth-commands.mjs';
 import { createScopeOperations, modelDto, scopeCommandDispatcher } from './scoped-models.mjs';
 import { createPreferenceOperations, serializePreferenceDefaults } from './preferences.mjs';
-import { createStartupAdapter, validateSdkMetadata, validateSdkApi } from './startup-adapter.mjs';
+import {
+  createStartupAdapter,
+  resolveSdkDependencyFile,
+  validateSdkMetadata,
+  validateSdkApi,
+} from './startup-adapter.mjs';
 import * as path from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 
@@ -47,7 +52,9 @@ const sdk = await piImport('dist/index.js');
 validateSdkApi(sdk);
 const { resolveModelScopeFromModels } = await piImport('dist/core/model-resolver.js');
 // Use the selected SDK's native dynamic thinking maps, not a GUI approximation.
-const thinking = await piImport('node_modules/@earendil-works/pi-ai/dist/models.js');
+const thinking = await import(
+  pathToFileURL(resolveSdkDependencyFile(PI_ROOT, '@earendil-works/pi-ai/dist/models.js')).href
+);
 const { builtInExtensions: nativeBuiltins } = await piImport('dist/extensions/index.js');
 // The public factories supply the CLI's builtin wrappers; llama.cpp has no public
 // factory in 0.99.1, so retain that single audited native builtin entry.
@@ -628,6 +635,7 @@ async function createSessionRunner(sessionKey, runtimeHost, hostEmit) {
     }
   };
   const readState = () => ({
+    sdkVersion: metadata.version,
     model: modelDto(session.model),
     thinkingLevel: session.thinkingLevel,
     availableThinkingLevels: session.getAvailableThinkingLevels(),

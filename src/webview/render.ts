@@ -1,7 +1,6 @@
 import type { WebviewSnapshot } from '../state/types';
 import { isLiveWorking } from './working';
 import { friendlyApiStatus, parseProviderError } from './apiError';
-import { formatKey } from './codeFormat';
 import { highlightCode } from './highlight';
 import { chipPrivacyLabel, summarizeChip, type PendingContextItem } from './composer';
 import { formatUsageChip } from './usageSummary';
@@ -15,6 +14,8 @@ export const PREVIEW_TITLE_ID = 'preview-title';
 export const PREVIEW_DESCRIPTION_ID = 'preview-description';
 export const PREVIEW_ACCEPT_BUTTON_ID = 'preview-accept-button';
 export const PREVIEW_CANCEL_BUTTON_ID = 'preview-cancel-button';
+export const MERMAID_DIALOG_ID = 'mermaid-dialog';
+export const MERMAID_DIALOG_CLOSE_ID = 'mermaid-dialog-close';
 
 export function contextChipRemoveButtonId(itemId: string): string {
   return `context-chip-remove-${itemId}`;
@@ -498,12 +499,9 @@ function renderToolContent(text: string): string {
 }
 
 function renderTimelineNode(node: TimelineNode, streamingAnswer = false): string {
-  // Small colored marker on the rail; the identifying icon lives in the card
-  // header (icon + rounded border make each section obvious).
-  const marker = '<span class="tl-dot"></span>';
   switch (node.kind) {
     case 'thinking':
-      return `<div class="tl-node tl-thinking">${marker}<details class="tl-card" open><summary class="tl-head">${META_ICONS.thinking}<span class="tl-label">Thinking</span>${CARET_ICON}</summary><div class="tl-body tl-think">${renderRichText(node.text)}</div></details></div>`;
+      return `<div class="tl-node tl-thinking"><details class="tl-card" open><summary class="tl-head">${META_ICONS.thinking}<span class="tl-label">Thinking</span>${CARET_ICON}</summary><div class="tl-body tl-think">${renderRichText(node.text)}</div></details></div>`;
     case 'tool': {
       const editPath = editToolFilePath(node.name, node.args);
       const replacements = editReplacements(node.name, node.args);
@@ -517,12 +515,12 @@ function renderTimelineNode(node: TimelineNode, streamingAnswer = false): string
       const fileActions = editPath
         ? `<div class="tl-file-actions"><span class="tl-file-path">${escapeHtml(editPath)}</span><button type="button" class="tl-file-btn" data-file-open="${escapeHtml(editPath)}">Open file</button><button type="button" class="tl-file-btn" data-file-diff="${escapeHtml(editPath)}">Open changes</button>${approve}</div>`
         : '';
-      return `<div class="tl-node tl-tool">${marker}<div class="tl-card"><div class="tl-head">${META_ICONS.tool}<span class="tl-label">Tool</span><code class="tool-name">${escapeHtml(node.name)}</code></div>${body}${fileActions}</div></div>`;
+      return `<div class="tl-node tl-tool"><div class="tl-card"><div class="tl-head">${META_ICONS.tool}<span class="tl-label">Tool</span><code class="tool-name">${escapeHtml(node.name)}</code></div>${body}${fileActions}</div></div>`;
     }
     case 'toolResult': {
       const err = node.isError === true;
       // Results collapse by default (they're often long/noisy); errors stay open.
-      return `<div class="tl-node tl-result${err ? ' is-error' : ''}">${marker}<details class="tl-card"${err ? ' open' : ''}><summary class="tl-head">${err ? META_ICONS.error : META_ICONS.result}<span class="tl-label">${err ? 'Error' : 'Result'}</span>${node.name ? `<code class="tool-name">${escapeHtml(node.name)}</code>` : ''}${CARET_ICON}</summary>${renderToolContent(node.text)}</details></div>`;
+      return `<div class="tl-node tl-result${err ? ' is-error' : ''}"><details class="tl-card"${err ? ' open' : ''}><summary class="tl-head">${err ? META_ICONS.error : META_ICONS.result}<span class="tl-label">${err ? 'Error' : 'Result'}</span>${node.name ? `<code class="tool-name">${escapeHtml(node.name)}</code>` : ''}${CARET_ICON}</summary>${renderToolContent(node.text)}</details></div>`;
     }
     case 'toolPair': {
       const call = node.call;
@@ -546,14 +544,14 @@ function renderTimelineNode(node: TimelineNode, streamingAnswer = false): string
       const summaryLabel = err
         ? 'Error'
         : `Result · ${lineCount} line${lineCount === 1 ? '' : 's'}`;
-      return `<div class="tl-node tl-tool${err ? ' is-error' : ''}">${marker}<div class="tl-card"><div class="tl-head">${META_ICONS.tool}<span class="tl-label">Tool</span><code class="tool-name">${escapeHtml(call.name)}</code>${err ? '<span class="tl-flag-error">failed</span>' : ''}</div>${callBody}${fileActions}<details class="tl-result-inline${err ? ' is-error' : ''}"${open}><summary class="tl-result-head">${err ? META_ICONS.error : META_ICONS.result}<span class="tl-label">${summaryLabel}</span>${CARET_ICON}</summary>${renderToolContent(result.text)}</details></div></div>`;
+      return `<div class="tl-node tl-tool${err ? ' is-error' : ''}"><div class="tl-card"><div class="tl-head">${META_ICONS.tool}<span class="tl-label">Tool</span><code class="tool-name">${escapeHtml(call.name)}</code>${err ? '<span class="tl-flag-error">failed</span>' : ''}</div>${callBody}${fileActions}<details class="tl-result-inline${err ? ' is-error' : ''}"${open}><summary class="tl-result-head">${err ? META_ICONS.error : META_ICONS.result}<span class="tl-label">${summaryLabel}</span>${CARET_ICON}</summary>${renderToolContent(result.text)}</details></div></div>`;
     }
     case 'image':
-      return `<div class="tl-node tl-tool">${marker}<div class="tl-card"><div class="tl-head">${META_ICONS.image}<span class="tl-label">Image</span><span class="tool-name">${escapeHtml(node.mimeType)}</span></div></div></div>`;
+      return `<div class="tl-node tl-tool"><div class="tl-card"><div class="tl-head">${META_ICONS.image}<span class="tl-label">Image</span><span class="tool-name">${escapeHtml(node.mimeType)}</span></div></div></div>`;
     case 'response': {
       const streamClass = streamingAnswer ? ' js-stream-text' : '';
       const streamData = streamingAnswer ? ` data-raw="${escapeHtml(node.text)}"` : '';
-      return `<div class="tl-node tl-response">${marker}<div class="tl-card tl-answer"><div class="tl-head tl-answer-head">${META_ICONS.response}<span class="tl-label">π Response</span></div><div class="tl-body${streamClass}"${streamData}>${renderRichText(node.text)}</div></div></div>`;
+      return `<div class="tl-node tl-response"><div class="tl-card tl-answer"><div class="tl-head tl-answer-head">${META_ICONS.response}<span class="tl-label">π Response</span></div><div class="tl-body${streamClass}"${streamData}>${renderRichText(node.text)}</div></div></div>`;
     }
     default:
       return '';
@@ -594,8 +592,6 @@ export const COPY_ICON_SVG =
 /** Copied-confirmation icon (swapped in by the webview after a copy). */
 export const COPIED_ICON_SVG =
   '<svg class="i-copy" width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8.5 6.5 12 13 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-
-let formattedCodeLookup: Record<string, string> = {};
 
 function renderInlineMarkdown(text: string): string {
   let html = escapeHtml(text);
@@ -927,13 +923,15 @@ export function renderRichText(raw: string): string {
         out.push(renderJsonBlock(jsonValue, codeText));
         continue;
       }
-      // Display-time formatting: the host formats blocks through the user's
-      // registered VS Code formatters (async, cached); when a result exists
-      // for this exact block, render the readable version instead.
-      const displayText = formattedCodeLookup[formatKey(language, codeText)] ?? codeText;
+      if (language.toLowerCase() === 'mermaid') {
+        out.push(
+          `<div class="code-wrap mermaid-wrap" data-lang="mermaid" data-mermaid-view="code"><div class="code-lang"><span class="code-lang-name">Mermaid</span><div class="code-actions"><button type="button" class="mermaid-toggle is-active" data-mermaid-mode="code" aria-pressed="true">Code</button><button type="button" class="mermaid-toggle" data-mermaid-mode="preview" aria-pressed="false">Preview</button><button type="button" class="code-btn mermaid-expand" aria-label="Open diagram full screen" title="Open diagram full screen" disabled>&#x26F6;</button><button type="button" class="code-btn code-copy" aria-label="Copy code" title="Copy code">${COPY_ICON_SVG}</button></div></div><pre class="code-block mermaid-code"><code>${escapeHtml(codeText)}</code></pre><div class="mermaid-preview" hidden><div class="mermaid-preview-stage" role="img" aria-label="Mermaid diagram preview"><span class="mermaid-loading">Rendering diagram…</span></div><p class="mermaid-error" role="alert" hidden>Couldn’t render this diagram. Check the Mermaid syntax.</p></div></div>`
+        );
+        continue;
+      }
       // Syntax-highlight the block (falls back to plain escaped text). The
       // resolved language (explicit or auto-detected) drives the label + class.
-      const highlighted = highlightCode(displayText, language, escapeHtml);
+      const highlighted = highlightCode(codeText, language, escapeHtml);
       const labelLang = language.trim() || highlighted.language || '';
       // Fenced code renders as its OWN block with a Copy button. Only show a
       // language label for a REAL language — never a generic "text"/"code".
@@ -973,9 +971,8 @@ function sessionLabel(snapshot: WebviewSnapshot): string {
   return snapshot.sessionName ?? snapshot.sessionId ?? snapshot.sessionFile ?? 'No chat yet';
 }
 
-// Tool-approval prompts (extension UI select/confirm) rendered inline as
-// Allow/Deny cards instead of a native modal, so the request is visible in the
-// conversation and answered in one click.
+// Extension UI prompts rendered inline so approvals and multiline editing stay
+// in the conversation instead of opening native modals or untitled files.
 function renderApprovals(snapshot: WebviewSnapshot): string {
   const approvals = snapshot.approvals ?? [];
   if (approvals.length === 0) {
@@ -987,6 +984,10 @@ function renderApprovals(snapshot: WebviewSnapshot): string {
       const body = approval.message
         ? `<p class="approval-msg">${escapeHtml(approval.message)}</p>`
         : '';
+      if (approval.method === 'editor') {
+        const id = escapeHtml(approval.id);
+        return `<div class="approval-card" role="dialog" aria-label="${heading}"><div class="approval-head">${heading}</div>${body}<textarea class="approval-editor" data-ui-editor="${id}" rows="8" placeholder="${escapeHtml(approval.placeholder ?? '')}">${escapeHtml(approval.prefill ?? '')}</textarea><div class="approval-actions"><button type="button" class="approval-btn approval-allow" data-ui-id="${id}" data-ui-editor-submit="true">Submit</button><button type="button" class="approval-btn" data-ui-id="${id}" data-ui-cancelled="true">Cancel</button></div></div>`;
+      }
       const buttons =
         approval.method === 'confirm'
           ? `<button type="button" class="approval-btn approval-allow" data-ui-id="${escapeHtml(approval.id)}" data-ui-confirmed="true">Allow</button><button type="button" class="approval-btn approval-deny" data-ui-id="${escapeHtml(approval.id)}" data-ui-confirmed="false">Deny</button>`
@@ -1183,11 +1184,24 @@ function renderAttachment(
     </details>`;
 }
 
+function renderFreshSessionDetails(snapshot: WebviewSnapshot): string {
+  const runtime = snapshot.runtime;
+  const capability = (value: number | undefined, label: string): string =>
+    `<span class="session-capability"><strong>${value ?? 0}</strong> <span>${label}</span></span>`;
+  const trusted = snapshot.isTrusted;
+  return `<details class="session-details" id="pi-session-details" data-preserve-open open><summary><span class="session-details-title"><span class="session-status-dot" aria-hidden="true"></span><span>${runtime?.sdkVersion ? `Pi ${escapeHtml(runtime.sdkVersion)}` : 'Pi session'}</span></span><span class="session-details-toggle">Session details</span></summary><div class="session-details-body"><dl class="session-facts"><div class="session-fact"><dt>Model</dt><dd>${escapeHtml(modelLabel(snapshot))}</dd></div><div class="session-fact"><dt>Thinking</dt><dd>${escapeHtml(snapshot.thinkingLevel || 'default')}</dd></div><div class="session-fact"><dt>Workspace</dt><dd><span>${escapeHtml(snapshot.workspaceFolderName || 'Workspace')}</span><span class="session-trust ${trusted ? 'is-trusted' : 'is-restricted'}">${trusted ? 'Trusted' : 'Restricted'}</span></dd></div></dl><div class="session-capabilities" aria-label="Available Pi features">${[
+    capability(runtime?.commands, 'Commands'),
+    capability(runtime?.extensions, 'Extensions'),
+    capability(runtime?.prompts, 'Prompts'),
+    capability(runtime?.skills, 'Skills'),
+  ].join('')}</div></div></details>`;
+}
+
 function renderMessages(snapshot: WebviewSnapshot): string {
   if (snapshot.messages.length === 0) {
     return `
       <div class="empty-state" data-testid="empty-state">
-        <svg class="empty-mascot" width="64" height="48" viewBox="0 0 8 6" role="img" aria-label="π" shape-rendering="crispEdges">
+        <svg class="empty-mascot" width="48" height="36" viewBox="0 0 8 6" role="img" aria-label="π" shape-rendering="crispEdges">
           <rect x="1" y="1" width="6" height="4" fill="currentColor" />
           <rect x="2" y="2" width="1" height="1" fill="var(--vscode-editor-background)" />
           <rect x="5" y="2" width="1" height="1" fill="var(--vscode-editor-background)" />
@@ -1197,12 +1211,8 @@ function renderMessages(snapshot: WebviewSnapshot): string {
         </svg>
         <p class="empty-title">Start a chat with Pi</p>
         <p class="empty-copy">Ask about this codebase, or start writing code.</p>
-        <div class="empty-examples">
-          <button type="button" class="empty-example" data-example="Give me a high-level overview of this project's structure and how the main pieces fit together.">Explain this codebase</button>
-          <button type="button" class="empty-example" data-example="Add tests for the file I currently have open.">Add tests for a file</button>
-          <button type="button" class="empty-example" data-example="Find and fix a bug in ">Find and fix a bug</button>
-        </div>
-        <p class="empty-hints"><kbd>/</kbd> commands &middot; <kbd>@</kbd> mention a file &middot; <kbd>Cmd/Ctrl+K</kbd> actions</p>
+        ${renderFreshSessionDetails(snapshot)}
+        <div class="empty-shortcuts" role="list" aria-label="Chat shortcuts"><span class="empty-shortcut" role="listitem"><kbd>/</kbd> <span>Commands</span></span><span class="empty-shortcut" role="listitem"><kbd>@</kbd> <span>Files</span></span><span class="empty-shortcut" role="listitem"><kbd>Cmd/Ctrl+K</kbd> <span>Actions</span></span></div>
       </div>`;
   }
   const olderSentinel = snapshot.messageWindow?.hasOlder
@@ -1286,7 +1296,7 @@ function renderMessageBody(
 /** A standalone tool-result / bash-execution message rendered as a Result card. */
 function renderResultMessage(message: WebviewSnapshot['messages'][number]): string {
   const text = message.text ?? '';
-  return `<div class="timeline timeline-standalone"><div class="tl-node tl-result"><span class="tl-dot"></span><details class="tl-card"><summary class="tl-head">${META_ICONS.result}<span class="tl-label">Result</span>${CARET_ICON}</summary>${renderClampedOutput(text)}</details></div></div>`;
+  return `<div class="timeline timeline-standalone"><div class="tl-node tl-result"><details class="tl-card"><summary class="tl-head">${META_ICONS.result}<span class="tl-label">Result</span>${CARET_ICON}</summary>${renderClampedOutput(text)}</details></div></div>`;
 }
 
 function renderContextChip(item: PendingContextItem): string {
@@ -1405,6 +1415,10 @@ function renderPreview(snapshot: WebviewSnapshot): string {
     </section>`;
 }
 
+function renderMermaidDialog(): string {
+  return `<section class="modal-backdrop mermaid-dialog" id="${MERMAID_DIALOG_ID}" hidden><div class="modal-card mermaid-dialog-card" role="dialog" aria-modal="true" aria-labelledby="mermaid-dialog-title" tabindex="-1"><div class="mermaid-dialog-head"><h2 id="mermaid-dialog-title">Mermaid preview</h2><button type="button" class="code-btn" id="${MERMAID_DIALOG_CLOSE_ID}" aria-label="Close full-screen diagram" title="Close">&times;</button></div><div class="mermaid-dialog-output"><img alt="Expanded Mermaid diagram" hidden /></div></div></section>`;
+}
+
 // Font size/family overrides applied as CSS variables on the root.
 function chatFontStyle(snapshot: WebviewSnapshot): string {
   const parts: string[] = [];
@@ -1457,7 +1471,6 @@ function renderQueueTray(snapshot: WebviewSnapshot): string {
 }
 
 export function renderChatApp(snapshot: WebviewSnapshot): string {
-  formattedCodeLookup = snapshot.formattedCode ?? {};
   const busy = snapshot.isStreaming || snapshot.connectionState === 'busy';
   const interactive = snapshot.connectionState === 'ready' || snapshot.connectionState === 'busy';
   const faulted = snapshot.connectionState === 'faulted';
@@ -1493,7 +1506,7 @@ export function renderChatApp(snapshot: WebviewSnapshot): string {
 
   return `
     <a class="skip-link" href="#composer-field">Skip to composer</a>
-    <div class="layout" data-testid="chat-app"${chatFontStyle(snapshot)}>
+    <div class="layout" data-testid="chat-app" data-mermaid-session="${escapeHtml(snapshot.sessionFile || snapshot.sessionId || snapshot.workspaceFolderName || 'session')}"${chatFontStyle(snapshot)}>
       <div class="header-summary visually-hidden" aria-label="Current chat summary">${escapeHtml(summaryLine)}</div>
       <div id="a11y-status" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></div>
 
@@ -1564,5 +1577,6 @@ export function renderChatApp(snapshot: WebviewSnapshot): string {
       </section>
 
       ${renderPreview(snapshot)}
+      ${renderMermaidDialog()}
     </div>`;
 }

@@ -31,8 +31,19 @@ g.Event = dom.window.Event;
 g.MessageEvent = dom.window.MessageEvent;
 g.HTMLElement = dom.window.HTMLElement;
 g.HTMLTextAreaElement = dom.window.HTMLTextAreaElement;
+g.SVGElement = dom.window.SVGElement;
+g.SVGSVGElement = dom.window.SVGSVGElement;
+g.CSSStyleSheet = dom.window.CSSStyleSheet;
 g.MutationObserver = dom.window.MutationObserver;
 g.getComputedStyle = dom.window.getComputedStyle.bind(dom.window);
+(dom.window.SVGElement.prototype as unknown as Record<string, unknown>).getBBox = () => ({
+  x: 0,
+  y: 0,
+  width: 120,
+  height: 40,
+});
+(dom.window.SVGElement.prototype as unknown as Record<string, unknown>).getComputedTextLength =
+  () => 80;
 // Webview-only APIs jsdom lacks — inert stubs are enough for the paste path.
 g.ResizeObserver = class {
   observe(): void {}
@@ -143,6 +154,261 @@ test('webview paste: real script renders and binds the composer', async () => {
   );
   await waitFor(() => dom.window.document.querySelector('textarea') !== null, 'composer render');
   findComposer();
+});
+
+test('Mermaid preview toggles, expands, closes with Escape, and restores focus', async () => {
+  dom.window.dispatchEvent(
+    new dom.window.MessageEvent('message', {
+      data: {
+        type: 'snapshot',
+        snapshot: snapshot({
+          messages: [
+            {
+              id: 'diagram',
+              role: 'assistant',
+              text: ['```mermaid', 'flowchart LR', 'A --> B', '```'].join('\n'),
+              attachments: [],
+            },
+          ],
+        }),
+      },
+    })
+  );
+  await waitFor(() => dom.window.document.querySelector('.mermaid-toggle') !== null, 'Mermaid UI');
+  const wrap = dom.window.document.querySelector<HTMLElement>('.mermaid-wrap')!;
+  const previewButton = wrap.querySelector<HTMLButtonElement>('[data-mermaid-mode="preview"]')!;
+  previewButton.click();
+  assert.equal(wrap.dataset.mermaidView, 'preview');
+  assert.equal(wrap.querySelector<HTMLElement>('.mermaid-code')!.hidden, true);
+  assert.equal(wrap.querySelector<HTMLElement>('.mermaid-preview')!.hidden, false);
+
+  const expand = wrap.querySelector<HTMLButtonElement>('.mermaid-expand')!;
+  await waitFor(
+    () => Boolean(wrap.querySelector<HTMLImageElement>('.mermaid-image')?.src),
+    'native Mermaid SVG'
+  );
+  const imageSrc = wrap.querySelector<HTMLImageElement>('.mermaid-image')!.src;
+  assert.match(imageSrc, /^data:image\/svg\+xml/);
+  assert.match(decodeURIComponent(imageSrc), /<svg/);
+  assert.equal(expand.disabled, false);
+  expand.click();
+  const dialog = dom.window.document.getElementById('mermaid-dialog')!;
+  assert.equal(dialog.hidden, false);
+  assert.equal(dialog.querySelector<HTMLImageElement>('img')?.src, imageSrc);
+  dialog.dispatchEvent(
+    new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+  );
+  assert.equal(dialog.hidden, true);
+  assert.equal(dom.window.document.activeElement, expand);
+
+  expand.click();
+  assert.equal(dialog.hidden, false);
+  dom.window.dispatchEvent(
+    new dom.window.MessageEvent('message', {
+      data: {
+        type: 'snapshot',
+        snapshot: snapshot({
+          sequence: 2,
+          sessionId: 'other',
+          sessionFile: '/tmp/workspace/other.jsonl',
+          messages: [
+            {
+              id: 'diagram',
+              role: 'assistant',
+              text: ['```mermaid', 'flowchart LR', 'A --> B', '```'].join('\n'),
+              attachments: [],
+            },
+          ],
+        }),
+      },
+    })
+  );
+  assert.equal(dialog.hidden, true, 'another chat cannot inherit an identical diagram preview');
+});
+
+test('malformed Mermaid shows an inline error and cannot expand', async () => {
+  dom.window.dispatchEvent(
+    new dom.window.MessageEvent('message', {
+      data: {
+        type: 'snapshot',
+        snapshot: snapshot({
+          sequence: 5,
+          messages: [
+            {
+              id: 'broken-diagram',
+              role: 'assistant',
+              text: ['```mermaid', 'flowchart LR', 'A --', '```'].join('\n'),
+              attachments: [],
+            },
+          ],
+        }),
+      },
+    })
+  );
+  const wrap = dom.window.document.querySelector<HTMLElement>('.mermaid-wrap')!;
+  wrap.querySelector<HTMLButtonElement>('[data-mermaid-mode="preview"]')!.click();
+  await waitFor(
+    () => !wrap.querySelector<HTMLElement>('.mermaid-error')!.hidden,
+    'malformed Mermaid error'
+  );
+  assert.equal(wrap.querySelector('.mermaid-image'), null);
+  assert.equal(wrap.querySelector<HTMLButtonElement>('.mermaid-expand')!.disabled, true);
+});
+
+test('Mermaid preview stays isolated as an SVG image', async () => {
+  dom.window.dispatchEvent(
+    new dom.window.MessageEvent('message', {
+      data: {
+        type: 'snapshot',
+        snapshot: snapshot({
+          sequence: 6,
+          messages: [
+            {
+              id: 'safe-diagram',
+              role: 'assistant',
+              text: [
+                '```mermaid',
+                'flowchart LR',
+                'A["<script>alert(1)</script>"] --> B',
+                '```',
+              ].join('\n'),
+              attachments: [],
+            },
+          ],
+        }),
+      },
+    })
+  );
+  const wrap = dom.window.document.querySelector<HTMLElement>('.mermaid-wrap')!;
+  wrap.querySelector<HTMLButtonElement>('[data-mermaid-mode="preview"]')!.click();
+  await waitFor(
+    () => Boolean(wrap.querySelector<HTMLImageElement>('.mermaid-image')?.src),
+    'isolated Mermaid SVG'
+  );
+  const svg = decodeURIComponent(wrap.querySelector<HTMLImageElement>('.mermaid-image')!.src);
+  assert.doesNotMatch(svg, /<script|javascript:|onload=/i);
+});
+
+test('identical Mermaid blocks keep independent Preview state across snapshots', () => {
+  const repeated = ['```mermaid', 'flowchart LR', 'A --> B', '```'].join('\n');
+  const repeatedSnapshot = snapshot({
+    sequence: 3,
+    messages: [
+      {
+        id: 'duplicates',
+        role: 'assistant',
+        text: `${repeated}\n\n${repeated}`,
+        attachments: [],
+      },
+    ],
+  });
+  dom.window.dispatchEvent(
+    new dom.window.MessageEvent('message', {
+      data: { type: 'snapshot', snapshot: repeatedSnapshot },
+    })
+  );
+  const wraps = Array.from(dom.window.document.querySelectorAll<HTMLElement>('.mermaid-wrap'));
+  assert.equal(wraps.length, 2);
+  wraps[0]!.querySelector<HTMLButtonElement>('[data-mermaid-mode="preview"]')!.click();
+  dom.window.dispatchEvent(
+    new dom.window.MessageEvent('message', {
+      data: { type: 'snapshot', snapshot: { ...repeatedSnapshot, sequence: 4 } },
+    })
+  );
+  assert.deepEqual(
+    Array.from(dom.window.document.querySelectorAll<HTMLElement>('.mermaid-wrap')).map(
+      (wrap) => wrap.dataset.mermaidView
+    ),
+    ['preview', 'code']
+  );
+});
+
+test("fresh-session details drawer keeps the user's collapsed state across snapshots", () => {
+  const fresh = snapshot({
+    sequence: 2,
+    messages: [],
+    messageCount: 0,
+    runtime: { sdkVersion: '1.0.4', commands: 27, extensions: 1, prompts: 2, skills: 3 },
+  });
+  dom.window.dispatchEvent(
+    new dom.window.MessageEvent('message', { data: { type: 'snapshot', snapshot: fresh } })
+  );
+  const drawer = dom.window.document.querySelector<HTMLDetailsElement>('#pi-session-details')!;
+  assert.equal(drawer.open, true);
+  drawer.open = false;
+  dom.window.dispatchEvent(
+    new dom.window.MessageEvent('message', {
+      data: { type: 'snapshot', snapshot: { ...fresh, sequence: 3 } },
+    })
+  );
+  assert.equal(
+    dom.window.document.querySelector<HTMLDetailsElement>('#pi-session-details')?.open,
+    false
+  );
+});
+
+test('a failed work phase reopens after the user collapsed its live state', async () => {
+  const live = snapshot({
+    sequence: 100,
+    connectionState: 'busy',
+    isStreaming: true,
+    currentAssistantMessageId: 'work',
+    messages: [
+      {
+        id: 'work',
+        role: 'assistant',
+        text: '',
+        blocks: [
+          { kind: 'thinking', text: 'checking' },
+          { kind: 'tool', name: 'bash', callId: 'call' },
+        ],
+        attachments: [],
+      },
+    ],
+  });
+  dom.window.dispatchEvent(
+    new dom.window.MessageEvent('message', { data: { type: 'snapshot', snapshot: live } })
+  );
+  await waitFor(
+    () => dom.window.document.querySelector('.work-phase') !== null,
+    'live work phase render'
+  );
+  const phase = dom.window.document.querySelector<HTMLDetailsElement>('.work-phase')!;
+  assert.equal(phase.open, true);
+  phase.open = false;
+
+  dom.window.dispatchEvent(
+    new dom.window.MessageEvent('message', {
+      data: {
+        type: 'snapshot',
+        snapshot: {
+          ...live,
+          sequence: 101,
+          isStreaming: false,
+          connectionState: 'ready',
+          messages: [
+            {
+              ...live.messages[0]!,
+              blocks: [
+                { kind: 'thinking', text: 'checking' },
+                { kind: 'tool', name: 'bash', callId: 'call' },
+                {
+                  kind: 'toolResult',
+                  name: 'bash',
+                  text: 'failed',
+                  callId: 'call',
+                  isError: true,
+                },
+              ],
+            },
+          ],
+        },
+      },
+    })
+  );
+
+  const failed = dom.window.document.querySelector<HTMLDetailsElement>('.work-phase.is-error')!;
+  assert.equal(failed.open, true);
 });
 
 test('webview paste: pasted IMAGE posts pasteImage with base64 payload (the reported bug)', async () => {

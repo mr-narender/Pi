@@ -21,6 +21,8 @@ export class RecentSessionService implements vscode.Disposable {
   private readonly emitter = new vscode.EventEmitter<void>();
   private readonly state = new Map<string, RecentSessionsState>();
   private readonly revision = new Map<string, number>();
+  private readonly refreshes = new Map<string, { revision: number; promise: Promise<void> }>();
+  private readonly allProjectsScans = new Map<string, Promise<RecentSessionRecord[]>>();
 
   public constructor(
     // Optional off-thread accelerator; every use falls back to the inline scan.
@@ -37,6 +39,8 @@ export class RecentSessionService implements vscode.Disposable {
     this.emitter.dispose();
     this.state.clear();
     this.revision.clear();
+    this.refreshes.clear();
+    this.allProjectsScans.clear();
   }
 
   public getState(folder: vscode.WorkspaceFolder): RecentSessionsState {
@@ -72,6 +76,7 @@ export class RecentSessionService implements vscode.Disposable {
   /** Drop a successfully deleted file from every cached project immediately.
    * Invalidate scans that began before the deletion so they cannot restore it. */
   public removePath(sessionPath: string): void {
+    this.allProjectsScans.clear();
     for (const [key, current] of this.state) {
       this.revision.set(key, (this.revision.get(key) ?? 0) + 1);
       this.state.set(key, {
@@ -84,40 +89,66 @@ export class RecentSessionService implements vscode.Disposable {
     this.emitter.fire();
   }
 
-  private async refreshFolder(folder: vscode.WorkspaceFolder): Promise<void> {
+  private refreshFolder(folder: vscode.WorkspaceFolder): Promise<void> {
     const key = folder.uri.toString();
-    const revision = (this.revision.get(key) ?? 0) + 1;
+    const currentRevision = this.revision.get(key) ?? 0;
+    const active = this.refreshes.get(key);
+    if (active?.revision === currentRevision) {
+      return active.promise;
+    }
+    const revision = currentRevision + 1;
     this.revision.set(key, revision);
+    const promise = this.runRefreshFolder(folder, key, revision).finally(() => {
+      if (this.refreshes.get(key)?.revision === revision) {
+        this.refreshes.delete(key);
+      }
+    });
+    this.refreshes.set(key, { revision, promise });
+    return promise;
+  }
+
+  private async runRefreshFolder(
+    folder: vscode.WorkspaceFolder,
+    key: string,
+    revision: number
+  ): Promise<void> {
     const current = this.state.get(key) ?? { loading: false, filterText: '', items: [] };
     this.state.set(key, { ...current, loading: true, error: undefined });
     this.emitter.fire();
     try {
       const settings = getSettings();
-      const workspaceCwds = (vscode.workspace.workspaceFolders ?? []).map((f) => f.uri.fsPath);
-      const [index, others] = await Promise.all([
-        readRecentSessionsIndex({
-          workspaceName: folder.name,
-          workspacePath: folder.uri.fsPath,
-          additionalArgs: settings.additionalArgs,
-        }),
-        // All-projects list — off-thread when the index worker is up, inline
-        // fallback otherwise; never fail the main list because of it.
-        (this.indexService
-          ? this.indexService
-              .scanAll(workspaceCwds)
-              .catch(() => readAllProjectsSessions(workspaceCwds))
-          : readAllProjectsSessions(workspaceCwds)
-        ).catch(() => []),
-      ]);
+      const index = await readRecentSessionsIndex({
+        workspaceName: folder.name,
+        workspacePath: folder.uri.fsPath,
+        additionalArgs: settings.additionalArgs,
+      });
       if (this.revision.get(key) !== revision) {
         return;
       }
       this.state.set(key, {
+        ...current,
         loading: false,
         filterText: this.state.get(key)?.filterText ?? current.filterText,
         sessionDir: index.sessionDir,
         items: index.sessions,
-        others,
+        error: undefined,
+      });
+      this.emitter.fire();
+
+      // Other projects can span hundreds of files. Populate them after the
+      // current workspace is visible so a broad history scan never blocks the
+      // sidebar's first useful paint.
+      const workspaceCwds = (vscode.workspace.workspaceFolders ?? []).map((f) => f.uri.fsPath);
+      void this.scanAllProjects(workspaceCwds).then((others) => {
+        if (this.revision.get(key) !== revision) {
+          return;
+        }
+        const latest = this.state.get(key);
+        if (!latest) {
+          return;
+        }
+        this.state.set(key, { ...latest, others });
+        this.emitter.fire();
       });
     } catch (error) {
       if (this.revision.get(key) !== revision) {
@@ -130,7 +161,30 @@ export class RecentSessionService implements vscode.Disposable {
         items: current.items,
         error: error instanceof Error ? error.message : String(error),
       });
+      this.emitter.fire();
     }
-    this.emitter.fire();
+  }
+
+  private scanAllProjects(workspaceCwds: string[]): Promise<RecentSessionRecord[]> {
+    const key = [...workspaceCwds].sort().join('\n');
+    const active = this.allProjectsScans.get(key);
+    if (active) {
+      return active;
+    }
+    const promise = (
+      this.indexService
+        ? this.indexService
+            .scanAll(workspaceCwds)
+            .catch(() => readAllProjectsSessions(workspaceCwds))
+        : readAllProjectsSessions(workspaceCwds)
+    )
+      .catch(() => [])
+      .finally(() => {
+        if (this.allProjectsScans.get(key) === promise) {
+          this.allProjectsScans.delete(key);
+        }
+      });
+    this.allProjectsScans.set(key, promise);
+    return promise;
   }
 }

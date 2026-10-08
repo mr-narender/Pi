@@ -1,4 +1,16 @@
 import * as path from 'node:path';
+import { existsSync } from 'node:fs';
+
+export function resolveSdkDependencyFile(sdkRoot, dependencyFile) {
+  let directory = sdkRoot;
+  while (true) {
+    const candidate = path.join(directory, 'node_modules', dependencyFile);
+    if (existsSync(candidate)) return candidate;
+    const parent = path.dirname(directory);
+    if (parent === directory) throw new Error(`SDK_DEPENDENCY_NOT_FOUND: ${dependencyFile}`);
+    directory = parent;
+  }
+}
 
 export function validateSdkMetadata(metadata) {
   if (

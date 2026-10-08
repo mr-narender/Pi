@@ -112,6 +112,12 @@ test('golden: chat-list body — loading / error / empty states', () => {
   checkGolden('chat-list-body-empty', renderChatListBody({ rows: [], loading: false }));
 });
 
+test('chat-list body keeps available rows visible during a refresh', () => {
+  const html = renderChatListBody({ rows: [row({ isOpen: true })], loading: true }, { now: NOW });
+  assert.match(html, /chat-list-row/);
+  assert.doesNotMatch(html, /Loading chats/);
+});
+
 test('golden: chat-list shell wrapping a populated body (with search box)', () => {
   const body = renderChatListBody(
     {
@@ -124,6 +130,34 @@ test('golden: chat-list shell wrapping a populated body (with search box)', () =
     { now: NOW }
   );
   checkGolden('chat-list-shell-populated', renderChatListShell(body));
+});
+
+test('chat-list body groups open and recent sessions into inset lists', () => {
+  const html = renderChatListBody(
+    {
+      rows: [
+        row({ id: 'open:pi-chat://one', title: 'Open chat', active: true, isOpen: true }),
+        row({ id: 'recent:one', title: 'Recent chat', isOpen: false }),
+      ],
+      loading: false,
+    },
+    { now: NOW }
+  );
+  const dom = new JSDOM(html);
+  try {
+    const groups = [...dom.window.document.querySelectorAll('.chat-list-group')];
+    assert.deepEqual(
+      groups.map((group) => group.getAttribute('aria-label')),
+      ['Open chats', 'Recent chats']
+    );
+    assert.deepEqual(
+      groups.map((group) => group.querySelectorAll('.chat-list-row').length),
+      [1, 1]
+    );
+    assert.equal(dom.window.document.querySelectorAll('.chat-list-section-label').length, 2);
+  } finally {
+    dom.window.close();
+  }
 });
 
 test('golden: chat-list body — empty while a search filter is active', () => {

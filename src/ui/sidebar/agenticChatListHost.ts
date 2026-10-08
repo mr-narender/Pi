@@ -70,7 +70,6 @@ export class AgenticChatListHost implements vscode.Disposable {
     view.webview.html = renderChatListWebviewHtml(this.extensionUri, view.webview, __PI_BUILD__);
     this.snapshotState = { hasShownRealData: false };
     this.messageSub = view.webview.onDidReceiveMessage((message) => void this.onMessage(message));
-    void this.recentSessions.refresh(this.folder);
     void this.pushSnapshot();
   }
 

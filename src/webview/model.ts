@@ -468,16 +468,28 @@ export function createWebviewSnapshot(
     thinkingLevel:
       typeof state.state.thinkingLevel === 'string' ? state.state.thinkingLevel : undefined,
     availableThinkingLevels: state.state.availableThinkingLevels,
+    runtime: {
+      sdkVersion: typeof state.state.sdkVersion === 'string' ? state.state.sdkVersion : undefined,
+      commands: state.commands.length,
+      extensions: state.commands.filter((command) => command.source === 'extension').length,
+      prompts: state.commands.filter((command) => command.source === 'prompt').length,
+      skills: state.commands.filter((command) => command.source === 'skill').length,
+    },
     plan: derivePlan(foldedMessages),
     usage: summarizeUsage(state.lastSessionStats),
     approvals: state.pendingUi
-      .filter((request) => request.method === 'select' || request.method === 'confirm')
+      .filter(
+        (request) =>
+          request.method === 'select' || request.method === 'confirm' || request.method === 'editor'
+      )
       .map((request) => ({
         id: request.id,
-        method: request.method as 'select' | 'confirm',
+        method: request.method as 'select' | 'confirm' | 'editor',
         title: request.title,
         message: request.message,
         options: request.options,
+        placeholder: request.placeholder,
+        prefill: request.prefill,
       })),
     pendingContextItems: extra.composer.pendingContextItems,
     pendingImages: extra.composer.pendingImages.map(normalizePendingImage),

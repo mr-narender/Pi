@@ -29,6 +29,13 @@ test('createWebviewSnapshot serializes transcript and composer ui state', () => 
   ];
   state.statuses.demo = 'ok';
   state.widgets.push({ key: 'w', lines: ['line'], placement: 'aboveEditor' });
+  state.state.sdkVersion = '1.0.4';
+  state.commands = [
+    { name: 'model', source: 'builtin' },
+    { name: 'ext', source: 'extension' },
+    { name: 'prompt', source: 'prompt' },
+    { name: 'skill:review', source: 'skill' },
+  ];
 
   const composer = createEmptyComposerState();
   composer.draft = 'draft';
@@ -80,6 +87,13 @@ test('createWebviewSnapshot serializes transcript and composer ui state', () => 
   );
   assert.equal(snapshot.draft, 'draft');
   assert.equal(snapshot.pendingContextItems[0]?.workspaceRelativePath, 'src/app.ts');
+  assert.deepEqual(snapshot.runtime, {
+    sdkVersion: '1.0.4',
+    commands: 4,
+    extensions: 1,
+    prompts: 1,
+    skills: 1,
+  });
 });
 
 import { DEFAULT_MESSAGE_WINDOW, firstPromptPreview } from '../../src/webview/model';
@@ -181,18 +195,9 @@ test('createWebviewSnapshot maps Pi content blocks into structured message block
   assert.equal(blocks?.[2]?.kind, 'text');
 });
 
-test('parseWebviewMessage accepts insertCode and newFileFromCode with language', () => {
-  assert.deepEqual(parseWebviewMessage({ type: 'insertCode', text: 'x=1', language: 'py' }), {
-    type: 'insertCode',
-    text: 'x=1',
-    language: 'py',
-  });
-  assert.deepEqual(parseWebviewMessage({ type: 'newFileFromCode', text: 'a' }), {
-    type: 'newFileFromCode',
-    text: 'a',
-    language: undefined,
-  });
-  assert.equal(parseWebviewMessage({ type: 'insertCode' }), undefined); // missing text
+test('parseWebviewMessage rejects removed code-to-editor compatibility messages', () => {
+  assert.equal(parseWebviewMessage({ type: 'insertCode', text: 'x=1', language: 'py' }), undefined);
+  assert.equal(parseWebviewMessage({ type: 'newFileFromCode', text: 'a' }), undefined);
 });
 
 test('parseWebviewMessage accepts requestSlashCommands (#6)', () => {
@@ -236,6 +241,11 @@ test('parseWebviewMessage accepts respondUi', () => {
     type: 'respondUi',
     id: 'b',
     value: 'Allow',
+  });
+  assert.deepEqual(parseWebviewMessage({ type: 'respondUi', id: 'c', cancelled: true }), {
+    type: 'respondUi',
+    id: 'c',
+    cancelled: true,
   });
   assert.equal(parseWebviewMessage({ type: 'respondUi' }), undefined);
 });

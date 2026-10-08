@@ -5,6 +5,7 @@ declare function acquireVsCodeApi(): {
 };
 
 import morphdom from 'morphdom';
+import mermaid from 'mermaid';
 import { isLiveWorking } from '../working';
 import { isCoreMenuCommand, parseCoreSlash } from '../../commands/coreSlash';
 import { mergeLocalCommands } from '../../commands/coreCatalog';
@@ -14,6 +15,8 @@ import { installCustomTooltips } from './customTooltip';
 import {
   COMPOSER_FIELD_ID,
   COPIED_ICON_SVG,
+  MERMAID_DIALOG_CLOSE_ID,
+  MERMAID_DIALOG_ID,
   PREVIEW_DIALOG_ID,
   SEND_BUTTON_ID,
   escapeHtml,
@@ -28,6 +31,11 @@ import {
 const vscode = acquireVsCodeApi();
 const root = document.getElementById('app');
 let currentSnapshot: WebviewSnapshot | undefined;
+let mermaidDialogSrc: string | undefined;
+let mermaidDialogKey: string | undefined;
+let mermaidReturnFocus: HTMLElement | undefined;
+let mermaidRenderId = 0;
+const mermaidSvgCache = new Map<string, Promise<string>>();
 installCustomTooltips();
 
 // Wiring guard for morphdom: renderNow re-runs the event wiring on every render,
@@ -572,6 +580,144 @@ function handlePreviewKeydown(event: KeyboardEvent): void {
   );
 }
 
+function cssColor(name: string, fallback: string): string {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+}
+
+mermaid.initialize({
+  startOnLoad: false,
+  securityLevel: 'strict',
+  suppressErrorRendering: true,
+  theme: 'base',
+  flowchart: { htmlLabels: false, useMaxWidth: true },
+  themeVariables: {
+    background: 'transparent',
+    fontFamily: cssColor('--vscode-font-family', 'system-ui, sans-serif'),
+    primaryColor: cssColor('--vscode-editorWidget-background', '#f5f5f5'),
+    primaryTextColor: cssColor('--vscode-editor-foreground', '#242424'),
+    primaryBorderColor: cssColor('--vscode-panel-border', '#8a8a8a'),
+    lineColor: cssColor('--vscode-descriptionForeground', '#666666'),
+    edgeLabelBackground: cssColor('--vscode-editor-background', '#ffffff'),
+  },
+});
+
+function mermaidSvg(source: string): Promise<string> {
+  const cached = mermaidSvgCache.get(source);
+  if (cached) return cached;
+  const rendered = mermaid
+    .render(`pi-mermaid-${(mermaidRenderId += 1)}`, source)
+    .then(({ svg }) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`)
+    .catch((error) => {
+      mermaidSvgCache.delete(source);
+      throw error;
+    });
+  if (mermaidSvgCache.size >= 50) {
+    mermaidSvgCache.delete(mermaidSvgCache.keys().next().value!);
+  }
+  mermaidSvgCache.set(source, rendered);
+  return rendered;
+}
+
+async function renderMermaidPreview(wrap: HTMLElement): Promise<void> {
+  const source = wrap.querySelector('.mermaid-code code')?.textContent?.trim();
+  const preview = wrap.querySelector<HTMLElement>('.mermaid-preview');
+  const stage = preview?.querySelector<HTMLElement>('.mermaid-preview-stage');
+  const error = preview?.querySelector<HTMLElement>('.mermaid-error');
+  const expand = wrap.querySelector<HTMLButtonElement>('.mermaid-expand');
+  if (!source || !stage || !error || !expand) return;
+
+  stage.setAttribute('aria-busy', 'true');
+  error.hidden = true;
+  expand.disabled = true;
+  try {
+    const src = await mermaidSvg(source);
+    if (
+      !wrap.isConnected ||
+      wrap.querySelector('.mermaid-code code')?.textContent?.trim() !== source
+    )
+      return;
+    const image = document.createElement('img');
+    image.className = 'mermaid-image';
+    image.alt = 'Rendered Mermaid diagram';
+    image.src = src;
+    stage.replaceChildren(image);
+    stage.removeAttribute('aria-busy');
+    expand.disabled = false;
+  } catch {
+    if (
+      !wrap.isConnected ||
+      wrap.querySelector('.mermaid-code code')?.textContent?.trim() !== source
+    )
+      return;
+    stage.replaceChildren();
+    stage.removeAttribute('aria-busy');
+    error.hidden = false;
+  }
+}
+
+function setMermaidView(wrap: HTMLElement, mode: 'code' | 'preview'): void {
+  wrap.dataset.mermaidView = mode;
+  const code = wrap.querySelector<HTMLElement>('.mermaid-code');
+  const preview = wrap.querySelector<HTMLElement>('.mermaid-preview');
+  if (code) code.hidden = mode !== 'code';
+  if (preview) preview.hidden = mode !== 'preview';
+  for (const button of Array.from(wrap.querySelectorAll<HTMLButtonElement>('.mermaid-toggle'))) {
+    const active = button.dataset.mermaidMode === mode;
+    button.classList.toggle('is-active', active);
+    button.setAttribute('aria-pressed', String(active));
+  }
+  if (mode === 'preview') void renderMermaidPreview(wrap);
+}
+
+function mermaidKey(wrap: HTMLElement): string {
+  const message = wrap.closest<HTMLElement>('[data-mid]');
+  const index = Array.from(message?.querySelectorAll('.mermaid-wrap') ?? []).indexOf(wrap);
+  return `${wrap.closest<HTMLElement>('.layout')?.dataset.mermaidSession ?? ''}:${message?.dataset.mid ?? ''}:${index}`;
+}
+
+function closeMermaidDialog(): void {
+  mermaidDialogSrc = undefined;
+  mermaidDialogKey = undefined;
+  const dialog = document.getElementById(MERMAID_DIALOG_ID);
+  if (dialog) dialog.hidden = true;
+  mermaidReturnFocus?.focus();
+  mermaidReturnFocus = undefined;
+}
+
+function restoreMermaidDialog(): void {
+  if (!mermaidDialogSrc || !mermaidDialogKey) return;
+  const dialog = document.getElementById(MERMAID_DIALOG_ID);
+  const output = dialog?.querySelector<HTMLImageElement>('.mermaid-dialog-output img');
+  if (!dialog || !output) return;
+  const source = Array.from(document.querySelectorAll<HTMLElement>('#messages .mermaid-wrap')).find(
+    (wrap) => mermaidKey(wrap) === mermaidDialogKey
+  );
+  if (!source) {
+    mermaidDialogSrc = undefined;
+    mermaidDialogKey = undefined;
+    mermaidReturnFocus = undefined;
+    dialog.hidden = true;
+    return;
+  }
+  const currentSrc = source.querySelector<HTMLImageElement>('.mermaid-image')?.src;
+  if (currentSrc) mermaidDialogSrc = currentSrc;
+  output.src = mermaidDialogSrc;
+  output.hidden = false;
+  dialog.hidden = false;
+}
+
+function handleMermaidDialogKeydown(event: KeyboardEvent): void {
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    closeMermaidDialog();
+    return;
+  }
+  if (event.key === 'Tab') {
+    event.preventDefault();
+    document.getElementById(MERMAID_DIALOG_CLOSE_ID)?.focus();
+  }
+}
+
 function persistViewState(): void {
   const messages = document.getElementById('messages');
   vscode.setState({
@@ -869,13 +1015,16 @@ function renderNow(snapshot: WebviewSnapshot): void {
   // Preserve open dropdown menus across re-render so passive snapshots
   // (streaming, status) don't close the More/Attach menu mid-interaction.
   const openMenus = new Set<string>();
-  // Work phases (and any details marked preserve-open) keep their state across
-  // re-renders — morphdom rebuilds can otherwise snap them shut mid-reading.
+  const closedMenus = new Set<string>();
+  // Keep opened details stable across passive snapshots. Only the fresh-session
+  // drawer preserves a user-closed state; failed/live work phases must be able
+  // to reopen when their new state requires attention.
   for (const el of Array.from(
-    document.querySelectorAll<HTMLDetailsElement>('details[data-preserve-open][open]')
+    document.querySelectorAll<HTMLDetailsElement>('details[data-preserve-open]')
   )) {
     if (el.id) {
-      openMenus.add(el.id);
+      if (el.open) openMenus.add(el.id);
+      else if (el.id === 'pi-session-details') closedMenus.add(el.id);
     }
   }
   for (const id of ['attach-menu']) {
@@ -884,6 +1033,11 @@ function renderNow(snapshot: WebviewSnapshot): void {
       openMenus.add(id);
     }
   }
+  const previewMermaids = new Set(
+    Array.from(
+      document.querySelectorAll<HTMLElement>('.mermaid-wrap[data-mermaid-view="preview"]')
+    ).map(mermaidKey)
+  );
 
   // Patch the DOM instead of rebuilding it (root.innerHTML = ...). Rebuilding
   // destroyed and recreated every node on each update, which caused the heavy
@@ -918,6 +1072,21 @@ function renderNow(snapshot: WebviewSnapshot): void {
       el.open = true;
     }
   }
+  for (const id of closedMenus) {
+    const el = document.getElementById(id) as HTMLDetailsElement | null;
+    if (el) el.open = false;
+  }
+  for (const el of Array.from(
+    document.querySelectorAll<HTMLDetailsElement>('.work-phase.is-error')
+  )) {
+    el.open = true;
+  }
+  for (const wrap of Array.from(document.querySelectorAll<HTMLElement>('.mermaid-wrap'))) {
+    if (previewMermaids.has(mermaidKey(wrap))) {
+      setMermaidView(wrap, 'preview');
+    }
+  }
+  restoreMermaidDialog();
 
   const textarea = document.getElementById(COMPOSER_FIELD_ID) as HTMLTextAreaElement | null;
   if (textarea && composerWasFocused && !authoritativeReset && document.hasFocus()) {
@@ -1227,13 +1396,6 @@ function renderNow(snapshot: WebviewSnapshot): void {
     });
   }
 
-  const codeTextAndLang = (button: HTMLButtonElement): { text: string; language: string } => {
-    const wrap = button.closest('.code-wrap');
-    return {
-      text: wrap?.querySelector('.code-block code')?.textContent ?? '',
-      language: wrap?.getAttribute('data-lang') ?? '',
-    };
-  };
   // Tool approval: Allow/Deny (or option) buttons respond to the pending request.
   for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>('.approval-btn'))) {
     bindOnce(button, 'click', () => {
@@ -1243,30 +1405,29 @@ function renderNow(snapshot: WebviewSnapshot): void {
       }
       const confirmed = button.getAttribute('data-ui-confirmed');
       const value = button.getAttribute('data-ui-value');
-      const message: { type: 'respondUi'; id: string; value?: string; confirmed?: boolean } = {
+      const message: {
+        type: 'respondUi';
+        id: string;
+        value?: string;
+        confirmed?: boolean;
+        cancelled?: boolean;
+      } = {
         type: 'respondUi',
         id,
       };
       if (confirmed !== null) {
         message.confirmed = confirmed === 'true';
+      } else if (button.getAttribute('data-ui-cancelled') === 'true') {
+        message.cancelled = true;
+      } else if (button.getAttribute('data-ui-editor-submit') === 'true') {
+        const editor = button
+          .closest('.approval-card')
+          ?.querySelector<HTMLTextAreaElement>('.approval-editor');
+        message.value = editor?.value ?? '';
       } else if (value !== null) {
         message.value = value;
       }
       vscode.postMessage(message);
-    });
-  }
-
-  // Onboarding: clicking an example prompt loads it into the composer.
-  for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>('[data-example]'))) {
-    bindOnce(button, 'click', () => {
-      const text = button.getAttribute('data-example') ?? '';
-      const field = composerField();
-      if (field && text) {
-        field.value = text;
-        field.dispatchEvent(new Event('input', { bubbles: true }));
-        field.focus();
-        field.setSelectionRange(field.value.length, field.value.length);
-      }
     });
   }
 
@@ -1322,20 +1483,23 @@ function renderNow(snapshot: WebviewSnapshot): void {
       }
     });
   }
-  for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>('.code-insert'))) {
+  for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>('.mermaid-toggle'))) {
     bindOnce(button, 'click', () => {
-      const { text, language } = codeTextAndLang(button);
-      if (text) {
-        vscode.postMessage({ type: 'insertCode', text, language });
-      }
+      const wrap = button.closest<HTMLElement>('.mermaid-wrap');
+      const mode = button.dataset.mermaidMode;
+      if (wrap && (mode === 'code' || mode === 'preview')) setMermaidView(wrap, mode);
     });
   }
-  for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>('.code-newfile'))) {
+  for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>('.mermaid-expand'))) {
     bindOnce(button, 'click', () => {
-      const { text, language } = codeTextAndLang(button);
-      if (text) {
-        vscode.postMessage({ type: 'newFileFromCode', text, language });
-      }
+      const wrap = button.closest<HTMLElement>('.mermaid-wrap');
+      const src = wrap?.querySelector<HTMLImageElement>('.mermaid-image')?.src;
+      if (!wrap || !src) return;
+      mermaidDialogSrc = src;
+      mermaidDialogKey = mermaidKey(wrap);
+      mermaidReturnFocus = button;
+      restoreMermaidDialog();
+      document.getElementById(MERMAID_DIALOG_CLOSE_ID)?.focus();
     });
   }
   for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>('.code-copy'))) {
@@ -1360,6 +1524,8 @@ function renderNow(snapshot: WebviewSnapshot): void {
   }
 
   bindOnce(document.getElementById(PREVIEW_DIALOG_ID), 'keydown', handlePreviewKeydown);
+  bindOnce(document.getElementById(MERMAID_DIALOG_CLOSE_ID), 'click', closeMermaidDialog);
+  bindOnce(document.getElementById(MERMAID_DIALOG_ID), 'keydown', handleMermaidDialogKeydown);
 
   // #1 — Markdown links open externally (no in-webview navigation).
   for (const link of Array.from(root.querySelectorAll<HTMLElement>('.md-link'))) {
