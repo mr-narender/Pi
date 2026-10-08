@@ -2,9 +2,8 @@ body {
   margin: 0;
   color: var(--vscode-foreground);
   background: var(--vscode-editor-background);
-  /* Claude-style rendering: explicit native sans stack (SF Pro on macOS,
-     Segoe UI on Windows) + antialiased smoothing — light-on-dark text renders
-     crisp and light instead of heavy subpixel strokes. */
+  /* System-native rendering: SF Pro on macOS, Segoe UI on Windows, and
+     antialiased smoothing for crisp text on dark themes. */
   font-family:
     -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans', 'Helvetica Neue', sans-serif;
   -webkit-font-smoothing: antialiased;
@@ -256,6 +255,19 @@ pre {
   font-size: 0.92em;
   line-height: 1.45;
   white-space: pre-wrap;
+}
+.approval-editor {
+  width: 100%;
+  min-height: 140px;
+  margin-top: 10px;
+  padding: 9px 10px;
+  resize: vertical;
+  border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
+  border-radius: 7px;
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  font: inherit;
+  line-height: 1.45;
 }
 .approval-actions {
   display: flex;
@@ -558,7 +570,7 @@ body.vscode-reduce-motion .working[data-anim='dolphin'] .working-glyph {
 
 /* #6 — scroll-to-latest button: a modern circular chevron pinned to the
  * bottom-CENTER of the messages area (in the reading flow, above the composer),
- * the ergonomic spot used by ChatGPT/Claude/Messenger. Sticky so it stays put
+ * an ergonomic position above the composer. Sticky so it stays put
  * as the transcript scrolls; only shown when scrolled away from the bottom. */
 .jump-latest {
   position: sticky;
@@ -931,7 +943,7 @@ p {
   }
 }
 
-/* ---- Claude-style editor layout (LOCAL-004) ---- */
+/* ---- Native editor layout (LOCAL-004) ---- */
 html,
 body,
 #app {
@@ -1090,64 +1102,193 @@ button.ghost:hover,
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 16px;
+  gap: 10px;
+  padding: 32px 20px;
   text-align: center;
 }
 
 .empty-mascot {
   color: var(--vscode-charts-orange, #d2795b);
+  margin-bottom: 6px;
 }
 
 .empty-title {
   margin: 0;
-  font-size: 15px;
-  font-weight: 600;
+  font-size: 18px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
   color: var(--vscode-foreground);
 }
 
 .empty-copy {
-  max-width: 360px;
-  margin: 0;
+  max-width: 420px;
+  margin: 0 0 10px;
   color: var(--vscode-descriptionForeground);
+  line-height: 1.45;
+}
+
+.session-details {
+  width: min(520px, 100%);
+  text-align: left;
+  overflow: hidden;
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 12px;
+  background: var(--vscode-editorWidget-background, rgba(128, 128, 128, 0.06));
+}
+.session-details > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 44px;
+  padding: 0 14px;
+  cursor: pointer;
+  list-style: none;
+  color: var(--vscode-foreground);
+}
+.session-details > summary::-webkit-details-marker {
+  display: none;
+}
+.session-details > summary:hover {
+  background: var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.08));
+}
+.session-details-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+.session-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--vscode-testing-iconPassed, #3fb950);
+  box-shadow: 0 0 0 3px
+    color-mix(in srgb, var(--vscode-testing-iconPassed, #3fb950) 14%, transparent);
+}
+.session-details-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--vscode-descriptionForeground);
+}
+.session-details-toggle::after {
+  content: '›';
+  font-size: 16px;
+  line-height: 1;
+  transform: rotate(90deg);
+  transition: transform 120ms ease;
+}
+.session-details:not([open]) .session-details-toggle::after {
+  transform: rotate(0deg);
+}
+.session-details-body {
+  padding: 12px 14px 14px;
+  border-top: 1px solid var(--vscode-panel-border);
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+}
+.session-facts {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+}
+.session-fact {
+  display: grid;
+  grid-template-columns: 74px minmax(0, 1fr);
+  align-items: baseline;
+  gap: 12px;
+}
+.session-fact dt {
+  font-weight: 600;
+  color: var(--vscode-foreground);
+}
+.session-fact dd {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.session-trust {
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
   line-height: 1.5;
 }
-
-.empty-examples {
+.session-trust.is-trusted {
+  color: var(--vscode-testing-iconPassed, #3fb950);
+  background: color-mix(in srgb, var(--vscode-testing-iconPassed, #3fb950) 12%, transparent);
+}
+.session-trust.is-restricted {
+  color: var(--vscode-testing-iconFailed, #f85149);
+  background: color-mix(in srgb, var(--vscode-testing-iconFailed, #f85149) 12%, transparent);
+}
+.session-capabilities {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--vscode-panel-border);
+}
+.session-capability {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  width: min(320px, 80%);
+  gap: 1px;
+  min-width: 0;
 }
-
-.empty-example {
-  padding: 9px 14px;
-  font-size: 13px;
-  text-align: left;
+.session-capability strong {
   color: var(--vscode-foreground);
-  background: var(--vscode-editorWidget-background, rgba(128, 128, 128, 0.1));
-  border: 1px solid var(--vscode-panel-border);
-  border-radius: 8px;
-  cursor: pointer;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.session-capability span {
+  overflow: hidden;
+  font-size: 10px;
+  text-overflow: ellipsis;
 }
 
-.empty-example:hover {
-  border-color: var(--pi-tool-accent, #4ec9b0);
-  background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.18));
-}
-
-.empty-hints {
-  margin: 4px 0 0;
-  font-size: 11.5px;
+.empty-shortcuts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px 16px;
+  margin-top: 8px;
+  font-size: 11px;
   color: var(--vscode-descriptionForeground);
 }
 
-.empty-hints kbd {
+.empty-shortcut {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.empty-shortcut kbd {
+  min-width: 20px;
   padding: 1px 5px;
   font-family: var(--vscode-editor-font-family, ui-monospace, monospace);
   font-size: 0.9em;
+  text-align: center;
   border: 1px solid var(--vscode-panel-border);
   border-radius: 4px;
   background: var(--vscode-editorWidget-background, rgba(128, 128, 128, 0.12));
+}
+
+@media (max-width: 520px) {
+  .empty-state {
+    justify-content: flex-start;
+    padding: 24px 12px;
+  }
+  .session-capabilities {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    row-gap: 10px;
+  }
 }
 
 .composer-dock {
@@ -1863,11 +2004,8 @@ button.ghost:hover,
   border-left: 3px solid var(--vscode-panel-border);
   opacity: 0.9;
 }
-/* Tables — "orange accent" layout (user-picked, docs/design/table-layouts.html
-   option 6): NO outer frame, NO vertical grid, no header fill — kills the
-   box-within-a-box nesting inside the bordered message card. Structure comes
-   from hairline row separators + a brand-orange header (text + underline);
-   rows glow faintly orange on hover. */
+/* Tables use no outer frame, vertical grid, or header fill. Hairline row
+   separators provide structure without nesting another box inside a card. */
 #messages .md-table-wrap {
   /* Clear air above/below so the table never runs into surrounding prose. */
   margin: 20px 0;
@@ -2134,7 +2272,7 @@ button.ghost:hover,
 #messages .timeline-standalone {
   margin-top: 0;
 }
-/* Agent bubble: neutral surface (distinct from the user's teal), same shape. */
+/* Agent bubble: neutral surface, same shape. */
 #messages .message-assistant .message-body {
   align-self: flex-start;
   width: fit-content;
@@ -2156,7 +2294,7 @@ button.ghost:hover,
 #messages .message-user .message-role {
   text-align: right;
 }
-/* User bubble: teal tint (option D). */
+/* User bubble: subtle tint; the final layer resolves its theme color. */
 #messages .message-user .message-body {
   align-self: flex-end;
   width: fit-content;
@@ -2222,6 +2360,127 @@ button.ghost:hover,
 }
 #messages .code-copy.is-copied {
   color: var(--vscode-charts-green, #57c7a0);
+}
+#messages .code-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+#messages .mermaid-toggle {
+  padding: 2px 7px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--vscode-descriptionForeground, var(--vscode-foreground));
+  font-size: 11px;
+}
+#messages .mermaid-toggle:hover,
+#messages .mermaid-toggle.is-active {
+  color: var(--vscode-foreground);
+  border-color: var(--vscode-panel-border);
+  background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.12));
+}
+#messages .message-body:has(.mermaid-wrap),
+#messages .timeline:has(.mermaid-wrap) {
+  align-self: stretch;
+  width: 100%;
+}
+#messages .mermaid-preview {
+  overflow: auto;
+  border: 0;
+  padding: 20px;
+  background: var(--vscode-editor-background);
+}
+#messages .mermaid-preview-stage {
+  display: grid;
+  min-height: 160px;
+  place-items: center;
+}
+#messages .mermaid-image {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  margin: auto;
+}
+#messages .mermaid-loading,
+#messages .mermaid-error {
+  color: var(--vscode-descriptionForeground, var(--vscode-foreground));
+  font-size: 12px;
+}
+#messages .mermaid-error {
+  margin: 0;
+  text-align: center;
+}
+#messages .mermaid-wrap[data-mermaid-view='code'] .mermaid-expand {
+  display: none;
+}
+
+.mermaid-dialog {
+  z-index: 100;
+}
+.mermaid-dialog[hidden] {
+  display: none;
+}
+.mermaid-dialog-card {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 0;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+  border-radius: 12px;
+}
+.mermaid-dialog-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 48px;
+  padding: 8px 12px 8px 16px;
+  border-bottom: 1px solid var(--vscode-panel-border);
+}
+.mermaid-dialog-head h2 {
+  font-size: 13px;
+  font-weight: 600;
+}
+.mermaid-dialog-head .code-btn {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--vscode-descriptionForeground, var(--vscode-foreground));
+  font-size: 18px;
+  line-height: 1;
+}
+.mermaid-dialog-head .code-btn:hover {
+  border-color: var(--vscode-panel-border);
+  background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.12));
+  color: var(--vscode-foreground);
+}
+.mermaid-dialog-output {
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: 24px;
+  background: var(--vscode-editor-background);
+}
+.mermaid-dialog-output img {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
 }
 
 /* #7 — clamp long tool/result output with a Show more toggle. */
@@ -2297,11 +2556,11 @@ button.ghost:hover,
  * bubble tint breathe through; the COPY bar is a hairline, not a band. */
 #messages .message-body .code-wrap {
   background: color-mix(in srgb, var(--vscode-editor-background) 30%, transparent);
-  border: 1px solid var(--glass-line, rgba(128, 128, 128, 0.22));
+  border: 1px solid var(--vscode-panel-border);
 }
 #messages .message-body .code-wrap .code-lang {
   background: transparent;
-  border-bottom: 1px solid var(--glass-line, rgba(128, 128, 128, 0.18));
+  border-bottom: 1px solid var(--vscode-panel-border);
 }
 
 /* ================= Meta sections: thinking / tool / result / image =========
@@ -2401,24 +2660,10 @@ button.ghost:hover,
   margin-top: 6px;
 }
 
-/* ================= Assistant turn: TIMELINE of rounded cards =================
-   Each step (thinking / tool / result / answer) is a node with a colored dot on
-   a connecting rail; content sits in a rounded, hairline-bordered card (no
-   fill). Fuses the timeline + card directions. */
+/* Assistant turn: plain stacked cards. */
 #messages .timeline {
-  position: relative;
   margin-top: 2px;
-  padding-left: 26px;
-}
-#messages .timeline::before {
-  content: '';
-  position: absolute;
-  left: 6px;
-  top: 10px;
-  bottom: 10px;
-  width: 2px;
-  background: var(--vscode-panel-border);
-  border-radius: 1px;
+  padding-left: 0;
 }
 #messages .tl-node {
   position: relative;
@@ -2427,18 +2672,6 @@ button.ghost:hover,
 }
 #messages .tl-node:last-child {
   margin-bottom: 0;
-}
-/* Small colored marker on the rail (the icon lives in the card header). */
-#messages .tl-dot {
-  position: absolute;
-  left: -24px;
-  top: 15px;
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  box-sizing: border-box;
-  background: var(--vscode-editor-background, #1e1e1e);
-  border: 2px solid var(--vscode-descriptionForeground, var(--vscode-panel-border));
 }
 #messages .tl-card {
   box-sizing: border-box;
@@ -2525,10 +2758,7 @@ button.ghost:hover,
   color: var(--vscode-editor-foreground, inherit);
 }
 
-/* Thinking = secondary (dim, italic). Icon+label+marker share the tone. */
-#messages .tl-thinking .tl-dot {
-  border-color: var(--vscode-descriptionForeground, var(--vscode-panel-border));
-}
+/* Thinking = secondary (dim, italic). */
 #messages .tl-thinking .tl-label,
 #messages .tl-thinking .meta-icon {
   color: var(--vscode-descriptionForeground, var(--vscode-foreground));
@@ -2538,19 +2768,7 @@ button.ghost:hover,
   font-style: italic;
 }
 
-/* Tool / result = teal accent (fixed, theme-independent — not the theme's link
-   color, which is gold in some themes). */
-#messages {
-  --pi-tool-accent: #4ec9b0;
-  /* Two-tone bubbles: teal for the user, neutral surface for the agent. */
-  --pi-user-bubble: rgba(78, 201, 176, 0.13);
-  --pi-user-bubble-border: rgba(78, 201, 176, 0.34);
-  --pi-agent-bubble: var(--vscode-editorWidget-background, rgba(127, 127, 127, 0.09));
-}
-#messages .tl-tool .tl-dot,
-#messages .tl-result .tl-dot {
-  border-color: var(--pi-tool-accent);
-}
+/* Tool/result colors resolve through the final theme layer. */
 #messages .tl-tool .tl-label,
 #messages .tl-tool .meta-icon,
 #messages .tl-result .tl-label,
@@ -2559,9 +2777,6 @@ button.ghost:hover,
 }
 
 /* Error = semantic danger. */
-#messages .tl-result.is-error .tl-dot {
-  border-color: var(--vscode-errorForeground, #f0716a);
-}
 #messages .tl-result.is-error .meta-icon {
   color: var(--vscode-errorForeground, #f0716a);
 }
@@ -2569,11 +2784,7 @@ button.ghost:hover,
   color: var(--vscode-errorForeground, #f0716a);
 }
 
-/* Answer = the result of the turn; green node, full-contrast text. */
-#messages .tl-response .tl-dot {
-  border-color: var(--vscode-charts-green, #57c7a0);
-  background: var(--vscode-charts-green, #57c7a0);
-}
+/* Answer = the result of the turn; full-contrast text. */
 #messages .tl-response .tl-label,
 #messages .tl-response .meta-icon {
   color: var(--vscode-charts-green, #57c7a0);
@@ -2927,7 +3138,7 @@ button.ghost:hover,
 }
 
 #messages .inline-edit-model-btn {
-  border: 1px solid var(--glass-line-strong, var(--vscode-panel-border));
+  border: 1px solid var(--vscode-panel-border);
   background: transparent;
   color: var(--vscode-descriptionForeground);
   font-size: 10.5px;
@@ -2938,151 +3149,51 @@ button.ghost:hover,
 }
 
 #messages .inline-edit-model-btn:hover {
-  color: var(--ember, #ff8c42);
-  border-color: var(--ember-glow, rgba(255, 140, 66, 0.4));
+  color: var(--vscode-textLink-activeForeground, var(--vscode-textLink-foreground));
+  border-color: var(--vscode-focusBorder);
 }
 
-/* ═══════════════════ Refined Glass design layer (Option A) ═══════════════════
-   Layered translucency + soft ember glow. Neutral glass derives from the theme
-   foreground via color-mix, so light themes get dark-on-light glass for free;
-   the ember accent is fixed brand. Appended last so it wins the cascade. */
-:root {
-  --glass-1: color-mix(in srgb, var(--vscode-foreground) 3%, transparent);
-  --glass-2: color-mix(in srgb, var(--vscode-foreground) 5%, transparent);
-  --glass-line: color-mix(in srgb, var(--vscode-foreground) 8%, transparent);
-  --glass-line-strong: color-mix(in srgb, var(--vscode-foreground) 13%, transparent);
-  --ember: #ff8c42;
-  --ember-deep: #df5f24;
-  --ember-soft: rgba(255, 140, 66, 0.09);
-  --ember-line: rgba(255, 140, 66, 0.22);
-  --ember-glow: rgba(255, 140, 66, 0.35);
+/* Component structure and interaction states. Visual treatment lives in the
+   single design layer below. */
+body {
+  overflow: hidden;
 }
 
-/* Surfaces: depth from layers, not boxes-in-boxes. */
-#messages .message-user .message-body {
-  background: var(--ember-soft);
-  border: 1px solid var(--ember-line);
-  border-radius: 12px 12px 4px 12px;
-}
-
-#messages .message-assistant .message-body {
-  background: var(--glass-1);
-  border: 1px solid var(--glass-line);
-  border-radius: 12px;
-}
-
-#messages .tl-card {
-  background: color-mix(in srgb, var(--vscode-editor-background) 55%, transparent);
-  border: 1px solid var(--glass-line);
-  border-radius: 9px;
-}
-
-.work-phase {
-  background: var(--glass-1);
-  border: 1px solid var(--glass-line);
-  border-radius: 9px;
-}
-
-.work-phase > summary.work-phase-head:hover {
-  background: var(--glass-2);
-}
-
-/* Floating surfaces get real glass: blur + elevation. */
-.composer-dock {
-  background: var(--glass-2);
-  border: 1px solid var(--glass-line-strong);
-  border-radius: 12px;
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
-  backdrop-filter: blur(6px);
-  transition: border-color 140ms ease;
-}
-
-.composer-dock:focus-within {
-  border-color: var(--ember-glow);
-}
-
-.find-bar,
-.menu-panel,
-.queue-tray,
-.retry-banner {
-  background: color-mix(in srgb, var(--vscode-editor-background) 78%, transparent);
-  backdrop-filter: blur(8px);
-  border: 1px solid var(--glass-line-strong);
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
-}
-
-/* Ember energy on the actions that matter. */
-.send-button {
-  background: linear-gradient(135deg, var(--ember), var(--ember-deep));
-  color: #1a1a1a;
-  border: none;
-  box-shadow: 0 0 12px var(--ember-glow);
-  transition:
-    box-shadow 140ms ease,
-    transform 140ms ease;
-}
-
-.send-button:not(:disabled):hover {
-  box-shadow: 0 0 18px var(--ember-glow);
-  transform: translateY(-1px);
-}
-
-/* Agentic Mode chat list — a dedicated webview, not a native tree view.
- * Row spacing, font size, custom icons, and the New Chat button below are
- * all things a vscode.TreeDataProvider has no API for (row height comes
- * from VS Code's internal list renderer, never exposed to extensions —
- * verified against listView.ts; the VS Code team itself has flagged that
- * list/tree isn't a good fit for chat UI, microsoft/vscode#268858). This
- * view owns its own look end to end, deliberately not trying to match
- * native tree styling. */
-.chat-list-shell {
+.layout {
   display: flex;
   flex-direction: column;
-  width: 100%;
-  min-width: 0;
-  height: 100%;
-  padding: 14px 12px;
-  gap: 12px;
+  height: 100vh;
+  height: 100dvh;
   box-sizing: border-box;
 }
 
-.chat-list-scroll {
-  flex: 1;
-  min-width: 0;
-  overflow-x: hidden;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+#messages {
+  padding-bottom: 20px;
 }
 
-/* Thumbnail-ONLY image chip summary — an enlarged preview IS the chip (no
- * visible filename; the name lives in aria-label/title). Full preview stays
- * in the expanded details. */
 .chip-details summary .chip-thumb {
+  display: block;
   width: 48px;
   height: 48px;
   object-fit: cover;
+  border: 1px solid var(--vscode-panel-border);
   border-radius: 8px;
-  display: block;
-  border: 1px solid var(--glass-line, rgba(128, 128, 128, 0.25));
 }
 
-/* Image chips with a live thumbnail: NO capsule — the thumbnail IS the chip,
- * and the remove × overlays its top-right corner. (Reselect-state image
- * chips keep the text capsule.) */
 .chip-shell[data-chip-kind='image']:has(.chip-thumb) {
-  padding: 0;
-  border: none;
-  background: transparent;
-  border-radius: 8px;
   max-width: none;
   gap: 0;
-}
-.chip-shell[data-chip-kind='image']:has(.chip-thumb) .chip-details > summary {
   padding: 0;
-  max-width: none;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
 }
+
+.chip-shell[data-chip-kind='image']:has(.chip-thumb) .chip-details > summary {
+  max-width: none;
+  padding: 0;
+}
+
 .chip-shell[data-chip-kind='image']:has(.chip-thumb) .chip-remove-button {
   position: absolute;
   top: 2px;
@@ -3090,29 +3201,26 @@ button.ghost:hover,
   z-index: 5;
   width: 16px;
   height: 16px;
-  font-size: 11px;
   color: #fff;
   background: rgba(0, 0, 0, 0.55);
-}
-.chip-shell[data-chip-kind='image']:has(.chip-thumb) .chip-remove-button:hover {
-  background: rgba(0, 0, 0, 0.8);
-  color: #fff;
+  font-size: 11px;
 }
 
-/* Clickable file mentions in prose (linkifyFileMentions) — same delegated
- * [data-file-open] wiring as the tool-card buttons. */
+.chip-shell[data-chip-kind='image']:has(.chip-thumb) .chip-remove-button:hover {
+  color: #fff;
+  background: rgba(0, 0, 0, 0.8);
+}
+
 .file-link {
   cursor: pointer;
 }
 
 code.inline-code.file-link:hover,
 a.md-link.file-link:hover {
-  text-decoration: underline;
   color: var(--vscode-textLink-activeForeground, var(--vscode-textLink-foreground));
+  text-decoration: underline;
 }
 
-/* Context-fill gauge on the status chip (renderStatusChip): amber nearing
- * the auto-compact trigger, red past it. */
 .composer-status .usage-part.usage-warn {
   color: var(--vscode-charts-yellow, #e2b73d);
   font-weight: 600;
@@ -3123,392 +3231,26 @@ a.md-link.file-link:hover {
   font-weight: 600;
 }
 
-/* Oversized-session warning in a chat-list row's detail line. */
 .chat-list-row-size-warn {
   color: var(--vscode-charts-yellow, #e2b73d);
 }
 
-.chat-list-search {
-  width: 100%;
-  padding: 7px 10px;
-  border-radius: 8px;
-  font-size: 13px;
-  color: var(--vscode-input-foreground);
-  background: var(--vscode-input-background);
-  border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
-}
-
-.chat-list-search:focus {
-  outline: 1px solid var(--vscode-focusBorder);
-  outline-offset: -1px;
-}
-
-.chat-list-row:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder);
-  outline-offset: -1px;
-}
-
-.chat-list-row {
-  position: relative; /* anchor for the hover action overlay */
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  min-height: 42px;
-  padding: 7px 10px;
-  border-radius: 8px;
-  border: 1px solid transparent;
-  cursor: pointer;
-  background: var(--glass-1);
-  transition:
-    background 120ms ease,
-    border-color 120ms ease;
-}
-
-.chat-list-row:hover {
-  background: var(--glass-2);
-  border-color: var(--glass-line);
-}
-
-.chat-list-row.active {
-  background: var(--ember-soft);
-  border-color: var(--ember-line);
-}
-
-.chat-list-row-icon {
-  flex: none;
-  width: 18px;
-  height: 18px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--vscode-descriptionForeground);
-}
-
-.chat-list-row.active .chat-list-row-icon {
-  color: var(--ember);
-}
-
-.chat-list-row-icon svg {
-  width: 16px;
-  height: 16px;
-}
-
-.chat-list-row-text {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.chat-list-row-title {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--vscode-foreground);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.chat-list-row-detail {
-  font-size: 12px;
-  color: var(--vscode-descriptionForeground);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* Hover action strip (favorite / rename / delete) — per explicit feedback:
- * hover icons only, no right-click menu. An absolute OVERLAY pill (own
- * opaque background), not a flex sibling: reserving strip width squeezed
- * the name into a sliver, so at rest the name gets the row's full width
- * and the strip floats over the right end only while hovering. */
-.chat-list-row-actions {
-  position: absolute;
-  right: 8px;
-  top: 50%;
-  transform: translateY(-50%);
-  display: none;
-  align-items: center;
-  gap: 2px;
-  padding: 2px;
-  border-radius: 8px;
-  background: var(--vscode-sideBar-background, var(--vscode-editor-background));
-  border: 1px solid var(--glass-line, rgba(128, 128, 128, 0.2));
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
-}
-
-.chat-list-row:hover .chat-list-row-actions,
-.chat-list-row-actions:focus-within {
-  display: flex;
-}
-
-.chat-list-row-action {
-  flex: none;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 6px;
-  border: none;
-  background: transparent;
-  color: var(--vscode-descriptionForeground);
-  cursor: pointer;
-  transition:
-    background 120ms ease,
-    color 120ms ease;
-}
-
-.chat-list-row-action:hover {
-  background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.15));
-}
-
-.chat-list-row-fav.is-fav {
-  color: var(--vscode-charts-yellow, #e2b73d);
-}
-
-.chat-list-row-delete:hover {
-  background: rgba(220, 60, 60, 0.15);
-  color: #e05252;
-}
-
-.chat-list-row-action svg {
-  width: 14px;
-  height: 14px;
-}
-
-/* At-rest favorite marker: a small gold star inline with the name. Hidden
- * while the row is hovered — the strip's toggle star is visible then and
- * two stars at once reads as clutter. */
-.chat-list-row-favbadge {
-  display: inline-flex;
-  vertical-align: -1px;
-  margin-right: 5px;
-  color: var(--vscode-charts-yellow, #e2b73d);
-}
-
-.chat-list-row-favbadge svg {
-  width: 11px;
-  height: 11px;
-}
-
-.chat-list-row:hover .chat-list-row-favbadge {
-  display: none;
-}
-
-/* Custom tooltip (customTooltip.ts) — VS Code's webview sandboxing makes
- * the native `title` attribute tooltip unreliable, confirmed by hovering a
- * real button in the real extension and getting nothing. Matches VS
- * Code's own hover-widget theme variables so it looks native even though
- * it isn't. Fully solid, like every other menu/status surface this
- * session settled on — a tooltip is exactly the kind of thing you need to
- * read quickly, not a content surface. */
 .custom-tooltip {
   position: fixed;
   z-index: 1000;
   max-width: 320px;
   padding: 4px 8px;
-  font-size: 12px;
-  line-height: 1.4;
+  border: 1px solid var(--vscode-editorHoverWidget-border, var(--vscode-panel-border));
+  border-radius: 5px;
   color: var(--vscode-editorHoverWidget-foreground, var(--vscode-foreground));
   background: var(--vscode-editorHoverWidget-background, var(--vscode-editor-background));
-  border: 1px solid var(--vscode-editorHoverWidget-border, var(--glass-line-strong));
-  border-radius: 4px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.24);
+  font-size: 12px;
+  line-height: 1.4;
   pointer-events: none;
   white-space: pre-line;
 }
 
-.chat-list-empty,
-.chat-list-loading {
-  padding: 24px 12px;
-  text-align: center;
-  color: var(--vscode-descriptionForeground);
-  font-size: 13px;
-}
-
-.jump-latest {
-  backdrop-filter: blur(6px);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
-}
-
-/* Motion: new messages rise in; the streaming answer breathes. morphdom only
-   inserts NEW nodes, so existing cards never re-animate. */
-@keyframes pi-rise-in {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-#messages .message-card {
-  animation: pi-rise-in 150ms ease-out;
-}
-
-@keyframes pi-glow-pulse {
-  0%,
-  100% {
-    box-shadow: 0 0 0 rgba(255, 140, 66, 0);
-  }
-  50% {
-    box-shadow: 0 0 16px rgba(255, 140, 66, 0.16);
-  }
-}
-
-#messages .tl-card.tl-answer:has(.js-stream-text) {
-  border-color: var(--ember-line);
-  animation: pi-glow-pulse 2.4s ease-in-out infinite;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  #messages .message-card,
-  #messages .tl-card.tl-answer:has(.js-stream-text) {
-    animation: none;
-  }
-  .send-button,
-  .composer-dock {
-    transition: none;
-  }
-}
-
-/* High contrast themes: glass off, honest borders back. */
-body.vscode-high-contrast .composer-dock,
-body.vscode-high-contrast .find-bar,
-body.vscode-high-contrast .menu-panel,
-body.vscode-high-contrast .queue-tray,
-body.vscode-high-contrast .retry-banner,
-body.vscode-high-contrast .jump-latest {
-  backdrop-filter: none;
-  background: var(--vscode-editor-background);
-  box-shadow: none;
-}
-
-body.vscode-high-contrast .send-button {
-  background: var(--vscode-button-background);
-  color: var(--vscode-button-foreground);
-  box-shadow: none;
-}
-
-/* ═══ Refined Glass — pass 2: full component coverage ═══ */
-
-/* Approval cards: the most-seen agentic moment gets the full treatment. */
-.approval-card {
-  background: color-mix(in srgb, var(--vscode-editor-background) 72%, transparent);
-  backdrop-filter: blur(8px);
-  border: 1px solid var(--ember-line);
-  border-radius: 12px;
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.3);
-}
-
-.approval-btn {
-  background: var(--glass-2);
-  border: 1px solid var(--glass-line-strong);
-  border-radius: 7px;
-  transition: border-color 120ms ease;
-}
-
-.approval-btn:hover {
-  border-color: var(--ember-glow);
-  background: var(--glass-2);
-}
-
-.approval-allow {
-  background: linear-gradient(135deg, var(--ember), var(--ember-deep));
-  border: none;
-  color: #1a1a1a;
-  font-weight: 600;
-  box-shadow: 0 0 10px rgba(255, 140, 66, 0.25);
-}
-
-.approval-allow:hover {
-  box-shadow: 0 0 16px var(--ember-glow);
-  background: linear-gradient(135deg, var(--ember), var(--ember-deep));
-}
-
-/* Recovery / restricted-mode banners. */
-.banner {
-  background: color-mix(in srgb, var(--vscode-editor-background) 78%, transparent);
-  backdrop-filter: blur(8px);
-  border: 1px solid var(--glass-line-strong);
-  border-radius: 10px;
-  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.3);
-}
-
-/* Composer status chip (model · cost · thinking). */
-.composer-status > summary {
-  background: var(--glass-1);
-  border: 1px solid var(--glass-line);
-  border-radius: 999px;
-  transition: border-color 120ms ease;
-}
-
-.composer-status > summary:hover {
-  border-color: var(--ember-glow);
-  background: var(--glass-2);
-}
-
-/* Attachment tray chips. */
-.attachment-tray {
-  background: var(--glass-1);
-  border: 1px solid var(--glass-line);
-  border-radius: 10px;
-}
-
-/* Code blocks: layered, header as its own glass strip, ember copy hover. */
-.code-wrap {
-  background: color-mix(in srgb, var(--vscode-editor-background) 60%, transparent);
-  border: 1px solid var(--glass-line);
-  border-radius: 10px;
-  overflow: hidden;
-}
-
-.code-lang {
-  background: var(--glass-1);
-  border-bottom: 1px solid var(--glass-line);
-}
-
-.code-btn {
-  border-radius: 6px;
-  transition: color 120ms ease;
-}
-
-/* Icon-only copy button on code cards (was a "Copy" text label). */
-.code-btn .i-copy {
-  display: block;
-}
-.code-btn.is-copied {
-  color: var(--vscode-testing-iconPassed, #4ec9b0);
-}
-
-.code-btn:hover {
-  color: var(--ember);
-}
-
-/* Floating message actions (copy / edit-restart). */
-.msg-actions {
-  background: color-mix(in srgb, var(--vscode-editor-background) 70%, transparent);
-  backdrop-filter: blur(6px);
-  border: 1px solid var(--glass-line);
-  border-radius: 8px;
-  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.3);
-}
-
-.msg-actions button:hover {
-  color: var(--ember);
-}
-
-/* Boot state: soft ember ambiance behind the squiggle. */
-.connecting-state {
-  background: radial-gradient(420px 260px at 50% 38%, rgba(255, 140, 66, 0.05), transparent);
-}
-
-/* The chat list inherits the OS scrollbar preference (including Windows auto-hide). */
 body:not(.chat-list-view) ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
@@ -3519,327 +3261,52 @@ body:not(.chat-list-view) ::-webkit-scrollbar-track {
 }
 
 body:not(.chat-list-view) ::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--vscode-foreground) 16%, transparent);
-  border-radius: 5px;
   border: 2px solid transparent;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--vscode-foreground) 16%, transparent);
   background-clip: padding-box;
 }
 
 body:not(.chat-list-view) ::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--vscode-foreground) 28%, transparent);
   border: 2px solid transparent;
+  background: color-mix(in srgb, var(--vscode-foreground) 28%, transparent);
   background-clip: padding-box;
 }
 
-/* High-contrast: pass-2 surfaces drop glass too. */
-body.vscode-high-contrast .approval-card,
-body.vscode-high-contrast .banner,
-body.vscode-high-contrast .msg-actions,
-body.vscode-high-contrast .code-wrap,
-body.vscode-high-contrast .composer-status > summary {
-  backdrop-filter: none;
-  background: var(--vscode-editor-background);
-  box-shadow: none;
-}
-
-body.vscode-high-contrast .approval-allow {
-  background: var(--vscode-button-background);
-  color: var(--vscode-button-foreground);
-  box-shadow: none;
-}
-
-/* ═══ Refined Glass — pass 3: make the glass VISIBLE ═══
-   RCA: translucent layers over a flat opaque background are invisible, and
-   nothing ever scrolled behind the composer, so its blur never engaged.
-   Fix: (1) ambient depth in the page background, (2) the composer now FLOATS
-   over the transcript — messages scroll behind real frosted glass. */
-
-body {
-  background:
-    radial-gradient(900px 480px at 12% -8%, rgba(255, 140, 66, 0.055), transparent 60%),
-    radial-gradient(1100px 600px at 88% 112%, rgba(223, 95, 36, 0.04), transparent 55%),
-    radial-gradient(
-      700px 420px at 70% 20%,
-      color-mix(in srgb, var(--vscode-foreground) 2.5%, transparent),
-      transparent 65%
-    ),
-    var(--vscode-editor-background);
-  background-attachment: fixed;
-}
-
-/* Floating glass composer: viewport-anchored, transcript scrolls beneath. */
-.composer-dock {
-  position: fixed;
-  left: 12px;
-  right: 12px;
-  bottom: 12px;
-  z-index: 24;
-  background: color-mix(in srgb, var(--vscode-editor-background) 62%, transparent);
-  backdrop-filter: blur(14px) saturate(1.15);
-  box-shadow:
-    0 10px 32px rgba(0, 0, 0, 0.42),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05);
-}
-
-/* The transcript keeps clear of the dock (JS publishes the live height). */
-#messages {
-  padding-bottom: var(--composer-clearance, 150px);
-}
-
-/* Stronger, *visible* layering now that light varies behind surfaces. */
-:root {
-  --glass-1: color-mix(in srgb, var(--vscode-foreground) 4.5%, transparent);
-  --glass-2: color-mix(in srgb, var(--vscode-foreground) 7%, transparent);
-}
-
-#messages .message-assistant .message-body,
-#messages .tl-card,
-.work-phase {
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
-}
-
-body.vscode-light .composer-dock {
-  box-shadow:
-    0 10px 32px rgba(0, 0, 0, 0.16),
-    inset 0 1px 0 rgba(255, 255, 255, 0.5);
-}
-
-body.vscode-high-contrast {
-  background: var(--vscode-editor-background);
-}
-
-body.vscode-high-contrast .composer-dock {
-  position: fixed;
-  backdrop-filter: none;
-  background: var(--vscode-editor-background);
-  border: 1px solid var(--vscode-panel-border);
-}
-
-/* ═══ Refined Glass — pass 4: popover direction, light themes, readability ═══ */
-
-/* The status-chip popover opens UPWARD like + and / — the composer is fixed
-   at the viewport bottom, so downward panels rendered off-screen. */
 .composer-status {
   position: relative;
 }
 
 .composer-status .menu-panel {
   top: auto;
-  bottom: calc(100% + 10px);
   right: 0;
-  margin-top: 0;
+  bottom: calc(100% + 10px);
   max-height: 55vh;
+  margin-top: 0;
   overflow: auto;
 }
 
-/* Menus/popovers: FULLY solid, no transparency at all. The glass look kept
-   causing real readability problems in practice (92% then 98% opaque both
-   still let content behind it show through enough to be distracting/
-   confusing, worse in some real themes than the synthetic ones this was
-   verified against) — a menu is functional UI everyone needs to read
-   quickly, not a decorative surface, so it doesn't get the glass treatment
-   the rest of the app does. Ember hover rail instead of the harsh solid
-   selection bar is the only "design" touch left here on purpose. */
-.menu-panel {
-  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
-  border: 1px solid var(--glass-line-strong);
-  border-radius: 10px;
-  color: var(--vscode-foreground);
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
-}
-
-.menu-panel button,
-.menu-panel .menu-item {
-  display: flex;
-  align-items: center;
-  width: 100%;
-  text-align: left;
-  justify-content: flex-start;
-  color: var(--vscode-foreground);
-  background: transparent;
-  border: none;
-  border-radius: 6px;
-}
-
-.menu-panel button:hover,
-.menu-panel button:focus-visible,
-.menu-panel .menu-item:hover,
-.menu-panel .menu-item:focus-visible {
-  background: var(--glass-2);
-  box-shadow: inset 2px 0 0 var(--ember);
-  color: var(--vscode-foreground);
-  outline: none;
-}
-
-/* The dock's glass was hidden behind an opaque input: the field goes clear,
-   focus ring becomes ember (not the theme's blue). */
-.composer-dock textarea,
-.composer-dock input[type='text'] {
-  background: transparent;
-}
-
-.composer-dock textarea:focus,
-.composer-dock textarea:focus-visible {
-  outline: none;
-}
-
-.composer-dock:focus-within {
-  border-color: var(--ember-glow);
-  box-shadow:
-    0 10px 32px rgba(0, 0, 0, 0.42),
-    0 0 0 1px var(--ember-line),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05);
-}
-
-/* Light themes: ambient warmth was invisible at dark-tuned alphas. */
-body.vscode-light {
-  background:
-    radial-gradient(900px 480px at 12% -8%, rgba(255, 140, 66, 0.1), transparent 60%),
-    radial-gradient(1100px 600px at 88% 112%, rgba(223, 95, 36, 0.07), transparent 55%),
-    radial-gradient(700px 420px at 70% 20%, rgba(60, 60, 70, 0.05), transparent 65%),
-    var(--vscode-editor-background);
-  background-attachment: fixed;
-}
-
-body.vscode-light .composer-dock {
-  background: color-mix(in srgb, var(--vscode-editor-background) 55%, transparent);
-  border-color: color-mix(in srgb, var(--vscode-foreground) 18%, transparent);
-}
-
-body.vscode-light .menu-panel {
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.14);
-}
-
-body.vscode-light #messages .message-user .message-body {
-  background: rgba(255, 140, 66, 0.12);
-  border-color: rgba(223, 95, 36, 0.35);
-}
-
-/* HC: popover direction stands, glass does not. */
-body.vscode-high-contrast .menu-panel {
-  backdrop-filter: none;
-  background: var(--vscode-editor-background);
-  color: var(--vscode-foreground);
-}
-
-/* ═══ Refined Glass — pass 5: ONE frame around the input ═══
-   The dock is the only chrome. The inner .composer-card was drawing a second
-   border + opaque input background inside the glass dock (double frame, and
-   it blocked the frost). The card is now an invisible layout container. */
-.composer-card {
-  border: none;
-  background: transparent;
-  padding: 2px 2px 0;
-}
-
-.composer-card:focus-within {
-  outline: none;
-}
-
-/* ═══ Refined Glass — pass 6: kill EVERY nested frame (full audit) ═══ */
-
-/* 1. The input itself: the global textarea rule drew a border INSIDE the
-   glass dock — this was the remaining double frame around typing. */
-.composer-dock textarea {
-  border: none;
-  background: transparent;
-}
-
-#app .composer-dock textarea:focus-visible {
-  outline: none; /* the dock's ember focus ring is the single indicator */
-}
-
-/* 2. Find bar: inner input drew its own frame inside the bar's frame. */
-.find-bar .find-input {
-  border: none;
-  background: transparent;
-  color: var(--vscode-foreground);
-}
-
-.find-bar .find-input:focus-visible {
-  outline: none;
-}
-
-/* 3. Assistant responses: open canvas. The bubble border+background wrapped
-   bordered tool cards / code blocks — frames in frames. π's text now sits
-   directly on the page; cards and code provide their own structure. */
-#messages .message-assistant .message-body {
-  background: transparent;
-  border: none;
-  box-shadow: none;
-  padding-left: 0;
-  padding-right: 0;
-}
-
-/* 4. Inside a work phase, cards flatten to a hairline-separated list. */
-.work-phase .tl-node .tl-card {
-  border: none;
-  background: transparent;
-  box-shadow: none;
-}
-
-.work-phase .tl-node + .tl-node {
-  border-top: 1px solid var(--glass-line);
-}
-
-/* 5. Code blocks inside tool cards: tint only, no second border. */
-.tl-card .code-wrap {
-  border: none;
-}
-
-/* 6. Attachment tray: transparent container, chips are the only chrome. */
-.attachment-tray {
-  border: none;
-  background: transparent;
-}
-
-/* Chip now lives in the left cluster: popover aligns left, still upward. */
 .composer-actions-left .composer-status .menu-panel {
-  left: 0;
   right: auto;
+  left: 0;
 }
 
-/* ═══ Pass 7: status chip is a BUTTON now — one click, centered model picker.
-   (The old popover made choosing a model a two-step trip.) ═══ */
 button.composer-status {
-  min-width: 0;
   display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 3px 11px;
-  font-size: 11px;
-  color: var(--vscode-foreground);
-  background: var(--glass-1);
-  border: 1px solid var(--glass-line);
-  border-radius: 999px;
-  cursor: pointer;
-  transition: border-color 120ms ease;
-  /* Wide enough for the selected model's full name — was 260px and cut off
-     longer ids. Content is now just model · thinking · %, so this is a
-     generous cap, not the everyday size. */
-  max-width: 420px;
   flex: 0 1 auto;
-  white-space: nowrap;
+  align-items: center;
+  min-width: 0;
+  max-width: 420px;
+  gap: 6px;
   overflow: hidden;
+  padding: 3px 9px;
+  color: var(--vscode-foreground);
+  font-size: 11px;
   text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
 }
 
-button.composer-status:hover {
-  border-color: var(--ember-glow);
-  background: var(--glass-2);
-}
-
-button.composer-status:focus-visible {
-  outline: 1px solid var(--ember);
-  outline-offset: 1px;
-}
-
-body.vscode-high-contrast button.composer-status {
-  background: var(--vscode-editor-background);
-  border: 1px solid var(--vscode-panel-border);
-}
-
-/* Thinking pill: sibling of the model chip, same glass language. */
 button.composer-thinking {
   gap: 4px;
   max-width: 90px;
@@ -3850,107 +3317,15 @@ button.composer-thinking svg {
   opacity: 0.75;
 }
 
-/* ═══ Pass 8: transcript ends ABOVE the composer — never slides under it ═══
-   The layout column is viewport-height with bottom padding equal to the
-   dock's live height, so the scroll area's floor sits on the dock's roof. */
-body {
-  overflow: hidden; /* the transcript is the single scroller */
-}
-
-.layout {
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
-  height: 100dvh;
-  box-sizing: border-box;
-  gap: 12px;
-  padding: 12px 16px 0;
-  padding-bottom: var(--composer-clearance, 150px);
-}
-
-#messages {
-  /* pass-3 clearance padding no longer needed: the column floor handles it */
-  padding-bottom: 20px;
-}
-
-/* Crosshair follow toggle: ember when π is being followed. */
 .follow-toggle {
   display: inline-flex;
   align-items: center;
   justify-content: center;
 }
 
-.follow-toggle.is-on {
-  color: var(--ember);
-  background: var(--ember-soft);
-  border-radius: 6px;
-  box-shadow: 0 0 8px rgba(255, 140, 66, 0.25);
-}
-
-.follow-toggle:hover {
-  color: var(--ember);
-}
-
-/* ═══ Pass 9: kill the gray slabs — cards go truly translucent ═══
-   The editor-background mixes read as OPAQUE gray boxes against the ambient
-   glass (and muddied the label text sitting on them). Cards are now a
-   foreground whisper — the ambience shows through, text contrast returns. */
-#messages .tl-card {
-  background: color-mix(in srgb, var(--vscode-foreground) 2.5%, transparent);
-  border: 1px solid var(--glass-line);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
-}
-
-#messages .tl-result-inline {
-  background: transparent;
-}
-
-.work-phase {
-  background: color-mix(in srgb, var(--vscode-foreground) 2%, transparent);
-}
-
-/* Code blocks: same whisper, header is just a hairline — no second slab. */
-.code-wrap {
-  background: color-mix(in srgb, var(--vscode-foreground) 3%, transparent);
-}
-
-.code-lang {
-  background: transparent;
-  border-bottom: 1px solid var(--glass-line);
-}
-
-/* Card text: full-contrast body, labels legible instead of muddy. */
-#messages .tl-head {
-  color: var(--vscode-foreground);
-}
-
-#messages .tl-label {
-  opacity: 0.85;
-}
-
-#messages .tl-think {
-  color: color-mix(in srgb, var(--vscode-foreground) 82%, transparent);
-}
-
-#messages .tl-body {
-  color: var(--vscode-foreground);
-}
-
-/* High contrast: solid surfaces stay solid. */
-body.vscode-high-contrast #messages .tl-card,
-body.vscode-high-contrast .code-wrap {
-  background: var(--vscode-editor-background);
-  border: 1px solid var(--vscode-panel-border);
-}
-
-/* Plan strip: π's task list as live progress above the chat. */
 .plan-strip {
-  margin: 0 4px;
-  background: var(--glass-1);
-  border: 1px solid var(--glass-line);
-  border-radius: 10px;
-  padding: 0;
   flex: 0 0 auto;
+  padding: 0;
 }
 
 .plan-strip > summary {
@@ -3958,9 +3333,9 @@ body.vscode-high-contrast .code-wrap {
   align-items: center;
   gap: 10px;
   padding: 7px 12px;
-  cursor: pointer;
-  list-style: none;
   font-size: 11.5px;
+  list-style: none;
+  cursor: pointer;
 }
 
 .plan-strip > summary::-webkit-details-marker {
@@ -3968,26 +3343,22 @@ body.vscode-high-contrast .code-wrap {
 }
 
 .plan-badge {
-  font-weight: 650;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
   font-size: 10px;
-  color: var(--ember);
+  font-weight: 650;
 }
 
 .plan-progress {
   flex: 1 1 auto;
   height: 4px;
+  overflow: hidden;
   border-radius: 2px;
   background: color-mix(in srgb, var(--vscode-foreground) 10%, transparent);
-  overflow: hidden;
 }
 
 .plan-progress-fill {
   display: block;
   height: 100%;
   border-radius: 2px;
-  background: linear-gradient(90deg, var(--ember), var(--ember-deep));
   transition: width 300ms ease;
 }
 
@@ -3997,12 +3368,12 @@ body.vscode-high-contrast .code-wrap {
 }
 
 .plan-list {
-  list-style: none;
-  margin: 0;
-  padding: 2px 12px 10px;
   display: grid;
   gap: 4px;
+  margin: 0;
+  padding: 2px 12px 10px;
   font-size: 12px;
+  list-style: none;
 }
 
 .plan-item {
@@ -4017,20 +3388,18 @@ body.vscode-high-contrast .code-wrap {
 }
 
 .plan-check {
-  color: var(--ember);
   font-weight: 700;
 }
 
 .plan-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  border: 1px solid color-mix(in srgb, var(--vscode-foreground) 40%, transparent);
   flex: 0 0 auto;
   align-self: center;
+  width: 6px;
+  height: 6px;
+  border: 1px solid color-mix(in srgb, var(--vscode-foreground) 40%, transparent);
+  border-radius: 50%;
 }
 
-/* Per-change approval on edit cards. */
 .edit-approve {
   display: inline-flex;
   gap: 4px;
@@ -4042,43 +3411,25 @@ body.vscode-high-contrast .code-wrap {
   border-color: var(--vscode-editorError-foreground, #f48771);
 }
 
-.edit-approve .ed-keep:hover,
-.edit-approve .ed-edit:hover {
-  color: var(--ember);
-  border-color: var(--ember-glow);
-}
-
 .ed-done {
   font-size: 10.5px;
   opacity: 0.7;
 }
 
-/* Scrollbar terminates clearly ABOVE the dock — no corner collisions. */
-#messages {
-  margin-bottom: 8px;
-  border-bottom: 1px solid transparent; /* crisp visual end for the track */
-}
-
 .permission-toggle.is-auto {
-  color: #f48771;
-  background: rgba(244, 135, 113, 0.12);
   border-radius: 6px;
-  box-shadow: 0 0 8px rgba(244, 135, 113, 0.25);
+  color: var(--vscode-errorForeground, #f48771);
+  background: color-mix(in srgb, var(--vscode-errorForeground, #f48771) 12%, transparent);
 }
 
 .permission-toggle:hover {
-  color: #f48771;
+  color: var(--vscode-errorForeground, #f48771);
 }
 
-/* Structured provider-error card — no more raw JSON dumps. */
 .api-error-card {
-  background: color-mix(in srgb, var(--vscode-editor-background) 78%, transparent);
-  backdrop-filter: blur(8px);
-  border: 1px solid rgba(244, 135, 113, 0.35);
-  border-radius: 10px;
-  padding: 10px 12px;
   display: grid;
   gap: 8px;
+  padding: 10px 12px;
 }
 
 .api-error-head {
@@ -4088,24 +3439,23 @@ body.vscode-high-contrast .code-wrap {
 }
 
 .api-error-badge {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
   padding: 2px 8px;
   border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
 }
 
 .api-error-badge.api-error-warning {
-  background: rgba(226, 185, 61, 0.16);
-  color: #e2b93d;
-  border: 1px solid rgba(226, 185, 61, 0.4);
+  border: 1px solid
+    color-mix(in srgb, var(--vscode-editorWarning-foreground, #e2b93d) 40%, transparent);
+  color: var(--vscode-editorWarning-foreground, #e2b93d);
+  background: color-mix(in srgb, var(--vscode-editorWarning-foreground, #e2b93d) 12%, transparent);
 }
 
 .api-error-badge.api-error-error {
-  background: rgba(244, 135, 113, 0.14);
-  color: #f48771;
-  border: 1px solid rgba(244, 135, 113, 0.4);
+  border: 1px solid color-mix(in srgb, var(--vscode-errorForeground, #f48771) 40%, transparent);
+  color: var(--vscode-errorForeground, #f48771);
+  background: color-mix(in srgb, var(--vscode-errorForeground, #f48771) 12%, transparent);
 }
 
 .api-error-message {
@@ -4121,11 +3471,9 @@ body.vscode-high-contrast .code-wrap {
 }
 
 .api-error-grid span:nth-child(odd) {
-  opacity: 0.6;
-  text-transform: uppercase;
-  font-size: 10px;
-  letter-spacing: 0.04em;
   padding-top: 2px;
+  font-size: 10px;
+  opacity: 0.6;
 }
 
 .api-error-reqid {
@@ -4142,4 +3490,749 @@ body.vscode-high-contrast .code-wrap {
 .api-error-actions {
   font-size: 11.5px;
   opacity: 0.9;
+}
+
+.chat-list-shell {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.chat-list-scroll {
+  flex: 1;
+  min-width: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.chat-list-search {
+  width: 100%;
+  color: var(--vscode-input-foreground);
+}
+
+.chat-list-search:focus,
+.chat-list-row:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+
+.chat-list-row {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.chat-list-row-icon {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+}
+
+.chat-list-row-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.chat-list-row-title,
+.chat-list-row-detail {
+  overflow: hidden;
+  color: var(--vscode-foreground);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-list-row-detail {
+  color: var(--vscode-descriptionForeground);
+}
+
+.chat-list-row-actions {
+  position: absolute;
+  top: 50%;
+  display: none;
+  align-items: center;
+  gap: 2px;
+  transform: translateY(-50%);
+}
+
+.chat-list-row:hover .chat-list-row-actions,
+.chat-list-row-actions:focus-within {
+  display: flex;
+}
+
+.chat-list-row-action {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  color: var(--vscode-descriptionForeground);
+  background: transparent;
+  cursor: pointer;
+}
+
+.chat-list-row-action:hover {
+  color: var(--vscode-foreground);
+  background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.15));
+}
+
+.chat-list-row-fav.is-fav,
+.chat-list-row-favbadge {
+  color: var(--vscode-charts-yellow, #e2b73d);
+}
+
+.chat-list-row-delete:hover {
+  color: var(--vscode-errorForeground, #e05252);
+  background: color-mix(in srgb, var(--vscode-errorForeground, #e05252) 13%, transparent);
+}
+
+.chat-list-row-action svg {
+  width: 14px;
+  height: 14px;
+}
+
+.chat-list-row-favbadge {
+  display: inline-flex;
+  margin-right: 5px;
+  vertical-align: -1px;
+}
+
+.chat-list-row-favbadge svg {
+  width: 11px;
+  height: 11px;
+}
+
+.chat-list-row:hover .chat-list-row-favbadge {
+  display: none;
+}
+
+.chat-list-empty,
+.chat-list-loading {
+  padding: 24px 12px;
+  color: var(--vscode-descriptionForeground);
+  font-size: 13px;
+  text-align: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .send-button,
+  .composer-dock {
+    transition: none;
+  }
+}
+
+/* ═══ Apple-inspired clean design layer ═══
+   Quiet hierarchy, flat rows and one surface per related group. All colors
+   remain VS Code theme-driven; high contrast keeps its native borders. */
+:root {
+  --pi-accent: var(--vscode-focusBorder, #007aff);
+  --pi-tool-accent: var(--pi-accent);
+  --pi-hairline: color-mix(in srgb, var(--vscode-foreground) 14%, transparent);
+  --pi-hairline-soft: color-mix(in srgb, var(--vscode-foreground) 9%, transparent);
+  --pi-surface-group: color-mix(
+    in srgb,
+    var(--vscode-editorWidget-background, var(--vscode-editor-background)) 96%,
+    var(--vscode-foreground) 4%
+  );
+  --pi-surface-control: color-mix(in srgb, var(--vscode-foreground) 7%, transparent);
+  --pi-surface-hover: color-mix(in srgb, var(--vscode-foreground) 8%, transparent);
+  --pi-surface-selected: color-mix(in srgb, var(--pi-accent) 16%, transparent);
+  --pi-radius-large: 12px;
+  --pi-radius-control: 8px;
+}
+
+body {
+  background-color: var(--vscode-editor-background);
+  background-image: none;
+  background-attachment: initial;
+}
+
+.layout {
+  gap: 10px;
+  padding: 12px 16px 0;
+  padding-bottom: var(--composer-clearance, 150px);
+}
+
+#messages {
+  gap: 22px;
+  margin-bottom: 4px;
+  padding: 20px 12px;
+  border-bottom: 0;
+}
+
+#messages > .message-card,
+#messages > .empty-state,
+#messages > .connecting-state,
+#messages > .older-sentinel {
+  width: min(100%, 820px);
+  margin-right: auto;
+  margin-left: auto;
+}
+
+#messages .message-card {
+  animation: none;
+}
+
+#messages .message-role {
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.045em;
+  text-transform: none;
+  opacity: 0.78;
+}
+
+#messages .message-user .message-body {
+  max-width: min(78%, 680px);
+  padding: 10px 13px;
+  border: 0;
+  border-radius: 14px 14px 4px 14px;
+  background: var(--pi-surface-control);
+}
+
+#messages .message-assistant .message-body {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+#messages .msg-actions {
+  top: 0;
+  right: 0;
+  padding: 2px;
+  border: 1px solid var(--pi-hairline);
+  border-radius: var(--pi-radius-control);
+  background: var(--pi-surface-group);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  backdrop-filter: none;
+}
+
+.work-phase,
+#messages .tl-card,
+.plan-strip,
+.session-details,
+.approval-card,
+.banner,
+.queue-tray,
+.retry-banner,
+.api-error-card,
+#messages .edit-diff,
+#messages .json-block {
+  border: 1px solid var(--pi-hairline);
+  border-radius: var(--pi-radius-large);
+  background: var(--pi-surface-group);
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.work-phase {
+  padding: 5px 10px;
+}
+
+.work-phase > summary.work-phase-head {
+  min-height: 30px;
+  font-size: 11.5px;
+  opacity: 0.8;
+}
+
+.work-phase > summary.work-phase-head:hover {
+  background: transparent;
+}
+
+.work-phase-hint {
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.work-phase .tl-node .tl-card {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.work-phase .tl-node + .tl-node {
+  border-top: 1px solid var(--pi-hairline-soft);
+}
+
+#messages .meta-block {
+  padding-left: 0;
+  border-left: 0;
+}
+
+#messages .meta-block + .meta-block {
+  padding-top: 8px;
+  border-top: 1px solid var(--pi-hairline-soft);
+}
+
+#messages .tl-card.tl-answer:has(.js-stream-text) {
+  border-color: var(--pi-hairline);
+  animation: none;
+}
+
+.code-wrap,
+#messages .code-wrap {
+  overflow: hidden;
+  border: 1px solid var(--pi-hairline);
+  border-radius: var(--pi-radius-large);
+  background: var(--pi-surface-group);
+}
+
+.code-lang,
+#messages .code-lang {
+  min-height: 38px;
+  border-bottom: 1px solid var(--pi-hairline-soft);
+  background: var(--pi-surface-control);
+}
+
+.code-btn,
+#messages .code-btn,
+#messages .code-copy,
+.icon-button {
+  border-radius: 7px;
+}
+
+.code-btn:hover,
+#messages .code-btn:hover,
+#messages .code-copy:hover,
+.icon-button:hover {
+  color: var(--vscode-foreground);
+  background: var(--pi-surface-hover);
+}
+
+.approval-btn,
+#messages .tl-file-btn,
+#messages .inline-edit-model-btn,
+#messages .json-toggle {
+  border: 1px solid var(--pi-hairline);
+  border-radius: 7px;
+  color: var(--vscode-foreground);
+  background: transparent;
+  box-shadow: none;
+}
+
+.approval-btn:hover,
+#messages .tl-file-btn:hover,
+#messages .inline-edit-model-btn:hover,
+#messages .json-toggle:hover {
+  border-color: var(--pi-hairline);
+  color: var(--vscode-foreground);
+  background: var(--pi-surface-hover);
+}
+
+.attachment-tray .section-label,
+.queue-kind,
+.plan-badge,
+.api-error-grid span:nth-child(odd),
+#messages .json-block-label,
+#messages .code-lang-name,
+#messages .meta-label,
+#messages .tl-label,
+.more-menu .menu-group,
+.menu-panel .menu-group {
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.chip-shell {
+  border-color: var(--pi-hairline);
+  border-radius: var(--pi-radius-control);
+  background: var(--pi-surface-control);
+}
+
+#messages .inline-edit-field {
+  border-color: var(--pi-hairline);
+  border-radius: 10px;
+  background: var(--pi-surface-group);
+}
+
+#messages .md-table thead th {
+  border-bottom-color: var(--pi-hairline);
+  color: var(--vscode-foreground);
+}
+
+#messages .md-table tbody tr:hover td {
+  background: var(--pi-surface-hover);
+}
+
+#messages .mermaid-toggle {
+  min-height: 25px;
+  padding: 2px 9px;
+  border: 0;
+  border-radius: 6px;
+}
+
+#messages .mermaid-toggle:hover,
+#messages .mermaid-toggle.is-active {
+  border: 0;
+  background: var(--pi-surface-group);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+#messages .mermaid-preview {
+  padding: 26px;
+  background: var(--vscode-editor-background);
+}
+
+.mermaid-dialog {
+  padding: 24px;
+  background: color-mix(in srgb, #000 48%, transparent);
+}
+
+.mermaid-dialog-card {
+  border: 1px solid var(--pi-hairline);
+  border-radius: 14px;
+  background: var(--vscode-editor-background);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.28);
+}
+
+.mermaid-dialog-head {
+  min-height: 50px;
+  padding: 0 11px 0 16px;
+  border-bottom: 1px solid var(--pi-hairline);
+}
+
+.mermaid-dialog-output {
+  padding: 36px;
+}
+
+.empty-state {
+  gap: 10px;
+  padding: 36px 20px;
+}
+
+.empty-mascot {
+  width: 44px;
+  height: 33px;
+  margin-bottom: 8px;
+  color: var(--vscode-charts-orange, #cf7d00);
+}
+
+.empty-title {
+  font-size: 22px;
+  font-weight: 650;
+  letter-spacing: -0.025em;
+}
+
+.empty-copy {
+  margin-bottom: 14px;
+  font-size: 13px;
+}
+
+.session-details {
+  width: min(540px, 100%);
+  text-align: left;
+}
+
+.session-details > summary {
+  min-height: 46px;
+  padding: 0 13px;
+}
+
+.session-details-body {
+  padding: 0;
+  border-top: 1px solid var(--pi-hairline-soft);
+}
+
+.session-facts {
+  gap: 0;
+}
+
+.session-fact {
+  grid-template-columns: 86px minmax(0, 1fr);
+  gap: 10px;
+  padding: 9px 13px;
+}
+
+.session-fact + .session-fact {
+  border-top: 1px solid var(--pi-hairline-soft);
+}
+
+.session-fact dt {
+  color: var(--vscode-descriptionForeground);
+  font-weight: 500;
+}
+
+.session-capabilities {
+  margin: 0;
+  padding: 11px 13px 13px;
+  border-top: 1px solid var(--pi-hairline-soft);
+}
+
+.empty-shortcuts {
+  margin-top: 10px;
+}
+
+.empty-shortcut kbd {
+  border-color: var(--pi-hairline);
+  border-radius: 5px;
+  background: var(--pi-surface-group);
+}
+
+.composer-dock {
+  position: fixed;
+  right: 16px;
+  bottom: 14px;
+  left: 16px;
+  z-index: 24;
+  width: min(820px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 7px 8px 8px;
+  border: 1px solid var(--pi-hairline);
+  border-radius: 14px;
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.16);
+  backdrop-filter: none;
+}
+
+.composer-dock:focus-within {
+  border-color: var(--pi-accent);
+  box-shadow:
+    0 10px 30px rgba(0, 0, 0, 0.16),
+    0 0 0 1px var(--pi-accent);
+}
+
+.composer-card {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.composer-dock textarea {
+  min-height: 58px;
+  padding: 8px 7px 4px;
+  border: 0;
+  background: transparent;
+}
+
+.composer-actions {
+  gap: 6px;
+}
+
+button.composer-status,
+button.composer-thinking {
+  min-height: 28px;
+  padding: 3px 9px;
+  border: 1px solid transparent;
+  border-radius: var(--pi-radius-control);
+  background: transparent;
+}
+
+button.composer-status:hover,
+button.composer-thinking:hover {
+  border-color: transparent;
+  background: var(--pi-surface-hover);
+}
+
+.send-button,
+.approval-allow {
+  border: 0;
+  color: var(--vscode-button-foreground);
+  background: var(--vscode-button-background);
+  box-shadow: none;
+}
+
+.send-button:not(:disabled):hover,
+.approval-allow:hover {
+  color: var(--vscode-button-foreground);
+  background: var(--vscode-button-hoverBackground);
+  box-shadow: none;
+  transform: none;
+}
+
+.jump-latest {
+  bottom: 14px;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--pi-hairline);
+  color: var(--vscode-descriptionForeground);
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.14);
+  backdrop-filter: none;
+}
+
+.find-bar,
+.menu-panel,
+.slash-menu,
+.queue-tray,
+.retry-banner,
+.msg-actions {
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
+  backdrop-filter: none;
+}
+
+.connecting-state {
+  background: transparent;
+}
+
+.menu-panel button:hover,
+.menu-panel button:focus-visible,
+.menu-panel .menu-item:hover,
+.menu-panel .menu-item:focus-visible {
+  color: var(--vscode-foreground);
+  background: var(--pi-surface-hover);
+  box-shadow: none;
+}
+
+.plan-strip {
+  width: min(820px, 100%);
+  margin: 0 auto;
+}
+
+.plan-badge,
+.plan-check {
+  color: var(--pi-accent);
+}
+
+.plan-progress-fill {
+  background: var(--pi-accent);
+}
+
+.follow-toggle.is-on {
+  color: var(--pi-accent);
+  background: var(--pi-surface-selected);
+  box-shadow: none;
+}
+
+.approval-card,
+.api-error-card {
+  box-shadow: none;
+}
+
+.api-error-card {
+  border-color: color-mix(in srgb, var(--vscode-errorForeground, #f48771) 38%, transparent);
+}
+
+/* Session list: whitespace separates flat rows; only hover and selection add
+   a temporary surface. */
+body.chat-list-view {
+  background-color: var(--vscode-sideBar-background, var(--vscode-editor-background));
+  background-image: none;
+}
+
+.chat-list-shell {
+  gap: 0;
+  padding: 10px 9px 12px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.chat-list-search {
+  height: 32px;
+  margin: 0 1px 12px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: var(--pi-radius-control);
+  background: var(--vscode-input-background, var(--pi-surface-control));
+  font-size: 12px;
+}
+
+.chat-list-scroll {
+  display: block;
+}
+
+.chat-list-section {
+  margin-bottom: 22px;
+}
+
+.chat-list-section-label {
+  margin: 0 7px 7px;
+  color: var(--vscode-descriptionForeground);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.chat-list-group {
+  border: 0;
+  background: transparent;
+}
+
+.chat-list-row {
+  position: relative;
+  min-height: 52px;
+  gap: 9px;
+  margin: 3px 0;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  transition: background 100ms ease;
+}
+
+.chat-list-row:hover {
+  border: 0;
+  background: var(--pi-surface-hover);
+}
+
+.chat-list-row.active {
+  border: 0;
+  background: var(--pi-surface-selected);
+}
+
+.chat-list-row-icon {
+  width: 8px;
+  height: 8px;
+  margin-left: 2px;
+  border-radius: 50%;
+  color: transparent;
+  background: var(--vscode-descriptionForeground);
+  opacity: 0.55;
+}
+
+.chat-list-row.active .chat-list-row-icon {
+  color: transparent;
+  background: var(--pi-accent);
+  opacity: 1;
+}
+
+.chat-list-row-icon svg {
+  display: none;
+}
+
+.chat-list-row-text {
+  gap: 2px;
+}
+
+.chat-list-row-title {
+  font-size: 12.5px;
+  font-weight: 540;
+}
+
+.chat-list-row-detail {
+  font-size: 10.5px;
+}
+
+.chat-list-row-actions {
+  right: 7px;
+  padding: 2px;
+  border: 1px solid var(--pi-hairline);
+  border-radius: var(--pi-radius-control);
+  background: var(--vscode-sideBar-background, var(--vscode-editor-background));
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.14);
+}
+
+.chat-list-row-action {
+  width: 25px;
+  height: 25px;
+  border-radius: 6px;
+}
+
+body.vscode-high-contrast .composer-dock,
+body.vscode-high-contrast .work-phase,
+body.vscode-high-contrast #messages .tl-card,
+body.vscode-high-contrast .session-details,
+body.vscode-high-contrast .chat-list-row:hover,
+body.vscode-high-contrast .chat-list-row.active {
+  border-color: var(--vscode-panel-border);
+  background: var(--vscode-editor-background);
+  box-shadow: none;
 }

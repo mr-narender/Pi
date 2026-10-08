@@ -11,8 +11,6 @@ import {
 } from '../commands/localCommand';
 import { mergeLifecycleComposer } from '../commands/lifecycleCommand';
 import { AgentFollowService } from '../live/agentFollow';
-import { CodeFormatService } from './codeFormatService';
-import { type FencedBlock, collectCodeFences } from '../webview/codeFormat';
 import { sharedPiHostActiveSessionCount } from '../process/sharedPiHost';
 import { RemoteSharingService } from '../remote/sharingService';
 import { ensureTrustedForMutation } from '../security/trust';
@@ -50,7 +48,6 @@ import type { WebviewSnapshot } from '../state/types';
 import { renderChatWebviewHtml } from '../webview/html';
 import {
   CHAT_EDITOR_VIEW_TYPE,
-  CHAT_URI_SCHEME,
   buildChatUri,
   chatTargetSessionKey,
   parseChatUri,
@@ -60,7 +57,6 @@ import {
 } from './uri';
 import { ChatTabStateCache, toPersistedChatSnapshot } from './sessionCache';
 import type { ChatEditorDocument } from './document';
-import { vscodeLanguageId } from './languageId';
 
 function isDefaultTitle(value: string | undefined): boolean {
   return !value || value === 'Pi' || value === 'Pi RPC';
@@ -303,34 +299,14 @@ export class ChatTabManager implements vscode.Disposable {
       getActiveContext: () => this.getActiveContext(),
     });
     this.sessions = new SessionIndex(context.workspaceState);
-    // Display-time code formatting: when a background format lands, re-render
-    // open chats so the block upgrades in place (debounced by renderResource).
-    this.codeFormat = new CodeFormatService(() => {
-      for (const host of this.hosts.values()) {
-        void this.renderResource(host.resource);
-      }
-    });
     for (const controller of registry.list()) {
       this.trackController(controller);
     }
-    // Remember the last real text editor so "Insert at cursor" targets the code,
-    // not the chat webview (which isn't a text editor).
-    this.lastTextEditor = this.pickTextEditor(vscode.window.activeTextEditor);
-    this.controllerSubscriptions.push(
-      vscode.window.onDidChangeActiveTextEditor((editor) => {
-        const real = this.pickTextEditor(editor);
-        if (real) {
-          this.lastTextEditor = real;
-        }
-      })
-    );
     // Idle session reaper: hidden, idle chats release their runtime session after
     // piRpc.idleSessionMinutes (tab + transcript stay; focus restarts instantly).
     this.reapTimer = setInterval(() => void this.reapIdleSessions(), 5 * 60_000);
     this.reapTimer.unref?.();
   }
-
-  private readonly codeFormat: CodeFormatService;
 
   // WeakMaps: closed chats must not pin their dead controllers (and their full
   // message state) in memory for the window's lifetime (#1, review round 2).
@@ -410,40 +386,6 @@ export class ChatTabManager implements vscode.Disposable {
         );
       }
     }
-  }
-
-  private lastTextEditor: vscode.TextEditor | undefined;
-
-  private pickTextEditor(editor: vscode.TextEditor | undefined): vscode.TextEditor | undefined {
-    return editor && editor.document.uri.scheme !== CHAT_URI_SCHEME ? editor : undefined;
-  }
-
-  /** Replace the selection (or insert at the cursor) in the last real editor. */
-  private async insertCodeIntoEditor(text: string): Promise<void> {
-    const editor = this.pickTextEditor(vscode.window.activeTextEditor) ?? this.lastTextEditor;
-    if (!editor) {
-      await this.openCodeInNewFile(text, undefined);
-      return;
-    }
-    try {
-      const shown = await vscode.window.showTextDocument(editor.document, {
-        viewColumn: editor.viewColumn,
-        preserveFocus: false,
-      });
-      await shown.edit((builder) => builder.replace(shown.selection, text));
-    } catch {
-      // The tracked editor may have been closed; fall back to a fresh file.
-      await this.openCodeInNewFile(text, undefined);
-    }
-  }
-
-  /** Open the code in a new untitled document with the right language. */
-  private async openCodeInNewFile(text: string, language?: string): Promise<void> {
-    const document = await vscode.workspace.openTextDocument({
-      content: text,
-      language: vscodeLanguageId(language),
-    });
-    await vscode.window.showTextDocument(document, { preview: false });
   }
 
   public dispose(): void {
@@ -1132,17 +1074,19 @@ export class ChatTabManager implements vscode.Disposable {
       case 'openDiff':
         return this.openEditToolFile(context, parsed.path, true);
       case 'respondUi':
-        return this.handleRespondUi(context, parsed.id, parsed.value, parsed.confirmed);
+        return this.handleRespondUi(
+          context,
+          parsed.id,
+          parsed.value,
+          parsed.confirmed,
+          parsed.cancelled
+        );
       case 'attachFile':
         return this.attachFileByPath(context, parsed.path);
       case 'requestFileMentions':
         return this.handleRequestFileMentions(host, context, parsed.query);
       case 'requestSlashCommands':
         return this.handleRequestSlashCommands(host, context, parsed.requestId);
-      case 'insertCode':
-        return this.insertCodeIntoEditor(parsed.text);
-      case 'newFileFromCode':
-        return this.openCodeInNewFile(parsed.text, parsed.language);
       case 'requestSend':
         return this.handleRequestSend(host.resource, parsed.command, parsed.submissionId);
       case 'acceptPreview':
@@ -1222,7 +1166,8 @@ export class ChatTabManager implements vscode.Disposable {
     context: ChatTabContext,
     id: string,
     value: string | undefined,
-    confirmed: boolean | undefined
+    confirmed: boolean | undefined,
+    cancelled = false
   ): Promise<void> {
     const response: JsonObject = { id };
     if (typeof value === 'string') {
@@ -1230,6 +1175,9 @@ export class ChatTabManager implements vscode.Disposable {
     }
     if (typeof confirmed === 'boolean') {
       response.confirmed = confirmed;
+    }
+    if (cancelled) {
+      response.cancelled = true;
     }
     await context.controller.respondExtensionUi(response);
     context.controller.completeExtensionUiRequest(id);
@@ -2242,24 +2190,6 @@ export class ChatTabManager implements vscode.Disposable {
     const sharingInfo = this.remoteSharing.sharingInfoFor(resource);
     if (sharingInfo) {
       snapshot.sharing = sharingInfo;
-    }
-
-    // Best-effort display formatting for fenced code in the visible tail of
-    // the transcript (user pastes crammed one-liners; assistants emit minified
-    // snippets). Uses the user's own registered formatters; results arrive
-    // async and upgrade the block on the next render.
-    if (getSettings().formatCodeBlocks) {
-      const recent = snapshot.messages.slice(-30);
-      const fences: FencedBlock[] = [];
-      for (const message of recent) {
-        if (typeof message.text === 'string' && message.text.includes('```')) {
-          fences.push(...collectCodeFences(message.text));
-        }
-      }
-      if (fences.length > 0) {
-        this.codeFormat.request(fences);
-      }
-      snapshot.formattedCode = this.codeFormat.snapshotMap();
     }
 
     snapshot.followMode = vscode.workspace

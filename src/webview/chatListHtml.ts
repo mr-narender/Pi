@@ -5,7 +5,7 @@ import * as vscode from 'vscode';
 // that reusing the ~2000-line chat rendering pipeline would mean threading
 // a second render mode through code that already carries real complexity;
 // keeping this as its own tiny bundle is the smaller, safer diff. Shares
-// chat.css so the ember/glass tokens stay one source of truth.
+// chat.css so typography, spacing, and theme-aware surfaces stay consistent.
 export function renderChatListWebviewHtml(
   extensionUri: vscode.Uri,
   webview: vscode.Webview,

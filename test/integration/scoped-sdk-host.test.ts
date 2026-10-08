@@ -91,6 +91,7 @@ for (const mode of ['shared', 'dedicated'] as const)
           assert.equal(caps.scopedModels.saveGlobal, true);
           assert.equal(caps.sdkVersion, (await resolveNativeCli()).version);
           const state = await rpc('one', { type: 'get_state' });
+          assert.equal(state.sdkVersion, caps.sdkVersion);
           let snapshot = await rpc('one', { type: 'get_scoped_models' });
           assert.equal(snapshot.models.length, 3);
           const initialScopes =

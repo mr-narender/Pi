@@ -1,5 +1,6 @@
-import { mkdir, copyFile, readFile } from 'node:fs/promises';
+import { mkdir, copyFile, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { build } from 'esbuild';
 
 await mkdir('dist', { recursive: true });
@@ -33,7 +34,7 @@ await build({
   legalComments: 'none',
 });
 
-await build({
+const chatBuild = await build({
   entryPoints: ['src/webview/media/chat.ts'],
   outfile: 'dist/chat.js',
   bundle: true,
@@ -42,8 +43,43 @@ await build({
   target: 'es2022',
   define,
   sourcemap: false,
-  legalComments: 'none',
+  legalComments: 'external',
+  metafile: true,
 });
+
+const packageRoots = new Set(
+  Object.keys(chatBuild.metafile.inputs).flatMap((input) => {
+    if (!input.startsWith('node_modules/')) return [];
+    const parts = input.slice('node_modules/'.length).split('/');
+    return [`node_modules/${parts[0].startsWith('@') ? parts.slice(0, 2).join('/') : parts[0]}`];
+  })
+);
+await mkdir('dist/licenses', { recursive: true });
+const notices = ['Bundled webview dependencies and their exact distributed license files:', ''];
+for (const root of [...packageRoots].sort()) {
+  const metadata = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
+  const licenseFiles = [];
+  for (const name of await readdir(root)) {
+    const path = join(root, name);
+    if (/^(license|licence|copying|notice)(\.|$)/i.test(name) && (await stat(path)).isFile()) {
+      licenseFiles.push({ name, path });
+    }
+  }
+  if (licenseFiles.length === 0) {
+    throw new Error(`Bundled dependency has no distributed license file: ${metadata.name}`);
+  }
+  const prefix = String(metadata.name).replaceAll('@', '').replaceAll('/', '--');
+  const shipped = [];
+  for (const license of licenseFiles) {
+    const destination = `${prefix}--${license.name}`;
+    await copyFile(license.path, join('dist/licenses', destination));
+    shipped.push(`licenses/${destination}`);
+  }
+  notices.push(
+    `${metadata.name}@${metadata.version} — ${String(metadata.license || 'see license file')} — ${shipped.join(', ')}`
+  );
+}
+await writeFile('dist/THIRD_PARTY_NOTICES.txt', `${notices.join('\n')}\n`);
 
 // Agentic Mode's chat list — its own small bundle, not the chat.ts runtime.
 await build({

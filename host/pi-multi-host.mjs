@@ -635,6 +635,7 @@ async function createSessionRunner(sessionKey, runtimeHost, hostEmit) {
     }
   };
   const readState = () => ({
+    sdkVersion: metadata.version,
     model: modelDto(session.model),
     thinkingLevel: session.thinkingLevel,
     availableThinkingLevels: session.getAvailableThinkingLevels(),

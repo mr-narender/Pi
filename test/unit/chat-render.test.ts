@@ -367,7 +367,7 @@ test('renderChatApp renders thinking, tool, and code blocks distinctly', () => {
   assert.match(html, /class="tl-label">Tool</);
   assert.match(html, /class="tl-label">Result · 1 line</);
   assert.match(html, /tool-name">bash/);
-  assert.match(html, /class="tl-dot"/);
+  assert.doesNotMatch(html, /class="tl-dot"/);
   assert.match(html, /class="meta-icon"/); // inline SVG icon, not an emoji
   assert.match(html, /hljs-keyword">const<\/span>/);
   assert.match(html, /class="code-block"/);
@@ -430,7 +430,7 @@ test('renderRichText renders **bold** as <strong> and never shows literal ** mar
   assert.doesNotMatch(html, /\*\*/); // no literal asterisks left
 });
 
-test('code blocks include Insert / New file / Copy actions and a data-lang', () => {
+test('code blocks are copy-only and never offer editor creation actions', () => {
   const html = renderChatApp(
     snapshot({
       messages: [
@@ -652,11 +652,13 @@ test('messages render without content-visibility virtualization (removed for sta
   assert.equal((html.match(/message-card/g) ?? []).length, 3);
 });
 
-test('onboarding empty-state shows example prompts and hints', () => {
+test('onboarding empty-state stays minimal and keeps command hints', () => {
   const html = renderChatApp(snapshot({ messages: [] }));
-  assert.match(html, /class="empty-example" data-example=/);
-  assert.match(html, /Explain this codebase/);
-  assert.match(html, /mention a file/);
+  assert.doesNotMatch(html, /class="empty-example"|data-example=/);
+  assert.doesNotMatch(html, /Explain this codebase|Add tests for a file|Find and fix a bug/);
+  assert.match(html, /Commands/);
+  assert.match(html, /Files/);
+  assert.match(html, /Cmd\/Ctrl\+K/);
 });
 
 test('typewriter: streaming last assistant answer is marked js-stream-text with data-raw', () => {
@@ -717,6 +719,27 @@ test('inline approval card renders for confirm/select requests', () => {
   assert.match(selectHtml, /data-ui-value="Block"/);
 
   assert.doesNotMatch(renderChatApp(snapshot({})), /approval-card/);
+});
+
+test('multiline extension editor renders inline with escaped prefill and no file action', () => {
+  const html = renderChatApp(
+    snapshot({
+      approvals: [
+        {
+          id: 'editor-1',
+          method: 'editor',
+          title: 'Edit release notes',
+          placeholder: 'Enter markdown',
+          prefill: 'first line\n<script>second</script>',
+        },
+      ],
+    })
+  );
+  assert.match(html, /class="approval-editor"/);
+  assert.match(html, /first line\n&lt;script&gt;second&lt;\/script&gt;/);
+  assert.match(html, /data-ui-editor-submit="true"/);
+  assert.match(html, /data-ui-cancelled="true"/);
+  assert.doesNotMatch(html, /openTextDocument|showTextDocument/);
 });
 
 test('queue tray renders; Continue button was removed', () => {
@@ -918,4 +941,70 @@ test('renderChatApp leaves non-JSON code fences as code blocks', () => {
   );
   assert.match(html, /code-wrap/);
   assert.doesNotMatch(html, /class="json-block"/);
+});
+
+test('renderRichText gives Mermaid blocks a native preview shell and expanded view', () => {
+  const html = renderRichText(['```mermaid', 'flowchart LR', 'A --> B', '```'].join('\n'));
+  const dom = new JSDOM(`<main>${html}</main>`);
+  const root = dom.window.document.querySelector('main')!;
+  assert.equal(root.querySelector('.mermaid-code')?.textContent, 'flowchart LR\nA --> B');
+  assert.equal(root.querySelector('.mermaid-preview-stage')?.getAttribute('role'), 'img');
+  assert.equal(root.querySelector('.mermaid-error')?.hasAttribute('hidden'), true);
+  assert.equal(root.querySelectorAll('.mermaid-toggle').length, 2);
+  assert.equal(root.querySelector('.mermaid-expand')?.hasAttribute('disabled'), true);
+  assert.equal(root.querySelector('.mermaid-preview')?.hasAttribute('hidden'), true);
+  dom.window.close();
+});
+
+test('fresh chat shows one open Pi details drawer with current runtime features', () => {
+  const html = renderChatApp(
+    snapshot({
+      messages: [],
+      messageCount: 0,
+      runtime: {
+        sdkVersion: '1.0.4',
+        commands: 27,
+        extensions: 2,
+        prompts: 3,
+        skills: 4,
+      },
+    })
+  );
+  const dom = new JSDOM(`<main>${html}</main>`);
+  const drawer = dom.window.document.querySelector<HTMLDetailsElement>('#pi-session-details');
+  assert.equal(drawer?.open, true);
+  assert.equal(drawer?.querySelector('.session-details-title')?.textContent?.trim(), 'Pi 1.0.4');
+  assert.equal(
+    drawer?.querySelector('.session-details-toggle')?.textContent?.trim(),
+    'Session details'
+  );
+  assert.match(drawer?.textContent ?? '', /mock\/model/);
+  assert.equal(drawer?.querySelectorAll('.session-fact').length, 3);
+  assert.deepEqual(
+    Array.from(drawer?.querySelectorAll('.session-capability') ?? []).map((item) =>
+      item.textContent?.replace(/\s+/g, ' ').trim()
+    ),
+    ['27 Commands', '2 Extensions', '3 Prompts', '4 Skills']
+  );
+  assert.equal(drawer?.querySelector('.session-trust')?.textContent?.trim(), 'Trusted');
+  assert.equal(drawer?.querySelector('.session-details-help'), null);
+  const shortcuts = dom.window.document.querySelector('.empty-shortcuts');
+  assert.deepEqual(
+    Array.from(shortcuts?.querySelectorAll('.empty-shortcut') ?? []).map((item) =>
+      item.textContent?.replace(/\s+/g, ' ').trim()
+    ),
+    ['/ Commands', '@ Files', 'Cmd/Ctrl+K Actions']
+  );
+  assert.equal(dom.window.document.querySelectorAll('#pi-session-details').length, 1);
+  dom.window.close();
+});
+
+test('fresh-session details tolerate a minimal legacy snapshot without a workspace label', () => {
+  const html = renderChatApp(
+    snapshot({ messages: [], workspaceFolderName: undefined as unknown as string })
+  );
+  assert.match(
+    html,
+    /<span>Workspace<\/span><span class="session-trust is-trusted">Trusted<\/span>/
+  );
 });

@@ -191,8 +191,6 @@ export interface WebviewPendingImageItem {
 }
 
 export interface WebviewSnapshot {
-  /** Display-time formatted code blocks: formatKey(lang, code) → formatted text. */
-  formattedCode?: Record<string, string>;
   /** Most recent task list π wrote — rendered as the plan strip. */
   plan?: { items: Array<{ text: string; done: boolean }>; done: number };
   /** Zed-style follow toggle state (crosshair button). */
@@ -247,15 +245,24 @@ export interface WebviewSnapshot {
   model?: ModelInfo | null;
   thinkingLevel?: string;
   availableThinkingLevels?: string[];
+  runtime?: {
+    sdkVersion?: string;
+    commands: number;
+    extensions: number;
+    prompts: number;
+    skills: number;
+  };
   // Compact usage summary for the header (tokens / context% / cost).
   usage?: { totalTokens: number; contextPercent?: number; cost?: number };
-  // Inline approval prompts (extension UI select/confirm dialogs).
+  // Inline extension UI prompts.
   approvals?: Array<{
     id: string;
-    method: 'select' | 'confirm';
+    method: 'select' | 'confirm' | 'editor';
     title?: string;
     message?: string;
     options?: string[];
+    placeholder?: string;
+    prefill?: string;
   }>;
   pendingContextItems: PendingContextItem[];
   pendingImages: WebviewPendingImageItem[];

@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.2.26
+
+- Resolve Pi SDK modules from their installed package roots so npm, Bun, pnpm
+  and other valid hoisted layouts no longer fail with `MODULE_NOT_FOUND`.
+- Show current-workspace chats immediately while the larger all-project history
+  index finishes in the background, keep existing rows visible during refresh,
+  and coalesce duplicate scans.
+- Apply one consistent, theme-aware interface across chat, composer, menus,
+  approvals, code and Mermaid output, session details, errors and the
+  whitespace-separated sidebar list; remove the competing legacy glass-theme
+  passes.
+- Render Mermaid as centered, consistently full-width SVG instead of terminal
+  box-drawing text, with safe malformed-diagram handling and a scrollable
+  expanded view with a compact fixed header. Initial rendering and reloads now
+  use the same width.
+- Clarify the fresh-chat screen with one compact session card, explicit status
+  and trust labels, scannable capability counts, and a single shortcut row.
+- Keep generated code inside the chat: remove background formatter documents
+  that could surface as untitled editor tabs. Syntax highlighting and Mermaid
+  Code/Preview rendering remain in-place and do not create files.
+- Simplify the fresh-chat screen by removing canned task buttons while retaining
+  the `/` command, `@` file mention and `Cmd/Ctrl+K` action hints.
+
 ## 0.2.25
 
 - Restore provider-first model selection: choose a provider, then search only

@@ -61,15 +61,19 @@ export class ExtensionUiBroker implements vscode.Disposable {
     controller: SessionController,
     request: ExtensionUiRequest
   ): Promise<unknown> {
-    // Route approval-style dialogs (select/confirm) into the chat when it is
-    // open; the webview renders Allow/Deny and sends the response.
+    // Route approval-style dialogs into the chat. Multiline editor requests
+    // always use the webview so they never create an untitled editor tab.
     if (
-      (request.method === 'select' || request.method === 'confirm') &&
-      this.isChatOpen?.(controller)
+      request.method === 'editor' ||
+      ((request.method === 'select' || request.method === 'confirm') &&
+        this.isChatOpen?.(controller))
     ) {
       controller.applyExtensionUiRequest(request);
       if (typeof request.timeout === 'number' && request.timeout > 0) {
         setTimeout(() => controller.completeExtensionUiRequest(request.id), request.timeout);
+      }
+      if (request.method === 'editor' && !this.isChatOpen?.(controller)) {
+        this.revealChat?.(controller);
       }
       this.notifyIfBackground(controller);
       return { inline: true };
@@ -122,28 +126,6 @@ export class ExtensionUiBroker implements vscode.Disposable {
         );
         controller.completeExtensionUiRequest(request.id);
         return value === undefined ? { cancelled: true } : { value };
-      }
-      case 'editor': {
-        const doc = await vscode.workspace.openTextDocument({
-          content: request.prefill ?? '',
-          language: 'markdown',
-        });
-        await vscode.window.showTextDocument(doc, { preview: false, preserveFocus: false });
-        const action = await vscode.window.showInformationMessage(
-          request.title ?? 'Submit editor text',
-          { modal: true },
-          'Submit',
-          'Cancel'
-        );
-        const result =
-          action === 'Submit' ? { value: doc.getText() } : ({ cancelled: true } as const);
-        await controller.respondExtensionUi(
-          action === 'Submit'
-            ? { id: request.id, value: doc.getText() }
-            : { id: request.id, cancelled: true }
-        );
-        controller.completeExtensionUiRequest(request.id);
-        return result;
       }
       case 'set_editor_text': {
         const current = controller.snapshot.draft;
@@ -230,6 +212,7 @@ export class ExtensionUiBroker implements vscode.Disposable {
       const input = vscode.window.createInputBox();
       input.title = request.title;
       input.placeholder = request.placeholder;
+      input.value = request.prefill ?? input.value;
       input.ignoreFocusOut = true;
       let done = false;
       const finish = (value: string | undefined): void => {

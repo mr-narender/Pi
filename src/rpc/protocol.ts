@@ -267,6 +267,7 @@ export function parseScopedModelsSnapshot(value: unknown): ScopedModelsSnapshot 
 }
 
 export interface SessionState extends JsonObject {
+  sdkVersion?: string;
   model?: ModelInfo | null;
   thinkingLevel?: string;
   availableThinkingLevels?: string[];

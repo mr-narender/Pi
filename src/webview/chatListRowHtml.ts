@@ -99,12 +99,26 @@ export interface ChatListBodyOptions {
   now?: number;
 }
 
+function renderChatListGroups(rows: ChatListRow[], now: number): string {
+  const groups = [
+    { label: 'Open', rows: rows.filter((row) => row.isOpen) },
+    { label: 'Recent', rows: rows.filter((row) => !row.isOpen) },
+  ];
+  return groups
+    .filter((group) => group.rows.length > 0)
+    .map(
+      (group) =>
+        `<div class="chat-list-section"><div class="chat-list-section-label" aria-hidden="true">${group.label}</div><div class="chat-list-group" role="group" aria-label="${group.label} chats">${group.rows.map((row) => renderChatListRow(row, now)).join('')}</div></div>`
+    )
+    .join('');
+}
+
 export function renderChatListBody(
   model: ChatListModel,
   options: ChatListBodyOptions = {}
 ): string {
   const now = options.now ?? Date.now();
-  return model.loading
+  return model.loading && model.rows.length === 0
     ? `<div class="chat-list-loading">Loading chats…</div>`
     : model.error
       ? `<div class="chat-list-empty">${esc(model.error)}</div>`
@@ -112,7 +126,7 @@ export function renderChatListBody(
         ? options.filterActive
           ? `<div class="chat-list-empty">No matching chats.</div>`
           : `<div class="chat-list-empty">No chats yet — start one above.</div>`
-        : model.rows.map((row) => renderChatListRow(row, now)).join('');
+        : renderChatListGroups(model.rows, now);
 }
 
 export function renderChatListShell(bodyHtml: string, filterText = ''): string {

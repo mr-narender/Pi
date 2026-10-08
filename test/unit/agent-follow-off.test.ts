@@ -103,5 +103,15 @@ test('Follow Agent off cancels in-flight opens and cannot be force-enabled per s
   assert.equal(shown.length, 0);
   await service.glowEdit('/workspace/file.ts', 'content', 'chat');
   assert.equal(revealed, 0, 'turning follow off must cancel deferred editor reveals');
+
+  mode = 'status';
+  await service.showInSidePane('reading', '/workspace/file.ts', 'chat', undefined);
+  assert.equal(opened.length, 0, 'status-only follow must not open an editor');
+  assert.equal(shown.length, 0, 'status-only follow must not show an editor');
+
+  mode = 'open';
+  await service.showInSidePane('reading', '/workspace/file.ts', 'chat', undefined);
+  assert.deepEqual(opened, [{ fsPath: '/workspace/file.ts', scheme: 'file' }]);
+  assert.equal(shown.length, 1, 'open follow may show an existing file');
   service.dispose();
 });
