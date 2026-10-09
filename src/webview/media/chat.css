@@ -352,12 +352,6 @@ pre {
   color: inherit;
 }
 
-/* #9 — composer drop target highlight (drag a file in). */
-textarea.drop-target {
-  outline: 2px dashed var(--pi-tool-accent, #4ec9b0);
-  outline-offset: -2px;
-}
-
 /* #6 — inline slash-command autocomplete menu. */
 .composer-dock {
   position: relative;
@@ -4235,4 +4229,76 @@ body.vscode-high-contrast .chat-list-row.active {
   border-color: var(--vscode-panel-border);
   background: var(--vscode-editor-background);
   box-shadow: none;
+}
+
+/* Composer attachments stay in the input context. Drag feedback uses the
+   existing composer surface instead of adding another card. */
+.composer-card {
+  position: relative;
+}
+
+.composer-card::after {
+  content: 'Drop files to attach';
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: none;
+  place-items: center;
+  color: var(--vscode-foreground);
+  font-size: 13px;
+  font-weight: 600;
+  pointer-events: none;
+}
+
+.composer-dock.is-drop-target {
+  border-color: var(--vscode-focusBorder);
+  background: color-mix(
+    in srgb,
+    var(--vscode-focusBorder) 9%,
+    var(--vscode-editorWidget-background, var(--vscode-editor-background))
+  );
+}
+
+.composer-dock.is-drop-target .composer-card::after {
+  display: grid;
+}
+
+.composer-dock.is-drop-target .composer-card > * {
+  opacity: 0.16;
+}
+
+.composer-card > .attachment-tray {
+  margin: 0;
+  padding: 2px 4px 8px;
+  border-bottom: 1px solid var(--pi-hairline);
+}
+
+.attachment-heading {
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--vscode-descriptionForeground);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.attachment-heading button {
+  min-height: 28px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: var(--pi-radius-control);
+  color: var(--vscode-descriptionForeground);
+  background: transparent;
+  font-size: 11px;
+}
+
+.attachment-heading button:hover {
+  color: var(--vscode-foreground);
+  background: var(--pi-surface-hover);
+}
+
+.composer-card > .attachment-tray .chip-list {
+  gap: 6px;
 }

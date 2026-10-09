@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.27
+
+- Attach files by dropping them directly into the composer, including files
+  from the local client while Pi runs in a remote VS Code workspace. Preserve
+  real filenames and apply the existing file and image size limits before
+  transferring bytes.
+- Clear submitted text, file chips and image chips immediately, keep the clear
+  durable across VS Code restarts, and restore usable content after cancelled
+  or failed sends without overwriting newer input.
+- Place attachment controls inside the composer with a restrained drop cue and
+  a compact, accessible Clear all action that follows the current VS Code theme.
+
 ## 0.2.26
 
 - Resolve Pi SDK modules from their installed package roots so npm, Bun, pnpm

@@ -1546,18 +1546,15 @@ export function renderChatApp(snapshot: WebviewSnapshot): string {
       <section class="composer-dock" aria-labelledby="composer-heading">
         <h2 id="composer-heading" class="visually-hidden">Message Pi</h2>
         <label class="visually-hidden" for="${COMPOSER_FIELD_ID}">Message π</label>
-        ${
-          attachmentsVisible
-            ? `<div class="attachment-tray"><div class="section-label">Attachments for next message</div><div class="chip-list" role="list" aria-label="Attachments for next message">${snapshot.pendingContextItems
-                .map((item) => renderContextChip(item))
-                .join(
-                  ''
-                )}${renderImageChip(snapshot)}</div><button type="button" data-action="clearAttachments">Clear attachments</button></div>`
-            : ''
-        }
         ${renderQueueTray(snapshot)}
         ${isLiveWorking(snapshot) ? renderWorkingBanner(snapshot) : ''}
-        <div class="composer-card${connecting ? ' is-connecting' : ''}" aria-busy="${connecting ? 'true' : 'false'}">
+        <div class="composer-card${connecting ? ' is-connecting' : ''}" aria-busy="${connecting ? 'true' : 'false'}">${
+          attachmentsVisible
+            ? `<div class="attachment-tray"><div class="attachment-heading"><span>Attachments</span><button type="button" data-action="clearAttachments">Clear all</button></div><div class="chip-list" role="list" aria-label="Attachments for next message">${snapshot.pendingContextItems
+                .map((item) => renderContextChip(item))
+                .join('')}${renderImageChip(snapshot)}</div></div>`
+            : ''
+        }
           <textarea id="${COMPOSER_FIELD_ID}" rows="3" placeholder="${connecting ? 'Connecting to π…' : 'Ask π to edit…'}" ${disabledAttr}>${escapeHtml(snapshot.draft)}</textarea>
           <div class="composer-actions" aria-label="Composer actions">
             <div class="composer-actions-left">

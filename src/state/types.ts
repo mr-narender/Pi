@@ -266,6 +266,7 @@ export interface WebviewSnapshot {
   }>;
   pendingContextItems: PendingContextItem[];
   pendingImages: WebviewPendingImageItem[];
+  attachmentLimits?: { fileBytes: number; imageBytes: number };
   focus: ComposerFocusTarget;
   preview?: SendPreviewState;
   acceptedSendSnapshot?: AcceptedSendSnapshot;

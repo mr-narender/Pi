@@ -105,6 +105,22 @@ export type PendingContextItem =
       persistedRef: PersistedPastedTextRef;
       stale?: boolean;
       staleReason?: string;
+    }
+  | {
+      /** Self-contained because a remote extension host cannot read a file
+       * that was dropped from the client machine. */
+      kind: 'droppedFile';
+      itemId: string;
+      workspaceFolder: string;
+      workspaceRelativePath: string;
+      lineStart: number;
+      lineEnd: number;
+      languageId: string;
+      sanitizedContent: string;
+      capturedAt: string;
+      persistedRef: PersistedPastedTextRef;
+      stale?: boolean;
+      staleReason?: string;
     };
 
 export interface PendingImageItem {
@@ -439,13 +455,18 @@ export function restoreEditableStateFromAcceptedSnapshot(
   return {
     draft: snapshot.draft,
     pendingContextItems: JSON.parse(JSON.stringify(snapshot.contextItems)) as PendingContextItem[],
-    pendingImages: snapshot.imageItems.map((image) => ({
-      itemId: image.itemId,
-      name: image.name,
-      mimeType: image.mimeType,
-      sizeBytes: image.sizeBytes,
-      requiresReselect: image.requiresReselect,
-    })),
+    pendingImages: snapshot.imageItems.map((image, index) => {
+      const payload = snapshot.rpcImages[index];
+      return {
+        itemId: image.itemId,
+        name: image.name,
+        mimeType: image.mimeType,
+        sizeBytes: image.sizeBytes,
+        inMemoryBase64: payload?.data,
+        previewDataUrl: payload ? `data:${payload.mimeType};base64,${payload.data}` : undefined,
+        requiresReselect: image.requiresReselect || !payload?.data,
+      };
+    }),
   };
 }
 
@@ -486,6 +507,8 @@ export function summarizeChip(item: PendingContextItem): string {
       return `Diagnostics: ${item.workspaceRelativePath} · ${item.issueCount} issues`;
     case 'pastedText':
       return `${item.workspaceRelativePath} · ${item.lineEnd} lines`;
+    case 'droppedFile':
+      return `File: ${item.workspaceRelativePath}`;
   }
 }
 
@@ -501,6 +524,8 @@ export function chipPrivacyLabel(item: PendingContextItem): string {
       return 'Active-file diagnostics snapshot';
     case 'pastedText':
       return 'Pasted clipboard text';
+    case 'droppedFile':
+      return 'Dropped file snapshot';
   }
 }
 

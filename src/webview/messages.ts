@@ -41,6 +41,7 @@ export type WebviewInboundMessage =
   | { type: 'openFile'; path: string }
   | { type: 'openDiff'; path: string }
   | { type: 'attachFile'; path: string }
+  | { type: 'dropFile'; name: string; mimeType: string; sizeBytes: number; data: string }
   | { type: 'requestFileMentions'; query: string }
   | { type: 'requestSlashCommands'; requestId?: string }
   | { type: 'pasteImage'; data: string; mimeType: string }
@@ -157,6 +158,21 @@ export function parseWebviewMessage(value: unknown): WebviewInboundMessage | und
     case 'attachFile':
       return typeof record.path === 'string'
         ? { type: 'attachFile', path: record.path }
+        : undefined;
+    case 'dropFile':
+      return typeof record.name === 'string' &&
+        typeof record.mimeType === 'string' &&
+        typeof record.sizeBytes === 'number' &&
+        Number.isFinite(record.sizeBytes) &&
+        record.sizeBytes >= 0 &&
+        typeof record.data === 'string'
+        ? {
+            type: 'dropFile',
+            name: record.name.slice(0, 256),
+            mimeType: record.mimeType.slice(0, 128),
+            sizeBytes: Math.floor(record.sizeBytes),
+            data: record.data,
+          }
         : undefined;
     case 'requestFileMentions':
       return typeof record.query === 'string'

@@ -135,6 +135,17 @@ function pasteEvent(
   return event;
 }
 
+function dragEvent(data: Record<string, string>, files: File[] = []): Event {
+  const event = new dom.window.Event('drop', { bubbles: true, cancelable: true });
+  Object.defineProperty(event, 'dataTransfer', {
+    value: {
+      files,
+      getData: (type: string) => data[type] ?? '',
+    },
+  });
+  return event;
+}
+
 async function waitFor(predicate: () => boolean, what: string): Promise<void> {
   for (let attempt = 0; attempt < 200; attempt += 1) {
     if (predicate()) {
@@ -482,6 +493,80 @@ test('webview paste: file URIs still attach as file chips', () => {
   assert.equal(event.defaultPrevented, true);
   const attached = posted.filter((message) => message.type === 'attachFile');
   assert.equal(attached.length, 2);
+});
+
+test('webview drop: client text bytes and filename cross a remote extension boundary', async () => {
+  posted.length = 0;
+  const bytes = 'a,b\n1,2';
+  const file = new dom.window.File([bytes], 'report.csv', { type: 'text/csv' });
+  const event = dragEvent({}, [file]);
+  findComposer().dispatchEvent(event);
+  assert.equal(event.defaultPrevented, true);
+  await waitFor(() => posted.some((message) => message.type === 'dropFile'), 'dropFile message');
+  const message = posted.find((entry) => entry.type === 'dropFile')!;
+  assert.equal(message.name, 'report.csv');
+  assert.equal(message.mimeType, 'text/csv');
+  assert.equal(message.data, Buffer.from(bytes).toString('base64'));
+});
+
+test('webview drop: image bytes retain the real filename', async () => {
+  posted.length = 0;
+  const bytes = Uint8Array.from([137, 80, 78, 71]);
+  const file = new dom.window.File([bytes], 'architecture.png', { type: 'image/png' });
+  findComposer().dispatchEvent(dragEvent({}, [file]));
+  await waitFor(() => posted.some((message) => message.type === 'dropFile'), 'image dropFile');
+  const message = posted.find((entry) => entry.type === 'dropFile')!;
+  assert.equal(message.name, 'architecture.png');
+  assert.equal(message.data, Buffer.from(bytes).toString('base64'));
+});
+
+test('webview drop: size limits reject before FileReader payload allocation', async () => {
+  dom.window.dispatchEvent(
+    new dom.window.MessageEvent('message', {
+      data: {
+        type: 'snapshot',
+        snapshot: snapshot({ attachmentLimits: { fileBytes: 2, imageBytes: 2 } }),
+      },
+    })
+  );
+  posted.length = 0;
+  const file = new dom.window.File(['abc'], 'large.txt', { type: 'text/plain' });
+  findComposer().dispatchEvent(dragEvent({}, [file]));
+  const message = posted.find((entry) => entry.type === 'dropFile')!;
+  assert.ok(message);
+  assert.equal(message.sizeBytes, 3);
+  assert.equal(message.data, '', 'oversized file bytes are never read into the webview message');
+});
+
+test('webview drop: URI-only remote Explorer files use the server-readable URI path', () => {
+  posted.length = 0;
+  const uri = 'vscode-remote://ssh-remote+dev/workspace/src/app.ts';
+  const event = dragEvent({ 'text/uri-list': uri });
+  findComposer().dispatchEvent(event);
+  assert.equal(event.defaultPrevented, true);
+  assert.deepEqual(
+    posted.find((entry) => entry.type === 'attachFile'),
+    {
+      type: 'attachFile',
+      path: uri,
+    }
+  );
+});
+
+test('webview drop: composer gives an immediate accessible drag-active cue', () => {
+  const composer = findComposer();
+  const event = new dom.window.Event('dragover', { bubbles: true, cancelable: true });
+  composer.dispatchEvent(event);
+  assert.equal(event.defaultPrevented, true);
+  assert.equal(
+    dom.window.document.querySelector('.composer-dock')?.classList.contains('is-drop-target'),
+    true
+  );
+  composer.dispatchEvent(new dom.window.Event('dragleave', { bubbles: true }));
+  assert.equal(
+    dom.window.document.querySelector('.composer-dock')?.classList.contains('is-drop-target'),
+    false
+  );
 });
 
 test('model frontend: IME does not execute; acknowledged command preserves newer text', () => {

@@ -33,6 +33,8 @@ import {
 } from '../webview/composer';
 import {
   IMAGE_MIME_BY_EXTENSION,
+  MAX_ATTACH_BYTES,
+  captureDroppedFile,
   makeId,
   relativeWorkspacePath,
   captureActiveFile,
@@ -1083,6 +1085,15 @@ export class ChatTabManager implements vscode.Disposable {
         );
       case 'attachFile':
         return this.attachFileByPath(context, parsed.path);
+      case 'dropFile':
+        return this.handleDroppedFile(
+          context,
+          host.resource,
+          parsed.name,
+          parsed.mimeType,
+          parsed.sizeBytes,
+          parsed.data
+        );
       case 'requestFileMentions':
         return this.handleRequestFileMentions(host, context, parsed.query);
       case 'requestSlashCommands':
@@ -1425,6 +1436,52 @@ export class ChatTabManager implements vscode.Disposable {
     await this.addPastedImage(context, resource, data, mimeType);
   }
 
+  private async handleDroppedFile(
+    context: ChatTabContext,
+    resource: vscode.Uri,
+    name: string,
+    mimeType: string,
+    sizeBytes: number,
+    data: string
+  ): Promise<void> {
+    const lowerName = name.toLowerCase();
+    const imageExtension = Object.keys(IMAGE_MIME_BY_EXTENSION).find((suffix) =>
+      lowerName.endsWith(suffix)
+    );
+    const imageMimeType = mimeType.startsWith('image/')
+      ? mimeType
+      : imageExtension
+        ? IMAGE_MIME_BY_EXTENSION[imageExtension]
+        : undefined;
+    const limit = imageMimeType ? getSettings().maxImageBytes : MAX_ATTACH_BYTES;
+    if (sizeBytes > limit) {
+      void vscode.window.showWarningMessage(
+        `${name || 'That file'} is too large to attach (${Math.round(sizeBytes / 1024)} KB > ${Math.round(limit / 1024)} KB).`
+      );
+      return;
+    }
+    if (data.length > Math.ceil(limit / 3) * 4 + 4) {
+      void vscode.window.showWarningMessage(`Could not attach ${name || 'that file'}.`);
+      return;
+    }
+    const bytes = Buffer.from(data, 'base64');
+    if (bytes.length === 0 || bytes.length > limit) {
+      void vscode.window.showWarningMessage(`Could not attach ${name || 'that file'}.`);
+      return;
+    }
+    if (imageMimeType) {
+      await this.addPastedImage(context, resource, data, imageMimeType, name);
+      return;
+    }
+    const item = captureDroppedFile(
+      context.controller,
+      name,
+      new TextDecoder('utf-8', { fatal: false }).decode(bytes)
+    );
+    await this.uiState.addContextItemForIdentity(context.controller, context.target, item);
+    await this.renderResource(resource);
+  }
+
   private async handleClearAttachments(
     context: ChatTabContext,
     resource: vscode.Uri
@@ -1721,6 +1778,7 @@ export class ChatTabManager implements vscode.Disposable {
     )
       return;
     if (!originValid()) return;
+    let acceptedForRecovery: AcceptedSendSnapshot | undefined;
     try {
       // Images/context items send IMMEDIATELY with the message — no confirmation
       // popup. beginSend captures the outgoing message and clears the WHOLE
@@ -1728,8 +1786,10 @@ export class ChatTabManager implements vscode.Disposable {
       // async session work below: nothing sent may linger into the next message,
       // and the draft→session identity promotion copies an already-clean state.
       const { preview, accepted } = beginSend(command, state);
+      acceptedForRecovery = accepted;
       context.controller.setDraft('');
       await this.uiState.setComposerStateForIdentity(context.controller, context.target, state);
+      await this.renderResource(resource);
       context = await this.preparePromptContext(resource);
       if (!context) {
         // Session creation cancelled — put back exactly what was cleared.
@@ -1737,10 +1797,16 @@ export class ChatTabManager implements vscode.Disposable {
           origin.controller,
           origin.target
         );
-        Object.assign(current, restoreEditableStateFromAcceptedSnapshot(accepted));
+        if (
+          current.draft === '' &&
+          current.pendingContextItems.length === 0 &&
+          current.pendingImages.length === 0
+        ) {
+          Object.assign(current, restoreEditableStateFromAcceptedSnapshot(accepted));
+          origin.controller.setDraft(current.draft);
+        }
         current.acceptedSendSnapshot = undefined;
         current.composerResetSeq = (current.composerResetSeq ?? 0) + 1;
-        origin.controller.setDraft(current.draft);
         await this.uiState.setComposerStateForIdentity(origin.controller, origin.target, current);
         await this.renderResource(resource);
         return;
@@ -1762,6 +1828,22 @@ export class ChatTabManager implements vscode.Disposable {
       // Empty composer + Enter is a non-event, not an error — stay silent.
       if (detail.startsWith('Enter a message')) {
         return;
+      }
+      if (acceptedForRecovery) {
+        const current = await this.uiState.getComposerStateForIdentity(
+          origin.controller,
+          origin.target
+        );
+        if (
+          current.draft === '' &&
+          current.pendingContextItems.length === 0 &&
+          current.pendingImages.length === 0
+        ) {
+          Object.assign(current, restoreEditableStateFromAcceptedSnapshot(acceptedForRecovery));
+          current.composerResetSeq = (current.composerResetSeq ?? 0) + 1;
+          origin.controller.setDraft(current.draft);
+        }
+        state = current;
       }
       state.recovery = {
         kind: 'preflightError',
@@ -1844,6 +1926,16 @@ export class ChatTabManager implements vscode.Disposable {
       }
     } catch (error) {
       const current = await this.uiState.getComposerStateForIdentity(controller, target);
+      if (
+        current.draft === '' &&
+        current.pendingContextItems.length === 0 &&
+        current.pendingImages.length === 0
+      ) {
+        Object.assign(current, restoreEditableStateFromAcceptedSnapshot(accepted));
+        current.composerResetSeq = (current.composerResetSeq ?? 0) + 1;
+        current.focus = 'composer';
+        controller.setDraft(current.draft);
+      }
       current.acceptedSendSnapshot = {
         ...accepted,
         state: 'failed',
@@ -2307,6 +2399,10 @@ export class ChatTabManager implements vscode.Disposable {
           chatFontSize: settings.chatFontSize,
           typewriterSpeed: settings.typewriterSpeed,
         },
+        attachmentLimits: {
+          fileBytes: MAX_ATTACH_BYTES,
+          imageBytes: settings.maxImageBytes,
+        },
       });
       snapshot.bindingState = context.target.kind === 'workspaceDraft' ? 'draft' : 'current';
       return snapshot;
@@ -2422,7 +2518,8 @@ export class ChatTabManager implements vscode.Disposable {
     context: ChatTabContext,
     resource: vscode.Uri,
     data: string,
-    mimeType: string
+    mimeType: string,
+    name?: string
   ): Promise<void> {
     const settings = getSettings();
     const bytes = Buffer.from(data, 'base64');
@@ -2448,7 +2545,7 @@ export class ChatTabManager implements vscode.Disposable {
     const extension = mimeType.split('/')[1] ?? 'png';
     const item: PendingImageItem = {
       itemId: makeId('image'),
-      name: `pasted-${Date.now()}.${extension}`,
+      name: name || `pasted-${Date.now()}.${extension}`,
       mimeType,
       sizeBytes: bytes.length,
       inMemoryBase64: data,

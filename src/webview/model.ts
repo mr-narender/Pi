@@ -398,6 +398,7 @@ export function createWebviewSnapshot(
       chatFontSize: number;
       typewriterSpeed: string;
     };
+    attachmentLimits?: WebviewSnapshot['attachmentLimits'];
   }
 ): WebviewSnapshot {
   const totalMessages = state.messages.length;
@@ -493,6 +494,7 @@ export function createWebviewSnapshot(
       })),
     pendingContextItems: extra.composer.pendingContextItems,
     pendingImages: extra.composer.pendingImages.map(normalizePendingImage),
+    attachmentLimits: extra.attachmentLimits,
     focus: extra.composer.focus,
     preview: extra.composer.preview,
     acceptedSendSnapshot: extra.composer.acceptedSendSnapshot,
