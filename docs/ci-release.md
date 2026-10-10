@@ -28,6 +28,14 @@ binds that before commit to main ancestry; initial/deleted/rewritten main histor
 fail and require owner recovery. Rollbacks, prerelease
 channels, wrong tag commits or conflicting remote checksums fail closed.
 
+After source/artifact validation, trusted main runs perform a read-only
+`vsce verify-pat mr-narender` check when **VSCE_PAT** is present, including runs
+whose version is unchanged. This verifies the configured secret without publishing.
+An unchanged version with no PAT still skips successfully. Child output stays
+private; failures report only a fixed stage/category and validated HTTP/exit numbers.
+Unknown errors, response bodies, assertion values and credentials are never printed.
+This diagnostic correction is tracked in [#15](https://github.com/mr-narender/Pi/issues/15).
+
 After partial failures, **rerun failed jobs** on the same workflow run: the
 successful quality artifact is reused. Existing verified tags/assets/Marketplace
 versions are retained and completed, never overwritten or force-pushed. Do not
