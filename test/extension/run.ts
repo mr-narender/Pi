@@ -14,6 +14,7 @@ async function main(): Promise<void> {
   const profile = mkdtempSync(join(process.platform === 'darwin' ? '/tmp' : tmpdir(), 'pi-test-'));
   try {
     await runTests({
+      version: process.env.PI_TEST_VSCODE_VERSION || '1.141.0',
       extensionDevelopmentPath,
       extensionTestsPath,
       // --disable-workspace-trust: the fixture workspace opens fully TRUSTED

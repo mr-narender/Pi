@@ -1,0 +1,104 @@
+name: Pi
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pi-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  pi-quality:
+    name: pi-quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    outputs:
+      source-sha: ${{ steps.source.outputs.sha }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 26.11.1
+      - name: Bind source and install locked dependencies
+        id: source
+        run: |
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          npm ci
+          npm ci --prefix .github/pi-sdk --install-strategy=nested
+          echo "$GITHUB_WORKSPACE/.github/pi-sdk/node_modules/.bin" >> "$GITHUB_PATH"
+          echo "PI_SRC=$GITHUB_WORKSPACE/.github/pi-sdk/node_modules/@earendil-works/pi-coding-agent" >> "$GITHUB_ENV"
+      - name: Format
+        run: npm run format:check
+      - name: Lint
+        run: npm run lint
+      - name: Source types
+        run: npx --no-install tsc -p tsconfig.json --noEmit
+      - name: Test types
+        run: npx --no-install tsc -p test/tsconfig.json --noEmit
+      - name: Non-clean build
+        run: node scripts/build.mjs
+      - name: Coverage contract
+        run: npm run validate:coverage
+      - name: Unit
+        run: npm run test:unit
+      - name: Integration
+        run: npm run test:integration
+      - name: Real Pi
+        run: npm run smoke:real-pi
+      - name: VS Code extension host
+        env:
+          PI_TEST_VSCODE_VERSION: 1.141.0
+        run: xvfb-run -a npm run test:extension
+      - name: Host drift
+        run: npm run check:drift
+      - name: Package and inspect stable VSIX
+        run: |
+          mkdir -p "$RUNNER_TEMP/pi-release"
+          npx --no-install vsce package --no-dependencies --out "$RUNNER_TEMP/pi-release/pi.vsix"
+          node scripts/inspect-vsix.mjs "$RUNNER_TEMP/pi-release/pi.vsix" "$RUNNER_TEMP/pi-release/receipt.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: pi-${{ steps.source.outputs.sha }}
+          path: ${{ runner.temp }}/pi-release/
+          if-no-files-found: error
+          retention-days: 30
+
+  release:
+    name: Publish stable Pi
+    needs: pi-quality
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'mr-narender/Pi'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ needs.pi-quality.outputs.source-sha }}
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 26.11.1
+      - run: npm ci --ignore-scripts
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: pi-${{ needs.pi-quality.outputs.source-sha }}
+          path: ${{ runner.temp }}/pi-release/
+      - name: Publish the verified artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+          PI_PREVIOUS_SHA: ${{ github.event.before }}
+        run: node scripts/release.mjs "$RUNNER_TEMP/pi-release"
