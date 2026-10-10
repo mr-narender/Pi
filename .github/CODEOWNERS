@@ -1,0 +1,6 @@
+# Require the publisher's review for the CI/release trust boundary.
+/.github/ @mr-narender
+/scripts/inspect-vsix.mjs @mr-narender
+/scripts/release.mjs @mr-narender
+/package.json @mr-narender
+/package-lock.json @mr-narender

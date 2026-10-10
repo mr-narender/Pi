@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.28
+
+- Validate Pi with pinned Node, SDK and VS Code versions on every pull request
+  and main merge; publish the inspected stable VSIX from that same successful
+  run when the reviewed version increases. GitHub releases and Marketplace
+  publication resume safely after partial failures without rebuilding packages.
+
 ## 0.2.27
 
 - Support the audited Pi 1.1.0 SDK from the configured executable or PATH across

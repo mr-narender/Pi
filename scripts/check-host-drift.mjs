@@ -12,6 +12,12 @@ const require2 = (p) => path.join(process.cwd(), p);
 const BASELINE = require2('scripts/host-drift-baseline.json');
 
 function upstreamRpcModePath() {
+  if (process.env.PI_SRC) {
+    const selected = path.join(process.env.PI_SRC, 'dist/modes/rpc/rpc-mode.js');
+    if (!existsSync(selected))
+      throw new Error('drift-check: selected PI_SRC is missing RPC source');
+    return selected;
+  }
   try {
     const root = execSync('npm root -g', { encoding: 'utf8' }).trim();
     const candidate = path.join(root, '@earendil-works/pi-coding-agent/dist/modes/rpc/rpc-mode.js');
