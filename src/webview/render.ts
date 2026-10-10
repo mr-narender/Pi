@@ -102,9 +102,11 @@ function renderMessageStream(
   const blocks: MessageBlock[] =
     message.blocks && message.blocks.length > 0
       ? message.blocks
-      : message.text
-        ? [{ kind: 'text', text: message.text }]
-        : [];
+      : message.capturedContext
+        ? []
+        : message.text
+          ? [{ kind: 'text', text: message.text }]
+          : [];
   const out: string[] = [];
   let textRun: string[] = [];
   const flushText = (): void => {
@@ -547,7 +549,7 @@ function renderTimelineNode(node: TimelineNode, streamingAnswer = false): string
       return `<div class="tl-node tl-tool${err ? ' is-error' : ''}"><div class="tl-card"><div class="tl-head">${META_ICONS.tool}<span class="tl-label">Tool</span><code class="tool-name">${escapeHtml(call.name)}</code>${err ? '<span class="tl-flag-error">failed</span>' : ''}</div>${callBody}${fileActions}<details class="tl-result-inline${err ? ' is-error' : ''}"${open}><summary class="tl-result-head">${err ? META_ICONS.error : META_ICONS.result}<span class="tl-label">${summaryLabel}</span>${CARET_ICON}</summary>${renderToolContent(result.text)}</details></div></div>`;
     }
     case 'image':
-      return `<div class="tl-node tl-tool"><div class="tl-card"><div class="tl-head">${META_ICONS.image}<span class="tl-label">Image</span><span class="tool-name">${escapeHtml(node.mimeType)}</span></div></div></div>`;
+      return `<div class="tl-node tl-tool"><div class="tl-card"><div class="tl-head">${META_ICONS.image}<span class="tl-label">Image</span><span class="tool-name">${escapeHtml(node.mimeType)}</span></div>${renderMessageImage(node)}</div></div>`;
     case 'response': {
       const streamClass = streamingAnswer ? ' js-stream-text' : '';
       const streamData = streamingAnswer ? ` data-raw="${escapeHtml(node.text)}"` : '';
@@ -556,6 +558,12 @@ function renderTimelineNode(node: TimelineNode, streamingAnswer = false): string
     default:
       return '';
   }
+}
+
+function renderMessageImage(block: Extract<MessageBlock, { kind: 'image' }>): string {
+  if (!block.dataUrl) return '';
+  const src = escapeHtml(block.dataUrl);
+  return `<details class="message-image-preview"><summary aria-label="Expand attached image" title="Expand image"><img class="message-image-thumb" src="${src}" alt="Attached image thumbnail" /></summary><div class="message-image-expanded-wrap"><img class="message-image-expanded" src="${src}" alt="Attached image preview" /></div></details>`;
 }
 
 function metaLabel(iconKey: keyof typeof META_ICONS, text: string): string {
@@ -573,7 +581,7 @@ function renderMetaBlock(block: MessageBlock): string {
       return `<details class="meta-block meta-tool-result${err ? ' is-error' : ''}"><summary class="meta-head">${metaLabel(err ? 'error' : 'result', err ? 'Tool error' : 'Tool result')}${block.name ? `<code class="tool-name">${escapeHtml(block.name)}</code>` : ''}</summary>${renderToolContent(block.text)}</details></div>`;
     }
     case 'image':
-      return `<div class="meta-block meta-image meta-head">${metaLabel('image', 'Image')}<span class="tool-name">${escapeHtml(block.mimeType)}</span></div>`;
+      return `<div class="meta-block meta-image"><div class="meta-head">${metaLabel('image', 'Image')}<span class="tool-name">${escapeHtml(block.mimeType)}</span></div>${renderMessageImage(block)}</div>`;
     default:
       return '';
   }
@@ -1184,6 +1192,37 @@ function renderAttachment(
     </details>`;
 }
 
+function renderCapturedContext(
+  item: NonNullable<WebviewSnapshot['messages'][number]['capturedContext']>[number],
+  id: string
+): string {
+  const fileName = item.path.split(/[\\/]/).filter(Boolean).pop() ?? item.path;
+  const language = item.languageId ?? (item.kind === 'diagnostics' ? 'text' : '');
+  const highlighted = highlightCode(item.content, language, escapeHtml);
+  const codeClass = highlighted.language ? `hljs language-${escapeHtml(highlighted.language)}` : '';
+  const lines = item.content.split('\n');
+  const preview =
+    lines.length > 10
+      ? highlightCode(lines.slice(0, 10).join('\n'), language, escapeHtml)
+      : undefined;
+  const detail =
+    item.kind === 'diagnostics'
+      ? `${item.path} · ${item.severity ?? 'diagnostics'}`
+      : `${item.path} · L${item.lineStart}-${item.lineEnd}`;
+  const body = `<div class="detail-stack"><div class="muted">${escapeHtml(detail)}</div><pre class="code-block"><code class="${codeClass}">${highlighted.html}</code></pre>${item.fileRef ? `<button type="button" data-attachment-uri="${escapeHtml(item.fileRef.uri)}">Open ${escapeHtml(item.fileRef.path)}</button>` : ''}</div>`;
+  if (!preview) {
+    return `<section class="message-attachment captured-context"><div class="captured-context-title">${escapeHtml(fileName)}</div>${body}</section>`;
+  }
+  const previewClass = preview.language ? `hljs language-${escapeHtml(preview.language)}` : '';
+  return `<details class="message-attachment captured-context" id="${escapeHtml(id)}" data-preserve-open><summary><span class="captured-context-title">${escapeHtml(fileName)}</span><span class="captured-context-action"><span class="when-closed">Show all ${lines.length} lines</span><span class="when-open">Show less</span></span><span class="captured-context-preview"><code class="${previewClass}">${preview.html}</code></span></summary>${body}</details>`;
+}
+
+function renderCompactionBanner(snapshot: WebviewSnapshot): string {
+  if (!snapshot.isCompacting) return '';
+  const reason = snapshot.compaction?.reason;
+  return `<div class="compaction-banner" role="status"><span class="spinner spinner-sm" aria-hidden="true"></span><span><strong>Compacting context</strong>${reason ? ` · ${escapeHtml(reason)}` : ''}<span class="muted"> · Progress unavailable</span></span><span class="visually-hidden" role="progressbar" aria-label="Context compaction" aria-valuetext="In progress; percentage unavailable"></span></div>`;
+}
+
 function renderFreshSessionDetails(snapshot: WebviewSnapshot): string {
   const runtime = snapshot.runtime;
   const capability = (value: number | undefined, label: string): string =>
@@ -1233,7 +1272,8 @@ function renderMessages(snapshot: WebviewSnapshot): string {
             snapshot.bindingState !== 'draft' &&
             message.id === snapshot.currentAssistantMessageId &&
             message.role === 'assistant',
-          modelName
+          modelName,
+          !snapshot.isCompacting
         );
       })
       .join('')
@@ -1258,7 +1298,8 @@ function renderMessageArticle(
   message: WebviewSnapshot['messages'][number],
   isLast = false,
   streamingAnswer = false,
-  modelName = ''
+  modelName = '',
+  allowEdit = true
 ): string {
   const role = message.role;
   const body = renderMessageBody(message, streamingAnswer, modelName);
@@ -1267,15 +1308,19 @@ function renderMessageArticle(
   }
   const roleLabel = role === 'assistant' ? 'π' : role === 'user' ? 'You' : '';
   const showCopy = role === 'assistant' || role === 'user';
+  const captured = message.capturedContext?.length
+    ? `<div class="detail-stack captured-context-list" aria-label="Captured files">${message.capturedContext.map((item, index) => renderCapturedContext(item, `captured-context-${message.id}-${index}`)).join('')}</div>`
+    : '';
+  const editDisabled = allowEdit ? '' : ' disabled';
   // (content-visibility virtualization removed — see chat.css note; it caused
   // scrollbar jumpiness. `isLast` retained for future use.)
   void isLast;
   return `
         <article class="message-card message-${escapeHtml(role)}" data-mid="${escapeHtml(message.id)}"${roleLabel ? ` aria-label="${roleLabel} said"` : ''}>
           ${roleLabel ? `<div class="message-role">${roleLabel}</div>` : ''}
-          ${body}
+          ${body}${captured}
           ${message.attachments.length > 0 ? `<div class="detail-stack">${message.attachments.map((attachment) => renderAttachment(attachment)).join('')}</div>` : ''}
-          ${showCopy ? `<div class="msg-actions">${role === 'user' ? `<button type="button" class="msg-edit" title="Edit &amp; restart from here" aria-label="Edit and restart the chat from this message">${EDIT_ICON}</button>` : ''}<button type="button" class="msg-copy" title="Copy message" aria-label="Copy message">${COPY_ICON}</button></div>` : ''}
+          ${showCopy ? `<div class="msg-actions">${role === 'user' ? `<button type="button" class="msg-edit" title="Edit &amp; restart from here" aria-label="Edit and restart the chat from this message"${editDisabled}>${EDIT_ICON}</button>` : ''}<button type="button" class="msg-copy"${message.capturedContext ? ` data-copy-raw="${escapeHtml(message.text)}"` : ''} title="Copy message" aria-label="Copy message">${COPY_ICON}</button></div>` : ''}
         </article>`;
 }
 
@@ -1479,6 +1524,7 @@ export function renderChatApp(snapshot: WebviewSnapshot): string {
   // so it needs its own signal).
   const connecting = (!interactive && !faulted) || snapshot.switchingSession === true;
   const disabledAttr = interactive ? '' : 'disabled';
+  const unsafeDisabledAttr = interactive && !snapshot.isCompacting ? '' : 'disabled';
   const sendLabel = busy ? 'Send next (Enter)' : 'Send (Enter · Shift+Enter for newline)';
   const sendCommand = busy ? 'follow_up' : 'prompt';
   const bindingLabel =
@@ -1493,6 +1539,13 @@ export function renderChatApp(snapshot: WebviewSnapshot): string {
   const restrictedBanner = snapshot.isTrusted
     ? ''
     : `<section class="banner info"><strong>Restricted Mode</strong><div class="muted">Restricted Mode: chat can read, but changes stay disabled until you trust this workspace.</div></section>`;
+  const busyActions = busy
+    ? `<button type="button" class="ghost" data-action="abort">Stop</button>${
+        snapshot.isCompacting
+          ? ''
+          : '<button type="button" class="ghost steer-next" data-send-command="steer" title="Steer the active turn without stopping it" aria-label="Steer next">Steer next</button>'
+      }`
+    : '';
 
   const folderSelect =
     snapshot.folders.length > 1
@@ -1514,7 +1567,7 @@ export function renderChatApp(snapshot: WebviewSnapshot): string {
       ${renderShareBar(snapshot)}
       ${renderRecovery(snapshot)}
 
-      ${renderPlanStrip(snapshot)}
+      ${renderPlanStrip(snapshot)}${renderCompactionBanner(snapshot)}
       <main class="conversation" id="messages" role="log" aria-live="off" aria-relevant="additions text">${
         connecting && snapshot.messages.length === 0
           ? `<div class="connecting-state" role="status" aria-live="polite"><div class="boot-loader" aria-hidden="true"><svg class="boot-squiggle" viewBox="0 0 104 104" role="img"><path d="M 96.0 52.0 L 97.3 54.0 L 98.2 56.0 L 98.7 58.2 L 98.7 60.2 L 98.0 62.2 L 96.8 64.0 L 95.2 65.6 L 93.3 67.0 L 91.4 68.3 L 89.7 69.6 L 88.2 70.9 L 87.2 72.3 L 86.5 74.0 L 86.1 75.9 L 85.9 78.0 L 85.7 80.3 L 85.4 82.6 L 84.8 84.8 L 83.8 86.8 L 82.5 88.3 L 80.7 89.4 L 78.6 90.0 L 76.3 90.2 L 74.0 90.1 L 71.7 89.9 L 69.6 89.7 L 67.6 89.7 L 65.9 90.2 L 64.3 91.0 L 62.8 92.2 L 61.2 93.7 L 59.6 95.3 L 57.9 96.9 L 56.0 98.2 L 54.1 99.1 L 52.0 99.4 L 49.9 99.1 L 48.0 98.2 L 46.1 96.9 L 44.4 95.3 L 42.8 93.7 L 41.2 92.2 L 39.7 91.0 L 38.1 90.2 L 36.4 89.7 L 34.4 89.7 L 32.3 89.9 L 30.0 90.1 L 27.7 90.2 L 25.4 90.0 L 23.3 89.4 L 21.5 88.3 L 20.2 86.8 L 19.2 84.8 L 18.6 82.6 L 18.3 80.3 L 18.1 78.0 L 17.9 75.9 L 17.5 74.0 L 16.8 72.3 L 15.8 70.9 L 14.3 69.6 L 12.6 68.3 L 10.7 67.0 L 8.8 65.6 L 7.2 64.0 L 6.0 62.2 L 5.3 60.2 L 5.3 58.2 L 5.8 56.0 L 6.7 54.0 L 8.0 52.0 L 9.3 50.1 L 10.6 48.4 L 11.5 46.7 L 12.0 44.9 L 12.1 43.2 L 11.8 41.2 L 11.3 39.2 L 10.7 37.0 L 10.1 34.7 L 9.9 32.4 L 10.2 30.2 L 11.0 28.3 L 12.2 26.7 L 14.0 25.4 L 16.1 24.4 L 18.3 23.7 L 20.5 23.2 L 22.6 22.6 L 24.4 21.9 L 25.9 20.9 L 27.1 19.6 L 28.1 17.9 L 29.1 16.0 L 30.0 13.9 L 31.1 11.8 L 32.4 9.9 L 34.0 8.4 L 35.8 7.5 L 37.8 7.0 L 40.0 7.2 L 42.2 7.8 L 44.4 8.7 L 46.4 9.7 L 48.4 10.6 L 50.2 11.2 L 52.0 11.4 L 53.8 11.2 L 55.6 10.6 L 57.6 9.7 L 59.6 8.7 L 61.8 7.8 L 64.0 7.2 L 66.2 7.0 L 68.2 7.5 L 70.0 8.4 L 71.6 9.9 L 72.9 11.8 L 74.0 13.9 L 74.9 16.0 L 75.9 17.9 L 76.9 19.6 L 78.1 20.9 L 79.6 21.9 L 81.4 22.6 L 83.5 23.2 L 85.7 23.7 L 87.9 24.4 L 90.0 25.4 L 91.8 26.7 L 93.0 28.3 L 93.8 30.2 L 94.1 32.4 L 93.9 34.7 L 93.3 37.0 L 92.7 39.2 L 92.2 41.2 L 91.9 43.2 L 92.0 44.9 L 92.5 46.7 L 93.4 48.4 L 94.7 50.1 L 96.0 52.0 Z" fill="none" stroke="#ff8c42" stroke-width="2.5" stroke-linecap="round"/></svg><svg class="boot-pi" viewBox="0 0 24 24" role="img"><g fill="#ff8c42"><path d="M3.2 5.4 L20 5.4 L18.4 8 L4.8 8 Z"/><rect x="6.1" y="8" width="2.7" height="10.6" rx="1.1"/><path d="M14.4 8 h2.7 v8.4 l-2.7 2.2 Z"/><path d="M9.8 19.2 l2.1 -1.6 l-2.1 -1.6 v3.2 Z" opacity="0.9"/></g></svg></div><p class="connecting-copy">${
@@ -1546,31 +1599,28 @@ export function renderChatApp(snapshot: WebviewSnapshot): string {
       <section class="composer-dock" aria-labelledby="composer-heading">
         <h2 id="composer-heading" class="visually-hidden">Message Pi</h2>
         <label class="visually-hidden" for="${COMPOSER_FIELD_ID}">Message π</label>
-        ${
-          attachmentsVisible
-            ? `<div class="attachment-tray"><div class="section-label">Attachments for next message</div><div class="chip-list" role="list" aria-label="Attachments for next message">${snapshot.pendingContextItems
-                .map((item) => renderContextChip(item))
-                .join(
-                  ''
-                )}${renderImageChip(snapshot)}</div><button type="button" data-action="clearAttachments">Clear attachments</button></div>`
-            : ''
-        }
         ${renderQueueTray(snapshot)}
         ${isLiveWorking(snapshot) ? renderWorkingBanner(snapshot) : ''}
-        <div class="composer-card${connecting ? ' is-connecting' : ''}" aria-busy="${connecting ? 'true' : 'false'}">
+        <div class="composer-card${connecting ? ' is-connecting' : ''}" aria-busy="${connecting ? 'true' : 'false'}">${
+          attachmentsVisible
+            ? `<div class="attachment-tray"><div class="attachment-heading"><span>Attachments</span><button type="button" data-action="clearAttachments">Clear all</button></div><div class="chip-list" role="list" aria-label="Attachments for next message">${snapshot.pendingContextItems
+                .map((item) => renderContextChip(item))
+                .join('')}${renderImageChip(snapshot)}</div></div>`
+            : ''
+        }
           <textarea id="${COMPOSER_FIELD_ID}" rows="3" placeholder="${connecting ? 'Connecting to π…' : 'Ask π to edit…'}" ${disabledAttr}>${escapeHtml(snapshot.draft)}</textarea>
           <div class="composer-actions" aria-label="Composer actions">
             <div class="composer-actions-left">
-              ${connecting ? '' : renderStatusChip(snapshot)}
+              ${connecting || snapshot.isCompacting ? '' : renderStatusChip(snapshot)}
               <button type="button" id="${ATTACH_TRIGGER_ID}" class="icon-button" data-action="appendPickedFile" title="Add a file" aria-label="Add a file" ${disabledAttr}>+</button>
-              <button type="button" class="icon-button" data-command="piRpc.showPiCommands" title="Commands" aria-label="Commands" ${disabledAttr}>/</button>
+              <button type="button" class="icon-button" data-command="piRpc.showPiCommands" title="Commands" aria-label="Commands" ${unsafeDisabledAttr}>/</button>
             </div>
             <div class="composer-actions-right">
-              ${connecting ? '' : renderFollowToggle(snapshot)}
-              ${connecting ? '' : renderPermissionModeToggle(snapshot)}
-              ${connecting ? '' : folderSelect}
-              ${busy ? '<button type="button" class="ghost" data-action="abort">Stop</button>' : ''}
-              <button type="button" id="${SEND_BUTTON_ID}" class="send-button" data-send-command="${sendCommand}" title="${sendLabel}" aria-label="${sendLabel}" ${disabledAttr}><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12.5 4v3a1.5 1.5 0 0 1-1.5 1.5H4.5"/><path d="M7 6L4.3 8.5 7 11"/></svg></button>
+              ${connecting || snapshot.isCompacting ? '' : renderFollowToggle(snapshot)}
+              ${connecting || snapshot.isCompacting ? '' : renderPermissionModeToggle(snapshot)}
+              ${connecting || snapshot.isCompacting ? '' : folderSelect}
+              ${busyActions}
+              <button type="button" id="${SEND_BUTTON_ID}" class="send-button" data-send-command="${sendCommand}" title="${sendLabel}" aria-label="${sendLabel}" ${unsafeDisabledAttr}><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12.5 4v3a1.5 1.5 0 0 1-1.5 1.5H4.5"/><path d="M7 6L4.3 8.5 7 11"/></svg></button>
             </div>
           </div>
         </div>

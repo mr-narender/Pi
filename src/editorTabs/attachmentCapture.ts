@@ -8,6 +8,8 @@ import {
 } from '../webview/composer';
 import type { SessionController } from '../sessions/sessionController';
 
+export const MAX_ATTACH_BYTES = 512 * 1024;
+
 // Extracted from tabManager.ts (A1 of the de-bloat plan — see plan turn):
 // everything here takes a `controller`/`document` as an explicit parameter
 // and has ZERO dependency on ChatTabManager instance state (`this`). Verified
@@ -45,7 +47,7 @@ export function relativeWorkspacePath(
   folder: vscode.WorkspaceFolder,
   uri: vscode.Uri
 ): string | undefined {
-  if (uri.scheme !== 'file' || folder.uri.scheme !== 'file') {
+  if (uri.scheme !== folder.uri.scheme || uri.authority !== folder.uri.authority) {
     return undefined;
   }
   const owningFolder = vscode.workspace.getWorkspaceFolder(uri);
@@ -55,7 +57,7 @@ export function relativeWorkspacePath(
       return relative.replaceAll('\\', '/');
     }
   }
-  return uri.fsPath.replaceAll('\\', '/');
+  return uri.scheme === 'file' ? uri.fsPath.replaceAll('\\', '/') : undefined;
 }
 
 export function diagnosticSeverity(
@@ -108,7 +110,6 @@ export async function capturePickedFile(
     return undefined;
   }
   // Size guard BEFORE reading, so a huge/binary file cannot freeze the UI.
-  const MAX_ATTACH_BYTES = 512 * 1024;
   let size = 0;
   try {
     const stat = await vscode.workspace.fs.stat(uri);
@@ -158,6 +159,37 @@ export async function capturePickedFile(
       lineEnd,
       languageId,
       contentFingerprint: fingerprint(content),
+    },
+  };
+}
+
+export function captureDroppedFile(
+  controller: SessionController,
+  name: string,
+  text: string
+): PendingContextItem {
+  const safeName = basename(name.replaceAll('\\', '/')).slice(0, 256) || 'dropped-file';
+  const content = boundFileContent(text);
+  const languageId = safeName.includes('.')
+    ? (safeName.split('.').pop() ?? 'plaintext')
+    : 'plaintext';
+  return {
+    kind: 'droppedFile',
+    itemId: makeId('droppedFile'),
+    workspaceFolder: controller.folder.uri.toString(),
+    workspaceRelativePath: safeName,
+    lineStart: 1,
+    lineEnd: content.split('\n').length,
+    languageId,
+    sanitizedContent: content,
+    capturedAt: new Date().toISOString(),
+    persistedRef: {
+      workspaceRelativePath: safeName,
+      lineStart: 1,
+      lineEnd: content.split('\n').length,
+      languageId,
+      contentFingerprint: fingerprint(content),
+      content,
     },
   };
 }

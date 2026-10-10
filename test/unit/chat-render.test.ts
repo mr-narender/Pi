@@ -51,6 +51,146 @@ function snapshot(overrides: Partial<WebviewSnapshot> = {}): WebviewSnapshot {
   };
 }
 
+test('captured context renders inline with highlighting, exact copy payload, and separate file open', () => {
+  const raw = 'review\n\n<pi-vscode-context-v1>\nowned\n</pi-vscode-context-v1>';
+  const html = renderChatApp(
+    snapshot({
+      messages: [
+        {
+          id: 'u',
+          role: 'user',
+          text: raw,
+          blocks: [{ kind: 'text', text: 'review' }],
+          attachments: [],
+          capturedContext: [
+            {
+              kind: 'selection',
+              path: 'src/app.ts',
+              lineStart: 2,
+              lineEnd: 4,
+              languageId: 'typescript',
+              content: 'const value = 1;',
+              fileRef: { uri: 'file:///tmp/workspace/src/app.ts', path: 'src/app.ts' },
+            },
+          ],
+        },
+      ],
+    })
+  );
+  assert.match(html, /captured-context/);
+  assert.match(html, /language-typescript/);
+  assert.match(html, /data-attachment-uri="file:\/\/\/tmp\/workspace\/src\/app\.ts"/);
+  assert.match(html, /data-copy-raw="review\n\n&lt;pi-vscode-context-v1&gt;/);
+  assert.doesNotMatch(html, /native editor|embedded editor/i);
+});
+
+test('captured files use filename-only rows, preview ten lines, and expand independently', () => {
+  const content = Array.from({ length: 12 }, (_, index) => `line ${index + 1}`).join('\n');
+  const html = renderChatApp(
+    snapshot({
+      messages: [
+        {
+          id: 'u',
+          role: 'user',
+          text: 'review',
+          attachments: [],
+          capturedContext: [
+            {
+              kind: 'droppedFile',
+              path: 'src/app.ts',
+              lineStart: 1,
+              lineEnd: 12,
+              languageId: 'typescript',
+              content,
+            },
+            {
+              kind: 'pickedFile',
+              path: 'test/app.test.ts',
+              lineStart: 1,
+              lineEnd: 12,
+              languageId: 'typescript',
+              content,
+            },
+          ],
+        },
+      ],
+    })
+  );
+  const dom = new JSDOM(`<main>${html}</main>`);
+  const rows = [...dom.window.document.querySelectorAll<HTMLDetailsElement>('.captured-context')];
+  assert.deepEqual(
+    rows.map((row) => row.querySelector('.captured-context-title')?.textContent),
+    ['app.ts', 'app.test.ts']
+  );
+  assert.equal(dom.window.document.body.textContent?.includes('Dropped file'), false);
+  for (const details of rows) {
+    assert.equal(
+      details.querySelector('.captured-context-preview')?.textContent,
+      content.split('\n').slice(0, 10).join('\n')
+    );
+    assert.equal(details.querySelector('.code-block code')?.textContent, content);
+    assert.equal(details.open, false);
+    assert.match(details.querySelector('summary')?.textContent ?? '', /Show all 12 lines/);
+  }
+  rows[1]?.querySelector('summary')?.click();
+  assert.equal(rows[0]?.open, false);
+  assert.equal(rows[1]?.open, true);
+  dom.window.close();
+});
+
+test('submitted screenshots render a thumbnail that expands on click', () => {
+  const dataUrl = 'data:image/png;base64,aGVsbG8=';
+  const html = renderChatApp(
+    snapshot({
+      messages: [
+        {
+          id: 'image',
+          role: 'user',
+          text: '[image:image/png]',
+          blocks: [{ kind: 'image', mimeType: 'image/png', dataUrl }],
+          attachments: [],
+        },
+      ],
+    })
+  );
+  const dom = new JSDOM(`<main>${html}</main>`);
+  const details = dom.window.document.querySelector<HTMLDetailsElement>('.message-image-preview');
+  const thumbnail = details?.querySelector<HTMLImageElement>('.message-image-thumb');
+  const expanded = details?.querySelector<HTMLImageElement>('.message-image-expanded');
+  assert.equal(thumbnail?.src, dataUrl);
+  assert.equal(expanded?.src, dataUrl);
+  assert.equal(details?.open, false);
+  details?.querySelector('summary')?.click();
+  assert.equal(details?.open, true);
+  dom.window.close();
+});
+
+test('compaction is truthful and indeterminate while safe reading and drafting remain available', () => {
+  const html = renderChatApp(
+    snapshot({
+      isCompacting: true,
+      connectionState: 'busy',
+      compaction: { progress: 'indeterminate', reason: 'manual' },
+    })
+  );
+  assert.match(html, /Compacting context/);
+  assert.match(html, /manual/);
+  assert.match(html, /Progress unavailable/);
+  assert.doesNotMatch(html, /aria-valuenow|\d+%/);
+  assert.match(html, /id="composer-field"[^>]*>(?:draft)?<\/textarea>/);
+  assert.match(html, /aria-label="Add a file"(?![^>]*disabled)/);
+  assert.match(html, /data-action="abort">Stop/);
+  assert.match(html, /class="msg-copy"/);
+  assert.match(html, /id="composer-send-button"[^>]*disabled/);
+  assert.doesNotMatch(html, /Steer next/);
+});
+
+test('busy composer offers explicit atomic Steer next without replacing Send next', () => {
+  const html = renderChatApp(snapshot({ isStreaming: true, connectionState: 'busy' }));
+  assert.match(html, /data-send-command="steer"[^>]*>Steer next/);
+  assert.match(html, /id="composer-send-button"[^>]*data-send-command="follow_up"/);
+});
+
 test('empty assistant start defers the shared reply row until the first streaming chunk', () => {
   for (const connectionState of ['busy', 'ready'] as const) {
     const user = { id: 'u', role: 'user', text: 'PING', attachments: [] };

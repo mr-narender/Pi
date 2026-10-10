@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.2.27
+
+- Support the audited Pi 1.1.0 SDK from the configured executable or PATH across
+  shared and dedicated hosts, preserving exact package, version and API checks.
+- Attach files by dropping them directly into the composer, including files
+  from the local client while Pi runs in a remote VS Code workspace. Preserve
+  real filenames and apply the existing file and image size limits before
+  transferring bytes.
+- Clear submitted text, file chips and image chips immediately, keep the clear
+  durable across VS Code restarts, and restore usable content after cancelled
+  or failed sends without overwriting newer input.
+- Place attachment controls inside the composer with a restrained drop cue and
+  a compact, accessible Clear all action that follows the current VS Code theme.
+- Render every captured file as a filename-only row with an expandable ten-line
+  preview, even when Pi appends image transcript text; preserve the complete active chat branch
+  through compaction and reopen, show truthful indeterminate compaction status,
+  and offer an explicit Steer next action while Pi is replying.
+- Show submitted screenshots as clickable thumbnails with an expanded preview.
+
 ## 0.2.26
 
 - Resolve Pi SDK modules from their installed package roots so npm, Bun, pnpm

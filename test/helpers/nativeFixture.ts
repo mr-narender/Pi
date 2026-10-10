@@ -480,13 +480,13 @@ export async function createNativeFixture(
 export async function nativeSdkHostPlan(
   fixture: NativeFixture,
   mode: 'shared' | 'dedicated',
-  scenario: 'default' | 'patterns' | 'project' | 'parity' | 'engine' = 'default'
+  scenario: 'default' | 'patterns' | 'project' | 'parity' | 'engine' | 'tool-modifiers' = 'default'
 ) {
   const state = ownedFixtures.get(fixture);
   if (
     !state ||
     (mode !== 'shared' && mode !== 'dedicated') ||
-    !['default', 'patterns', 'project', 'parity', 'engine'].includes(scenario)
+    !['default', 'patterns', 'project', 'parity', 'engine', 'tool-modifiers'].includes(scenario)
   )
     throw new Error('Unowned SDK host fixture');
   await validateOwned(state);
@@ -535,6 +535,8 @@ export async function nativeSdkHostPlan(
     '--no-tools',
   ];
   if (state.vetoAsset) openArgs.push('--extension', state.vetoAsset);
+  // Fixed read-only selection; tests inspect the tools without executing them.
+  if (scenario === 'tool-modifiers') openArgs.push('--tools', '+ls,-read');
   if (scenario === 'patterns')
     openArgs.push(
       '--models',
@@ -602,7 +604,7 @@ export async function spawnNativePublicAuth(fixture: NativeFixture, callbackBarr
 export async function spawnNativeSdkHost(
   fixture: NativeFixture,
   mode: 'shared' | 'dedicated',
-  scenario: 'default' | 'patterns' | 'project' | 'parity' | 'engine' = 'default'
+  scenario: 'default' | 'patterns' | 'project' | 'parity' | 'engine' | 'tool-modifiers' = 'default'
 ) {
   const plan = await nativeSdkHostPlan(fixture, mode, scenario);
   return {

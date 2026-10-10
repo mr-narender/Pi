@@ -72,6 +72,12 @@ test('beginSend: cancel/failure can restore exactly what was cleared', () => {
   assert.equal(restored.pendingContextItems[0]!.itemId, 'ctx-1');
   assert.equal(restored.pendingImages.length, 1);
   assert.equal(restored.pendingImages[0]!.itemId, 'img-1');
+  assert.equal(restored.pendingImages[0]!.inMemoryBase64, 'aGVsbG8=');
+  assert.equal(
+    restored.pendingImages[0]!.previewDataUrl,
+    'data:image/png;base64,aGVsbG8=',
+    'failed/cancelled sends restore a usable image chip, not an expired shell'
+  );
 });
 
 test('beginSend: empty composer throws without mutating state', () => {
@@ -143,4 +149,27 @@ test('pasteImage protocol survives the pasteText removal (image chips must keep 
     }
   );
   assert.equal(parseWebviewMessage({ type: 'pasteImage', data: 42 }), undefined);
+});
+
+test('dropFile protocol carries bounded client bytes for remote-backed chats', () => {
+  assert.deepEqual(
+    parseWebviewMessage({
+      type: 'dropFile',
+      name: 'report.csv',
+      mimeType: 'text/csv',
+      sizeBytes: 7,
+      data: 'YSxiCjEsMg==',
+    }),
+    {
+      type: 'dropFile',
+      name: 'report.csv',
+      mimeType: 'text/csv',
+      sizeBytes: 7,
+      data: 'YSxiCjEsMg==',
+    }
+  );
+  assert.equal(
+    parseWebviewMessage({ type: 'dropFile', name: 'x', sizeBytes: -1, data: '' }),
+    undefined
+  );
 });

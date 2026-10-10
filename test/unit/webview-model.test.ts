@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createWebviewSnapshot } from '../../src/webview/model';
+import { createWebviewSnapshot, parseCapturedContextEnvelope } from '../../src/webview/model';
 import { createInitialControllerState } from '../../src/state/types';
 import { createEmptyComposerState } from '../../src/webview/composer';
 
@@ -94,6 +94,79 @@ test('createWebviewSnapshot serializes transcript and composer ui state', () => 
     prompts: 1,
     skills: 1,
   });
+});
+
+test('valid context envelopes become captured-file presentation without changing history text', () => {
+  const line = JSON.stringify({
+    kind: 'selection',
+    workspaceRelativePath: 'src/app.ts',
+    lineStart: 2,
+    lineEnd: 4,
+    languageId: 'typescript',
+    content: 'const value = 1;',
+  });
+  const raw = `Please review\n\n<pi-vscode-context-v1>\n${line}\n</pi-vscode-context-v1>`;
+  const state = createInitialControllerState('workspace', '/tmp/workspace');
+  state.messages = [{ id: 'u', role: 'user', content: raw }];
+  const message = createWebviewSnapshot(state, 1, baseExtra).messages[0]!;
+  assert.equal(message.text, raw, 'RPC/history text must stay byte-for-byte intact');
+  assert.deepEqual(message.blocks, [{ kind: 'text', text: 'Please review' }]);
+  assert.deepEqual(message.capturedContext, [
+    {
+      kind: 'selection',
+      path: 'src/app.ts',
+      lineStart: 2,
+      lineEnd: 4,
+      languageId: 'typescript',
+      severity: undefined,
+      content: 'const value = 1;',
+      fileRef: { uri: 'file:///tmp/workspace/src/app.ts', path: 'src/app.ts' },
+    },
+  ]);
+});
+
+test('multi-file context renders as separate items when Pi appends image transcript text', () => {
+  const contextLines = [
+    {
+      kind: 'droppedFile',
+      workspaceRelativePath: 'one.csv',
+      lineStart: 1,
+      lineEnd: 2,
+      languageId: 'csv',
+      content: 'a,b\n1,2',
+    },
+    {
+      kind: 'droppedFile',
+      workspaceRelativePath: 'two.txt',
+      lineStart: 1,
+      lineEnd: 1,
+      languageId: 'plaintext',
+      content: 'second',
+    },
+  ].map((item) => JSON.stringify(item));
+  const raw = `Review both\n\n<pi-vscode-context-v1>\n${contextLines.join('\n')}\n</pi-vscode-context-v1>\n\n[Image: attached diagram]`;
+  const state = createInitialControllerState('workspace', '/tmp/workspace');
+  state.messages = [{ id: 'u', role: 'user', content: raw }];
+  const message = createWebviewSnapshot(state, 1, baseExtra).messages[0]!;
+  assert.deepEqual(message.blocks, [
+    { kind: 'text', text: 'Review both\n\n[Image: attached diagram]' },
+  ]);
+  assert.deepEqual(
+    message.capturedContext?.map((item) => item.path),
+    ['one.csv', 'two.txt']
+  );
+  assert.doesNotMatch(message.blocks?.[0]?.text ?? '', /pi-vscode-context-v1/);
+});
+
+test('malformed context envelopes remain ordinary text', () => {
+  const raw = '<pi-vscode-context-v1>\n{"kind":"selection"}\n</pi-vscode-context-v1>';
+  assert.equal(parseCapturedContextEnvelope(raw, '/tmp/workspace'), undefined);
+  const state = createInitialControllerState('workspace', '/tmp/workspace');
+  state.messages = [{ id: 'u', role: 'user', content: raw }];
+  const message = createWebviewSnapshot(state, 1, baseExtra).messages[0]!;
+  assert.equal(message.text, raw);
+  assert.deepEqual(message.blocks, [{ kind: 'text', text: raw }]);
+  assert.equal(message.capturedContext, undefined);
 });
 
 import { DEFAULT_MESSAGE_WINDOW, firstPromptPreview } from '../../src/webview/model';
@@ -193,6 +266,28 @@ test('createWebviewSnapshot maps Pi content blocks into structured message block
   assert.equal(blocks?.[1]?.kind, 'tool');
   assert.equal(blocks?.[1] && 'name' in blocks[1] ? blocks[1].name : undefined, 'bash');
   assert.equal(blocks?.[2]?.kind, 'text');
+});
+
+test('createWebviewSnapshot keeps safe Pi image bytes for screenshot previews', () => {
+  const state = createInitialControllerState('workspace', '/tmp/workspace');
+  state.messages = [
+    {
+      id: 'image',
+      role: 'user',
+      content: [{ type: 'image', mimeType: 'image/png', data: 'aGVsbG8=' }],
+    },
+  ];
+  const [block] = createWebviewSnapshot(state, 1, baseExtra).messages[0]?.blocks ?? [];
+  assert.deepEqual(block, {
+    kind: 'image',
+    mimeType: 'image/png',
+    dataUrl: 'data:image/png;base64,aGVsbG8=',
+  });
+
+  state.messages[0]!.content = [{ type: 'image', mimeType: 'text/html', data: 'PHNjcmlwdD4=' }];
+  assert.deepEqual(createWebviewSnapshot(state, 1, baseExtra).messages[0]?.blocks, [
+    { kind: 'image', mimeType: 'text/html' },
+  ]);
 });
 
 test('parseWebviewMessage rejects removed code-to-editor compatibility messages', () => {

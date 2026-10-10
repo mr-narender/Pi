@@ -58,6 +58,7 @@ export class ChatUiState implements vscode.Disposable {
   private readonly emitter = new vscode.EventEmitter<void>();
   private readonly composerStates = new Map<string, ComposerSessionState>();
   private readonly loadedKeys = new Set<string>();
+  private persistQueue: Promise<void> = Promise.resolve();
 
   public constructor(private readonly context: vscode.ExtensionContext) {}
 
@@ -86,13 +87,21 @@ export class ChatUiState implements vscode.Disposable {
     const key = sessionStateKeyForIdentity(identity);
     if (!this.loadedKeys.has(key)) {
       const persisted = this.readPersistedState()[key];
-      this.composerStates.set(key, await this.restorePersistedState(controller, persisted));
-      this.loadedKeys.add(key);
+      const restored = await this.restorePersistedState(controller, persisted);
+      // A send or edit may have published newer state while attachment
+      // revalidation was awaiting the workspace. Never replace that state.
+      if (!this.loadedKeys.has(key)) {
+        this.composerStates.set(key, restored);
+        this.loadedKeys.add(key);
+      }
     }
     const existing = this.composerStates.get(key) ?? createEmptyComposerState();
     const validated = await this.validateContextItems(controller, existing);
-    this.composerStates.set(key, validated);
-    return cloneComposerState(validated);
+    if (this.composerStates.get(key) === existing) {
+      this.composerStates.set(key, validated);
+      return cloneComposerState(validated);
+    }
+    return cloneComposerState(this.composerStates.get(key) ?? createEmptyComposerState());
   }
 
   public async setComposerState(
@@ -128,6 +137,7 @@ export class ChatUiState implements vscode.Disposable {
       return;
     state.commandRevision = revision + 1;
     this.composerStates.set(key, cloneComposerState(state));
+    this.loadedKeys.add(key);
     await this.persist();
     if (
       sessionStateKeyForIdentity(currentIdentity(controller)) === key &&
@@ -152,7 +162,10 @@ export class ChatUiState implements vscode.Disposable {
     this.loadedKeys.delete(key);
     const current = this.readPersistedState();
     delete current[key];
-    await this.context.workspaceState.update(STORAGE_KEY, current);
+    for (const [stateKey, value] of this.composerStates) {
+      current[stateKey] = persistableComposerState(value);
+    }
+    await this.writePersistedState(current);
     this.emitter.fire();
   }
 
@@ -359,13 +372,16 @@ export class ChatUiState implements vscode.Disposable {
     const next = Object.fromEntries(
       Object.entries(this.readPersistedState()).filter(([key]) => !key.startsWith(`${folderUri}::`))
     );
-    await this.context.workspaceState.update(STORAGE_KEY, next);
     for (const key of [...this.composerStates.keys()]) {
       if (key.startsWith(`${folderUri}::`)) {
         this.composerStates.delete(key);
         this.loadedKeys.delete(key);
       }
     }
+    for (const [key, value] of this.composerStates) {
+      next[key] = persistableComposerState(value);
+    }
+    await this.writePersistedState(next);
   }
 
   public currentSessionKey(controller: SessionController): string {
@@ -406,7 +422,17 @@ export class ChatUiState implements vscode.Disposable {
     for (const [key, value] of this.composerStates) {
       current[key] = persistableComposerState(value);
     }
-    await this.context.workspaceState.update(STORAGE_KEY, current);
+    await this.writePersistedState(current);
+  }
+
+  private async writePersistedState(
+    state: Record<string, PersistedComposerSessionState>
+  ): Promise<void> {
+    const write = this.persistQueue.then(() =>
+      this.context.workspaceState.update(STORAGE_KEY, state)
+    );
+    this.persistQueue = write.catch(() => undefined);
+    await write;
   }
 
   private async restorePersistedState(
@@ -472,7 +498,7 @@ export class ChatUiState implements vscode.Disposable {
     controller: SessionController,
     item: PendingContextItem
   ): Promise<PendingContextItem> {
-    if (item.kind === 'pastedText') {
+    if (item.kind === 'pastedText' || item.kind === 'droppedFile') {
       // Self-contained: the bounded content lives in the persisted ref —
       // nothing on disk to re-read, nothing to go stale, and no workspace
       // access, so it's exempt from the trust gate below too.

@@ -15,7 +15,7 @@ export function resolveSdkDependencyFile(sdkRoot, dependencyFile) {
 export function validateSdkMetadata(metadata) {
   if (
     metadata.name !== '@earendil-works/pi-coding-agent' ||
-    !['0.99.1', '0.99.2', '1.0.0', '1.0.4'].includes(metadata.version)
+    !['0.99.1', '0.99.2', '1.0.0', '1.0.4', '1.1.0'].includes(metadata.version)
   )
     throw new Error('SDK_HOST_VERSION_UNSUPPORTED');
 }
@@ -56,7 +56,7 @@ export function validateSdkApi(sdk) {
       throw new Error('SDK_HOST_API_UNSUPPORTED');
 }
 
-/** Startup contract re-assessed against SDK 1.0.4; original audit:
+/** Startup contract re-assessed against SDK 1.1.0; original audit:
  * SDK 0.99.1 main.js:353–434,565–694. Exact versions only.
  * Metadata/admin/interactive startup modes are rejected, never ignored.
  * Trust asks have no CLI UI here: unresolved project trust stays denied.

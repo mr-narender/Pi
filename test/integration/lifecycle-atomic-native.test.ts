@@ -69,12 +69,11 @@ for (const mode of ['shared', 'dedicated'] as const)
         );
         const origin = async () => {
           const state = await rpc({ type: 'get_state' });
-          const entries = await rpc({ type: 'get_entries' });
-          assert.equal(state.leafId, undefined, 'ordinary state contract still has no leaf');
+          assert.equal(typeof state.leafId, 'string', 'small state contract includes active leaf');
           return {
             sessionId: state.sessionId,
             sessionFile: state.sessionFile,
-            leafId: entries.leafId,
+            leafId: state.leafId,
           };
         };
         const outgoing = await origin();

@@ -546,6 +546,39 @@ function submitComposer(command: string): void {
   });
 }
 
+function postDroppedFile(file: File): void {
+  const isImage = file.type.startsWith('image/') || /\.(png|jpe?g|gif|webp|bmp)$/i.test(file.name);
+  const fallbackLimit = isImage ? 3 * 1024 * 1024 : 512 * 1024;
+  const limits = currentSnapshot?.attachmentLimits;
+  const limit = (isImage ? limits?.imageBytes : limits?.fileBytes) ?? fallbackLimit;
+  if (file.size > limit) {
+    vscode.postMessage({
+      type: 'dropFile',
+      name: file.name,
+      mimeType: file.type,
+      sizeBytes: file.size,
+      data: '',
+    });
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = () => {
+    const result = typeof reader.result === 'string' ? reader.result : '';
+    const comma = result.indexOf(',');
+    const data = comma >= 0 ? result.slice(comma + 1) : '';
+    if (data) {
+      vscode.postMessage({
+        type: 'dropFile',
+        name: file.name,
+        mimeType: file.type,
+        sizeBytes: file.size,
+        data,
+      });
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
 function focusElement(id: string | undefined): boolean {
   if (!id) {
     return false;
@@ -1217,14 +1250,24 @@ function renderNow(snapshot: WebviewSnapshot): void {
         }
       }
     });
-    // #9 — drag a file from the Explorer onto the composer to attach it.
+    // Files with browser bytes use payload transport so local client files
+    // also work when the extension host is remote. Explorer URI-only drops
+    // keep the workspace.fs path, including vscode-remote URIs.
     bindOnce(textarea, 'dragover', (event) => {
       event.preventDefault();
-      textarea.classList.add('drop-target');
+      textarea.closest('.composer-dock')?.classList.add('is-drop-target');
     });
-    bindOnce(textarea, 'dragleave', () => textarea.classList.remove('drop-target'));
+    bindOnce(textarea, 'dragleave', () =>
+      textarea.closest('.composer-dock')?.classList.remove('is-drop-target')
+    );
     bindOnce(textarea, 'drop', (event) => {
-      textarea.classList.remove('drop-target');
+      textarea.closest('.composer-dock')?.classList.remove('is-drop-target');
+      const files = Array.from(event.dataTransfer?.files ?? []);
+      if (files.length > 0) {
+        event.preventDefault();
+        for (const file of files) postDroppedFile(file);
+        return;
+      }
       const data =
         event.dataTransfer?.getData('text/uri-list') ||
         event.dataTransfer?.getData('resourceurls') ||
@@ -1681,7 +1724,9 @@ function renderNow(snapshot: WebviewSnapshot): void {
   for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>('.msg-copy'))) {
     bindOnce(button, 'click', () => {
       const article = button.closest('.message-card');
+      const hasRawPayload = button.dataset.copyRaw !== undefined;
       const text =
+        button.dataset.copyRaw ??
         article?.querySelector('.tl-answer .tl-body')?.textContent ??
         article?.querySelector('.message-body')?.textContent ??
         article?.querySelector('.tl-body')?.textContent ??
@@ -1690,7 +1735,7 @@ function renderNow(snapshot: WebviewSnapshot): void {
         return;
       }
       void navigator.clipboard
-        ?.writeText(text.trim())
+        ?.writeText(hasRawPayload ? text : text.trim())
         .then(() => {
           button.classList.add('is-copied');
           setTimeout(() => button.classList.remove('is-copied'), 1000);

@@ -198,6 +198,93 @@ pre {
   white-space: nowrap;
   color: var(--vscode-foreground);
 }
+.compaction-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 2px;
+  padding: 8px 10px;
+  color: var(--vscode-foreground);
+  border-bottom: 1px solid var(--vscode-panel-border);
+}
+.captured-context-list {
+  margin-top: 2px;
+}
+.captured-context-title {
+  font-weight: 600;
+}
+.captured-context summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px 12px;
+}
+.captured-context-action {
+  color: var(--vscode-textLink-foreground);
+  font-size: 0.9em;
+  font-weight: 400;
+}
+.captured-context-preview {
+  display: block;
+  grid-column: 1 / -1;
+  overflow: auto;
+  padding: 8px 10px;
+  border-radius: 4px;
+  background: var(--vscode-textCodeBlock-background);
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: var(--vscode-editor-font-size, 13px);
+  font-weight: 400;
+  line-height: 1.45;
+  white-space: pre;
+}
+.captured-context .when-open,
+.captured-context[open] .when-closed,
+.captured-context[open] .captured-context-preview {
+  display: none;
+}
+.captured-context[open] .when-open {
+  display: inline;
+}
+.captured-context .code-block {
+  overflow: auto;
+}
+.message-image-preview {
+  margin-top: 8px;
+}
+.message-image-preview > summary {
+  display: inline-flex;
+  max-width: 100%;
+  list-style: none;
+  cursor: zoom-in;
+}
+.message-image-preview > summary::-webkit-details-marker {
+  display: none;
+}
+.message-image-preview[open] > summary {
+  cursor: zoom-out;
+}
+.message-image-thumb,
+.message-image-expanded {
+  display: block;
+  max-width: 100%;
+  object-fit: contain;
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 8px;
+  background: var(--vscode-editor-background);
+}
+.message-image-thumb {
+  width: auto;
+  max-height: 200px;
+}
+.message-image-expanded-wrap {
+  margin-top: 8px;
+  overflow: auto;
+}
+.message-image-expanded {
+  max-height: 70vh;
+}
+.steer-next {
+  white-space: nowrap;
+}
 .continue-btn {
   display: inline-flex;
   align-items: center;
@@ -350,12 +437,6 @@ pre {
 ::highlight(pi-find-current) {
   background: var(--vscode-editor-findMatchBackground, rgba(234, 200, 0, 0.6));
   color: inherit;
-}
-
-/* #9 — composer drop target highlight (drag a file in). */
-textarea.drop-target {
-  outline: 2px dashed var(--pi-tool-accent, #4ec9b0);
-  outline-offset: -2px;
 }
 
 /* #6 — inline slash-command autocomplete menu. */
@@ -4235,4 +4316,76 @@ body.vscode-high-contrast .chat-list-row.active {
   border-color: var(--vscode-panel-border);
   background: var(--vscode-editor-background);
   box-shadow: none;
+}
+
+/* Composer attachments stay in the input context. Drag feedback uses the
+   existing composer surface instead of adding another card. */
+.composer-card {
+  position: relative;
+}
+
+.composer-card::after {
+  content: 'Drop files to attach';
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: none;
+  place-items: center;
+  color: var(--vscode-foreground);
+  font-size: 13px;
+  font-weight: 600;
+  pointer-events: none;
+}
+
+.composer-dock.is-drop-target {
+  border-color: var(--vscode-focusBorder);
+  background: color-mix(
+    in srgb,
+    var(--vscode-focusBorder) 9%,
+    var(--vscode-editorWidget-background, var(--vscode-editor-background))
+  );
+}
+
+.composer-dock.is-drop-target .composer-card::after {
+  display: grid;
+}
+
+.composer-dock.is-drop-target .composer-card > * {
+  opacity: 0.16;
+}
+
+.composer-card > .attachment-tray {
+  margin: 0;
+  padding: 2px 4px 8px;
+  border-bottom: 1px solid var(--pi-hairline);
+}
+
+.attachment-heading {
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--vscode-descriptionForeground);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.attachment-heading button {
+  min-height: 28px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: var(--pi-radius-control);
+  color: var(--vscode-descriptionForeground);
+  background: transparent;
+  font-size: 11px;
+}
+
+.attachment-heading button:hover {
+  color: var(--vscode-foreground);
+  background: var(--pi-surface-hover);
+}
+
+.composer-card > .attachment-tray .chip-list {
+  gap: 6px;
 }

@@ -12,6 +12,7 @@ import type { PiRpcSettings } from '../config/settings';
 import { DiagnosticsLogger } from '../diagnostics/logger';
 import { redactJsonValue } from '../diagnostics/redaction';
 import { PiProcessSupervisor } from '../process/supervisor';
+import type { RpcClient } from '../rpc/client';
 import {
   isKnownEventType,
   type ExtensionUiRequest,
@@ -49,6 +50,8 @@ export class SessionController implements vscode.Disposable {
   private stopping = false;
   private authDisposed = false;
   private lastLoggedConnectionState?: ControllerState['connectionState'];
+  private refreshMessagesInFlight?: { key: string; client: RpcClient; promise: Promise<void> };
+  private navigationEpoch = 0;
   // When this controller last wrote to its own session file (generating,
   // renaming, etc.). Used to ignore filesystem-watcher events caused by our own
   // writes so live-reload only reacts to EXTERNAL (terminal) changes.
@@ -613,35 +616,48 @@ export class SessionController implements vscode.Disposable {
             throw new Error('The originating chat changed during the native operation.');
           if (!result || result.cancelled === true || result.aborted === true)
             return { cancelled: true, valid };
+          if (name === 'tree' || name === 'reload') {
+            this.navigationEpoch = (this.navigationEpoch ?? 0) + 1;
+          }
           const check = () => {
             if (!stable() || !surfaceValid())
               throw new Error('The originating chat changed during native completion.');
           };
           if (name === 'tree' || name === 'reload') {
-            // Incremental refreshEntries ignores leaf-only moves. Collect on the
-            // captured client and validate each wait BEFORE changing projection.
+            // Incremental refreshEntries ignores leaf-only moves. Rebuild the
+            // persisted active branch at the returned native leaf, validating
+            // each wait before changing projection.
             const entries = await captured.getEntries();
-            check();
-            const messages = await captured.getMessages();
             check();
             const current = await captured.getState();
             check();
+            const leafId = typeof result.leafId === 'string' ? result.leafId : null;
             if (
               !current ||
               !Array.isArray(entries?.entries) ||
-              !Array.isArray(messages?.messages) ||
               current.sessionId !== origin.sessionId ||
               current.sessionFile !== origin.sessionFile ||
+              current.leafId !== result.leafId ||
               entries?.leafId !== result.leafId
             )
               throw new Error('ENGINE_RECOVERY_REQUIRED_AFTER_COMPLETION');
-            const all = messages.messages as JsonObject[];
+            let messages = origin.sessionFile
+              ? await this.readActiveSessionMessages(origin.sessionFile, leafId)
+              : undefined;
+            check();
+            if (messages === undefined) {
+              const fallback = await captured.getMessages();
+              check();
+              if (!Array.isArray(fallback?.messages))
+                throw new Error('ENGINE_RECOVERY_REQUIRED_AFTER_COMPLETION');
+              messages = fallback.messages as JsonObject[];
+            }
             this.state = {
               ...this.state,
               state: current,
               entries: entries.entries as JsonObject[],
-              leafId: typeof entries.leafId === 'string' ? entries.leafId : null,
-              messages: all.slice(-Math.max(50, this.settings.maxTranscriptItems)),
+              leafId,
+              messages,
             };
             this.selfWriteAt = Date.now();
             await this.syncFileReadOffset();
@@ -783,7 +799,6 @@ export class SessionController implements vscode.Disposable {
   }
 
   public async stop(): Promise<void> {
-    this.assertNoManualCompaction();
     cancelModelOperations(this);
     this.stopping = true;
     this.disarmSessionFileWatcher();
@@ -881,6 +896,7 @@ export class SessionController implements vscode.Disposable {
   }
 
   public async restart(): Promise<void> {
+    this.assertNoManualCompaction();
     await this.stop();
     await this.start();
   }
@@ -907,26 +923,35 @@ export class SessionController implements vscode.Disposable {
       throw error instanceof Error ? error : new Error(String(error));
     });
     if (!valid()) return;
-    const sessionState = mergeSessionState(this.state.state, (state ?? {}) as SessionState);
+    const sessionState = {
+      ...mergeSessionState(this.state.state, (state ?? {}) as SessionState),
+      leafId:
+        typeof state?.leafId === 'string' && state.leafId.length > 0
+          ? state.leafId
+          : state?.leafId === null
+            ? null
+            : undefined,
+    };
     const sessionFile =
       typeof sessionState.sessionFile === 'string'
         ? sessionState.sessionFile
         : typeof this.state.state.sessionFile === 'string'
           ? this.state.state.sessionFile
           : undefined;
-    const messageList = sessionFile ? await this.readRecentSessionMessages(sessionFile) : [];
+    const activeLeafId = sessionState.leafId;
+    const messageList = sessionFile
+      ? ((await this.readActiveSessionMessages(sessionFile, activeLeafId)) ?? [])
+      : [];
     if (!valid()) return;
     // Entries/tree are intentionally lazy. Fork/tree commands request them only
-    // when the user opens those actions, keeping normal resume fast and bounded.
-    const entries: JsonObject = { entries: [] };
-    const tree: JsonObject = { tree: [] };
+    // when the user opens those actions.
     this.state = {
       ...this.state,
       connectionState: sessionState.isStreaming || sessionState.isCompacting ? 'busy' : 'ready',
       state: sessionState,
       messages: messageList,
-      entries: Array.isArray(entries.entries) ? (entries.entries as JsonObject[]) : [],
-      tree: Array.isArray(tree.tree) ? (tree.tree as JsonObject[]) : [],
+      entries: [],
+      tree: [],
       commands:
         catalogRequest === this.catalogRequest
           ? mergeLocalCommands(
@@ -934,56 +959,40 @@ export class SessionController implements vscode.Disposable {
             )
           : this.state.commands,
       lastSessionStats: (stats ?? undefined) as JsonObject | undefined,
-      leafId:
-        typeof entries.leafId === 'string'
-          ? entries.leafId
-          : typeof tree.leafId === 'string'
-            ? tree.leafId
-            : null,
+      leafId: activeLeafId ?? null,
     };
     // Explain exactly what Pi returned so an "empty transcript on resume" is
     // diagnosable: which call held the data, and how many.
     this.logger.info(
       `Reconciled '${this.folder.name}': state=${this.state.connectionState}, ` +
-        `messages=${messageList.length} (local session tail), ` +
+        `messages=${messageList.length} (local active branch), ` +
         `entries=${this.state.entries.length} (lazy), ` +
         `tree=${this.state.tree.length} (lazy), ` +
         `session=${this.state.state.sessionFile ?? '(none)'}`
     );
-    // We now hold the full transcript; the file tail beyond this is external.
+    // We now hold the full active-branch transcript at the current file size.
     await this.syncFileReadOffset();
     // (Re)arm the native file watcher so terminal (TUI) appends to THIS session
     // file push into the GUI in near real time.
     this.armSessionFileWatcher();
     this.fire();
-    // NOTE: the tail read above is already branch-aware (selectActiveBranchMessages
-    // walks the active leaf), so we do NOT resync via getMessages here — that
-    // transferred the full 11MB+ active branch on every switch and was the main
-    // remaining switch lag. Live edits/forks/TUI writes still resync via the
-    // session-file watcher and the agent_end/settled handlers.
+    // NOTE: the local read above is already branch-aware (selectActiveBranchMessages
+    // walks the active leaf), so we do NOT replace it with getMessages here:
+    // after compaction that RPC method is model context, not display history.
   }
 
-  private async readRecentSessionMessages(sessionFile: string): Promise<JsonObject[]> {
-    const limit = Math.max(50, this.settings.maxTranscriptItems);
+  private async readActiveSessionMessages(
+    sessionFile: string,
+    activeLeafId?: string | null
+  ): Promise<JsonObject[] | undefined> {
     const records: SessionRecord[] = [];
     try {
-      // Read only the TAIL of the file, not the whole thing. Sessions grow to
-      // tens of MB (images / large tool output); reading all of it on every
-      // open/switch was the main switch lag (~200ms+ for a 40MB file). The tail
-      // holds the most recent messages, which is what the transcript shows;
-      // the authoritative active branch is resynced over RPC separately.
-      const TAIL_BYTES = 3 * 1024 * 1024;
-      const size = (await stat(sessionFile)).size;
-      const start = size > TAIL_BYTES ? size - TAIL_BYTES : 0;
-      const input = createReadStream(sessionFile, { encoding: 'utf8', start });
+      // Stream the complete JSONL tree so the parent chain remains available.
+      // The webview pages the selected messages; it must not use Pi's compacted
+      // model context as conversation history after compaction or reopen.
+      const input = createReadStream(sessionFile, { encoding: 'utf8' });
       const lines = createInterface({ input, crlfDelay: Infinity });
-      let skipPartialFirstLine = start > 0;
       for await (const line of lines) {
-        if (skipPartialFirstLine) {
-          // When starting mid-file the first line is a partial record fragment.
-          skipPartialFirstLine = false;
-          continue;
-        }
         if (!line.trim()) continue;
         try {
           records.push(JSON.parse(line) as SessionRecord);
@@ -993,13 +1002,17 @@ export class SessionController implements vscode.Disposable {
       }
       // Only the ACTIVE branch — Pi keeps every fork branch in the same file, so
       // a plain read would resurrect dropped branches after an inline edit/fork.
-      return selectActiveBranchMessages<JsonObject>(records, limit);
+      return selectActiveBranchMessages<JsonObject>(
+        records,
+        Number.POSITIVE_INFINITY,
+        activeLeafId
+      );
     } catch (error) {
       // A brand-new session file may not exist on disk yet — that's expected.
       if ((error as NodeJS.ErrnoException)?.code !== 'ENOENT') {
         this.logger.warn(`Could not read local transcript for '${sessionFile}': ${String(error)}`);
       }
-      return [];
+      return undefined;
     }
   }
 
@@ -1081,9 +1094,12 @@ export class SessionController implements vscode.Disposable {
     if (mode === 'prompt') {
       await client.prompt(message, images);
     } else if (mode === 'steer') {
-      await client.steer(message, images);
+      // Pi 1.0.4 decides idle-vs-streaming atomically inside prompt(). This
+      // avoids aborting or racing a turn that settles between our snapshot and
+      // native dispatch: while streaming it steers; if already idle it starts.
+      await client.prompt(message, images, 'steer');
     } else {
-      await client.followUp(message, images);
+      await client.prompt(message, images, 'followUp');
     }
   }
 
@@ -1128,14 +1144,70 @@ export class SessionController implements vscode.Disposable {
     this.fire();
   }
 
-  public async refreshMessages(): Promise<void> {
-    const data = await this.requireClient().getMessages();
-    const all = Array.isArray(data?.messages) ? (data.messages as JsonObject[]) : [];
-    // Window to the most recent N. Large sessions return an 11MB+ list; rendering
-    // all of it is slow and unnecessary (older messages load lazily on scroll).
-    const limit = Math.max(50, this.settings.maxTranscriptItems);
-    const messages = all.length > limit ? all.slice(-limit) : all;
-    this.state = { ...this.state, messages };
+  public refreshMessages(): Promise<void> {
+    const client = this.requireClient();
+    const generation = this.generation;
+    const sessionFile = this.activeSessionFile;
+    const sessionId = this.state.state.sessionId;
+    const navigationEpoch = this.navigationEpoch ?? 0;
+    const key = JSON.stringify([
+      generation,
+      sessionId ?? null,
+      sessionFile ?? null,
+      navigationEpoch,
+    ]);
+    if (
+      this.refreshMessagesInFlight?.key === key &&
+      this.refreshMessagesInFlight.client === client
+    ) {
+      return this.refreshMessagesInFlight.promise;
+    }
+    const promise = this.refreshMessagesNow(
+      client,
+      generation,
+      sessionId,
+      sessionFile,
+      navigationEpoch
+    ).finally(() => {
+      if (this.refreshMessagesInFlight?.promise === promise) {
+        this.refreshMessagesInFlight = undefined;
+      }
+    });
+    this.refreshMessagesInFlight = { key, client, promise };
+    return promise;
+  }
+
+  private async refreshMessagesNow(
+    client: RpcClient,
+    generation: number,
+    sessionId: string | undefined,
+    sessionFile: string | undefined,
+    navigationEpoch: number
+  ): Promise<void> {
+    const valid = () =>
+      this.supervisor.currentClient === client &&
+      this.generation === generation &&
+      (this.navigationEpoch ?? 0) === navigationEpoch &&
+      this.state.state.sessionId === sessionId &&
+      this.activeSessionFile === sessionFile;
+    const native = await client.getState();
+    if (!valid() || !native || native.sessionId !== sessionId || native.sessionFile !== sessionFile)
+      return;
+    const leafId =
+      typeof native.leafId === 'string' && native.leafId.length > 0 ? native.leafId : null;
+    const persisted = sessionFile
+      ? await this.readActiveSessionMessages(sessionFile, leafId)
+      : undefined;
+    const data = persisted === undefined ? await client.getMessages() : undefined;
+    if (!valid()) return;
+    const messages =
+      persisted ?? (Array.isArray(data?.messages) ? (data.messages as JsonObject[]) : []);
+    this.state = {
+      ...this.state,
+      state: mergeSessionState(this.state.state, native),
+      leafId,
+      messages,
+    };
     this.fire();
   }
 
@@ -1320,7 +1392,8 @@ export class SessionController implements vscode.Disposable {
 
   public assertNoManualCompaction(): void {
     if (this.lifecyclePending) throw new Error('A chat lifecycle operation is in progress.');
-    if (this.manualCompactPending) throw new Error('Compaction is in progress.');
+    if (this.manualCompactPending || this.state.state.isCompacting)
+      throw new Error('Compaction is in progress.');
   }
 
   private assertCompactIdle(state = this.state.state, ownReservation = false): void {
@@ -1432,7 +1505,7 @@ export class SessionController implements vscode.Disposable {
     command: string,
     excludeFromContext = false
   ): Promise<JsonObject | undefined> {
-    if (this.manualCompactPending) throw new Error('Compaction is in progress.');
+    this.assertNoManualCompaction();
     this.bashPending = true;
     try {
       return await this.requireClient().bash(command, excludeFromContext);
@@ -1779,7 +1852,6 @@ export class SessionController implements vscode.Disposable {
   }
 
   public dispose(): void {
-    this.assertNoManualCompaction();
     this.authDisposed = true;
     this.changeEmitter.fire(this.state);
     cancelModelOperations(this);
@@ -1835,10 +1907,9 @@ export class SessionController implements vscode.Disposable {
     }
     this.state = reduceEvent(next, event);
     this.fire();
-    // When a run settles, resync the transcript from the authoritative
-    // get_messages list. Streaming events are keyed heuristically (Pi messages
-    // have no id), so this guarantees the finished conversation is exactly what
-    // Pi holds — no duplicated or partial bubbles.
+    // When a run settles, resync the transcript from the authoritative native
+    // leaf and persisted branch. Streaming events are keyed heuristically (Pi
+    // messages have no id), so this removes duplicated or partial bubbles.
     if (event.type === 'agent_end' || event.type === 'agent_settled') {
       void this.refreshMessages().catch(() => {
         /* best-effort resync; live state already rendered */

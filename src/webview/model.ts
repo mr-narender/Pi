@@ -7,6 +7,7 @@ import type {
   WebviewAttachmentFileRef,
   WebviewAttachmentItem,
   WebviewAttachmentPreviewItem,
+  WebviewCapturedContextItem,
   WebviewMessageBlock,
   WebviewMessageItem,
   WebviewPendingImageItem,
@@ -50,6 +51,19 @@ const MAX_ATTACHMENT_PREVIEW_VALUE_CHARS = 160;
 const MAX_ATTACHMENT_PREVIEW_ITEMS = 8;
 const CONTROL_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g;
 const URI_PATTERN = /^[a-zA-Z][a-zA-Z\d+.-]*:/;
+const CONTEXT_OPEN = '<pi-vscode-context-v1>\n';
+const CONTEXT_CLOSE = '\n</pi-vscode-context-v1>';
+const CONTEXT_MAX_CHARS = 32000;
+const PREVIEW_IMAGE_MIME = /^image\/(?:png|jpeg|gif|webp|bmp)$/i;
+const BASE64_IMAGE_DATA = /^[A-Za-z0-9+/]+={0,2}$/;
+const CONTEXT_KINDS = new Set([
+  'activeFile',
+  'pickedFile',
+  'selection',
+  'diagnostics',
+  'pastedText',
+  'droppedFile',
+]);
 
 function messageText(message: JsonObject): string {
   const role = typeof message.role === 'string' ? message.role : 'unknown';
@@ -86,6 +100,15 @@ function messageText(message: JsonObject): string {
 function asObject(value: unknown): JsonObject | undefined {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? (value as JsonObject)
+    : undefined;
+}
+
+function imageDataUrl(data: unknown, mimeType: string): string | undefined {
+  return typeof data === 'string' &&
+    data.length > 0 &&
+    PREVIEW_IMAGE_MIME.test(mimeType) &&
+    BASE64_IMAGE_DATA.test(data)
+    ? `data:${mimeType.toLowerCase()};base64,${data}`
     : undefined;
 }
 
@@ -164,6 +187,88 @@ function maybeWorkspaceFileRef(
   return {
     uri: pathToFileURL(filePath).toString(),
     path: sanitizeDisplayText(normalizedPath, MAX_ATTACHMENT_NAME_CHARS),
+  };
+}
+
+export function parseCapturedContextEnvelope(
+  value: string,
+  cwd: string
+): { displayText: string; items: WebviewCapturedContextItem[] } | undefined {
+  const start = value.lastIndexOf(CONTEXT_OPEN);
+  const closeStart = value.indexOf(CONTEXT_CLOSE, start + CONTEXT_OPEN.length);
+  if (start < 0 || closeStart < 0) {
+    return undefined;
+  }
+  const separator = start === 0 ? '' : '\n\n';
+  if (start > 0 && value.slice(start - separator.length, start) !== separator) {
+    return undefined;
+  }
+  const envelopeEnd = closeStart + CONTEXT_CLOSE.length;
+  const trailing = value.slice(envelopeEnd);
+  if (trailing && !trailing.startsWith('\n\n')) {
+    return undefined;
+  }
+  const envelope = value.slice(start, envelopeEnd);
+  if (envelope.length > CONTEXT_MAX_CHARS) {
+    return undefined;
+  }
+  const body = envelope.slice(CONTEXT_OPEN.length, -CONTEXT_CLOSE.length);
+  const lines = body.split('\n');
+  if (lines.length === 0 || lines.some((line) => !line)) {
+    return undefined;
+  }
+  const items: WebviewCapturedContextItem[] = [];
+  for (const line of lines) {
+    let raw: unknown;
+    try {
+      raw = JSON.parse(line);
+    } catch {
+      return undefined;
+    }
+    const item = asObject(raw);
+    const kind = typeof item?.kind === 'string' ? item.kind : '';
+    const path = typeof item?.workspaceRelativePath === 'string' ? item.workspaceRelativePath : '';
+    const lineStart = item?.lineStart;
+    const lineEnd = item?.lineEnd;
+    const content = item?.content;
+    if (
+      !CONTEXT_KINDS.has(kind) ||
+      !path ||
+      path.length > MAX_ATTACHMENT_NAME_CHARS ||
+      !Number.isInteger(lineStart) ||
+      !Number.isInteger(lineEnd) ||
+      (lineStart as number) < 1 ||
+      (lineEnd as number) < (lineStart as number) ||
+      typeof content !== 'string'
+    ) {
+      return undefined;
+    }
+    const diagnostics = kind === 'diagnostics';
+    const languageId = diagnostics ? undefined : item?.languageId;
+    const severity = diagnostics ? item?.severity : undefined;
+    if (
+      (!diagnostics && typeof languageId !== 'string') ||
+      (diagnostics && typeof severity !== 'string')
+    ) {
+      return undefined;
+    }
+    const mayOpen = kind !== 'pastedText' && kind !== 'droppedFile';
+    items.push({
+      kind: kind as WebviewCapturedContextItem['kind'],
+      path,
+      lineStart: lineStart as number,
+      lineEnd: lineEnd as number,
+      languageId: typeof languageId === 'string' ? languageId : undefined,
+      severity: typeof severity === 'string' ? severity : undefined,
+      content,
+      fileRef: mayOpen ? maybeWorkspaceFileRef(path, cwd) : undefined,
+    });
+  }
+  const before = start === 0 ? '' : value.slice(0, start - separator.length);
+  const after = trailing ? trailing.slice(2) : '';
+  return {
+    displayText: [before, after].filter(Boolean).join('\n\n'),
+    items,
   };
 }
 
@@ -270,7 +375,9 @@ function toBlocks(message: JsonObject): WebviewMessageBlock[] {
         callId: typeof typed.toolCallId === 'string' ? typed.toolCallId : undefined,
       });
     } else if (typed.type === 'image') {
-      blocks.push({ kind: 'image', mimeType: String(typed.mimeType ?? 'image') });
+      const mimeType = typeof typed.mimeType === 'string' ? typed.mimeType : 'image';
+      const dataUrl = imageDataUrl(typed.data, mimeType);
+      blocks.push({ kind: 'image', mimeType, ...(dataUrl ? { dataUrl } : {}) });
     }
   }
   return blocks;
@@ -351,12 +458,30 @@ function foldToolResults(
 }
 
 function toItem(message: JsonObject, index: number, cwd: string): WebviewMessageItem {
+  const blocks = toBlocks(message);
+  let capturedContext: WebviewCapturedContextItem[] | undefined;
+  if (message.role === 'user') {
+    for (let blockIndex = blocks.length - 1; blockIndex >= 0; blockIndex -= 1) {
+      const block = blocks[blockIndex];
+      if (block?.kind !== 'text') continue;
+      const parsed = parseCapturedContextEnvelope(block.text, cwd);
+      if (!parsed) break;
+      capturedContext = parsed.items;
+      if (parsed.displayText) {
+        blocks[blockIndex] = { kind: 'text', text: parsed.displayText };
+      } else {
+        blocks.splice(blockIndex, 1);
+      }
+      break;
+    }
+  }
   return {
     id: typeof message.id === 'string' ? message.id : `m${index}`,
     role: typeof message.role === 'string' ? message.role : 'unknown',
     text: messageText(message),
-    blocks: toBlocks(message),
+    blocks,
     attachments: normalizeAttachments(message.attachments, cwd),
+    capturedContext,
     errorMessage:
       typeof message.errorMessage === 'string' && message.errorMessage.trim()
         ? sanitizeDisplayText(message.errorMessage, 600)
@@ -398,6 +523,7 @@ export function createWebviewSnapshot(
       chatFontSize: number;
       typewriterSpeed: string;
     };
+    attachmentLimits?: WebviewSnapshot['attachmentLimits'];
   }
 ): WebviewSnapshot {
   const totalMessages = state.messages.length;
@@ -436,6 +562,15 @@ export function createWebviewSnapshot(
         : undefined,
     isStreaming: state.state.isStreaming === true,
     isCompacting: state.state.isCompacting === true,
+    compaction:
+      state.state.isCompacting === true
+        ? {
+            progress: 'indeterminate',
+            reason: state.compactionReason
+              ? sanitizeDisplayText(state.compactionReason, 80)
+              : undefined,
+          }
+        : undefined,
     messageCount:
       typeof state.state.messageCount === 'number' ? state.state.messageCount : undefined,
     pendingMessageCount:
@@ -493,6 +628,7 @@ export function createWebviewSnapshot(
       })),
     pendingContextItems: extra.composer.pendingContextItems,
     pendingImages: extra.composer.pendingImages.map(normalizePendingImage),
+    attachmentLimits: extra.attachmentLimits,
     focus: extra.composer.focus,
     preview: extra.composer.preview,
     acceptedSendSnapshot: extra.composer.acceptedSendSnapshot,

@@ -24,6 +24,30 @@ test('returns only the active branch after a fork (dropped branch not resurrecte
   assert.ok(!texts.includes('PING'), 'dropped branch must not appear');
 });
 
+test('explicit active leaf wins when a different branch was written last', () => {
+  const records = [
+    { type: 'message', id: 'root', parentId: null, message: msg('user', 'root') },
+    { type: 'message', id: 'active', parentId: 'root', message: msg('assistant', 'active') },
+    { type: 'message', id: 'newest', parentId: 'root', message: msg('assistant', 'newest') },
+  ];
+  const out = selectActiveBranchMessages<{ role: string; content: { text: string }[] }>(
+    records,
+    Number.POSITIVE_INFINITY,
+    'active'
+  );
+  assert.deepEqual(
+    out.map((message) => message.content[0]?.text),
+    ['root', 'active']
+  );
+});
+
+test('explicit null leaf means an empty branch rather than newest-entry fallback', () => {
+  const records = [
+    { type: 'message', id: 'old', parentId: null, message: msg('user', 'old branch') },
+  ];
+  assert.deepEqual(selectActiveBranchMessages(records, Number.POSITIVE_INFINITY, null), []);
+});
+
 test('non-message entries (model_change) are traversed but not included', () => {
   const records = [
     { type: 'message', id: 'u1', parentId: null, message: msg('user', 'a') },

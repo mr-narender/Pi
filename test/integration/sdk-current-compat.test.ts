@@ -34,6 +34,8 @@ test('current selected supported JS engine is admitted by exact host and launch 
     '0.99.3',
     '0.100.0',
     '1.0.1',
+    '1.1.1',
+    '1.1.0-next',
     '2.0.0',
     '1.0.0-next',
     '0.99.2-next',
@@ -112,7 +114,12 @@ for (const mode of ['shared', 'dedicated'] as const) {
       let child: Awaited<ReturnType<typeof spawnNativeSdkHost>>['child'] | undefined;
       let transport: RpcTransport | undefined;
       try {
-        const started = await spawnNativeSdkHost(fixture, mode);
+        const currentModifiers = (await resolveNativeCli()).version === '1.1.0';
+        const started = await spawnNativeSdkHost(
+          fixture,
+          mode,
+          currentModifiers ? 'tool-modifiers' : 'default'
+        );
         child = started.child;
         const output = new PassThrough();
         let buffer = '';
@@ -153,7 +160,30 @@ for (const mode of ['shared', 'dedicated'] as const) {
         assert.ok(preferences.rows.some((row) => row.key === 'blockImages'));
         assert.equal((await client.getScopedModels()).models.length, 3);
         assert.deepEqual((await client.getThinkingCapabilities()).levels, ['off']);
-        assert.ok((await client.getState())?.sessionId);
+        const state = await client.getState();
+        assert.ok(state?.sessionId);
+        if (currentModifiers) {
+          const payload = await client.engineCommand(
+            'delivery_payload',
+            {
+              sessionId: state!.sessionId!,
+              ...(state!.sessionFile === undefined ? {} : { sessionFile: state!.sessionFile }),
+              leafId: (await client.getEntries())?.leafId ?? null,
+            },
+            { share: true }
+          );
+          const entries = String(payload?.jsonl)
+            .trim()
+            .split('\n')
+            .map((line) => JSON.parse(line));
+          assert.deepEqual(
+            entries
+              .find((entry) => entry.customType === 'pi.share')
+              .data.tools.map((tool: any) => tool.name),
+            ['ls'],
+            '1.1.0 native modifiers preserve --no-tools and add only the selected read-only tool'
+          );
+        }
         assert.equal(fixture.requests, 0);
         assert.equal(await readFile(fixture.networkLog, 'utf8'), '');
       } finally {

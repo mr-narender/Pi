@@ -2,8 +2,9 @@
 // linked by `id`/`parentId` (session-format v2+). After a fork there are
 // multiple branches in the same file, so naively collecting every `message`
 // record would resurrect dropped branches. This selects only the ACTIVE branch:
-// walk from the most-recently-written entry (the active tip) up through
-// `parentId` to the root, keeping the message entries in chronological order.
+// walk from Pi's active leaf up through `parentId` to the root, keeping the
+// message entries in chronological order. Older hosts without leaf identity
+// defensively fall back to the most-recently-written entry.
 //
 // Backward-compatible: old (v1) sessions have no `id`/`parentId`; in that case
 // we fall back to the linear list of all message records.
@@ -17,7 +18,8 @@ export interface SessionRecord {
 
 export function selectActiveBranchMessages<T = Record<string, unknown>>(
   records: SessionRecord[],
-  limit = Number.POSITIVE_INFINITY
+  limit = Number.POSITIVE_INFINITY,
+  activeLeafId?: string | null
 ): T[] {
   const byId = new Map<string, { parentId: string | null; message?: T }>();
   const linear: T[] = [];
@@ -47,7 +49,8 @@ export function selectActiveBranchMessages<T = Record<string, unknown>>(
 
   const chain: T[] = [];
   const seen = new Set<string>();
-  let cursor: string | null | undefined = lastId;
+  const hasActiveLeafIdentity = activeLeafId !== undefined;
+  let cursor: string | null | undefined = hasActiveLeafIdentity ? activeLeafId : lastId;
   while (cursor && byId.has(cursor) && !seen.has(cursor)) {
     seen.add(cursor);
     const node: { parentId: string | null; message?: T } = byId.get(cursor)!;
@@ -60,7 +63,7 @@ export function selectActiveBranchMessages<T = Record<string, unknown>>(
 
   // Defensive fallback: if the walk somehow yielded nothing but messages exist
   // (unexpected id/parent shape), don't blank the transcript.
-  if (chain.length === 0 && linear.length > 0) {
+  if (!hasActiveLeafIdentity && chain.length === 0 && linear.length > 0) {
     return clampTail(linear, limit);
   }
   return clampTail(chain, limit);

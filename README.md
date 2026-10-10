@@ -50,6 +50,10 @@ extension installs the newest Pi version supported by its native host into its o
 storage. Auto-install is **off by default** — nothing is ever
 downloaded without your consent.
 
+The native host supports the audited Pi SDK versions **0.99.1, 0.99.2, 1.0.0,
+1.0.4 and 1.1.0**. Other versions and custom wrappers use stock RPC; features
+requiring the native SDK report their unsupported capability.
+
 Resolution is deterministic: an explicit `piRpc.executable` wins, otherwise the
 current `pi` on `PATH` wins, and only then can a compatible managed installation
 be used. With `piRpc.autoInstall: false`, the extension performs no npm check,
@@ -94,17 +98,17 @@ shared Pi runtime pool     configurable workers host sessions (per-session exten
 
 ## Features (Pi workflows in a GUI)
 
-| Area               | What you get                                                                                               |
-| ------------------ | ---------------------------------------------------------------------------------------------------------- |
-| **Chats**          | Editor-tab conversations, live streaming, one tab per session, reopen/resume, branch & duplicate           |
-| **Sessions**       | Sidebar launcher, search, **pin**, rename, delete, warm-start                                              |
-| **Models**         | Choose/cycle model, thinking level, retry last message (optionally with a different model)                 |
-| **Compose**        | `/` slash commands, `@file` mentions, drag-drop & **pasted** images, attach file/selection/diagnostics     |
-| **Ask Pi**         | Right-click a selection or use the inline **CodeLens** above functions to Explain / Fix / Refactor         |
-| **Navigate**       | Command palette (`Cmd/Ctrl+K`), find-in-chat (`Cmd/Ctrl+F`), jump-to-latest, conversation map              |
-| **Flow**           | Queue/steer follow-ups, Continue, abort/stop, auto-retry, auto-compaction, usage & cost chip               |
-| **Feel**           | Enter-to-send, typewriter streaming, working animation, chat-font controls, completion notifications, a11y |
-| **Remote (phone)** | **Connect a phone** to watch the live chat in a browser and take control to drive it                       |
+| Area               | What you get                                                                                                     |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| **Chats**          | Editor-tab conversations, live streaming, one tab per session, reopen/resume, branch & duplicate                 |
+| **Sessions**       | Sidebar launcher, search, **pin**, rename, delete, warm-start                                                    |
+| **Models**         | Choose/cycle model, thinking level, retry last message (optionally with a different model)                       |
+| **Compose**        | `/` slash commands, `@file` mentions, local/remote file drag-drop, **pasted** images, file/selection/diagnostics |
+| **Ask Pi**         | Right-click a selection or use the inline **CodeLens** above functions to Explain / Fix / Refactor               |
+| **Navigate**       | Command palette (`Cmd/Ctrl+K`), find-in-chat (`Cmd/Ctrl+F`), jump-to-latest, conversation map                    |
+| **Flow**           | Queue/steer follow-ups, Continue, abort/stop, auto-retry, auto-compaction, usage & cost chip                     |
+| **Feel**           | Enter-to-send, typewriter streaming, working animation, chat-font controls, completion notifications, a11y       |
+| **Remote (phone)** | **Connect a phone** to watch the live chat in a browser and take control to drive it                             |
 
 ### While Pi is working
 
