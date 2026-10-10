@@ -19,6 +19,15 @@ function sanitizePendingImages(
   }));
 }
 
+function sanitizeMessageImages(messages: WebviewSnapshot['messages']): WebviewSnapshot['messages'] {
+  return messages.map((message) => ({
+    ...message,
+    blocks: message.blocks?.map((block) =>
+      block.kind === 'image' && block.dataUrl ? { kind: 'image', mimeType: block.mimeType } : block
+    ),
+  }));
+}
+
 export function toPersistedChatSnapshot(snapshot: WebviewSnapshot): PersistedChatSnapshot {
   const rest = { ...snapshot } as Record<string, unknown>;
   delete rest.draft;
@@ -29,6 +38,7 @@ export function toPersistedChatSnapshot(snapshot: WebviewSnapshot): PersistedCha
       WebviewSnapshot,
       'pendingImages' | 'preview' | 'acceptedSendSnapshot' | 'draft'
     >),
+    messages: sanitizeMessageImages(snapshot.messages),
     pendingImages: sanitizePendingImages(snapshot.pendingImages),
   };
 }

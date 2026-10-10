@@ -8,6 +8,16 @@ function ev(value: Record<string, unknown>): RpcEvent {
   return value as unknown as RpcEvent;
 }
 
+test('compaction exposes only native reason and clears it at end', () => {
+  let state = createInitialControllerState('w', '/tmp');
+  state = reduceEvent(state, ev({ type: 'compaction_start', reason: 'auto' }));
+  assert.equal(state.state.isCompacting, true);
+  assert.equal(state.compactionReason, 'auto');
+  state = reduceEvent(state, ev({ type: 'compaction_end' }));
+  assert.equal(state.state.isCompacting, false);
+  assert.equal(state.compactionReason, undefined);
+});
+
 // Pi RPC messages have no `id`. One streaming turn emits message_start, many
 // message_update deltas, message_end, turn_end, and agent_end all carrying the
 // SAME assistant message (stable timestamp). These must collapse into a single

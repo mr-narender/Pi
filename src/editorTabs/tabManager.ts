@@ -170,6 +170,16 @@ export interface ChatHost extends vscode.Disposable {
   reveal(): void;
 }
 
+export function collectOpenableAttachmentUris(snapshot: WebviewSnapshot): Set<string> {
+  return new Set(
+    snapshot.messages.flatMap((message) =>
+      [...message.attachments, ...(message.capturedContext ?? [])]
+        .map((attachment) => attachment.fileRef?.uri)
+        .filter((uri): uri is string => typeof uri === 'string')
+    )
+  );
+}
+
 class ChatEditorHost implements vscode.Disposable {
   private readonly disposables: vscode.Disposable[] = [];
   private attachmentFileUris = new Set<string>();
@@ -212,13 +222,7 @@ class ChatEditorHost implements vscode.Disposable {
 
   public async postSnapshot(snapshot: WebviewSnapshot, title: string): Promise<void> {
     this.panel.title = formatTabTitle(title);
-    this.attachmentFileUris = new Set(
-      snapshot.messages.flatMap((message) =>
-        message.attachments
-          .map((attachment) => attachment.fileRef?.uri)
-          .filter((uri): uri is string => typeof uri === 'string')
-      )
-    );
+    this.attachmentFileUris = collectOpenableAttachmentUris(snapshot);
     // IMPORTANT: do not await postMessage here. When this host is created from
     // resolveCustomEditor, VS Code only establishes the webview messaging
     // channel after resolveCustomEditor returns. Awaiting the post therefore

@@ -11,6 +11,11 @@
   or failed sends without overwriting newer input.
 - Place attachment controls inside the composer with a restrained drop cue and
   a compact, accessible Clear all action that follows the current VS Code theme.
+- Render every captured file as a filename-only row with an expandable ten-line
+  preview, even when Pi appends image transcript text; preserve the complete active chat branch
+  through compaction and reopen, show truthful indeterminate compaction status,
+  and offer an explicit Steer next action while Pi is replying.
+- Show submitted screenshots as clickable thumbnails with an expanded preview.
 
 ## 0.2.26
 

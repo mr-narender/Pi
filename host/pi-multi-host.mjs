@@ -651,6 +651,7 @@ async function createSessionRunner(sessionKey, runtimeHost, hostEmit) {
     followUpMode: session.followUpMode,
     sessionFile: session.sessionFile,
     sessionId: session.sessionId,
+    leafId: session.sessionManager.getLeafId(),
     sessionName: session.sessionName,
     autoCompactionEnabled: session.autoCompactionEnabled,
     messageCount: session.messages.length,

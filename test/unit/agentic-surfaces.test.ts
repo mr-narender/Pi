@@ -7,7 +7,7 @@ async function nativeClasses(vscode: unknown) {
   const compiled = await build({
     stdin: {
       contents:
-        "export {ChatTabManager} from './src/editorTabs/tabManager'; export {ExtensionUiBroker} from './src/ui/extensionUiBroker';",
+        "export {ChatTabManager, collectOpenableAttachmentUris} from './src/editorTabs/tabManager'; export {ExtensionUiBroker} from './src/ui/extensionUiBroker';",
       resolveDir: process.cwd(),
     },
     bundle: true,
@@ -25,6 +25,35 @@ async function nativeClasses(vscode: unknown) {
   );
   return module.exports;
 }
+
+test('captured context opens only through the current snapshot allowlist', async () => {
+  const opened: string[] = [];
+  const classes = await nativeClasses({
+    commands: {
+      executeCommand: async (_command: string, uri: { value: string }) => opened.push(uri.value),
+    },
+    Uri: { parse: (value: string) => ({ value }) },
+  });
+  const registered = 'file:///workspace/src/registered.ts';
+  const allowed = classes.collectOpenableAttachmentUris({
+    messages: [
+      {
+        attachments: [],
+        capturedContext: [
+          {
+            fileRef: { uri: registered, path: 'src/registered.ts' },
+          },
+        ],
+      },
+    ],
+  });
+  const manager = Object.create(classes.ChatTabManager.prototype);
+  const host = { hasAttachment: (uri: string) => allowed.has(uri) };
+
+  await manager.handleOpenAttachment(host, registered);
+  await manager.handleOpenAttachment(host, 'file:///workspace/src/unregistered.ts');
+  assert.deepEqual(opened, [registered]);
+});
 
 test('deleting a saved chat closes its original draft tab and honors a close veto', async () => {
   const resource = {

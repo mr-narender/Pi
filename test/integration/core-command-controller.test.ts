@@ -70,3 +70,116 @@ test('core safety: exact boundaries and raw arguments match native command famil
     assert.equal(parseCoreSlash(text), undefined);
   }
 });
+
+test('busy send choices use Pi 1.0.4 atomic prompt streaming behavior without aborting', async () => {
+  const result = await build({
+    entryPoints: ['src/sessions/sessionController.ts'],
+    bundle: true,
+    write: false,
+    platform: 'node',
+    format: 'cjs',
+    external: ['vscode'],
+  });
+  const require = createRequire(`${process.cwd()}/package.json`);
+  const module = { exports: {} as Record<string, any> };
+  new Function('require', 'module', 'exports', result.outputFiles[0]!.text)(
+    (id: string) => (id === 'vscode' ? {} : require(id)),
+    module,
+    module.exports
+  );
+  const controller = Object.create(module.exports.SessionController.prototype);
+  controller.state = {
+    ...createInitialControllerState('fixture', '/tmp/fixture'),
+    connectionState: 'busy',
+    state: { isStreaming: true },
+  };
+  const calls: unknown[][] = [];
+  let aborts = 0;
+  controller.supervisor = {
+    currentClient: {
+      prompt: async (...args: unknown[]) => calls.push(args),
+      steer: async () => assert.fail('legacy steer command must not be used'),
+      followUp: async () => assert.fail('legacy follow_up command must not be used'),
+      abort: async () => {
+        aborts += 1;
+      },
+    },
+  };
+  controller.fire = () => {};
+  const images = [{ type: 'image', mimeType: 'image/png', data: 'AAAA' }];
+  await controller.prompt('guide now', 'steer', images);
+  await controller.prompt('then continue', 'followUp', images);
+  assert.deepEqual(calls, [
+    ['guide now', images, 'steer'],
+    ['then continue', images, 'followUp'],
+  ]);
+  assert.equal(aborts, 0);
+});
+
+test('native compaction blocks mutating sends and settings before RPC while abort remains available', async () => {
+  const result = await build({
+    entryPoints: ['src/sessions/sessionController.ts'],
+    bundle: true,
+    write: false,
+    platform: 'node',
+    format: 'cjs',
+    external: ['vscode'],
+  });
+  const require = createRequire(`${process.cwd()}/package.json`);
+  const module = { exports: {} as Record<string, any> };
+  new Function('require', 'module', 'exports', result.outputFiles[0]!.text)(
+    (id: string) => (id === 'vscode' ? {} : require(id)),
+    module,
+    module.exports
+  );
+  const controller = Object.create(module.exports.SessionController.prototype);
+  controller.state = {
+    ...createInitialControllerState('fixture', '/tmp/fixture'),
+    connectionState: 'busy',
+    state: { isStreaming: false, isCompacting: true },
+  };
+  const calls: string[] = [];
+  controller.supervisor = {
+    currentClient: {
+      prompt: async () => calls.push('prompt'),
+      setModel: async () => calls.push('model'),
+      getThinkingCapabilities: async () => calls.push('thinking'),
+      savePreference: async () => calls.push('preference'),
+      newSession: async () => calls.push('lifecycle'),
+      abort: async () => calls.push('abort'),
+    },
+    stop: async () => calls.push('stop'),
+  };
+  controller.fire = () => {};
+
+  for (const mode of ['prompt', 'steer', 'followUp'] as const) {
+    await assert.rejects(controller.prompt('blocked', mode), /Compaction is in progress/);
+  }
+  await assert.rejects(controller.selectModel('provider', 'model'), /Compaction is in progress/);
+  await assert.rejects(controller.setThinkingLevel('high'), /Compaction is in progress/);
+  await assert.rejects(
+    controller.savePreference('defaultProvider', 'provider', 'revision', false),
+    /Compaction is in progress/
+  );
+  await assert.rejects(controller.newSession(), /Compaction is in progress/);
+  assert.deepEqual(calls, [], 'blocked mutations do not reach native RPC');
+
+  await controller.abort();
+  assert.deepEqual(calls, ['abort'], 'Stop remains available during compaction');
+  await controller.stop();
+  assert.deepEqual(calls, ['abort', 'stop'], 'controller shutdown remains available');
+
+  const disposed: string[] = [];
+  const disposable = Object.create(module.exports.SessionController.prototype);
+  disposable.state = {
+    ...createInitialControllerState('fixture', '/tmp/fixture'),
+    state: { isCompacting: true },
+  };
+  disposable.changeEmitter = { fire: () => {}, dispose: () => disposed.push('change') };
+  disposable.extensionUiEmitter = { dispose: () => disposed.push('extension') };
+  disposable.disarmSessionFileWatcher = () => {};
+  disposable.stop = async () => disposed.push('stop');
+  disposable.supervisor = { dispose: () => disposed.push('supervisor') };
+  assert.doesNotThrow(() => disposable.dispose());
+  assert.deepEqual(disposed, ['stop', 'supervisor', 'change', 'extension']);
+});

@@ -1724,7 +1724,9 @@ function renderNow(snapshot: WebviewSnapshot): void {
   for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>('.msg-copy'))) {
     bindOnce(button, 'click', () => {
       const article = button.closest('.message-card');
+      const hasRawPayload = button.dataset.copyRaw !== undefined;
       const text =
+        button.dataset.copyRaw ??
         article?.querySelector('.tl-answer .tl-body')?.textContent ??
         article?.querySelector('.message-body')?.textContent ??
         article?.querySelector('.tl-body')?.textContent ??
@@ -1733,7 +1735,7 @@ function renderNow(snapshot: WebviewSnapshot): void {
         return;
       }
       void navigator.clipboard
-        ?.writeText(text.trim())
+        ?.writeText(hasRawPayload ? text : text.trim())
         .then(() => {
           button.classList.add('is-copied');
           setTimeout(() => button.classList.remove('is-copied'), 1000);

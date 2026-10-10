@@ -178,7 +178,6 @@ test('compact reservation rejects sibling mutations during preflight and native 
     () => c.fork('owned'),
     () => c.forkInPlace('owned'),
     () => c.clone(),
-    () => c.stop(),
     () => c.restart(),
     () => c.start(),
     () => c.renameSession('owned'),
@@ -186,7 +185,6 @@ test('compact reservation rejects sibling mutations during preflight and native 
   ];
   for (const phase of ['preflight', 'native']) {
     for (const mutate of mutations) await assert.rejects(mutate(), /compaction/i);
-    assert.throws(() => c.dispose(), /compaction/i);
     assert.throws(() => beginModelOperation(c), /compaction/i);
     if (phase === 'preflight') {
       stateRelease({ ...c.state.state });

@@ -457,6 +457,7 @@ export function reduceEvent(state: ControllerState, event: RpcEvent): Controller
       next = {
         ...next,
         connectionState: 'busy',
+        compactionReason: typeof event.reason === 'string' ? event.reason : undefined,
         state: { ...next.state, isCompacting: true },
       };
       break;
@@ -464,6 +465,7 @@ export function reduceEvent(state: ControllerState, event: RpcEvent): Controller
       next = {
         ...next,
         connectionState: next.state.isStreaming ? 'busy' : 'ready',
+        compactionReason: undefined,
         state: { ...next.state, isCompacting: false },
       };
       break;

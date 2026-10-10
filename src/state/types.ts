@@ -85,6 +85,8 @@ export interface ControllerState {
   pendingUi: ExtensionUiRequest[];
   /** Live auto-retry info from Pi (attempt + the provider's actual error). */
   retry?: { attempt?: number; delayMs?: number; errorMessage?: string };
+  /** Native compaction reason while progress is indeterminate. */
+  compactionReason?: string;
   uiHistory: ExtensionUiRecord[];
   eventHistory: EventRecord[];
   lastEventType?: string;
@@ -157,12 +159,23 @@ export interface WebviewAttachmentItem {
   fileRef?: WebviewAttachmentFileRef;
 }
 
+export interface WebviewCapturedContextItem {
+  kind: 'activeFile' | 'pickedFile' | 'selection' | 'diagnostics' | 'pastedText' | 'droppedFile';
+  path: string;
+  lineStart: number;
+  lineEnd: number;
+  languageId?: string;
+  severity?: string;
+  content: string;
+  fileRef?: WebviewAttachmentFileRef;
+}
+
 export type WebviewMessageBlock =
   | { kind: 'text'; text: string }
   | { kind: 'thinking'; text: string }
   | { kind: 'tool'; name: string; args?: string; callId?: string }
   | { kind: 'toolResult'; name?: string; text: string; isError?: boolean; callId?: string }
-  | { kind: 'image'; mimeType: string };
+  | { kind: 'image'; mimeType: string; dataUrl?: string };
 
 export interface WebviewMessageItem {
   id: string;
@@ -174,6 +187,9 @@ export interface WebviewMessageItem {
   // with persisted snapshots; the webview falls back to `text`.
   blocks?: WebviewMessageBlock[];
   attachments: WebviewAttachmentItem[];
+  /** Derived presentation of a valid Pi VS Code context envelope. `text`
+   * remains the exact RPC/history payload. */
+  capturedContext?: WebviewCapturedContextItem[];
   // The PROVIDER'S actual error for failed turns (stopReason 'error') — the
   // webview shows this instead of a generic "empty response" guess.
   errorMessage?: string;
@@ -216,6 +232,7 @@ export interface WebviewSnapshot {
   currentAssistantMessageId?: string;
   isStreaming: boolean;
   isCompacting: boolean;
+  compaction?: { progress: 'indeterminate'; reason?: string };
   // Set when this chat is being shared to a remote device (drives the info bar).
   sharing?: { active: boolean; label: string };
   messageCount?: number;

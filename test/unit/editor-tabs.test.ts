@@ -219,9 +219,28 @@ test('editorTabs.render.headerHasModelChipAndMore', () => {
 });
 
 test('editorTabs.revive.noPromptReplay', () => {
-  const persisted = toPersistedChatSnapshot(snapshot());
+  const persisted = toPersistedChatSnapshot(
+    snapshot({
+      messages: [
+        {
+          id: 'image',
+          role: 'user',
+          text: '[image:image/png]',
+          blocks: [
+            {
+              kind: 'image',
+              mimeType: 'image/png',
+              dataUrl: 'data:image/png;base64,BBBB',
+            },
+          ],
+          attachments: [],
+        },
+      ],
+    })
+  );
   const text = JSON.stringify(persisted);
   assert.equal(text.includes('AAAA'), false);
+  assert.equal(text.includes('BBBB'), false);
   assert.equal(text.includes('rpcImages'), false);
   assert.equal('draft' in persisted, false);
   assert.equal(

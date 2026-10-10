@@ -277,6 +277,7 @@ export interface SessionState extends JsonObject {
   followUpMode?: string;
   sessionFile?: string;
   sessionId?: string;
+  leafId?: string | null;
   sessionName?: string;
   autoCompactionEnabled?: boolean;
   messageCount?: number;
