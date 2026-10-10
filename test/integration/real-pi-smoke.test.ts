@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { shutdown, spawnRealPi } from '../helpers/rpc';
 
-test('real Pi 0.99.1 responds to isolated offline state and command queries', async () => {
+test('selected supported Pi SDK responds to isolated offline state and command queries', async () => {
   const spawned = await spawnRealPi();
   try {
     const state = await spawned.client.getState();

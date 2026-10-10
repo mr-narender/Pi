@@ -42,6 +42,11 @@ export async function resolveNativeCli() {
   throw new Error('Requires an installed supported @earendil-works/pi-coding-agent JS CLI');
 }
 
+export async function readNativeRpcTypes(sdkRoot = process.env.PI_SRC) {
+  const root = sdkRoot ?? (await resolveNativeCli()).root;
+  return readFile(join(root, 'dist/modes/rpc/rpc-types.d.ts'), 'utf8');
+}
+
 export async function resolveNativeSdkDependency(sdkRoot: string, dependencyFile: string) {
   const { resolveSdkDependencyFile } = await import(
     pathToFileURL(resolve('host/startup-adapter.mjs')).href

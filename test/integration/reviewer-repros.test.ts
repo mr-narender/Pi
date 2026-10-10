@@ -30,6 +30,7 @@ import {
   renderChatApp,
 } from '../../src/webview/render';
 import type { WebviewSnapshot } from '../../src/state/types';
+import { readNativeRpcTypes } from '../helpers/nativeFixture';
 
 test('reviewer repro 1: no fallback no-op command handler remains', () => {
   const source = readFileSync('src/extension.ts', 'utf8');
@@ -154,16 +155,38 @@ test('reviewer repro 7: session path validation is canonical', async () => {
   assert.ok(canonical.endsWith('/package.json'));
 });
 
-test('reviewer repro 8: installed rpc wire shapes match parser assumptions', () => {
-  const installed = readFileSync(
-    '/Users/narender/.npm-global/lib/node_modules/@earendil-works/pi-coding-agent/dist/modes/rpc/rpc-types.d.ts',
-    'utf8'
-  );
+test('reviewer repro 8: installed rpc wire shapes match parser assumptions', async () => {
+  const installed = await readNativeRpcTypes();
   assert.ok(installed.includes('type: "new_session"'));
   assert.ok(installed.includes('parentSession?: string'));
   assert.ok(installed.includes('customInstructions?: string'));
   assert.ok(installed.includes('statusKey: string'));
   assert.ok(installed.includes('widgetKey: string'));
+});
+
+test('RPC wire source honors a selected nondefault SDK root and never falls back when it is missing', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'pi-selected-rpc-sdk-'));
+  const rpc = join(root, 'dist/modes/rpc');
+  const selected = 'owned selected SDK wire source';
+  try {
+    await mkdir(rpc, { recursive: true });
+    await writeFile(join(rpc, 'rpc-types.d.ts'), selected);
+    assert.equal(await readNativeRpcTypes(root), selected);
+    const selectedFromEnvironment = execFileSync(
+      process.execPath,
+      [
+        '--import',
+        'tsx',
+        '-e',
+        "require('./test/helpers/nativeFixture.ts').readNativeRpcTypes().then(source => process.stdout.write(source))",
+      ],
+      { encoding: 'utf8', env: { PATH: process.env.PATH, PI_SRC: root } }
+    );
+    assert.equal(selectedFromEnvironment, selected);
+    await assert.rejects(readNativeRpcTypes(join(root, 'missing')), { code: 'ENOENT' });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test('reviewer repro 9: extension UI reducer keeps keyed statuses, widgets, title, and cancel distinctions', () => {
