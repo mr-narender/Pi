@@ -11,8 +11,8 @@ export interface PathPiInfo {
 }
 
 // Exact audited contracts only: never admit a new minor/major by semver range.
-export const TESTED_PI_VERSION = { major: 1, minor: 0 };
-export const SUPPORTED_PI_SDK_VERSIONS = ['0.99.1', '0.99.2', '1.0.0', '1.0.4'] as const;
+export const TESTED_PI_VERSION = { major: 1, minor: 1 };
+export const SUPPORTED_PI_SDK_VERSIONS = ['0.99.1', '0.99.2', '1.0.0', '1.0.4', '1.1.0'] as const;
 export function isSupportedPiSdkVersion(version: unknown): version is string {
   return SUPPORTED_PI_SDK_VERSIONS.includes(version as (typeof SUPPORTED_PI_SDK_VERSIONS)[number]);
 }

@@ -50,6 +50,10 @@ extension installs the newest Pi version supported by its native host into its o
 storage. Auto-install is **off by default** — nothing is ever
 downloaded without your consent.
 
+The native host supports the audited Pi SDK versions **0.99.1, 0.99.2, 1.0.0,
+1.0.4 and 1.1.0**. Other versions and custom wrappers use stock RPC; features
+requiring the native SDK report their unsupported capability.
+
 Resolution is deterministic: an explicit `piRpc.executable` wins, otherwise the
 current `pi` on `PATH` wins, and only then can a compatible managed installation
 be used. With `piRpc.autoInstall: false`, the extension performs no npm check,

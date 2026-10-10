@@ -2,6 +2,8 @@
 
 ## 0.2.27
 
+- Support the audited Pi 1.1.0 SDK from the configured executable or PATH across
+  shared and dedicated hosts, preserving exact package, version and API checks.
 - Attach files by dropping them directly into the composer, including files
   from the local client while Pi runs in a remote VS Code workspace. Preserve
   real filenames and apply the existing file and image size limits before

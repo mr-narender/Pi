@@ -2,20 +2,29 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
+import { isSupportedPiSdkVersion, SUPPORTED_PI_SDK_VERSIONS } from '../../src/process/piLauncher';
 
 test('scopes SDK capability gate rejects mismatched package/version and missing actual API shape', async () => {
   const { validateSdkMetadata, validateSdkApi } = await import(
     pathToFileURL(resolve('host/startup-adapter.mjs')).href
   );
-  validateSdkMetadata({ name: '@earendil-works/pi-coding-agent', version: '0.99.1' });
-  validateSdkMetadata({ name: '@earendil-works/pi-coding-agent', version: '0.99.2' });
-  validateSdkMetadata({ name: '@earendil-works/pi-coding-agent', version: '1.0.4' });
+  assert.ok(SUPPORTED_PI_SDK_VERSIONS.includes('1.1.0'));
+  for (const version of SUPPORTED_PI_SDK_VERSIONS) {
+    assert.equal(isSupportedPiSdkVersion(version), true);
+    validateSdkMetadata({ name: '@earendil-works/pi-coding-agent', version });
+  }
   for (const metadata of [
     { name: 'unknown', version: '0.99.1' },
     { name: '@earendil-works/pi-coding-agent', version: '0.99.3' },
+    { name: '@earendil-works/pi-coding-agent', version: '1.1.1' },
+    { name: '@earendil-works/pi-coding-agent', version: '1.1.0-next' },
+    { name: 'unknown', version: '1.1.0' },
     {},
-  ])
+  ]) {
+    if (metadata.name === '@earendil-works/pi-coding-agent')
+      assert.equal(isSupportedPiSdkVersion(metadata.version), false);
     assert.throws(() => validateSdkMetadata(metadata), /SDK_HOST_VERSION_UNSUPPORTED/);
+  }
   assert.throws(() => validateSdkApi({}), /SDK_HOST_API_UNSUPPORTED/);
 });
 
