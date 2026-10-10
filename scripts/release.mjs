@@ -60,7 +60,7 @@ class MarketplaceFailure extends Error {
         ? error.stderr.toString()
         : '';
     const status = stderr.match(
-      /(?:Unauthorized|Forbidden|Bad Request|Too Many Requests|Internal Server Error|Bad Gateway|Service Unavailable|Gateway Timeout)\((400|401|403|429|500|502|503|504)\)/
+      /(?:Unauthorized|Forbidden|Bad Request|Too Many Requests|Internal Server Error|Bad Gateway|Service Unavailable|Gateway Timeout|Failed request: )\((400|401|403|429|500|502|503|504)\)/
     )?.[1];
     this.status = status ? Number(status) : undefined;
     this.category =

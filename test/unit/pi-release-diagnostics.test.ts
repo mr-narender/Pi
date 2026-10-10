@@ -115,8 +115,16 @@ async function runFixture(scenario: string) {
     assert.ok(args[0]?.endsWith('/@vscode/vsce/vsce'));
     children.push({ args: args.slice(1), env: options.env });
     if (args[1] === 'verify-pat' && !scenario.startsWith('verify-')) return secret;
-    const message =
-      scenario === 'auth' || scenario === 'verify-auth'
+    const restStatus = scenario.endsWith('rest-auth')
+      ? 401
+      : scenario.endsWith('rest-permission')
+        ? 403
+        : scenario === 'rest-unknown'
+          ? 418
+          : undefined;
+    const message = restStatus
+      ? `Failed request: (${restStatus})`
+      : scenario === 'auth' || scenario === 'verify-auth'
         ? 'Unauthorized(401)'
         : scenario === 'service'
           ? 'Internal Server Error(500)'
@@ -188,6 +196,11 @@ for (const [scenario, expected] of [
   ['unknown', 'github-release: unexpected-error'],
   ['verify-auth', 'marketplace-credentials: authentication-failed (HTTP 401, exit 7)'],
   ['verify-bounds', 'marketplace-credentials: child-failed'],
+  ['verify-rest-auth', 'marketplace-credentials: authentication-failed (HTTP 401, exit 7)'],
+  ['verify-rest-permission', 'marketplace-credentials: permission-denied (HTTP 403, exit 7)'],
+  ['rest-auth', 'marketplace-publish: authentication-failed (HTTP 401, exit 7)'],
+  ['rest-permission', 'marketplace-publish: permission-denied (HTTP 403, exit 7)'],
+  ['rest-unknown', 'marketplace-publish: child-failed (exit 7)'],
 ])
   test(`release catch reports only the safe ${scenario} stage/category`, async () => {
     const result = await runFixture(scenario!);
