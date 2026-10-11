@@ -28,13 +28,20 @@ binds that before commit to main ancestry; initial/deleted/rewritten main histor
 fail and require owner recovery. Rollbacks, prerelease
 channels, wrong tag commits or conflicting remote checksums fail closed.
 
-After source/artifact validation, trusted main runs perform a read-only
-`vsce verify-pat mr-narender` check when **VSCE_PAT** is present, including runs
-whose version is unchanged. This verifies the configured secret without publishing.
-An unchanged version with no PAT still skips successfully. Child output stays
-private; failures report only a fixed stage/category and validated HTTP/exit numbers.
-Unknown errors, response bodies, assertion values and credentials are never printed.
-This diagnostic correction is tracked in [#15](https://github.com/mr-narender/Pi/issues/15).
+Marketplace authentication uses GitHub main-only OIDC and pinned `azure/login`,
+with no subscription required. Only the trusted main release job receives
+`id-token: write`; PRs receive neither Azure login nor identity secrets. VSCE uses
+`--azure-credential` and the isolated Azure CLI session; there is no PAT fallback.
+GitHub's built-in token handles release assets and read-only original quality proof.
+Git/unzip receive no release credentials; Azure/VSCE children receive only benign
+runtime settings and the isolated Azure config directory, never GitHub, OIDC
+runtime, client-secret or PAT environment variables.
+
+After source/artifact validation, main runs read the Marketplace profile using
+`az rest` and display only its validated UUID. This does not publish or require
+publisher Contributor access. Unchanged-version pushes still display that ID and
+skip publication. Child output, credentials, HTTP bodies and assertion values stay
+private; failures expose only fixed stages/categories and bounded HTTP/exit numbers.
 
 After partial failures, **rerun failed jobs** on the same workflow run: the
 successful quality artifact is reused. Existing verified tags/assets/Marketplace
@@ -46,12 +53,38 @@ and silently overwrite a published version. Rapid main pushes share a
 non-cancelling concurrency group with `queue: max`; pending main runs are queued
 instead of replaced, and an active publication is not interrupted.
 
+For the pending approved **0.2.28** draft from
+`348242035cbe410d35fc3c83eedde671e8badb50`, merging this authentication correction
+does not publish a replacement package or change its version. The original VSIX
+SHA256 is `1d4c8a710e81652be563eba03bb736e130b48b72850d240dc8f4952b8cf358e8`.
+After granting the displayed profile ID Contributor access, run **Pi** manually
+on **main**, choosing **retry-pending-release**. Older workflow runs retain their
+old authentication source and cannot recover through the new OIDC flow.
+
+Manual **profile** (the default) only reads the ID. **retry-pending-release** accepts
+only the existing draft for the current package version, with no SHA/artifact
+input. It validates its tag, source ancestry, original successful main **pi-quality**,
+unique asset hashes, downloaded receipt/package, original packaged source and
+its match to reviewed current main, including current quality bundle hashes and
+CHANGELOG source. The draft must contain exactly its receipt and VSIX assets. All sorted archive entry
+names and every entry's content hash must equal the validated current quality VSIX;
+ZIP container hashes may differ because of metadata such as timestamps.
+It runs only reviewed current scripts; old source is inspected without executing its scripts or hooks. The original source parent must have an
+older version. It preserves original receipt bytes and package checksums and
+uses the existing idempotent release stages. An absent/already completed draft or
+any mismatch fails closed; this is a finite pending-draft recovery route.
+
 ## Owner setup before merge
 
-1. Add repository Actions secret **VSCE_PAT**, using the existing Azure DevOps
-   Marketplace Manage PAT from Bitwarden **azure_token**. Enter the raw token
-   value only, without the `AZURE_TOKEN=` assignment. GitHub's built-in
-   `GITHUB_TOKEN` handles GitHub tags/releases; no GitHub PAT is needed.
+1. Set repository Actions **secrets** **AZURE_CLIENT_ID** and **AZURE_TENANT_ID**
+   for the already configured identity. Federation must use issuer
+   `https://token.actions.githubusercontent.com`, audience `api://AzureADTokenExchange`
+   and exact subject `repo:mr-narender/Pi:ref:refs/heads/main`. Do not broaden it to
+   PRs, branches or environments. No subscription, client secret or PAT is required.
+   After merge, copy the displayed **Marketplace profile ID** into publisher
+   **mr-narender**'s members and grant **Contributor**. This is the profile UUID,
+   not the Entra object ID or client ID. Profile lookup alone does not establish
+   publishing permission. Identity/federation/member changes remain owner operations.
 2. The owner can separately require check **pi-quality** from GitHub Actions,
    up-to-date branches and restricted direct pushes/bypasses. Independent required
    PR/code-owner review needs an approved reviewer route first: the only verified
@@ -63,9 +96,10 @@ instead of replaced, and an active publication is not interrupted.
    and all CI trust prerequisites are verified. Do not self-approve, bypass controls
    or create a new account. Human owner review and merge remain required by shared
    workflow governance.
-3. Review and merge this PR. Its new version **0.2.28** publishes automatically
-   only after the merged commit's quality job succeeds. A missing VSCE_PAT fails
-   clearly and leaves the package unpublished; add the secret then rerun failed jobs.
+3. Review and merge. Future reviewed version increases publish automatically
+   after **pi-quality** succeeds and the identity has Contributor access. This
+   unchanged-version OIDC correction first provides the profile ID; then use
+   the manual pending-draft retry above for **0.2.28**.
 
 Branch settings and secret configuration are owner operations, not activated by
 this source PR. Registry policy must retain local gates until required status,
@@ -73,10 +107,10 @@ workflow integrity and runner trust are verified; the workflow alone proves none
 of those server controls.
 
 Node availability is verified against its [official 26.11.1 release](https://nodejs.org/en/blog/release/v26.11.1).
-Microsoft announces global Azure DevOps PAT retirement on **December 1, 2026**:
-prepare reviewed Microsoft Entra ID/OIDC publishing before that date using the
-[official publishing guidance](https://code.visualstudio.com/api/working-with-extensions/publishing-extension).
-This PR does not create identity/cloud infrastructure or change credentials.
+OIDC/profile authorization follows the
+[official publishing guidance](https://code.visualstudio.com/api/working-with-extensions/publishing-extension)
+and [Azure login guidance](https://github.com/Azure/login).
+This PR does not create identity/cloud infrastructure or grant publisher access.
 
 The locally installed official actionlint **1.7.12** predates GitHub's supported
 `queue: max` field. Validation ignores only that exact unknown-key diagnostic;

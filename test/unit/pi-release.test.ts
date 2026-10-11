@@ -128,7 +128,7 @@ test('Pi CI has one exact required aggregate covering every quality gate with pi
   );
   for (const job of Object.values(workflow.jobs) as any[]) {
     for (const step of job.steps.filter((s: any) => s.uses))
-      assert.match(step.uses, /^actions\/[\w-]+@[a-f0-9]{40}$/);
+      assert.match(step.uses, /^(?:actions|azure)\/[\w-]+@[a-f0-9]{40}$/);
     const checkout = job.steps.find((s: any) => s.uses.startsWith('actions/checkout@'));
     assert.equal(checkout.with['persist-credentials'], false);
     assert.equal(
@@ -144,7 +144,30 @@ test('Pi CI has one exact required aggregate covering every quality gate with pi
     "github.repository == 'mr-narender/Pi'",
   ])
     assert.ok(publisher.if.includes(condition));
-  assert.deepEqual(publisher.permissions, { contents: 'write' });
+  assert.deepEqual(publisher.permissions, {
+    contents: 'write',
+    'id-token': 'write',
+    actions: 'read',
+  });
+  assert.deepEqual(workflow.on.workflow_dispatch.inputs.operation.options, [
+    'profile',
+    'retry-pending-release',
+  ]);
+  assert.equal(workflow.on.workflow_dispatch.inputs.operation.default, 'profile');
+  const login = publisher.steps.find((step: any) => step.uses?.startsWith('azure/login@'));
+  assert.equal(login.uses, 'azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906');
+  assert.deepEqual(login.with, {
+    'client-id': '${{ secrets.AZURE_CLIENT_ID }}',
+    'tenant-id': '${{ secrets.AZURE_TENANT_ID }}',
+    'allow-no-subscriptions': true,
+  });
+  assert.equal(login.with['enable-AzPSSession'], undefined);
+  assert.equal(login.env.AZURE_CONFIG_DIR, '${{ runner.temp }}/pi-azure');
+  assert.equal(publisher.steps.at(-1).env.AZURE_CONFIG_DIR, login.env.AZURE_CONFIG_DIR);
+  assert.equal(publisher.env.AZURE_CORE_OUTPUT, 'none');
+  assert.ok(!JSON.stringify(workflow).includes('VSCE_PAT'));
+  assert.ok(!JSON.stringify(quality).includes('azure/login'));
+  assert.ok(publisher.if.includes("github.event_name == 'workflow_dispatch'"));
   assert.ok(!JSON.stringify(publisher).includes('vsce package'));
   assert.ok(JSON.stringify(publisher).includes('needs.pi-quality.outputs.source-sha'));
   assert.ok(JSON.stringify(publisher).includes('github.event.before'));
@@ -156,7 +179,7 @@ test('Pi CI has one exact required aggregate covering every quality gate with pi
     assert.ok(owners.split('\n').includes(`${file} @mr-narender`), file);
 });
 
-test('Pi release subprocesses receive bounded runtime settings and only the Marketplace publisher receives its PAT', async () => {
+test('Pi release subprocesses isolate Azure CLI state and exclude all PAT, GitHub, Entra and Actions credentials', async () => {
   const { productionServices, previousVersionForPush } = await releaseModule;
   const { inspectVsix } = await import(pathToFileURL(resolve('scripts/inspect-vsix.mjs')).href);
   const env = Object.freeze({
@@ -167,6 +190,10 @@ test('Pi release subprocesses receive bounded runtime settings and only the Mark
     GH_TOKEN: 'fixture-github-write',
     GITHUB_TOKEN: 'fixture-github-other',
     VSCE_PAT: 'fixture-marketplace-only',
+    AZURE_CONFIG_DIR: '/owned/runtime/azure',
+    AZURE_CLIENT_ID: 'fixture-client-id',
+    AZURE_CLIENT_SECRET: 'fixture-client-secret',
+    AZURE_TENANT_ID: 'fixture-tenant',
     ACTIONS_RUNTIME_TOKEN: 'fixture-runtime',
     ACTIONS_ID_TOKEN_REQUEST_TOKEN: 'fixture-oidc',
     ACTIONS_ID_TOKEN_REQUEST_URL: 'https://owned.invalid/oidc',
@@ -195,7 +222,11 @@ test('Pi release subprocesses receive bounded runtime settings and only the Mark
       HTTPS_PROXY: env.HTTPS_PROXY,
       NO_PROXY: env.NO_PROXY,
     };
-    assert.deepEqual(calls[0]!.options.env, { ...runtime, VSCE_PAT: env.VSCE_PAT });
+    assert.deepEqual(calls[0]!.options.env, {
+      ...runtime,
+      AZURE_CONFIG_DIR: env.AZURE_CONFIG_DIR,
+      AZURE_CORE_OUTPUT: 'none',
+    });
     for (const call of calls.slice(1)) assert.deepEqual(call.options.env, runtime);
     assert.equal(env.GH_TOKEN, 'fixture-github-write');
     assert.equal(env.VSCE_PAT, 'fixture-marketplace-only');
@@ -268,14 +299,14 @@ for (const failure of ['marketplace', 'github'])
     );
   });
 
-test('Pi unchanged versions never require secrets or write; missing PAT fails before publication without disclosing values', async () => {
+test('Pi unchanged versions never write; new versions require the Azure session without disclosing values', async () => {
   const { release } = await releaseModule;
   const f = fixture();
   assert.match(await release(receipt, receipt.version, f.services, {}), /unchanged/);
   await assert.rejects(
     release(receipt, '0.2.27', f.services, { github: 'DO-NOT-LOG' }),
     (error: any) => {
-      assert.match(error.message, /VSCE_PAT Actions secret is missing/);
+      assert.equal(error.category, 'missing-azure-session');
       assert.ok(!error.message.includes('DO-NOT-LOG'));
       return true;
     }

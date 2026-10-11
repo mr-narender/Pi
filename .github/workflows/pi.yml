@@ -5,6 +5,13 @@ on:
     branches: [main]
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Read profile ID or retry the verified current-version draft after its Contributor grant
+        type: choice
+        options: [profile, retry-pending-release]
+        default: profile
 
 permissions:
   contents: read
@@ -77,11 +84,15 @@ jobs:
   release:
     name: Publish stable Pi
     needs: pi-quality
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'mr-narender/Pi'
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && github.repository == 'mr-narender/Pi'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: write
+      id-token: write
+      actions: read
+    env:
+      AZURE_CORE_OUTPUT: none
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
@@ -96,9 +107,18 @@ jobs:
         with:
           name: pi-${{ needs.pi-quality.outputs.source-sha }}
           path: ${{ runner.temp }}/pi-release/
+      - name: Sign in with main-only workload identity
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.0.0
+        env:
+          AZURE_CONFIG_DIR: ${{ runner.temp }}/pi-azure
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          allow-no-subscriptions: true
       - name: Publish the verified artifact
         env:
+          AZURE_CONFIG_DIR: ${{ runner.temp }}/pi-azure
           GH_TOKEN: ${{ github.token }}
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
           PI_PREVIOUS_SHA: ${{ github.event.before }}
+          PI_RELEASE_OPERATION: ${{ inputs.operation }}
         run: node scripts/release.mjs "$RUNNER_TEMP/pi-release"

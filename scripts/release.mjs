@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { resolve, join, dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { inspectVsix, sha256, subprocessEnvironment } from './inspect-vsix.mjs';
 
@@ -12,7 +12,8 @@ const stages = new Set([
   'artifact-validation',
   'version-validation',
   'credentials',
-  'marketplace-credentials',
+  'marketplace-profile',
+  'recovery-validation',
   'github-release',
   'marketplace-query',
   'github-assets',
@@ -24,11 +25,8 @@ const categories = new Set([
   'validation-failed',
   'unexpected-error',
   'http-error',
-  'missing-marketplace-pat',
+  'missing-azure-session',
   'missing-github-token',
-  'authentication-failed',
-  'permission-denied',
-  'service-failed',
   'timeout',
   'child-failed',
 ]);
@@ -40,39 +38,18 @@ class HttpFailure extends Error {
 }
 class CredentialFailure extends Error {
   constructor(marketplace) {
-    super(
-      marketplace
-        ? 'VSCE_PAT Actions secret is missing; owner setup required'
-        : 'GH_TOKEN is required for GitHub release creation'
-    );
-    this.category = marketplace ? 'missing-marketplace-pat' : 'missing-github-token';
+    super('Release credential unavailable');
+    this.category = marketplace ? 'missing-azure-session' : 'missing-github-token';
   }
 }
 class MarketplaceFailure extends Error {
   constructor(error) {
-    super('Marketplace command failed; rerun the failed release job with the same artifact');
+    super('Marketplace command failed');
     this.exit =
       Number.isInteger(error?.status) && error.status >= 0 && error.status <= 255
         ? error.status
         : undefined;
-    const stderr =
-      typeof error?.stderr === 'string' || Buffer.isBuffer(error?.stderr)
-        ? error.stderr.toString()
-        : '';
-    const status = stderr.match(
-      /(?:Unauthorized|Forbidden|Bad Request|Too Many Requests|Internal Server Error|Bad Gateway|Service Unavailable|Gateway Timeout|Failed request: )\((400|401|403|429|500|502|503|504)\)/
-    )?.[1];
-    this.status = status ? Number(status) : undefined;
-    this.category =
-      this.status === 401
-        ? 'authentication-failed'
-        : this.status === 403
-          ? 'permission-denied'
-          : this.status
-            ? 'service-failed'
-            : error?.code === 'ETIMEDOUT'
-              ? 'timeout'
-              : 'child-failed';
+    this.category = error?.code === 'ETIMEDOUT' ? 'timeout' : 'child-failed';
   }
 }
 export function formatReleaseFailure(error, stage) {
@@ -92,27 +69,69 @@ export function formatReleaseFailure(error, stage) {
       details.push(`exit ${error.exit}`);
   }
   if (!categories.has(category)) category = 'unexpected-error';
-  return `Pi release failed at ${safeStage}: ${category}${details.length ? ` (${details.join(', ')})` : ''}. Rerun the failed job after fixing this stage.`;
+  const guidance =
+    safeStage === 'marketplace-profile'
+      ? 'Check main-only OIDC login and Marketplace profile access.'
+      : safeStage === 'marketplace-publish'
+        ? 'Check Contributor access for the displayed profile ID, then retry the pending release.'
+        : 'Rerun the failed job after fixing this stage.';
+  return `Pi release failed at ${safeStage}: ${category}${details.length ? ` (${details.join(', ')})` : ''}. ${guidance}`;
 }
-function invokeMarketplace(args, env) {
+function azureEnvironment(env) {
+  return {
+    ...subprocessEnvironment(env),
+    ...(env.AZURE_CONFIG_DIR ? { AZURE_CONFIG_DIR: env.AZURE_CONFIG_DIR } : {}),
+    AZURE_CORE_OUTPUT: 'none',
+  };
+}
+function invokeAzure(command, args, env) {
   try {
-    execFileSync(process.execPath, [resolve('node_modules/@vscode/vsce/vsce'), ...args], {
-      env: { ...subprocessEnvironment(env), VSCE_PAT: env.VSCE_PAT },
+    return execFileSync(command, args, {
+      env: azureEnvironment(env),
       stdio: 'pipe',
       timeout: 180000,
     });
   } catch (error) {
-    // Interpret only known status markers; never emit child output or arbitrary error properties.
+    // Never emit child output, credentials, service bodies or arbitrary error properties.
     throw new MarketplaceFailure(error);
   }
+}
+export function marketplaceProfile(env) {
+  const profile = JSON.parse(
+    invokeAzure(
+      'az',
+      [
+        'rest',
+        '--method',
+        'GET',
+        '--url',
+        'https://app.vssps.visualstudio.com/_apis/profile/profiles/me',
+        '--resource',
+        '499b84ac-1321-427f-aa17-267ca6975798',
+        '--output',
+        'json',
+        '--only-show-errors',
+      ],
+      env
+    ).toString()
+  );
+  assert.match(profile.id, /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i);
+  return profile.id;
 }
 export function previousVersionForPush(before, env = process.env) {
   assert.match(before, /^[a-f0-9]{40}$/, 'Trusted push requires its before commit');
   assert.notEqual(before, '0'.repeat(40), 'Initial/deleted main pushes require owner recovery');
   const childEnv = subprocessEnvironment(env);
-  execFileSync('git', ['merge-base', '--is-ancestor', before, 'HEAD'], { env: childEnv });
+  execFileSync('git', ['merge-base', '--is-ancestor', before, 'HEAD'], {
+    env: childEnv,
+    stdio: 'pipe',
+  });
   return JSON.parse(
-    execFileSync('git', ['show', `${before}:package.json`], { encoding: 'utf8', env: childEnv })
+    execFileSync('git', ['show', `${before}:package.json`], {
+      encoding: 'utf8',
+      env: childEnv,
+      stdio: 'pipe',
+    })
   ).version;
 }
 export function compareVersions(a, b) {
@@ -306,6 +325,34 @@ export function productionServices(directory, receipt, env) {
       );
       return sha256(Buffer.from(await response.arrayBuffer()));
     },
+    async downloadAsset(asset) {
+      const response = await request(
+        `https://api.github.com/repos/${repository}/releases/assets/${asset.id}`,
+        { headers: { Accept: 'application/octet-stream', Authorization: `Bearer ${env.GH_TOKEN}` } }
+      );
+      return Buffer.from(await response.arrayBuffer());
+    },
+    async qualitySucceeded(source) {
+      const result = await github(`actions/runs?head_sha=${source}&status=completed&per_page=100`);
+      for (const run of result.workflow_runs) {
+        if (
+          run.head_sha !== source ||
+          run.head_branch !== 'main' ||
+          run.event !== 'push' ||
+          run.path !== '.github/workflows/pi.yml'
+        )
+          continue;
+        const result = await github(`actions/runs/${run.id}/jobs?filter=all&per_page=100`);
+        if (
+          result.jobs.some(
+            (job) =>
+              job.name === 'pi-quality' && job.head_sha === source && job.conclusion === 'success'
+          )
+        )
+          return true;
+      }
+      return false;
+    },
     async upload(id, name) {
       const bytes =
         name === 'receipt.json'
@@ -324,28 +371,165 @@ export function productionServices(directory, receipt, env) {
       );
     },
     async publishMarketplace() {
-      invokeMarketplace(['publish', '--packagePath', resolve(directory, receipt.file)], env);
+      invokeAzure(
+        process.execPath,
+        [
+          resolve('node_modules/@vscode/vsce/vsce'),
+          'publish',
+          '--azure-credential',
+          '--packagePath',
+          resolve(directory, receipt.file),
+        ],
+        env
+      );
     },
     completeGithub: (id) =>
       github(`releases/${id}`, { method: 'PATCH', body: JSON.stringify({ draft: false }) }),
   };
 }
 
+function assertSameArchiveContents(recovered, current, env) {
+  const options = { env: subprocessEnvironment(env), stdio: 'pipe', maxBuffer: 32 * 1024 * 1024 };
+  const entries = (file) => {
+    const listing = execFileSync('unzip', ['-Z1', file], options).toString();
+    assert.ok(listing.endsWith('\n'), 'Nonterminated VSIX entry listing');
+    const names = listing.slice(0, -1).split('\n');
+    assert.ok(
+      names.every((name) => /\S/.test(name) && !/[\r\0]/.test(name)),
+      'Malformed VSIX entry listing'
+    );
+    return names.sort();
+  };
+  const expected = entries(current);
+  assert.deepEqual(
+    entries(recovered),
+    expected,
+    'Recovered archive entries differ from current quality'
+  );
+  for (const name of expected) {
+    // Unzip entry operands are patterns; escape metacharacters without invoking a shell.
+    const literal = name.replace(/[*?\[\]\\]/g, (character) => `\\${character}`);
+    assert.equal(
+      sha256(execFileSync('unzip', ['-p', recovered, literal], options)),
+      sha256(execFileSync('unzip', ['-p', current, literal], options)),
+      'Recovered archive entry contents differ from current quality'
+    );
+  }
+}
+
+// Only the existing current-version draft is recoverable; callers cannot select a source or artifact.
+export async function recoverPendingRelease(directory, current, services, env) {
+  const draft = await services.githubRelease(`v${current.version}`);
+  assert.ok(draft && draft.draft && !draft.prerelease, 'Current-version draft required');
+  assert.equal(draft.tag_name, `v${current.version}`);
+  const source = draft.target_commitish;
+  assert.match(source, /^[a-f0-9]{40}$/);
+  assert.equal(await services.tagSha(`v${current.version}`), source);
+  const childEnv = subprocessEnvironment(env);
+  execFileSync('git', ['merge-base', '--is-ancestor', source, 'HEAD'], {
+    env: childEnv,
+    stdio: 'pipe',
+  });
+  assert.ok(await services.qualitySucceeded(source), 'Original main quality must have succeeded');
+  assert.deepEqual(
+    draft.assets.map((entry) => entry.name).sort(),
+    ['receipt.json', `pi-${current.version}.vsix`].sort(),
+    'Only the two reviewed release assets are allowed'
+  );
+  const asset = (name) => {
+    const matches = draft.assets.filter((entry) => entry.name === name);
+    assert.equal(matches.length, 1, 'Unique existing release asset required');
+    assert.match(matches[0].digest, /^sha256:[a-f0-9]{64}$/);
+    return matches[0];
+  };
+  const receiptAsset = asset('receipt.json');
+  const bytes = await services.downloadAsset(receiptAsset);
+  assert.equal(sha256(bytes), receiptAsset.digest.slice(7));
+  const receipt = JSON.parse(bytes);
+  assert.equal(receipt.commit, source);
+  assert.equal(receipt.version, current.version);
+  assert.equal(receipt.file, 'pi.vsix');
+  assert.deepEqual(receipt.bundles, current.bundles, 'Current quality bundles differ');
+  const vsixAsset = asset(`pi-${current.version}.vsix`);
+  assert.equal(vsixAsset.digest, `sha256:${receipt.sha256}`);
+  const vsix = await services.downloadAsset(vsixAsset);
+  assert.equal(sha256(vsix), receipt.sha256);
+  const recovery = mkdtempSync(join(dirname(directory), 'pi-recovery-'));
+  const original = join(recovery, 'source');
+  let checkedOut = false;
+  try {
+    try {
+      writeFileSync(join(recovery, 'receipt.json'), bytes);
+      writeFileSync(join(recovery, 'pi.vsix'), vsix);
+      assertSameArchiveContents(join(recovery, 'pi.vsix'), resolve(directory, current.file), env);
+      execFileSync(
+        'git',
+        ['-c', 'core.hooksPath=/dev/null', 'worktree', 'add', '--detach', original, source],
+        { env: childEnv, stdio: 'pipe' }
+      );
+      checkedOut = true;
+      // Execute this reviewed inspector, never scripts or hooks from the old checkout.
+      assert.deepEqual(
+        inspectVsix(join(recovery, 'pi.vsix'), original, receipt.bundles, env),
+        receipt
+      );
+      // VSCE transforms CHANGELOG Markdown; compare its original/current source separately.
+      assert.equal(
+        sha256(readFileSync(join(original, 'CHANGELOG.md'))),
+        sha256(readFileSync(resolve('CHANGELOG.md'))),
+        'CHANGELOG source differs from reviewed main'
+      );
+      assert.deepEqual(
+        inspectVsix(join(recovery, 'pi.vsix'), process.cwd(), receipt.bundles, env),
+        { ...receipt, commit: current.commit },
+        'Packaged source differs from reviewed main'
+      );
+      const parent = execFileSync('git', ['rev-parse', `${source}^`], {
+        encoding: 'utf8',
+        env: childEnv,
+        stdio: 'pipe',
+      }).trim();
+      const previous = previousVersionForPush(parent, env);
+      assert.ok(
+        compareVersions(receipt.version, previous) > 0,
+        'Draft must originate at a version increase'
+      );
+      return { directory: recovery, receipt, previous };
+    } finally {
+      if (checkedOut)
+        execFileSync('git', ['worktree', 'remove', '--force', original], {
+          env: childEnv,
+          stdio: 'pipe',
+        });
+    }
+  } catch (error) {
+    rmSync(recovery, { recursive: true, force: true });
+    throw error;
+  }
+}
+
 export async function runRelease(directory, env = process.env) {
   let stage = 'source-validation';
   try {
-    assert.equal(env.GITHUB_EVENT_NAME, 'push', 'Publication requires a trusted main push');
+    assert.ok(
+      ['push', 'workflow_dispatch'].includes(env.GITHUB_EVENT_NAME),
+      'Trusted main event required'
+    );
+    const operation = env.GITHUB_EVENT_NAME === 'push' ? 'push' : env.PI_RELEASE_OPERATION;
+    if (operation === 'push') assert.ok(!env.PI_RELEASE_OPERATION);
+    assert.ok(['push', 'profile', 'retry-pending-release'].includes(operation));
     assert.equal(env.GITHUB_REF, 'refs/heads/main');
     assert.equal(env.GITHUB_REPOSITORY, repository);
     directory = resolve(directory);
     stage = 'artifact-validation';
-    const receipt = JSON.parse(readFileSync(resolve(directory, 'receipt.json')));
+    let receipt = JSON.parse(readFileSync(resolve(directory, 'receipt.json')));
     assert.equal(receipt.file, 'pi.vsix');
     assert.equal(receipt.commit, env.GITHUB_SHA, 'Artifact belongs to another commit');
     assert.equal(
       execFileSync('git', ['rev-parse', 'HEAD'], {
         encoding: 'utf8',
         env: subprocessEnvironment(env),
+        stdio: 'pipe',
       }).trim(),
       receipt.commit
     );
@@ -353,6 +537,7 @@ export async function runRelease(directory, env = process.env) {
       execFileSync('git', ['status', '--porcelain'], {
         encoding: 'utf8',
         env: subprocessEnvironment(env),
+        stdio: 'pipe',
       }).trim(),
       '',
       'Release checkout is dirty'
@@ -363,27 +548,43 @@ export async function runRelease(directory, env = process.env) {
       'VSIX receipt mismatch'
     );
     stage = 'version-validation';
-    const previous = previousVersionForPush(env.PI_PREVIOUS_SHA, env);
-    if (env.VSCE_PAT) {
-      stage = 'marketplace-credentials';
-      invokeMarketplace(['verify-pat', 'mr-narender'], env);
-      console.log('Marketplace credential verification succeeded.');
-    }
-    console.log(
-      await release(
+    let previous =
+      operation === 'push' ? previousVersionForPush(env.PI_PREVIOUS_SHA, env) : undefined;
+    if (operation === 'push') assert.ok(compareVersions(receipt.version, previous) >= 0);
+    stage = 'marketplace-profile';
+    if (!env.AZURE_CONFIG_DIR) throw new CredentialFailure(true);
+    console.log(`Marketplace profile ID: ${marketplaceProfile(env)}`);
+    if (operation === 'profile') return 0;
+    let recovery;
+    if (operation === 'retry-pending-release') {
+      stage = 'recovery-validation';
+      recovery = await recoverPendingRelease(
+        directory,
         receipt,
-        previous,
         productionServices(directory, receipt, env),
-        {
-          github: env.GH_TOKEN,
-          marketplace: env.VSCE_PAT,
-        },
-        (next) => {
-          stage = next;
-        }
-      )
-    );
-    return 0;
+        env
+      );
+      ({ directory, receipt, previous } = recovery);
+    }
+    try {
+      console.log(
+        await release(
+          receipt,
+          previous,
+          productionServices(directory, receipt, env),
+          {
+            github: env.GH_TOKEN,
+            marketplace: env.AZURE_CONFIG_DIR,
+          },
+          (next) => {
+            stage = next;
+          }
+        )
+      );
+      return 0;
+    } finally {
+      if (recovery) rmSync(recovery.directory, { recursive: true, force: true });
+    }
   } catch (error) {
     console.error(formatReleaseFailure(error, stage));
     return 1;

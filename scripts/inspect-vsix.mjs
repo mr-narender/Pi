@@ -37,9 +37,17 @@ export function subprocessEnvironment(env = process.env) {
 export function inspectVsix(file, root = process.cwd(), verifiedBundles, env = process.env) {
   const childEnv = subprocessEnvironment(env);
   const source = (name) => readFileSync(resolve(root, name));
-  const entries = execFileSync('unzip', ['-Z1', file], { encoding: 'utf8', env: childEnv })
-    .trim()
-    .split('\n');
+  const listing = execFileSync('unzip', ['-Z1', file], {
+    encoding: 'utf8',
+    env: childEnv,
+    stdio: 'pipe',
+  });
+  assert.ok(listing.endsWith('\n'), 'Nonterminated VSIX entry listing');
+  const entries = listing.slice(0, -1).split('\n');
+  assert.ok(
+    entries.every((name) => /\S/.test(name) && !/[\r\0]/.test(name)),
+    'Malformed VSIX entry listing'
+  );
   assert.equal(new Set(entries).size, entries.length, 'Duplicate VSIX entries');
   for (const name of entries)
     assert.ok(
@@ -47,7 +55,11 @@ export function inspectVsix(file, root = process.cwd(), verifiedBundles, env = p
       'Unsafe VSIX path'
     );
   const read = (name) =>
-    execFileSync('unzip', ['-p', file, name], { maxBuffer: 32 * 1024 * 1024, env: childEnv });
+    execFileSync('unzip', ['-p', file, name], {
+      maxBuffer: 32 * 1024 * 1024,
+      env: childEnv,
+      stdio: 'pipe',
+    });
   const pkg = JSON.parse(read('extension/package.json'));
   assert.equal(pkg.publisher, 'mr-narender');
   assert.equal(pkg.name, 'pi');
@@ -110,6 +122,7 @@ export function inspectVsix(file, root = process.cwd(), verifiedBundles, env = p
       cwd: root,
       encoding: 'utf8',
       env: childEnv,
+      stdio: 'pipe',
     }).trim(),
     publisher: pkg.publisher,
     name: pkg.name,
