@@ -9,6 +9,8 @@
   quick switching, complete active-branch history and image attachments.
 - Avoid duplicate foreground scans after worker timeouts and preserve longer
   history-loading deadlines during background indexing.
+- Warm the workspace's selected runtime with the same launch environment as
+  chats, so the first chat can reuse it without weakening workspace isolation.
 
 ## 0.2.28
 

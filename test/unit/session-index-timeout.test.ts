@@ -3,10 +3,11 @@ import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import { transform } from 'esbuild';
 import { build } from 'esbuild';
-import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { mkdir, writeFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { SessionIndexService } from '../../src/sessions/sessionIndexService';
 import type { DiagnosticsLogger } from '../../src/diagnostics/logger';
+import { createTestDirectory } from '../helpers/temp';
 
 test('timed-out indexing terminates original work before rejection and old exits cannot reject replacement requests', async () => {
   const source = readFileSync('src/sessions/sessionIndexService.ts', 'utf8');
@@ -237,7 +238,7 @@ test('slow worker scans do not fall back to another inline scan, while unavailab
 });
 
 test('resident worker routes workspace scans and authoritative leaf history without losing image payloads', async () => {
-  const root = await mkdtemp('/tmp/pi-extension/index-worker-');
+  const root = await createTestDirectory('index-worker-');
   let service: SessionIndexService | undefined;
   try {
     await mkdir(join(root, 'dist'));

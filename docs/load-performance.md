@@ -85,6 +85,11 @@ and [VS Code Memento](https://code.visualstudio.com/api/references/vscode-api#Me
 
 ## Limits and preservation
 
+- Activation warms the first workspace's selected SDK with the same working
+  directory and environment used when opening a chat. The offline SDK regression
+  verifies the first chat reuses that worker, separate live chats retain their
+  identities and history, and different environments or workspaces remain
+  isolated. Warmup creates no draft session or provider request.
 - Metadata cache: at most 1,024 lightweight records, validated against file
   identity, size, mtime and ctime. Missing or changed files are re-evaluated.
 - Metadata scans: 16 concurrent file reads and 800 lines per file. A single

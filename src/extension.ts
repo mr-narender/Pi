@@ -11,6 +11,8 @@ import {
   usablePathPiRoot,
   selectedSdkRoot,
   isSupportedPiSdkVersion,
+  resolvePiLaunch,
+  piLaunchEnvironment,
 } from './process/piLauncher';
 import { registerChatOps } from './commands/chatOps';
 import { promptChatName, trackSessionName } from './commands/nameCommand';
@@ -230,10 +232,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       vscode.Uri.joinPath(context.globalStorageUri, 'v8-cache').fsPath
     );
     context.subscriptions.push({ dispose: () => disposeSharedPiHost() });
-    // Warm the WHOLE pool at activation — workers boot serially in the
-    // background so the runtime is standing before the first click, then a
-    // draft session is parked for instant New Chat. User opens arriving
-    // mid-warmup ride the booting worker (never a second cold boot).
+    // Warm workers for the actual workspace launch without creating a draft
+    // that would omit the chat's CLI/trust/resource options.
     const warmSettings = getSettings();
     const warmPathPi = detectPathPi();
     const piAvailable =
@@ -243,8 +243,24 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         !warmPathPi &&
         warmSettings.autoInstall);
     if (piAvailable && warmSettings.sharedRuntime && warmSettings.piSource !== 'external') {
-      // Session prewarming cannot silently omit its actual CLI/trust/resource options.
-      sharedHost.warmPool();
+      const folder = vscode.workspace.workspaceFolders?.[0];
+      if (folder) {
+        void resolvePiRoot()
+          .then(() => {
+            const settings = getSettings();
+            const launch = resolvePiLaunch(
+              settings,
+              piLaunchEnvironment(settings),
+              folder.uri.fsPath
+            );
+            if (settings.sharedRuntime && settings.piSource !== 'external' && launch.sdkRoot) {
+              sharedHost.warmPool(undefined, launch);
+            }
+          })
+          .catch((error: unknown) => {
+            logger.warn(`Runtime warmup unavailable: ${String(error)}`);
+          });
+      }
     }
   }
   // Record the loaded build in the output channel only (no user-facing toast).

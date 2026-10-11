@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mkdtemp, mkdir, writeFile, rm, rename, utimes } from 'node:fs/promises';
+import { mkdir, writeFile, rm, rename, utimes } from 'node:fs/promises';
 import * as fs from 'node:fs';
 import { join } from 'node:path';
 import { readRecentSessionsIndex } from '../../src/sessions/recentSessions';
+import { createTestDirectory } from '../helpers/temp';
 
 test('metadata scans reuse unchanged files, invalidate replacement and do not reuse deleted paths', async () => {
-  const root = await mkdtemp('/tmp/pi-extension/metadata-cache-');
+  const root = await createTestDirectory('metadata-cache-');
   const directory = join(root, 'sessions');
   await mkdir(directory);
   const file = join(directory, 'session.jsonl');
@@ -49,7 +50,7 @@ test('metadata scans reuse unchanged files, invalidate replacement and do not re
 });
 
 test('metadata scan is line-bounded even when no nonempty user prompt exists', async () => {
-  const root = await mkdtemp('/tmp/pi-extension/metadata-bound-');
+  const root = await createTestDirectory('metadata-bound-');
   const file = join(root, 'session.jsonl');
   try {
     await writeFile(
@@ -76,7 +77,7 @@ test('metadata scan is line-bounded even when no nonempty user prompt exists', a
 });
 
 test('a 700-session directory stays cached on repeated scans', async () => {
-  const root = await mkdtemp('/tmp/pi-extension/metadata-scale-');
+  const root = await createTestDirectory('metadata-scale-');
   const mutableFs = require('node:fs') as typeof fs;
   const original = mutableFs.createReadStream;
   let reads = 0;
@@ -107,7 +108,7 @@ test('a 700-session directory stays cached on repeated scans', async () => {
 });
 
 test('large first prompt and image records retain previews and later names within existing line window', async () => {
-  const root = await mkdtemp('/tmp/pi-extension/metadata-images-');
+  const root = await createTestDirectory('metadata-images-');
   try {
     const entries = [
       { type: 'session', id: 'test', cwd: root },
