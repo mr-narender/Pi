@@ -7,6 +7,105 @@ import { inspectVsix, sha256, subprocessEnvironment } from './inspect-vsix.mjs';
 
 const repository = 'mr-narender/Pi';
 const stable = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
+const stages = new Set([
+  'source-validation',
+  'artifact-validation',
+  'version-validation',
+  'credentials',
+  'marketplace-credentials',
+  'github-release',
+  'marketplace-query',
+  'github-assets',
+  'marketplace-publish',
+  'marketplace-verification',
+  'github-completion',
+]);
+const categories = new Set([
+  'validation-failed',
+  'unexpected-error',
+  'http-error',
+  'missing-marketplace-pat',
+  'missing-github-token',
+  'authentication-failed',
+  'permission-denied',
+  'service-failed',
+  'timeout',
+  'child-failed',
+]);
+class HttpFailure extends Error {
+  constructor(status) {
+    super('Release service request failed');
+    this.status = status;
+  }
+}
+class CredentialFailure extends Error {
+  constructor(marketplace) {
+    super(
+      marketplace
+        ? 'VSCE_PAT Actions secret is missing; owner setup required'
+        : 'GH_TOKEN is required for GitHub release creation'
+    );
+    this.category = marketplace ? 'missing-marketplace-pat' : 'missing-github-token';
+  }
+}
+class MarketplaceFailure extends Error {
+  constructor(error) {
+    super('Marketplace command failed; rerun the failed release job with the same artifact');
+    this.exit =
+      Number.isInteger(error?.status) && error.status >= 0 && error.status <= 255
+        ? error.status
+        : undefined;
+    const stderr =
+      typeof error?.stderr === 'string' || Buffer.isBuffer(error?.stderr)
+        ? error.stderr.toString()
+        : '';
+    const status = stderr.match(
+      /(?:Unauthorized|Forbidden|Bad Request|Too Many Requests|Internal Server Error|Bad Gateway|Service Unavailable|Gateway Timeout|Failed request: )\((400|401|403|429|500|502|503|504)\)/
+    )?.[1];
+    this.status = status ? Number(status) : undefined;
+    this.category =
+      this.status === 401
+        ? 'authentication-failed'
+        : this.status === 403
+          ? 'permission-denied'
+          : this.status
+            ? 'service-failed'
+            : error?.code === 'ETIMEDOUT'
+              ? 'timeout'
+              : 'child-failed';
+  }
+}
+export function formatReleaseFailure(error, stage) {
+  const safeStage = stages.has(stage) ? stage : 'unknown';
+  let category = error instanceof assert.AssertionError ? 'validation-failed' : 'unexpected-error';
+  const details = [];
+  if (error instanceof HttpFailure) {
+    category = 'http-error';
+    if (Number.isInteger(error.status) && error.status >= 100 && error.status <= 599)
+      details.push(`HTTP ${error.status}`);
+  } else if (error instanceof CredentialFailure) category = error.category;
+  else if (error instanceof MarketplaceFailure) {
+    category = error.category;
+    if (Number.isInteger(error.status) && error.status >= 100 && error.status <= 599)
+      details.push(`HTTP ${error.status}`);
+    if (Number.isInteger(error.exit) && error.exit >= 0 && error.exit <= 255)
+      details.push(`exit ${error.exit}`);
+  }
+  if (!categories.has(category)) category = 'unexpected-error';
+  return `Pi release failed at ${safeStage}: ${category}${details.length ? ` (${details.join(', ')})` : ''}. Rerun the failed job after fixing this stage.`;
+}
+function invokeMarketplace(args, env) {
+  try {
+    execFileSync(process.execPath, [resolve('node_modules/@vscode/vsce/vsce'), ...args], {
+      env: { ...subprocessEnvironment(env), VSCE_PAT: env.VSCE_PAT },
+      stdio: 'pipe',
+      timeout: 180000,
+    });
+  } catch (error) {
+    // Interpret only known status markers; never emit child output or arbitrary error properties.
+    throw new MarketplaceFailure(error);
+  }
+}
 export function previousVersionForPush(before, env = process.env) {
   assert.match(before, /^[a-f0-9]{40}$/, 'Trusted push requires its before commit');
   assert.notEqual(before, '0'.repeat(40), 'Initial/deleted main pushes require owner recovery');
@@ -26,7 +125,8 @@ export function compareVersions(a, b) {
 }
 
 // Services are the two external boundaries, supplied by tests without real credentials or writes.
-export async function release(receipt, previousVersion, services, credentials) {
+export async function release(receipt, previousVersion, services, credentials, onStage = () => {}) {
+  onStage('version-validation');
   assert.equal(receipt.channel, 'stable');
   assert.equal(receipt.repository, repository);
   assert.equal(receipt.publisher, 'mr-narender');
@@ -36,11 +136,14 @@ export async function release(receipt, previousVersion, services, credentials) {
   const change = compareVersions(receipt.version, previousVersion);
   if (!change) return 'Version unchanged; publication skipped.';
   assert.ok(change > 0, 'Version must increase on main');
-  assert.ok(credentials.github, 'GH_TOKEN is required for GitHub release creation');
-  assert.ok(credentials.marketplace, 'VSCE_PAT Actions secret is missing; owner setup required');
+  onStage('credentials');
+  if (!credentials.github) throw new CredentialFailure(false);
+  if (!credentials.marketplace) throw new CredentialFailure(true);
   const tag = `v${receipt.version}`;
+  onStage('github-release');
   const tagSha = await services.tagSha(tag);
   assert.ok(!tagSha || tagSha === receipt.commit, 'Existing release tag points to another commit');
+  onStage('marketplace-query');
   const versions = await services.marketplaceVersions();
   for (const version of versions)
     if (stable.test(version.version))
@@ -57,6 +160,7 @@ export async function release(receipt, previousVersion, services, credentials) {
       'Marketplace artifact mismatch'
     );
   }
+  onStage('github-release');
   let github = await services.githubRelease(tag);
   if (github) {
     assert.equal(github.prerelease, false, 'GitHub channel mismatch');
@@ -67,6 +171,7 @@ export async function release(receipt, previousVersion, services, credentials) {
   if (!tagSha) await services.createTag(tag, receipt.commit);
   if (!github) github = await services.createDraft(tag, receipt.commit);
   assert.equal(await services.tagSha(tag), receipt.commit, 'Created release tag mismatch');
+  onStage('github-assets');
   const assets = [
     [`pi-${receipt.version}.vsix`, receipt.sha256],
     ['receipt.json', sha256(Buffer.from(JSON.stringify(receipt, null, 2) + '\n'))],
@@ -78,13 +183,16 @@ export async function release(receipt, previousVersion, services, credentials) {
     else await services.upload(github.id, name);
   }
   if (!published) {
+    onStage('marketplace-publish');
     await services.publishMarketplace();
+    onStage('marketplace-verification');
     assert.equal(
       await services.marketplaceDigest(receipt.version),
       receipt.sha256,
       'Published Marketplace artifact mismatch'
     );
   }
+  onStage('github-completion');
   if (github.draft) await services.completeGithub(github.id);
   return `Released stable mr-narender.pi ${receipt.version} from ${receipt.commit}.`;
 }
@@ -92,7 +200,7 @@ export async function release(receipt, previousVersion, services, credentials) {
 async function request(url, options = {}) {
   const response = await fetch(url, { ...options, signal: AbortSignal.timeout(60000) });
   if (response.status === 404 && options.allowMissing) return undefined;
-  if (!response.ok) throw new Error(`Release service request failed (${response.status})`);
+  if (!response.ok) throw new HttpFailure(response.status);
   return response;
 }
 
@@ -216,76 +324,70 @@ export function productionServices(directory, receipt, env) {
       );
     },
     async publishMarketplace() {
-      try {
-        execFileSync(
-          process.execPath,
-          [
-            resolve('node_modules/@vscode/vsce/vsce'),
-            'publish',
-            '--packagePath',
-            resolve(directory, receipt.file),
-          ],
-          {
-            env: { ...subprocessEnvironment(env), VSCE_PAT: env.VSCE_PAT },
-            stdio: 'pipe',
-            timeout: 180000,
-          }
-        );
-      } catch {
-        // Child output stays private: it can contain authentication or service details.
-        throw new Error(
-          'Marketplace publication failed; rerun the failed release job with the same artifact'
-        );
-      }
+      invokeMarketplace(['publish', '--packagePath', resolve(directory, receipt.file)], env);
     },
     completeGithub: (id) =>
       github(`releases/${id}`, { method: 'PATCH', body: JSON.stringify({ draft: false }) }),
   };
 }
 
-if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) {
+export async function runRelease(directory, env = process.env) {
+  let stage = 'source-validation';
   try {
-    assert.equal(process.env.GITHUB_EVENT_NAME, 'push', 'Publication requires a trusted main push');
-    assert.equal(process.env.GITHUB_REF, 'refs/heads/main');
-    assert.equal(process.env.GITHUB_REPOSITORY, repository);
-    const directory = resolve(process.argv[2]);
+    assert.equal(env.GITHUB_EVENT_NAME, 'push', 'Publication requires a trusted main push');
+    assert.equal(env.GITHUB_REF, 'refs/heads/main');
+    assert.equal(env.GITHUB_REPOSITORY, repository);
+    directory = resolve(directory);
+    stage = 'artifact-validation';
     const receipt = JSON.parse(readFileSync(resolve(directory, 'receipt.json')));
     assert.equal(receipt.file, 'pi.vsix');
-    assert.equal(receipt.commit, process.env.GITHUB_SHA, 'Artifact belongs to another commit');
+    assert.equal(receipt.commit, env.GITHUB_SHA, 'Artifact belongs to another commit');
     assert.equal(
       execFileSync('git', ['rev-parse', 'HEAD'], {
         encoding: 'utf8',
-        env: subprocessEnvironment(),
+        env: subprocessEnvironment(env),
       }).trim(),
       receipt.commit
     );
     assert.equal(
       execFileSync('git', ['status', '--porcelain'], {
         encoding: 'utf8',
-        env: subprocessEnvironment(),
+        env: subprocessEnvironment(env),
       }).trim(),
       '',
       'Release checkout is dirty'
     );
     assert.deepEqual(
-      inspectVsix(resolve(directory, receipt.file), process.cwd(), receipt.bundles),
+      inspectVsix(resolve(directory, receipt.file), process.cwd(), receipt.bundles, env),
       receipt,
       'VSIX receipt mismatch'
     );
-    const previous = previousVersionForPush(process.env.PI_PREVIOUS_SHA);
+    stage = 'version-validation';
+    const previous = previousVersionForPush(env.PI_PREVIOUS_SHA, env);
+    if (env.VSCE_PAT) {
+      stage = 'marketplace-credentials';
+      invokeMarketplace(['verify-pat', 'mr-narender'], env);
+      console.log('Marketplace credential verification succeeded.');
+    }
     console.log(
-      await release(receipt, previous, productionServices(directory, receipt, process.env), {
-        github: process.env.GH_TOKEN,
-        marketplace: process.env.VSCE_PAT,
-      })
+      await release(
+        receipt,
+        previous,
+        productionServices(directory, receipt, env),
+        {
+          github: env.GH_TOKEN,
+          marketplace: env.VSCE_PAT,
+        },
+        (next) => {
+          stage = next;
+        }
+      )
     );
+    return 0;
   } catch (error) {
-    // Never print credential-bearing child errors, response bodies or assertions containing environment values.
-    console.error(
-      error.message.includes('VSCE_PAT Actions secret is missing')
-        ? 'Pi release failed: VSCE_PAT Actions secret is missing. The owner must add the raw Marketplace PAT, then rerun failed jobs.'
-        : 'Pi release failed. Check main/source/artifact/version and VSCE_PAT setup; rerun the failed release job after fixing the cause.'
-    );
-    process.exitCode = 1;
+    console.error(formatReleaseFailure(error, stage));
+    return 1;
   }
 }
+if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url)
+  process.exitCode = await runRelease(process.argv[2]);
