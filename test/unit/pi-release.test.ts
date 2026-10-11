@@ -26,6 +26,7 @@ function fixture() {
   const trace: string[] = [];
   let tag: string | undefined;
   let published = false;
+  let clock = 0;
   let github: any;
   let fail: string | undefined;
   const services = {
@@ -38,7 +39,16 @@ function fixture() {
         : [{ version: '0.2.27', prerelease: false }];
     },
     async marketplaceDigest() {
-      return receipt.sha256;
+      return published ? receipt.sha256 : undefined;
+    },
+    async marketplaceReadmeMatches() {
+      return true;
+    },
+    now() {
+      return clock;
+    },
+    async sleep(ms: number) {
+      clock += ms;
     },
     async githubRelease() {
       return github;
@@ -251,6 +261,136 @@ test('Pi stable release stages exact artifacts, publishes Marketplace, then comp
   f.trace.length = 0;
   await release(receipt, '0.2.27', f.services, credentials);
   assert.deepEqual(f.trace, []);
+});
+
+test('Pi release waits for stable metadata and exact README after package visibility without republishing', async () => {
+  const { release } = await releaseModule;
+  const f = fixture();
+  let listings = 0;
+  let readmes = 0;
+  const delays: number[] = [];
+  const sleep = f.services.sleep;
+  f.services.sleep = async (ms) => {
+    delays.push(ms);
+    await sleep(ms);
+  };
+  f.services.marketplaceDigest = async () => receipt.sha256;
+  f.services.marketplaceVersions = async () =>
+    ++listings < 3
+      ? [{ version: '0.2.27', prerelease: false }]
+      : [{ version: receipt.version, prerelease: false }];
+  f.services.marketplaceReadmeMatches = async () => ++readmes >= 3;
+  await release(receipt, '0.2.27', f.services, credentials);
+  assert.ok(!f.trace.includes('marketplace'), 'approved package already visible; never republish');
+  assert.deepEqual(delays, [2000, 4000]);
+  assert.equal(f.trace.at(-1), 'complete');
+});
+
+test('Pi release propagation timeout retains the draft, reports verification timeout and can recover', async () => {
+  const { release, formatReleaseFailure } = await releaseModule;
+  const f = fixture();
+  f.services.marketplaceReadmeMatches = async () => false;
+  let stage = '';
+  await assert.rejects(
+    release(receipt, '0.2.27', f.services, credentials, (value: string) => {
+      stage = value;
+    }),
+    (error: any) => {
+      assert.equal(stage, 'marketplace-verification');
+      assert.match(formatReleaseFailure(error, stage), /timeout/);
+      return true;
+    }
+  );
+  assert.equal(f.services.now(), 600000);
+  assert.ok(!f.trace.includes('complete'));
+  assert.equal(f.trace.filter((value) => value === 'marketplace').length, 1);
+  f.services.marketplaceReadmeMatches = async () => true;
+  await release(receipt, '0.2.27', f.services, credentials);
+  assert.equal(f.trace.filter((value) => value === 'marketplace').length, 1);
+  assert.equal(f.trace.at(-1), 'complete');
+});
+
+test('Pi release retries transient service failures and missing package propagation', async () => {
+  const { release } = await releaseModule;
+  const f = fixture();
+  const versions = f.services.marketplaceVersions;
+  let transient = true;
+  f.services.marketplaceVersions = async () => {
+    if (f.trace.includes('marketplace') && transient) {
+      transient = false;
+      throw Object.assign(new Error('private transient response'), { status: 503 });
+    }
+    return versions();
+  };
+  const digest = f.services.marketplaceDigest;
+  let missing = true;
+  f.services.marketplaceDigest = async () => {
+    if (f.trace.includes('marketplace') && missing) {
+      missing = false;
+      return undefined;
+    }
+    return digest();
+  };
+  await release(receipt, '0.2.27', f.services, credentials);
+  assert.equal(f.services.now(), 6000);
+  assert.equal(f.trace.filter((value) => value === 'marketplace').length, 1);
+  assert.equal(f.trace.at(-1), 'complete');
+});
+
+test('production Marketplace Details verification hashes the approved VSIX README, handles stale bytes and missing assets', async () => {
+  const { productionServices } = await releaseModule;
+  const approved = Buffer.from('owned approved README bytes');
+  let remote = approved;
+  let missing = false;
+  let reads = 0;
+  mock.method(childProcess, 'execFileSync', (command: string, args: string[], options: any) => {
+    assert.equal(command, 'unzip');
+    assert.deepEqual(args, ['-p', '/owned/approved/pi.vsix', 'extension/readme.md']);
+    assert.equal(options.env.GH_TOKEN, undefined);
+    reads++;
+    return approved;
+  });
+  mock.method(globalThis, 'fetch', async (url: any, options: any) => {
+    assert.equal(
+      String(url),
+      `https://mr-narender.gallery.vsassets.io/_apis/public/gallery/publisher/mr-narender/extension/pi/${receipt.version}/assetbyname/Microsoft.VisualStudio.Services.Content.Details`
+    );
+    assert.ok(options.signal instanceof AbortSignal);
+    return missing ? new Response('', { status: 404 }) : new Response(new Uint8Array(remote));
+  });
+  syncBuiltinESMExports();
+  try {
+    const service = productionServices('/owned/approved', receipt, { GH_TOKEN: 'fixture-only' });
+    assert.equal(await service.marketplaceReadmeMatches(receipt.version), true);
+    remote = Buffer.from('owned stale README');
+    assert.equal(await service.marketplaceReadmeMatches(receipt.version), false);
+    missing = true;
+    assert.equal(await service.marketplaceReadmeMatches(receipt.version), false);
+    assert.equal(reads, 1);
+  } finally {
+    mock.restoreAll();
+    syncBuiltinESMExports();
+  }
+});
+
+test('Pi release fails immediately on wrong artifact or authorization without completing GitHub', async () => {
+  const { release } = await releaseModule;
+  for (const scenario of ['digest', 'auth']) {
+    const f = fixture();
+    let requests = 0;
+    const original = f.services.marketplaceDigest;
+    f.services.marketplaceDigest = async () => {
+      if (!f.trace.includes('marketplace')) return original();
+      requests++;
+      if (scenario === 'auth')
+        throw Object.assign(new Error('private service body'), { status: 401 });
+      return 'c'.repeat(64);
+    };
+    await assert.rejects(release(receipt, '0.2.27', f.services, credentials));
+    assert.equal(requests, 1);
+    assert.equal(f.services.now(), 0);
+    assert.ok(!f.trace.includes('complete'));
+  }
 });
 
 test('Pi multi-commit push compares the trusted before SHA, even when the final docs commit parent has the new version', async () => {

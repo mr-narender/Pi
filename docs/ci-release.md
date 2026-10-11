@@ -21,7 +21,17 @@ reviewed PR. A successful main run inspects one stable VSIX, stores its SHA256,
 source commit and bundle hashes, and passes that exact artifact to publication.
 The release job validates the receipt/source/package again without rebuilding,
 creates a draft GitHub release/tag at that commit, uploads the VSIX and receipt,
-publishes those exact VSIX bytes to Marketplace, then publishes the GitHub draft.
+publishes those exact VSIX bytes to Marketplace, then waits for the stable version
+listing, exact approved VSIX SHA256 and versioned Details README asset to agree
+before publishing the GitHub draft. README bytes are checked against the approved
+VSIX, including during recovery. Propagation polling has a ten-minute deadline,
+with exponential delays starting at two seconds and capped at thirty seconds;
+public HTTP requests share the remaining deadline. Missing assets, stale metadata
+or README content, rate limits and transient service failures are retried.
+Authorization, wrong package bytes, channel conflicts and newer versions fail
+immediately. An approved package already visible at its versioned URL is never
+republished just because the version listing is stale. A propagation timeout
+retains the GitHub draft: rerun failed jobs with the same verified artifact.
 Main pushes with an unchanged version relative to the event's **before** commit
 skip publication, including multi-commit/rebase merges. Full checkout history
 binds that before commit to main ancestry; initial/deleted/rewritten main histories
