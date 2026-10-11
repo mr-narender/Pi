@@ -39,9 +39,15 @@ async function runFixture(scenario: string) {
       .readdirSync('host')
       .filter((name) => name.endsWith('.mjs'))
       .map((name) => `extension/host/${name}`),
-    ...['extension.js', 'sessionIndexWorker.js', 'chat.js', 'chatList.js'].map(
-      (name) => `extension/dist/${name}`
-    ),
+    ...[
+      'extension.js',
+      'sessionIndexWorker.js',
+      'chat.js',
+      'chatList.js',
+      'mermaid.js',
+      'highlight.js',
+      'qrcode.js',
+    ].map((name) => `extension/dist/${name}`),
   ];
   const receipt = {
     schema: 1,

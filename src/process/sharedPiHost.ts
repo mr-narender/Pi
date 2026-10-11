@@ -377,6 +377,7 @@ export class SharedPiHost {
   }
 
   private warmingPool = false;
+  private warmupLaunch?: Pick<SdkSessionOpen, 'cwd' | 'env' | 'sdkRoot'>;
 
   /**
    * Boot the WHOLE pool at startup — serially (parallel cold boots contend on
@@ -385,26 +386,33 @@ export class SharedPiHost {
    * parallel burst are both instant. Safe to call once per activation; user
    * opens arriving mid-warmup simply ride the currently-booting worker.
    */
-  public warmPool(prewarmCwd?: string): void {
+  public warmPool(prewarmCwd?: string, launch = this.warmupLaunch): void {
     if (this.warmingPool) {
       return;
     }
     this.warmingPool = true;
+    this.warmupLaunch = launch;
     void (async () => {
       try {
-        this.piRootPromise ??= this.resolvePiRoot().catch((error: unknown) => {
-          this.piRootPromise = undefined;
-          throw error;
-        });
-        const piRoot = await this.piRootPromise;
+        if (!launch?.sdkRoot) {
+          this.piRootPromise ??= this.resolvePiRoot().catch((error: unknown) => {
+            this.piRootPromise = undefined;
+            throw error;
+          });
+        }
+        const piRoot = launch?.sdkRoot ?? (await this.piRootPromise!);
+        const env = launch?.env ?? this.baseEnv;
+        const cwd = launch?.cwd;
         let firstWarm = false;
         for (;;) {
-          const live = this.conns.filter((conn) => !conn.fault);
+          const live = this.conns.filter(
+            (conn) => !conn.fault && conn.piRoot === piRoot && conn.matchesEnvironment(env, cwd)
+          );
           const cold = live.find((conn) => !conn.warm);
           if (cold) {
             await cold.ping();
           } else if (live.length < this.maxWorkers) {
-            await this.spawnConn(piRoot).ping();
+            await this.spawnConn(piRoot, env, cwd).ping();
           } else {
             break;
           }

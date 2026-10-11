@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.29
+
+- Load Mermaid, syntax highlighting and QR generation only when used, keeping
+  plain chat startup small while preserving local assets and security policies.
+- Cache unchanged session metadata and parse workspace lists and older chat
+  histories in the existing background worker. Preserve runtime warmup for
+  quick switching, complete active-branch history and image attachments.
+- Avoid duplicate foreground scans after worker timeouts and preserve longer
+  history-loading deadlines during background indexing.
+- Warm the workspace's selected runtime with the same launch environment as
+  chats, so the first chat can reuse it without weakening workspace isolation.
+
 ## 0.2.28
 
 - Validate Pi with pinned Node, SDK and VS Code versions on every pull request

@@ -184,6 +184,25 @@ function externalSubprocess(settings: PiRpcSettings): LaunchChoice {
   };
 }
 
+/** Warmup and chat opens must agree on the effective process environment. */
+export function piLaunchEnvironment(
+  settings: PiRpcSettings,
+  offline = settings.offline,
+  env: NodeJS.ProcessEnv = process.env
+): NodeJS.ProcessEnv {
+  const launchShell =
+    settings.launchShell.trim() ||
+    env.PI_LAUNCH_SHELL ||
+    (process.platform === 'win32' ? env.ComSpec || 'cmd.exe' : env.SHELL || '');
+  return {
+    ...env,
+    PI_TELEMETRY: '0',
+    PI_SKIP_VERSION_CHECK: '1',
+    ...(offline ? { PI_OFFLINE: '1' } : {}),
+    ...(launchShell ? { PI_LAUNCH_SHELL: launchShell } : {}),
+  };
+}
+
 /** Resolve one authoritative runtime: explicit executable, current PATH, then
  * the selected managed/dev fallback when neither external source exists. */
 export function resolvePiLaunch(

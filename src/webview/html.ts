@@ -10,6 +10,8 @@ export function renderChatWebviewHtml(
   const bust = buildTag ? `?v=${encodeURIComponent(buildTag)}` : '';
   const scriptUri = `${webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'dist', 'chat.js'))}${bust}`;
   const styleUri = `${webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'dist', 'chat.css'))}${bust}`;
+  const mermaidUri = `${webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'dist', 'mermaid.js'))}${bust}`;
+  const highlightUri = `${webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'dist', 'highlight.js'))}${bust}`;
   const csp = [
     "default-src 'none'",
     `img-src ${webview.cspSource} data:`,
@@ -32,7 +34,7 @@ export function renderChatWebviewHtml(
   </head>
   <body>
     <div id="app"></div>
-    <script nonce="${nonce}" src="${scriptUri}"></script>
+    <script nonce="${nonce}" src="${scriptUri}" data-mermaid-src="${mermaidUri}" data-highlight-src="${highlightUri}"></script>
   </body>
 </html>`;
 }

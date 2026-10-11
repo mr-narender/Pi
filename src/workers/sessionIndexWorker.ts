@@ -4,7 +4,12 @@
 // Bundled to dist/sessionIndexWorker.js by scripts/build.mjs.
 import { parentPort } from 'node:worker_threads';
 import { readFile, stat } from 'node:fs/promises';
-import { readAllProjectsSessions } from '../sessions/recentSessions';
+import {
+  readAllProjectsSessions,
+  readRecentSessionsIndex,
+  type SessionWorkspaceContext,
+} from '../sessions/recentSessions';
+import { SessionHistoryCache } from '../sessions/sessionHistory';
 
 interface ScanAllRequest {
   id: number;
@@ -26,7 +31,12 @@ interface SearchRequest {
   candidates: SearchCandidate[];
 }
 
-type Request = ScanAllRequest | SearchRequest;
+type Request =
+  | ScanAllRequest
+  | SearchRequest
+  | { id: number; op: 'scanWorkspace'; context: SessionWorkspaceContext }
+  | { id: number; op: 'readHistory'; sessionFile: string; activeLeafId?: string | null };
+const historyCache = new SessionHistoryCache();
 
 const MAX_FILE_BYTES = 2 * 1024 * 1024;
 const MAX_MATCHES = 20;
@@ -70,6 +80,16 @@ function preview(raw: string, index: number, needleLength: number): string {
 
 async function handle(request: Request): Promise<void> {
   try {
+    if (request.op === 'scanWorkspace') {
+      const index = await readRecentSessionsIndex(request.context);
+      parentPort?.postMessage({ id: request.id, ok: true, index });
+      return;
+    }
+    if (request.op === 'readHistory') {
+      const messages = await historyCache.read(request.sessionFile, request.activeLeafId);
+      parentPort?.postMessage({ id: request.id, ok: true, messages });
+      return;
+    }
     if (request.op === 'scanAll') {
       const records = await readAllProjectsSessions(request.excludeCwds);
       parentPort?.postMessage({ id: request.id, ok: true, records });

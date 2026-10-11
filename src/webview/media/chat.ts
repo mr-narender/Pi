@@ -5,7 +5,7 @@ declare function acquireVsCodeApi(): {
 };
 
 import morphdom from 'morphdom';
-import mermaid from 'mermaid';
+import { optionalModule } from './optionalModules';
 import { isLiveWorking } from '../working';
 import { isCoreMenuCommand, parseCoreSlash } from '../../commands/coreSlash';
 import { mergeLocalCommands } from '../../commands/coreCatalog';
@@ -37,6 +37,9 @@ let mermaidReturnFocus: HTMLElement | undefined;
 let mermaidRenderId = 0;
 const mermaidSvgCache = new Map<string, Promise<string>>();
 installCustomTooltips();
+document.addEventListener('pi-highlight-ready', () => {
+  if (currentSnapshot) renderNow(currentSnapshot);
+});
 
 // Wiring guard for morphdom: renderNow re-runs the event wiring on every render,
 // but morphdom REUSES DOM nodes, so their listeners persist. bindOnce binds each
@@ -617,28 +620,39 @@ function cssColor(name: string, fallback: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
 }
 
-mermaid.initialize({
-  startOnLoad: false,
-  securityLevel: 'strict',
-  suppressErrorRendering: true,
-  theme: 'base',
-  flowchart: { htmlLabels: false, useMaxWidth: true },
-  themeVariables: {
-    background: 'transparent',
-    fontFamily: cssColor('--vscode-font-family', 'system-ui, sans-serif'),
-    primaryColor: cssColor('--vscode-editorWidget-background', '#f5f5f5'),
-    primaryTextColor: cssColor('--vscode-editor-foreground', '#242424'),
-    primaryBorderColor: cssColor('--vscode-panel-border', '#8a8a8a'),
-    lineColor: cssColor('--vscode-descriptionForeground', '#666666'),
-    edgeLabelBackground: cssColor('--vscode-editor-background', '#ffffff'),
-  },
-});
+let mermaidReady: Promise<typeof import('mermaid').default> | undefined;
+function loadMermaid(): Promise<typeof import('mermaid').default> {
+  return (mermaidReady ??= optionalModule('Mermaid')
+    .then(({ default: mermaid }) => {
+      mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: 'strict',
+        suppressErrorRendering: true,
+        theme: 'base',
+        flowchart: { htmlLabels: false, useMaxWidth: true },
+        themeVariables: {
+          background: 'transparent',
+          fontFamily: cssColor('--vscode-font-family', 'system-ui, sans-serif'),
+          primaryColor: cssColor('--vscode-editorWidget-background', '#f5f5f5'),
+          primaryTextColor: cssColor('--vscode-editor-foreground', '#242424'),
+          primaryBorderColor: cssColor('--vscode-panel-border', '#8a8a8a'),
+          lineColor: cssColor('--vscode-descriptionForeground', '#666666'),
+          edgeLabelBackground: cssColor('--vscode-editor-background', '#ffffff'),
+        },
+      });
+      return mermaid;
+    })
+    .catch((error) => {
+      mermaidReady = undefined;
+      throw error;
+    }));
+}
 
 function mermaidSvg(source: string): Promise<string> {
   const cached = mermaidSvgCache.get(source);
   if (cached) return cached;
-  const rendered = mermaid
-    .render(`pi-mermaid-${(mermaidRenderId += 1)}`, source)
+  const rendered = loadMermaid()
+    .then((mermaid) => mermaid.render(`pi-mermaid-${(mermaidRenderId += 1)}`, source))
     .then(({ svg }) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`)
     .catch((error) => {
       mermaidSvgCache.delete(source);

@@ -96,7 +96,15 @@ export function inspectVsix(file, root = process.cwd(), verifiedBundles, env = p
     assert.match(digest, /^[a-f0-9]{64}$/);
     assert.equal(sha256(read(`extension/${name}`)), digest, `VSIX bundle mismatch: ${name}`);
   }
-  for (const name of ['extension.js', 'sessionIndexWorker.js', 'chat.js', 'chatList.js'])
+  for (const name of [
+    'extension.js',
+    'sessionIndexWorker.js',
+    'chat.js',
+    'chatList.js',
+    'mermaid.js',
+    'highlight.js',
+    'qrcode.js',
+  ])
     assert.ok(
       entries.includes(`extension/dist/${name}`) && bundles[`dist/${name}`],
       `Missing bundle ${name}`

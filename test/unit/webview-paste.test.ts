@@ -14,6 +14,23 @@ const dom = new JSDOM('<!doctype html><html><body><div id="app"></div></body></h
   pretendToBeVisual: true,
   url: 'https://webview.test/',
 });
+// The production entry script carries nonce-authorized local optional module URLs.
+const entryScript = dom.window.document.createElement('script');
+entryScript.nonce = 'test-nonce';
+entryScript.dataset.mermaidSrc = 'https://webview.test/mermaid.js';
+Object.defineProperty(dom.window.document, 'currentScript', { value: entryScript });
+new dom.window.MutationObserver((mutations) => {
+  for (const mutation of mutations) {
+    for (const node of mutation.addedNodes) {
+      if (node instanceof dom.window.HTMLScriptElement && node.src.endsWith('/mermaid.js')) {
+        void import('mermaid').then((module) => {
+          (dom.window as unknown as Record<string, unknown>).PiMermaid = module;
+          node.dispatchEvent(new dom.window.Event('load'));
+        });
+      }
+    }
+  }
+}).observe(dom.window.document.head, { childList: true });
 
 // The webview script reads these at import time — install before importing.
 const g = globalThis as unknown as Record<string, unknown>;

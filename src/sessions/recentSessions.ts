@@ -12,6 +12,8 @@ const MAX_TITLE_CHARS = 72;
 // Max JSONL lines scanned per session when building the sidebar index (header,
 // name, model, and first prompt appear near the start; ordering uses mtime).
 const MAX_INDEX_LINES = 800;
+const metadataCache = new Map<string, { stamp: string; record: RecentSessionRecord }>();
+const MAX_CACHED_SESSIONS = 1024;
 const MAX_PROMPT_CHARS = 96;
 const CONTROL_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g;
 const MIN_PLAUSIBLE_TIMESTAMP_MS = Date.UTC(2000, 0, 1);
@@ -239,6 +241,15 @@ async function buildRecentSessionRecord(
 ): Promise<RecentSessionRecord | undefined> {
   try {
     const stats = await stat(filePath).catch(() => undefined);
+    if (!stats) {
+      metadataCache.delete(filePath);
+      return undefined;
+    }
+    const stamp = `${stats.dev}:${stats.ino}:${stats.size}:${stats.mtimeMs}:${stats.ctimeMs}`;
+    const cached = metadataCache.get(filePath);
+    if (cached?.stamp === stamp) {
+      return { ...cached.record };
+    }
     let header: Record<string, unknown> | undefined;
     let sessionName: string | undefined;
     let firstPromptPreview: string | undefined;
@@ -246,8 +257,9 @@ async function buildRecentSessionRecord(
     let messageCount = 0;
     let lastActivityTime: number | undefined;
 
+    const input = createReadStream(filePath, { encoding: 'utf8' });
     const reader = createInterface({
-      input: createReadStream(filePath, { encoding: 'utf8' }),
+      input,
       crlfDelay: Infinity,
     });
 
@@ -256,67 +268,78 @@ async function buildRecentSessionRecord(
     // how many lines we scan so re-indexing (e.g. on frequent terminal writes)
     // never reads huge session files end-to-end.
     let linesRead = 0;
-    for await (const line of reader) {
-      linesRead += 1;
-      if (linesRead > MAX_INDEX_LINES && header && firstPromptPreview) {
-        break;
-      }
-      const trimmed = line.trim();
-      if (!trimmed) {
-        continue;
-      }
-      let entry: unknown;
-      try {
-        entry = JSON.parse(trimmed);
-      } catch {
-        continue;
-      }
-      const record = asObject(entry);
-      if (!record) {
-        continue;
-      }
-      if (!header) {
-        if (record.type !== 'session' || typeof record.id !== 'string') {
-          return undefined;
+    try {
+      for await (const line of reader) {
+        linesRead += 1;
+        if (linesRead > MAX_INDEX_LINES) {
+          break;
         }
-        header = record;
-        continue;
-      }
-      if (record.type === 'session_info') {
-        sessionName =
-          typeof record.name === 'string' && record.name.trim().length > 0
-            ? sanitizeInlineText(record.name, MAX_TITLE_CHARS)
-            : undefined;
-      }
-      if (record.type === 'model_change') {
-        if (typeof record.provider === 'string' && typeof record.modelId === 'string') {
-          modelLabel = sanitizeInlineText(`${record.provider}/${record.modelId}`, MAX_TITLE_CHARS);
+        const trimmed = line.trim();
+        if (!trimmed) {
+          continue;
+        }
+        let entry: unknown;
+        try {
+          entry = JSON.parse(trimmed);
+        } catch {
+          continue;
+        }
+        const record = asObject(entry);
+        if (!record) {
+          continue;
+        }
+        if (!header) {
+          if (record.type !== 'session' || typeof record.id !== 'string') {
+            return undefined;
+          }
+          header = record;
+          continue;
+        }
+        if (record.type === 'session_info') {
+          sessionName =
+            typeof record.name === 'string' && record.name.trim().length > 0
+              ? sanitizeInlineText(record.name, MAX_TITLE_CHARS)
+              : undefined;
+        }
+        if (record.type === 'model_change') {
+          if (typeof record.provider === 'string' && typeof record.modelId === 'string') {
+            modelLabel = sanitizeInlineText(
+              `${record.provider}/${record.modelId}`,
+              MAX_TITLE_CHARS
+            );
+          }
+        }
+        if (record.type !== 'message') {
+          continue;
+        }
+        messageCount += 1;
+        const activityTime = getMessageActivityTime(record, now);
+        if (activityTime !== undefined) {
+          lastActivityTime = Math.max(lastActivityTime ?? 0, activityTime);
+        }
+        const message = asObject(record.message);
+        if (!message || (message.role !== 'user' && message.role !== 'assistant')) {
+          continue;
+        }
+        if (
+          typeof message.role === 'string' &&
+          message.role === 'assistant' &&
+          typeof message.provider === 'string' &&
+          typeof message.model === 'string'
+        ) {
+          modelLabel = sanitizeInlineText(`${message.provider}/${message.model}`, MAX_TITLE_CHARS);
+        }
+        const textContent = sanitizeInlineText(
+          extractTextContent(message.content),
+          MAX_PROMPT_CHARS
+        );
+        if (message.role === 'user' && !firstPromptPreview && textContent) {
+          firstPromptPreview = textContent;
         }
       }
-      if (record.type !== 'message') {
-        continue;
-      }
-      messageCount += 1;
-      const activityTime = getMessageActivityTime(record, now);
-      if (activityTime !== undefined) {
-        lastActivityTime = Math.max(lastActivityTime ?? 0, activityTime);
-      }
-      const message = asObject(record.message);
-      if (!message || (message.role !== 'user' && message.role !== 'assistant')) {
-        continue;
-      }
-      if (
-        typeof message.role === 'string' &&
-        message.role === 'assistant' &&
-        typeof message.provider === 'string' &&
-        typeof message.model === 'string'
-      ) {
-        modelLabel = sanitizeInlineText(`${message.provider}/${message.model}`, MAX_TITLE_CHARS);
-      }
-      const textContent = sanitizeInlineText(extractTextContent(message.content), MAX_PROMPT_CHARS);
-      if (message.role === 'user' && !firstPromptPreview && textContent) {
-        firstPromptPreview = textContent;
-      }
+    } finally {
+      reader.close();
+      input.destroy();
     }
 
     if (!header) {
@@ -332,7 +355,7 @@ async function buildRecentSessionRecord(
       firstPromptPreview ??
       sanitizeInlineText(`Session ${String(header.id)}`, MAX_TITLE_CHARS);
 
-    return {
+    const result: RecentSessionRecord = {
       path: resolve(filePath),
       id: String(header.id),
       cwd,
@@ -352,9 +375,37 @@ async function buildRecentSessionRecord(
       parentSessionPath:
         typeof header.parentSession === 'string' ? resolve(header.parentSession) : undefined,
     };
+    const after = await stat(filePath).catch(() => undefined);
+    if (
+      after &&
+      `${after.dev}:${after.ino}:${after.size}:${after.mtimeMs}:${after.ctimeMs}` === stamp
+    ) {
+      metadataCache.delete(filePath);
+      metadataCache.set(filePath, { stamp, record: result });
+      if (metadataCache.size > MAX_CACHED_SESSIONS) {
+        metadataCache.delete(metadataCache.keys().next().value!);
+      }
+    }
+    return { ...result };
   } catch {
     return undefined;
   }
+}
+
+async function readSessionRecords(
+  files: string[],
+  now: number
+): Promise<(RecentSessionRecord | undefined)[]> {
+  const records: (RecentSessionRecord | undefined)[] = [];
+  // Keep stream/descriptor pressure bounded even for a large session directory.
+  for (let offset = 0; offset < files.length; offset += 16) {
+    records.push(
+      ...(await Promise.all(
+        files.slice(offset, offset + 16).map((file) => buildRecentSessionRecord(file, now))
+      ))
+    );
+  }
+  return records;
 }
 
 /**
@@ -400,14 +451,8 @@ export async function readRecentSessionsIndex(
     .sort((left, right) => left.localeCompare(right));
   const now = Date.now();
 
-  const sessions = (
-    await Promise.all(
-      files.map(async (file, index) => ({
-        index,
-        session: await buildRecentSessionRecord(file, now),
-      }))
-    )
-  )
+  const sessions = (await readSessionRecords(files, now))
+    .map((session, index) => ({ index, session }))
     .filter((item): item is { index: number; session: RecentSessionRecord } => {
       if (!item.session) {
         return false;
@@ -503,9 +548,9 @@ export async function readAllProjectsSessions(
     const files = entries
       .filter((entry) => entry.isFile() && entry.name.endsWith('.jsonl'))
       .map((entry) => join(dir.path, entry.name));
-    const records = (
-      await Promise.all(files.map((file) => buildRecentSessionRecord(file, now)))
-    ).filter((record): record is RecentSessionRecord => record !== undefined);
+    const records = (await readSessionRecords(files, now)).filter(
+      (record): record is RecentSessionRecord => record !== undefined
+    );
     for (const record of collapseForkAncestors(records)) {
       const cwd = resolve(record.cwd);
       // Skip the current window's own projects (already listed) and throwaway

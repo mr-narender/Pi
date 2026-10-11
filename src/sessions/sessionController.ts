@@ -27,17 +27,11 @@ import {
   resetControllerProjection,
 } from '../state/reducer';
 import { createInitialControllerState, type ControllerState } from '../state/types';
-import {
-  createReadStream,
-  watch as fsWatch,
-  watchFile,
-  unwatchFile,
-  type FSWatcher,
-} from 'node:fs';
-import { createInterface } from 'node:readline';
+import { watch as fsWatch, watchFile, unwatchFile, type FSWatcher } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { canonicalizeSessionPath } from './paths';
-import { selectActiveBranchMessages, type SessionRecord } from './activeBranch';
+import { readSessionHistory } from './sessionHistory';
+import type { SessionIndexService } from './sessionIndexService';
 
 export class SessionController implements vscode.Disposable {
   private readonly changeEmitter = new vscode.EventEmitter<ControllerState>();
@@ -60,7 +54,8 @@ export class SessionController implements vscode.Disposable {
   public constructor(
     public readonly folder: vscode.WorkspaceFolder,
     private readonly logger: DiagnosticsLogger,
-    settings?: PiRpcSettings
+    settings?: PiRpcSettings,
+    private readonly sessionIndex?: Pick<SessionIndexService, 'readHistory'>
   ) {
     this.settings = settings ?? getSettings();
     this.state = createInitialControllerState(folder.name, folder.uri.fsPath);
@@ -939,9 +934,19 @@ export class SessionController implements vscode.Disposable {
           ? this.state.state.sessionFile
           : undefined;
     const activeLeafId = sessionState.leafId;
-    const messageList = sessionFile
-      ? ((await this.readActiveSessionMessages(sessionFile, activeLeafId)) ?? [])
-      : [];
+    let messageList: JsonObject[];
+    try {
+      messageList = sessionFile
+        ? ((await this.readActiveSessionMessages(sessionFile, activeLeafId)) ?? [])
+        : [];
+    } catch (error) {
+      if (valid()) {
+        this.state = { ...this.state, connectionState: 'faulted', switchingSession: false };
+        this.addDiagnostic('error', 'Could not load chat history', String(error));
+        this.fire();
+      }
+      throw error;
+    }
     if (!valid()) return;
     // Entries/tree are intentionally lazy. Fork/tree commands request them only
     // when the user opens those actions.
@@ -985,29 +990,21 @@ export class SessionController implements vscode.Disposable {
     sessionFile: string,
     activeLeafId?: string | null
   ): Promise<JsonObject[] | undefined> {
-    const records: SessionRecord[] = [];
     try {
-      // Stream the complete JSONL tree so the parent chain remains available.
-      // The webview pages the selected messages; it must not use Pi's compacted
-      // model context as conversation history after compaction or reopen.
-      const input = createReadStream(sessionFile, { encoding: 'utf8' });
-      const lines = createInterface({ input, crlfDelay: Infinity });
-      for await (const line of lines) {
-        if (!line.trim()) continue;
+      if (this.sessionIndex) {
         try {
-          records.push(JSON.parse(line) as SessionRecord);
-        } catch {
-          // A malformed/partial historical line must not prevent the chat from opening.
+          return await this.sessionIndex.readHistory(sessionFile, activeLeafId);
+        } catch (error) {
+          // Never duplicate a slow scan on the extension host after worker timeout.
+          if (error instanceof Error && error.name === 'SessionIndexTimeoutError') throw error;
+          this.logger.warn(
+            `History worker unavailable; reading local transcript: ${String(error)}`
+          );
         }
       }
-      // Only the ACTIVE branch — Pi keeps every fork branch in the same file, so
-      // a plain read would resurrect dropped branches after an inline edit/fork.
-      return selectActiveBranchMessages<JsonObject>(
-        records,
-        Number.POSITIVE_INFINITY,
-        activeLeafId
-      );
+      return await readSessionHistory(sessionFile, activeLeafId);
     } catch (error) {
+      if (error instanceof Error && error.name === 'SessionIndexTimeoutError') throw error;
       // A brand-new session file may not exist on disk yet — that's expected.
       if ((error as NodeJS.ErrnoException)?.code !== 'ENOENT') {
         this.logger.warn(`Could not read local transcript for '${sessionFile}': ${String(error)}`);

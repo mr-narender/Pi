@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { resolvePiLaunch, type PiLaunchPlan } from './piLauncher';
+import { piLaunchEnvironment, resolvePiLaunch, type PiLaunchPlan } from './piLauncher';
 import { spawnSubprocessPi, spawnWorkerPi, type PiProcessHandle } from './piProcess';
 import { getSharedPiHost } from './sharedPiHost';
 
@@ -79,19 +79,9 @@ export class PiProcessSupervisor extends TypedEmitter implements vscode.Disposab
       noExtensions: options?.noExtensions,
       offline,
     });
-    const launchShell =
-      this.settings.launchShell.trim() ||
-      process.env.PI_LAUNCH_SHELL ||
-      (process.platform === 'win32' ? process.env.ComSpec || 'cmd.exe' : process.env.SHELL || '');
     const launch = resolvePiLaunch(
       this.settings,
-      {
-        ...process.env,
-        PI_TELEMETRY: '0',
-        PI_SKIP_VERSION_CHECK: '1',
-        ...(offline ? { PI_OFFLINE: '1' } : {}),
-        ...(launchShell ? { PI_LAUNCH_SHELL: launchShell } : {}),
-      },
+      piLaunchEnvironment(this.settings, offline),
       this.folder.uri.fsPath
     );
     const { env, cwd } = launch;
