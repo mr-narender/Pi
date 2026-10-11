@@ -28,7 +28,15 @@ test('actual ZIP inspection rejects appended final whitespace-only entries witho
   ])
     fs.copyFileSync(disk!, join(root, 'extension', archive!));
   const bundles: Record<string, string> = {};
-  for (const name of ['extension.js', 'sessionIndexWorker.js', 'chat.js', 'chatList.js']) {
+  for (const name of [
+    'extension.js',
+    'sessionIndexWorker.js',
+    'chat.js',
+    'chatList.js',
+    'mermaid.js',
+    'highlight.js',
+    'qrcode.js',
+  ]) {
     const bytes = Buffer.from('owned bundle');
     fs.writeFileSync(join(root, 'extension', 'dist', name), bytes);
     bundles[`dist/${name}`] = sha256(bytes);
@@ -45,6 +53,16 @@ test('actual ZIP inspection rejects appended final whitespace-only entries witho
       { cwd: root, stdio: 'pipe' }
     );
     assert.equal(inspectVsix(base, process.cwd(), bundles).version, version);
+    for (const name of ['mermaid.js', 'highlight.js', 'qrcode.js']) {
+      const changed = join(root, `missing-${name}.vsix`);
+      fs.copyFileSync(base, changed);
+      childProcess.execFileSync('zip', ['-q', '-d', changed, `extension/dist/${name}`], {
+        stdio: 'pipe',
+      });
+      const remaining = { ...bundles };
+      delete remaining[`dist/${name}`];
+      assert.throws(() => inspectVsix(changed, process.cwd(), remaining), /Missing bundle/);
+    }
     for (const [index, name] of [' ', '   '].entries()) {
       const changed = join(root, `whitespace-${index}.vsix`);
       fs.copyFileSync(base, changed);

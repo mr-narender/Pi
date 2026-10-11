@@ -257,10 +257,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       ).version ?? 'unknown'
     )}`
   );
-  const registry = new SessionRegistry(logger);
+  const sessionIndex = new SessionIndexService(context.extensionPath, logger);
+  const registry = new SessionRegistry(logger, sessionIndex);
   const settings = getSettings();
   const statusBar = new StatusBarController();
-  const sessionIndex = new SessionIndexService(context.extensionPath, logger);
   context.subscriptions.push({ dispose: () => sessionIndex.dispose() });
   const recentSessions = new RecentSessionService(sessionIndex);
   const uiState = new ChatUiState(context);

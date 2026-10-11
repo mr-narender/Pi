@@ -1,6 +1,6 @@
 import { mkdir, copyFile, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { build } from 'esbuild';
 
 await mkdir('dist', { recursive: true });
@@ -45,17 +45,65 @@ const chatBuild = await build({
   sourcemap: false,
   legalComments: 'external',
   metafile: true,
+  plugins: [
+    {
+      name: 'defer-browser-highlighter',
+      setup(builder) {
+        builder.onResolve({ filter: /^\.\/highlight$/ }, (args) =>
+          args.importer.endsWith('/src/webview/render.ts')
+            ? { path: resolve('src/webview/media/lazyHighlight.ts') }
+            : undefined
+        );
+      },
+    },
+  ],
 });
 
-const packageRoots = new Set(
-  Object.keys(chatBuild.metafile.inputs).flatMap((input) => {
-    if (!input.startsWith('node_modules/')) return [];
-    const parts = input.slice('node_modules/'.length).split('/');
-    return [`node_modules/${parts[0].startsWith('@') ? parts.slice(0, 2).join('/') : parts[0]}`];
+const optionalBuilds = await Promise.all(
+  [
+    ['src/webview/media/mermaidModule.ts', 'dist/mermaid.js', 'PiMermaid'],
+    ['src/webview/highlight.ts', 'dist/highlight.js', 'PiHighlight'],
+  ].map(([entry, outfile, globalName]) =>
+    build({
+      entryPoints: [entry],
+      outfile,
+      globalName,
+      bundle: true,
+      platform: 'browser',
+      format: 'iife',
+      target: 'es2022',
+      define,
+      sourcemap: false,
+      legalComments: 'external',
+      metafile: true,
+    })
+  )
+);
+optionalBuilds.push(
+  await build({
+    entryPoints: ['node_modules/qrcode/lib/index.js'],
+    outfile: 'dist/qrcode.js',
+    bundle: true,
+    platform: 'node',
+    format: 'cjs',
+    target: 'node18',
+    sourcemap: false,
+    legalComments: 'external',
+    metafile: true,
   })
 );
+
+const packageRoots = new Set(
+  [chatBuild, ...optionalBuilds]
+    .flatMap((result) => Object.keys(result.metafile.inputs))
+    .flatMap((input) => {
+      if (!input.startsWith('node_modules/')) return [];
+      const parts = input.slice('node_modules/'.length).split('/');
+      return [`node_modules/${parts[0].startsWith('@') ? parts.slice(0, 2).join('/') : parts[0]}`];
+    })
+);
 await mkdir('dist/licenses', { recursive: true });
-const notices = ['Bundled webview dependencies and their exact distributed license files:', ''];
+const notices = ['Bundled extension dependencies and their exact distributed license files:', ''];
 for (const root of [...packageRoots].sort()) {
   const metadata = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
   const licenseFiles = [];

@@ -3,6 +3,8 @@ import { getSettings } from '../config/settings';
 import {
   filterRecentSessions,
   type RecentSessionRecord,
+  type RecentSessionsIndex,
+  type SessionWorkspaceContext,
   readRecentSessionsIndex,
   readAllProjectsSessions,
 } from './recentSessions';
@@ -25,9 +27,10 @@ export class RecentSessionService implements vscode.Disposable {
   private readonly allProjectsScans = new Map<string, Promise<RecentSessionRecord[]>>();
 
   public constructor(
-    // Optional off-thread accelerator; every use falls back to the inline scan.
+    // Unavailable workers fall back inline; slow workers never duplicate a scan.
     private readonly indexService?: {
       scanAll(excludeCwds: string[]): Promise<RecentSessionRecord[]>;
+      scanWorkspace?(context: SessionWorkspaceContext): Promise<RecentSessionsIndex>;
     }
   ) {}
 
@@ -117,11 +120,17 @@ export class RecentSessionService implements vscode.Disposable {
     this.emitter.fire();
     try {
       const settings = getSettings();
-      const index = await readRecentSessionsIndex({
+      const context = {
         workspaceName: folder.name,
         workspacePath: folder.uri.fsPath,
         additionalArgs: settings.additionalArgs,
-      });
+      };
+      const index = this.indexService?.scanWorkspace
+        ? await this.indexService.scanWorkspace(context).catch((error: unknown) => {
+            if (error instanceof Error && error.name === 'SessionIndexTimeoutError') throw error;
+            return readRecentSessionsIndex(context);
+          })
+        : await readRecentSessionsIndex(context);
       if (this.revision.get(key) !== revision) {
         return;
       }
@@ -139,22 +148,27 @@ export class RecentSessionService implements vscode.Disposable {
       // current workspace is visible so a broad history scan never blocks the
       // sidebar's first useful paint.
       const workspaceCwds = (vscode.workspace.workspaceFolders ?? []).map((f) => f.uri.fsPath);
-      void this.scanAllProjects(workspaceCwds).then((others) => {
-        if (this.revision.get(key) !== revision) {
-          return;
-        }
-        const latest = this.state.get(key);
-        if (!latest) {
-          return;
-        }
-        this.state.set(key, { ...latest, others });
-        this.emitter.fire();
-      });
+      void this.scanAllProjects(workspaceCwds)
+        .then((others) => {
+          if (this.revision.get(key) !== revision) {
+            return;
+          }
+          const latest = this.state.get(key);
+          if (!latest) {
+            return;
+          }
+          this.state.set(key, { ...latest, others });
+          this.emitter.fire();
+        })
+        .catch(() => {
+          // Keep the previous other-project rows if background indexing fails.
+        });
     } catch (error) {
       if (this.revision.get(key) !== revision) {
         return;
       }
       this.state.set(key, {
+        ...current,
         loading: false,
         filterText: this.state.get(key)?.filterText ?? current.filterText,
         sessionDir: current.sessionDir,
@@ -173,17 +187,16 @@ export class RecentSessionService implements vscode.Disposable {
     }
     const promise = (
       this.indexService
-        ? this.indexService
-            .scanAll(workspaceCwds)
-            .catch(() => readAllProjectsSessions(workspaceCwds))
+        ? this.indexService.scanAll(workspaceCwds).catch((error: unknown) => {
+            if (error instanceof Error && error.name === 'SessionIndexTimeoutError') throw error;
+            return readAllProjectsSessions(workspaceCwds);
+          })
         : readAllProjectsSessions(workspaceCwds)
-    )
-      .catch(() => [])
-      .finally(() => {
-        if (this.allProjectsScans.get(key) === promise) {
-          this.allProjectsScans.delete(key);
-        }
-      });
+    ).finally(() => {
+      if (this.allProjectsScans.get(key) === promise) {
+        this.allProjectsScans.delete(key);
+      }
+    });
     this.allProjectsScans.set(key, promise);
     return promise;
   }

@@ -3,7 +3,7 @@
 // it) so the pairing details stay visible until the session is stopped.
 
 import * as vscode from 'vscode';
-import QRCode from 'qrcode';
+import { join } from 'node:path';
 
 export interface PairingInfo {
   link: string;
@@ -25,6 +25,7 @@ let dismissing = false;
 
 export async function showPairingPanel(info: PairingInfo, handlers: Handlers): Promise<void> {
   current = info;
+  const QRCode = require(join(__dirname, 'qrcode.js')) as typeof import('qrcode');
   const qr = await QRCode.toString(info.link, {
     type: 'svg',
     margin: 1,

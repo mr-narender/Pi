@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { DiagnosticsLogger } from '../diagnostics/logger';
 import { SessionController } from './sessionController';
+import type { SessionIndexService } from './sessionIndexService';
 
 /**
  * Pool of Pi controllers. Historically there was ONE controller per workspace
@@ -21,7 +22,10 @@ export class SessionRegistry implements vscode.Disposable {
   private readonly createEmitter = new vscode.EventEmitter<SessionController>();
   public readonly onDidCreateController = this.createEmitter.event;
 
-  public constructor(private readonly logger: DiagnosticsLogger) {}
+  public constructor(
+    private readonly logger: DiagnosticsLogger,
+    private readonly sessionIndex?: Pick<SessionIndexService, 'readHistory'>
+  ) {}
 
   /** Folder-level controller (key = folderUri). Used for drafts / fallback. */
   public getOrCreate(folder: vscode.WorkspaceFolder): SessionController {
@@ -34,7 +38,7 @@ export class SessionRegistry implements vscode.Disposable {
     if (existing) {
       return existing;
     }
-    const controller = new SessionController(folder, this.logger);
+    const controller = new SessionController(folder, this.logger, undefined, this.sessionIndex);
     this.controllers.set(key, controller);
     this.folderByKey.set(key, folder.uri.toString());
     if (!this.activeKey) {
