@@ -30,6 +30,8 @@ export interface ToolRunState {
   isError?: boolean;
   startedAt: number;
   endedAt?: number;
+  /** Native Pi tool execution time; never derived from UI timestamps. */
+  durationMs?: number;
 }
 
 export interface WidgetState {
@@ -65,6 +67,7 @@ export interface ControllerState {
     | 'faulted'
     | 'stopped'
     | 'unsupported';
+  runOutcome?: 'running' | 'completed' | 'aborted' | 'failed';
   workspaceFolderName: string;
   cwd: string;
   state: SessionState;
@@ -173,13 +176,22 @@ export interface WebviewCapturedContextItem {
 export type WebviewMessageBlock =
   | { kind: 'text'; text: string }
   | { kind: 'thinking'; text: string }
-  | { kind: 'tool'; name: string; args?: string; callId?: string }
-  | { kind: 'toolResult'; name?: string; text: string; isError?: boolean; callId?: string }
+  | { kind: 'tool'; name: string; args?: string; callId?: string; durationMs?: number }
+  | {
+      kind: 'toolResult';
+      name?: string;
+      text: string;
+      isError?: boolean;
+      callId?: string;
+      durationMs?: number;
+    }
   | { kind: 'image'; mimeType: string; dataUrl?: string };
 
 export interface WebviewMessageItem {
   id: string;
   role: string;
+  /** Native assistant generation or tool result execution time, when recorded. */
+  durationMs?: number;
   // Flattened plain text (used for previews/search and as a fallback).
   text: string;
   // Structured content so the webview can render thinking, tool calls, tool

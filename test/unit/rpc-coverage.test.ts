@@ -758,10 +758,15 @@ test('rpc.event.retryStart', () => {
 });
 
 test('rpc.event.retryEnd', () => {
-  const next = reduceEvent(createInitialControllerState('workspace', '/tmp/workspace'), {
-    type: 'auto_retry_end',
-  } as never);
-  assert.equal(next.connectionState, 'ready');
+  const running = reduceEvent(createInitialControllerState('workspace', '/tmp/workspace'), {
+    type: 'agent_start',
+  });
+  const next = reduceEvent(running, { type: 'auto_retry_end', success: true });
+  assert.equal(next.connectionState, 'busy');
+  assert.notEqual(next.runOutcome, 'completed');
+  const settled = reduceEvent(next, { type: 'agent_settled', aborted: false });
+  assert.equal(settled.connectionState, 'ready');
+  assert.equal(settled.runOutcome, 'completed');
 });
 
 test('rpc.event.extensionError', () => {

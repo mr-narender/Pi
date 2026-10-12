@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.30
+
+- Respect Pi 1.1.0 cancellation and final run outcomes, keeping stopped tasks
+  stopped and avoiding completion notifications during retries or failures.
+- Show recorded response and tool durations when Pi provides them, including
+  reloaded sessions, and keep older messages without timings unchanged.
+- Update thinking capability diagnostics to include the supported Pi 1.1.0 SDK.
+
 ## 0.2.29
 
 - Load Mermaid, syntax highlighting and QR generation only when used, keeping

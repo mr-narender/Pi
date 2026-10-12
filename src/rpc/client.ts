@@ -13,7 +13,7 @@ import type {
   RpcResponse,
   SessionState,
 } from './protocol';
-import { isSupportedPiSdkVersion } from '../process/piLauncher';
+import { isSupportedPiSdkVersion, SUPPORTED_PI_SDK_VERSIONS } from '../process/piLauncher';
 
 export interface RpcClientOptions {
   shortTimeoutMs: number;
@@ -63,8 +63,8 @@ export class RpcClient {
     message: string,
     images?: JsonObject[],
     streamingBehavior?: 'steer' | 'followUp'
-  ): Promise<void> {
-    await this.command('prompt', { message, images, streamingBehavior }, 'long');
+  ): Promise<JsonObject | undefined> {
+    return this.command('prompt', { message, images, streamingBehavior }, 'long');
   }
 
   public async steer(message: string, images?: JsonObject[]): Promise<void> {
@@ -189,7 +189,7 @@ export class RpcClient {
       caps = await this.command('get_capabilities', {}, 'short');
     } catch {
       throw new Error(
-        '/settings engine preferences are unsupported by this backend; select a resolved Pi SDK 0.99.1, 0.99.2, 1.0.0 or 1.0.4 installation.'
+        `/settings engine preferences are unsupported by this backend; select a resolved Pi SDK ${SUPPORTED_PI_SDK_VERSIONS.join(', ')} installation.`
       );
     }
     const preference = caps?.preferences as JsonObject | undefined;
@@ -225,7 +225,7 @@ export class RpcClient {
       caps = await this.command('get_capabilities', {}, 'short');
     } catch {
       throw new Error(
-        '/scoped-models is unsupported by this backend. Select a resolvable Pi SDK 0.99.1, 0.99.2, 1.0.0 or 1.0.4 JavaScript installation; ordinary stock RPC operations remain available.'
+        `/scoped-models is unsupported by this backend. Select a resolvable Pi SDK ${SUPPORTED_PI_SDK_VERSIONS.join(', ')} JavaScript installation; ordinary stock RPC operations remain available.`
       );
     }
     const scope = caps?.scopedModels as JsonObject | undefined;
@@ -261,7 +261,7 @@ export class RpcClient {
       caps = await this.command('get_capabilities', {}, 'short');
     } catch {
       throw new Error(
-        '/thinking is unsupported by this backend; use a resolved Pi SDK 0.99.1, 0.99.2, 1.0.0 or 1.0.4 installation.'
+        `/thinking is unsupported by this backend; use a resolved Pi SDK ${SUPPORTED_PI_SDK_VERSIONS.join(', ')} installation.`
       );
     }
     const thinking = caps?.thinking as JsonObject | undefined;

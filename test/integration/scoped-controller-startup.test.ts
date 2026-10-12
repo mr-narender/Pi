@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { build } from 'esbuild';
 import { PassThrough } from 'node:stream';
-import { piLaunchEnvironment } from '../../src/process/piLauncher';
+import { piLaunchEnvironment, SUPPORTED_PI_SDK_VERSIONS } from '../../src/process/piLauncher';
 
 test('scopes controller and supervisor: shared/dedicated startup carry argv/env before first session; correlated controller mutation', async () => {
   const liveSettings: Record<string, unknown> = {};
@@ -46,7 +46,7 @@ test('scopes controller and supervisor: shared/dedicated startup carry argv/env 
         setup(b) {
           // This startup test owns a fake host; no executable or SDK discovery authority.
           b.onLoad({ filter: /piLauncher\.ts$/ }, () => ({
-            contents: `export { piLaunchEnvironment } from 'fixture-sdk-host';
+            contents: `export { piLaunchEnvironment, SUPPORTED_PI_SDK_VERSIONS } from 'fixture-sdk-host';
             export function isSupportedPiSdkVersion() { return true; }
             export function resolvePiLaunch(settings, env, cwd) {
               return Object.freeze({ command: settings.executable, prefixArgs: [],
@@ -71,7 +71,7 @@ test('scopes controller and supervisor: shared/dedicated startup carry argv/env 
       name === 'vscode'
         ? vscode
         : name === 'fixture-sdk-host'
-          ? { getSharedPiHost: () => host, piLaunchEnvironment }
+          ? { getSharedPiHost: () => host, piLaunchEnvironment, SUPPORTED_PI_SDK_VERSIONS }
           : require(name),
     mod,
     mod.exports

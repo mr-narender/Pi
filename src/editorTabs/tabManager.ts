@@ -274,10 +274,10 @@ export class ChatTabManager implements vscode.Disposable {
   public readonly remoteSharing: RemoteSharingService;
   private readonly resourceSequence = new Map<string, number>();
   private readonly activeResourceByWorkspace = new Map<string, string>();
-  // Completion-notification bookkeeping (busy->ready transition per controller).
+  // Only native successful run completion triggers review and notifications.
   // Keyed by CONTROLLER (not folder): with parallel per-tab controllers, several
   // chats share a folder and folder-keyed busy tracking collides across them.
-  private readonly lastConnState = new WeakMap<SessionController, string>();
+  private readonly lastRunOutcome = new WeakMap<SessionController, string | undefined>();
   private readonly busySince = new WeakMap<SessionController, number>();
   private turnReview: TurnReview | undefined;
 
@@ -2090,21 +2090,28 @@ export class ChatTabManager implements vscode.Disposable {
 
   /**
    * Notify when Pi finishes a *long* turn while the user isn't watching this
-   * chat. Tracks the busy->ready transition; skips quick turns and skips when
+   * chat. Tracks successful settled runs; skips quick turns and skips when
    * the chat is the focused, active tab.
    */
   private detectTurnCompletion(controller: SessionController): void {
-    const now = controller.snapshot.connectionState;
-    const prev = this.lastConnState.get(controller);
-    this.lastConnState.set(controller, now);
-    if (prev !== 'busy' && now === 'busy') {
+    const now = controller.snapshot.runOutcome;
+    const prev = this.lastRunOutcome.get(controller);
+    this.lastRunOutcome.set(controller, now);
+    if (now === 'running' && !this.busySince.has(controller)) {
       this.busySince.set(controller, Date.now());
       if (getSettings().turnReview) {
         void this.turnReview?.onTurnStart(controller);
       }
       return;
     }
-    if (prev === 'busy' && now === 'ready') {
+    if (
+      (now === 'aborted' || now === 'failed' || now === undefined) &&
+      controller.snapshot.connectionState === 'ready'
+    ) {
+      this.busySince.delete(controller);
+      return;
+    }
+    if (now === 'completed' && prev !== 'completed') {
       const startedAt = this.busySince.get(controller);
       this.busySince.delete(controller);
       const ownerResource = this.sessions.ownerOf(controller);

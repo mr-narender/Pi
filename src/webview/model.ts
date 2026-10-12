@@ -338,7 +338,14 @@ function normalizeAttachments(value: unknown, cwd: string): WebviewAttachmentIte
     : [];
 }
 
-function toBlocks(message: JsonObject): WebviewMessageBlock[] {
+function nativeDuration(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined;
+}
+
+function toBlocks(
+  message: JsonObject,
+  durations?: ReadonlyMap<string, number>
+): WebviewMessageBlock[] {
   const content = message.content;
   if (typeof content === 'string') {
     return content.trim().length > 0 ? [{ kind: 'text', text: content }] : [];
@@ -365,6 +372,7 @@ function toBlocks(message: JsonObject): WebviewMessageBlock[] {
             ? JSON.stringify(typed.arguments, null, 2)
             : undefined,
         callId: typeof typed.id === 'string' ? typed.id : undefined,
+        durationMs: typeof typed.id === 'string' ? durations?.get(typed.id) : undefined,
       });
     } else if (typed.type === 'toolResult') {
       blocks.push({
@@ -373,6 +381,9 @@ function toBlocks(message: JsonObject): WebviewMessageBlock[] {
         text: typeof typed.content === 'string' ? typed.content : messageText(raw as JsonObject),
         isError: typed.isError === true,
         callId: typeof typed.toolCallId === 'string' ? typed.toolCallId : undefined,
+        durationMs:
+          nativeDuration(typed.durationMs) ??
+          (typeof typed.toolCallId === 'string' ? durations?.get(typed.toolCallId) : undefined),
       });
     } else if (typed.type === 'image') {
       const mimeType = typeof typed.mimeType === 'string' ? typed.mimeType : 'image';
@@ -440,6 +451,7 @@ function foldToolResults(
         item.blocks?.some((block) => block.kind === 'toolResult' && block.isError === true) ===
           true,
       callId,
+      durationMs: item.durationMs,
     };
     const blocks = [...(target.blocks ?? [])];
     let insertAt = blocks.length;
@@ -457,8 +469,13 @@ function foldToolResults(
   return out;
 }
 
-function toItem(message: JsonObject, index: number, cwd: string): WebviewMessageItem {
-  const blocks = toBlocks(message);
+function toItem(
+  message: JsonObject,
+  index: number,
+  cwd: string,
+  durations?: ReadonlyMap<string, number>
+): WebviewMessageItem {
+  const blocks = toBlocks(message, durations);
   let capturedContext: WebviewCapturedContextItem[] | undefined;
   if (message.role === 'user') {
     for (let blockIndex = blocks.length - 1; blockIndex >= 0; blockIndex -= 1) {
@@ -478,6 +495,15 @@ function toItem(message: JsonObject, index: number, cwd: string): WebviewMessage
   return {
     id: typeof message.id === 'string' ? message.id : `m${index}`,
     role: typeof message.role === 'string' ? message.role : 'unknown',
+    durationMs:
+      message.role === 'assistant'
+        ? nativeDuration(message.durationMs)
+        : ['toolResult', 'tool', 'tool_result', 'bashExecution'].includes(String(message.role))
+          ? (nativeDuration(message.durationMs) ??
+            (typeof message.toolCallId === 'string'
+              ? durations?.get(message.toolCallId)
+              : undefined))
+          : undefined,
     text: messageText(message),
     blocks,
     attachments: normalizeAttachments(message.attachments, cwd),
@@ -532,10 +558,15 @@ export function createWebviewSnapshot(
       ? extra.messageLimit
       : DEFAULT_MESSAGE_WINDOW;
   const windowOffset = Math.max(0, totalMessages - limit);
+  const durations = new Map<string, number>();
+  for (const tool of state.tools) {
+    const duration = nativeDuration(tool.durationMs);
+    if (duration !== undefined) durations.set(tool.id, duration);
+  }
   const foldedMessages = foldToolResults(
     state.messages
       .slice(windowOffset)
-      .map((message, index) => toItem(message, windowOffset + index, state.cwd)),
+      .map((message, index) => toItem(message, windowOffset + index, state.cwd, durations)),
     state.messages.slice(windowOffset)
   );
   return {

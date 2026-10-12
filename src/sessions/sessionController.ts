@@ -50,6 +50,7 @@ export class SessionController implements vscode.Disposable {
   // renaming, etc.). Used to ignore filesystem-watcher events caused by our own
   // writes so live-reload only reacts to EXTERNAL (terminal) changes.
   private selfWriteAt = Date.now();
+  private runRevision = 0;
 
   public constructor(
     public readonly folder: vscode.WorkspaceFolder,
@@ -1080,23 +1081,37 @@ export class SessionController implements vscode.Disposable {
       throw new Error('Native chat identity is unconfirmed. Restart/recover before sending.');
     this.selfWriteAt = Date.now();
     const client = this.requireClient();
+    this.runRevision = (this.runRevision ?? 0) + 1;
+    const revision = this.runRevision;
+    const originValid = this.captureLocalCommandOrigin();
+    const previous = this.state;
+    const restore = () => {
+      if (this.runRevision !== revision || !originValid()) return;
+      this.state = {
+        ...this.state,
+        connectionState: previous.connectionState,
+        runOutcome: previous.connectionState === 'busy' ? previous.runOutcome : undefined,
+        state: { ...this.state.state, isStreaming: previous.state.isStreaming },
+      };
+      this.fire();
+    };
     // Immediate feedback: show the working state the instant the user submits,
     // before Pi's first event arrives.
     this.state = {
       ...this.state,
       connectionState: 'busy',
+      runOutcome: previous.connectionState === 'busy' ? previous.runOutcome : undefined,
       state: { ...this.state.state, isStreaming: true },
     };
     this.fire();
-    if (mode === 'prompt') {
-      await client.prompt(message, images);
-    } else if (mode === 'steer') {
-      // Pi 1.0.4 decides idle-vs-streaming atomically inside prompt(). This
-      // avoids aborting or racing a turn that settles between our snapshot and
-      // native dispatch: while streaming it steers; if already idle it starts.
-      await client.prompt(message, images, 'steer');
-    } else {
-      await client.prompt(message, images, 'followUp');
+    try {
+      // Native prompt() chooses idle/steer/queue atomically; handled prompts
+      // have no agent run and therefore emit no agent_settled event.
+      const result = await client.prompt(message, images, mode === 'prompt' ? undefined : mode);
+      if (result?.disposition === 'handled') restore();
+    } catch (error) {
+      restore();
+      throw error;
     }
   }
 
@@ -1104,7 +1119,11 @@ export class SessionController implements vscode.Disposable {
     const operation = this.manualCompactOperation;
     // Invalidate the reservation before native abort: preflight has no native work to cancel.
     if (operation) operation.cancelled = true;
-    const pending = this.requireClient().abort();
+    const client = this.requireClient();
+    this.state = { ...this.state, runOutcome: 'aborted' };
+    this.runRevision = (this.runRevision ?? 0) + 1;
+    this.fire();
+    const pending = client.abort();
     if (operation)
       operation.aborts.push(
         pending.then(
@@ -1888,6 +1907,7 @@ export class SessionController implements vscode.Disposable {
   }
 
   private onEvent(event: RpcEvent): void {
+    if (event.type === 'agent_start') this.runRevision = (this.runRevision ?? 0) + 1;
     if (event.type === 'compaction_end' && event.errorMessage)
       event = { ...event, errorMessage: 'Compaction failed or was cancelled.' };
     let next = this.state;
@@ -1912,7 +1932,7 @@ export class SessionController implements vscode.Disposable {
         /* best-effort resync; live state already rendered */
       });
     }
-    if (event.type === 'agent_settled') {
+    if (event.type === 'agent_settled' && this.state.runOutcome === 'completed') {
       void this.maybeAutoCompact().catch(() => {
         /* best-effort; never let auto-compaction break the turn */
       });
@@ -1940,11 +1960,16 @@ export class SessionController implements vscode.Disposable {
     if (this.autoCompactInFlight || this.state.state.isCompacting === true) {
       return;
     }
+    const revision = this.runRevision;
+    const originValid = this.captureLocalCommandOrigin();
+    const valid = () =>
+      originValid() && this.runRevision === revision && this.state.runOutcome === 'completed';
+    if (!valid()) return;
     const stats = await this.requireClient()
       .getSessionStats()
       .catch(() => undefined);
     const percent = this.contextUsagePercent(stats);
-    if (percent === undefined || percent < threshold) {
+    if (!valid() || this.autoCompactInFlight || percent === undefined || percent < threshold) {
       return;
     }
     this.autoCompactInFlight = true;
@@ -1953,10 +1978,12 @@ export class SessionController implements vscode.Disposable {
         `Auto-compacting: context ${percent.toFixed(0)}% >= ${threshold}% of the model's max context`
       );
       await this.compact();
+      if (!valid()) return;
       await this.refreshState();
+      if (!valid()) return;
       await this.refreshMessages();
       // Resume whatever task was underway on the freshly compacted context.
-      if (settings.autoCompactResumeTask) {
+      if (valid() && settings.autoCompactResumeTask) {
         this.logger.info('Resuming task after auto-compaction');
         await this.prompt('Continue.');
       }
