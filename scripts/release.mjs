@@ -61,6 +61,7 @@ export function formatReleaseFailure(error, stage) {
     if (Number.isInteger(error.status) && error.status >= 100 && error.status <= 599)
       details.push(`HTTP ${error.status}`);
   } else if (error instanceof CredentialFailure) category = error.category;
+  else if (error?.name === 'MarketplacePropagationTimeout') category = 'timeout';
   else if (error instanceof MarketplaceFailure) {
     category = error.category;
     if (Number.isInteger(error.status) && error.status >= 100 && error.status <= 599)
@@ -74,7 +75,9 @@ export function formatReleaseFailure(error, stage) {
       ? 'Check main-only OIDC login and Marketplace profile access.'
       : safeStage === 'marketplace-publish'
         ? 'Check Contributor access for the displayed profile ID, then retry the pending release.'
-        : 'Rerun the failed job after fixing this stage.';
+        : safeStage === 'marketplace-verification'
+          ? 'Wait for Marketplace propagation, then rerun failed jobs; do not republish.'
+          : 'Rerun the failed job after fixing this stage.';
   return `Pi release failed at ${safeStage}: ${category}${details.length ? ` (${details.join(', ')})` : ''}. ${guidance}`;
 }
 function azureEnvironment(env) {
@@ -164,20 +167,10 @@ export async function release(receipt, previousVersion, services, credentials, o
   assert.ok(!tagSha || tagSha === receipt.commit, 'Existing release tag points to another commit');
   onStage('marketplace-query');
   const versions = await services.marketplaceVersions();
-  for (const version of versions)
-    if (stable.test(version.version))
-      assert.ok(
-        compareVersions(receipt.version, version.version) >= 0,
-        'Marketplace already has a newer version'
-      );
-  const published = versions.find((v) => v.version === receipt.version);
-  if (published) {
-    assert.equal(published.prerelease, false, 'Marketplace channel mismatch');
-    assert.equal(
-      await services.marketplaceDigest(receipt.version),
-      receipt.sha256,
-      'Marketplace artifact mismatch'
-    );
+  const published = validateMarketplaceVersions(receipt, versions);
+  const existingDigest = await services.marketplaceDigest(receipt.version);
+  if (existingDigest !== undefined) {
+    assert.equal(existingDigest, receipt.sha256, 'Marketplace artifact mismatch');
   }
   onStage('github-release');
   let github = await services.githubRelease(tag);
@@ -201,29 +194,83 @@ export async function release(receipt, previousVersion, services, credentials, o
       assert.equal(await services.githubAssetDigest(asset), digest, 'GitHub artifact mismatch');
     else await services.upload(github.id, name);
   }
-  if (!published) {
+  if (!published && existingDigest === undefined) {
     onStage('marketplace-publish');
     await services.publishMarketplace();
-    onStage('marketplace-verification');
-    assert.equal(
-      await services.marketplaceDigest(receipt.version),
-      receipt.sha256,
-      'Published Marketplace artifact mismatch'
-    );
   }
+  onStage('marketplace-verification');
+  await verifyMarketplacePublication(receipt, services);
   onStage('github-completion');
   if (github.draft) await services.completeGithub(github.id);
   return `Released stable mr-narender.pi ${receipt.version} from ${receipt.commit}.`;
 }
 
+function validateMarketplaceVersions(receipt, versions) {
+  for (const version of versions)
+    if (stable.test(version.version))
+      assert.ok(
+        compareVersions(receipt.version, version.version) >= 0,
+        'Marketplace already has a newer version'
+      );
+  const published = versions.find((version) => version.version === receipt.version);
+  if (published) assert.equal(published.prerelease, false, 'Marketplace channel mismatch');
+  return published;
+}
+
+async function verifyMarketplacePublication(receipt, services) {
+  const now = services.now ?? Date.now;
+  const sleep = services.sleep ?? ((ms) => new Promise((done) => setTimeout(done, ms)));
+  const deadline = now() + 600000;
+  let delay = 2000;
+  while (now() < deadline) {
+    const signal = AbortSignal.timeout(Math.max(1, Math.ceil(deadline - now())));
+    try {
+      const published = validateMarketplaceVersions(
+        receipt,
+        await services.marketplaceVersions(signal)
+      );
+      const digest = await services.marketplaceDigest(receipt.version, signal);
+      if (digest !== undefined)
+        assert.equal(digest, receipt.sha256, 'Published Marketplace artifact mismatch');
+      const readmeMatches = await services.marketplaceReadmeMatches(receipt.version, signal);
+      if (published && digest === receipt.sha256 && readmeMatches) return;
+    } catch (error) {
+      const transient =
+        error?.status === 429 ||
+        (error?.status >= 500 && error?.status <= 599) ||
+        ['TimeoutError', 'AbortError'].includes(error?.name) ||
+        [
+          'ECONNRESET',
+          'ECONNREFUSED',
+          'ETIMEDOUT',
+          'EAI_AGAIN',
+          'UND_ERR_CONNECT_TIMEOUT',
+        ].includes(error?.cause?.code);
+      if (!transient) throw error;
+    }
+    const remaining = deadline - now();
+    if (remaining <= 0) break;
+    await sleep(Math.min(delay, remaining));
+    delay = Math.min(delay * 2, 30000);
+  }
+  const error = new Error('Marketplace version, approved package and README propagation timed out');
+  error.name = 'MarketplacePropagationTimeout';
+  throw error;
+}
+
 async function request(url, options = {}) {
-  const response = await fetch(url, { ...options, signal: AbortSignal.timeout(60000) });
+  const timeout = AbortSignal.timeout(60000);
+  const response = await fetch(url, {
+    ...options,
+    signal: options.signal ? AbortSignal.any([options.signal, timeout]) : timeout,
+  });
   if (response.status === 404 && options.allowMissing) return undefined;
   if (!response.ok) throw new HttpFailure(response.status);
   return response;
 }
 
 export function productionServices(directory, receipt, env) {
+  let approvedReadmeDigest;
   const github = async (path, options = {}) => {
     const response = await request(`https://api.github.com/repos/${repository}/${path}`, {
       ...options,
@@ -246,7 +293,7 @@ export function productionServices(directory, receipt, env) {
       assert.equal(object.type, 'commit', 'Release tag does not resolve to a commit');
       return object.sha;
     },
-    async marketplaceVersions() {
+    async marketplaceVersions(signal) {
       const response = await request(
         'https://marketplace.visualstudio.com/_apis/public/gallery/extensionquery',
         {
@@ -265,6 +312,7 @@ export function productionServices(directory, receipt, env) {
             ],
             flags: 17,
           }),
+          signal,
         }
       );
       const body = await response.json();
@@ -280,16 +328,28 @@ export function productionServices(directory, receipt, env) {
           ) ?? false,
       }));
     },
-    async marketplaceDigest(version) {
-      for (let attempt = 0; attempt < 12; attempt++) {
-        const response = await request(
-          `https://marketplace.visualstudio.com/_apis/public/gallery/publishers/mr-narender/vsextensions/pi/${version}/vspackage`,
-          { allowMissing: true }
-        );
-        if (response) return sha256(Buffer.from(await response.arrayBuffer()));
-        if (attempt < 11) await new Promise((done) => setTimeout(done, 5000));
-      }
-      throw new Error('Marketplace artifact propagation timed out; rerun failed jobs');
+    async marketplaceDigest(version, signal) {
+      const response = await request(
+        `https://marketplace.visualstudio.com/_apis/public/gallery/publishers/mr-narender/vsextensions/pi/${version}/vspackage`,
+        { allowMissing: true, signal }
+      );
+      return response ? sha256(Buffer.from(await response.arrayBuffer())) : undefined;
+    },
+    async marketplaceReadmeMatches(version, signal) {
+      approvedReadmeDigest ??= sha256(
+        execFileSync('unzip', ['-p', resolve(directory, receipt.file), 'extension/readme.md'], {
+          env: subprocessEnvironment(env),
+          stdio: 'pipe',
+          maxBuffer: 8 * 1024 * 1024,
+        })
+      );
+      const response = await request(
+        `https://mr-narender.gallery.vsassets.io/_apis/public/gallery/publisher/mr-narender/extension/pi/${version}/assetbyname/Microsoft.VisualStudio.Services.Content.Details`,
+        { allowMissing: true, signal }
+      );
+      return response
+        ? sha256(Buffer.from(await response.arrayBuffer())) === approvedReadmeDigest
+        : false;
     },
     async githubRelease(tag) {
       for (let page = 1; page <= 10; page++) {

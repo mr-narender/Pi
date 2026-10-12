@@ -97,6 +97,7 @@ async function runFixture(scenario: string) {
     delete env.PI_PREVIOUS_SHA;
   }
   const errors: string[] = [];
+  let published = false;
   const logs: string[] = [];
   const children: { args: string[]; env: NodeJS.ProcessEnv }[] = [];
   const inspections: NodeJS.ProcessEnv[] = [];
@@ -171,7 +172,10 @@ async function runFixture(scenario: string) {
       children.push({ args: args.slice(1), env: options.env });
       assert.deepEqual(args.slice(1, 4), ['publish', '--azure-credential', '--packagePath']);
       assert.ok(args[4]!.endsWith('/pi.vsix'));
-      if (scenario === 'dispatch-retry') return secret;
+      if (scenario === 'dispatch-retry') {
+        published = true;
+        return secret;
+      }
     }
     throw Object.assign(new Error(secret), {
       status: scenario === 'bounds' ? 999999 : 7,
@@ -209,6 +213,9 @@ async function runFixture(scenario: string) {
       });
     if (url.pathname.endsWith('/releases/assets/1'))
       return new Response(new Uint8Array(pendingBytes));
+    if (url.pathname.endsWith('/vspackage') && !published) return new Response('', { status: 404 });
+    if (url.pathname.endsWith('/Microsoft.VisualStudio.Services.Content.Details'))
+      return new Response(new Uint8Array(originalRead('README.md')));
     if (url.pathname.endsWith('/releases/assets/2') || url.pathname.endsWith('/vspackage'))
       return new Response(new Uint8Array(bytes));
     if (url.pathname.endsWith('/releases/1')) {
@@ -223,7 +230,7 @@ async function runFixture(scenario: string) {
               {
                 publisher: { publisherName: 'mr-narender' },
                 extensionName: 'pi',
-                versions: [{ version: '0.0.0' }],
+                versions: [{ version: published ? version : '0.0.0' }],
               },
             ],
           },

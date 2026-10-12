@@ -80,6 +80,7 @@ async function recoveryFixture(scenario: string, onExtraction?: (entry: string) 
   if (scenario === 'bundles')
     current.bundles = { ...current.bundles, 'dist/chat.js': 'c'.repeat(64) };
   const events: string[] = [];
+  let marketplacePublished = false;
   const commands: string[][] = [];
   const runtime = { PATH: '/owned/bin', HOME: '/owned/home' };
   const env = {
@@ -106,10 +107,13 @@ async function recoveryFixture(scenario: string, onExtraction?: (entry: string) 
       return asset.id === 1 ? receiptBytes : archive;
     },
     async marketplaceVersions() {
-      return [{ version: '0.2.27', prerelease: false }];
+      return [{ version: marketplacePublished ? receipt.version : '0.2.27', prerelease: false }];
     },
     async marketplaceDigest() {
-      return receipt.sha256;
+      return marketplacePublished ? receipt.sha256 : undefined;
+    },
+    async marketplaceReadmeMatches() {
+      return true;
     },
     async githubAssetDigest(asset: { digest: string }) {
       return asset.digest.slice(7);
@@ -125,6 +129,7 @@ async function recoveryFixture(scenario: string, onExtraction?: (entry: string) 
     },
     async publishMarketplace() {
       events.push('publish');
+      marketplacePublished = true;
     },
     async completeGithub() {
       events.push('complete');
