@@ -288,21 +288,18 @@ export function reduceEvent(state: ControllerState, event: RpcEvent): Controller
       next = {
         ...next,
         connectionState: 'busy',
+        runOutcome: 'running',
         currentAssistant: undefined,
         state: { ...next.state, isStreaming: true },
       };
       break;
     case 'agent_end':
       next = { ...next, currentAssistant: undefined };
-      // The agent has finished responding. Release the UI to 'ready' here rather
-      // than waiting for `agent_settled`: post-turn work (e.g. memory_search /
-      // qmd, summarization) can delay or drop `agent_settled`, which would leave
-      // the composer stuck on "Working…", queue follow-ups, and not clear the
-      // input. If a queued turn starts next, `agent_start`/`turn_start` set busy
-      // again. Stay busy only while compacting.
+      // Response generation ended; retry/post-turn work may still be running.
+      // The busy composer remains interactive for follow-ups and steering.
       next = {
         ...next,
-        connectionState: next.state.isCompacting ? 'busy' : 'ready',
+        connectionState: 'busy',
         state: {
           ...next.state,
           isStreaming: false,
@@ -321,6 +318,13 @@ export function reduceEvent(state: ControllerState, event: RpcEvent): Controller
       next = {
         ...next,
         connectionState: next.state.isCompacting ? 'busy' : 'ready',
+        runOutcome:
+          event.aborted === true || next.runOutcome === 'aborted'
+            ? 'aborted'
+            : next.runOutcome === 'failed'
+              ? 'failed'
+              : 'completed',
+        retry: undefined,
         state: { ...next.state, isStreaming: false },
       };
       break;
@@ -402,6 +406,11 @@ export function reduceEvent(state: ControllerState, event: RpcEvent): Controller
       next = { ...next, currentAssistant: undefined };
       const message = asObject(event.message);
       next = { ...next, messages: upsertMessage(next.messages, message) };
+      if (message?.role === 'assistant' && next.runOutcome !== 'aborted') {
+        if (message.stopReason === 'error') next = { ...next, runOutcome: 'failed' };
+        else if (message.stopReason === 'aborted') next = { ...next, runOutcome: 'aborted' };
+        else next = { ...next, runOutcome: 'running' };
+      }
       break;
     }
     case 'tool_execution_start': {
@@ -439,6 +448,12 @@ export function reduceEvent(state: ControllerState, event: RpcEvent): Controller
                 result: asObject(event.result),
                 isError: event.isError === true,
                 endedAt: Date.now(),
+                durationMs:
+                  typeof event.durationMs === 'number' &&
+                  Number.isFinite(event.durationMs) &&
+                  event.durationMs >= 0
+                    ? event.durationMs
+                    : undefined,
               }
             : tool
         ),
@@ -473,6 +488,7 @@ export function reduceEvent(state: ControllerState, event: RpcEvent): Controller
       next = {
         ...next,
         connectionState: 'busy',
+        runOutcome: next.runOutcome === 'aborted' ? 'aborted' : 'running',
         // Pi tells us EXACTLY why it is retrying — surface it, never guess.
         retry: {
           attempt: typeof event.attempt === 'number' ? event.attempt : undefined,
@@ -484,7 +500,9 @@ export function reduceEvent(state: ControllerState, event: RpcEvent): Controller
     case 'auto_retry_end':
       next = {
         ...next,
-        connectionState: next.state.isStreaming ? 'busy' : 'ready',
+        connectionState: 'busy',
+        runOutcome:
+          event.aborted === true ? 'aborted' : event.success === false ? 'failed' : next.runOutcome,
         retry: undefined,
       };
       break;
@@ -589,6 +607,7 @@ export function resetControllerProjection(state: ControllerState): ControllerSta
     ...state,
     ...resetUi(state),
     currentAssistant: undefined,
+    runOutcome: undefined,
     messages: [],
     entries: [],
     tree: [],

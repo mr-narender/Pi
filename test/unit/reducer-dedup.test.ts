@@ -113,10 +113,8 @@ test('delta-only message_update (Pi 0.84) accumulates assistant text', () => {
   assert.equal(content?.[0]?.text, 'Hello world');
 });
 
-// A turn that finishes with agent_end (but no agent_settled — e.g. post-turn
-// memory/qmd work delays it) must still release the UI to 'ready' so the
-// "Working…" banner clears, sends aren't queued, and the input clears.
-test('agent_end releases connectionState to ready without agent_settled', () => {
+// Generation can finish before post-turn work; the busy composer stays interactive.
+test('agent_end stays busy until the run settles', () => {
   let state = createInitialControllerState('w', '/tmp');
   state = reduceEvent(state, ev({ type: 'agent_start' }));
   state = reduceEvent(state, ev({ type: 'turn_start' }));
@@ -126,7 +124,7 @@ test('agent_end releases connectionState to ready without agent_settled', () => 
     ev({ type: 'turn_end', message: { role: 'assistant', timestamp: 1 } })
   );
   state = reduceEvent(state, ev({ type: 'agent_end', messages: [] }));
-  assert.equal(state.connectionState, 'ready');
+  assert.equal(state.connectionState, 'busy');
   assert.equal(state.state.isStreaming, false);
 });
 

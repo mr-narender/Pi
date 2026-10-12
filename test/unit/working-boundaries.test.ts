@@ -106,6 +106,8 @@ test('producer events preserve streaming/tool/compaction/retry indicators and en
     assert.ok(renderChatApp(p).includes('working-logo'), type);
   }
   s = reduceEvent(s, { type: 'agent_end' });
+  assert.equal(s.connectionState, 'busy');
+  s = reduceEvent(s, { type: 'agent_settled', aborted: false });
   assert.equal(s.connectionState, 'ready');
   assert.equal(s.state.isStreaming, false);
   for (const pair of [
@@ -115,6 +117,7 @@ test('producer events preserve streaming/tool/compaction/retry indicators and en
     s = reduceEvent(s, { type: pair[0] });
     assert.equal(s.connectionState, 'busy');
     s = reduceEvent(s, { type: pair[1] });
+    if (pair[1] === 'auto_retry_end') s = reduceEvent(s, { type: 'agent_settled', aborted: false });
     assert.equal(s.connectionState, 'ready');
   }
 });

@@ -67,7 +67,7 @@ export interface NativeFixture {
   readonly port: number;
   readonly requests: number;
   readonly summaryRequests: readonly unknown[];
-  setSummaryOutcome(outcome: 'success' | 'failure' | 'hold'): void;
+  setSummaryOutcome(outcome: 'success' | 'failure' | 'hold' | 'tool'): void;
   readonly nodeArgs: readonly string[];
   readonly env: Readonly<NodeJS.ProcessEnv>;
   resetRequests(): void;
@@ -232,7 +232,7 @@ export async function createNativeFixture(
   await writeFile(networkLog, '');
   let requests = 0;
   const summaryRequests: unknown[] = [];
-  let summaryOutcome: 'success' | 'failure' | 'hold' = 'success';
+  let summaryOutcome: 'success' | 'failure' | 'hold' | 'tool' = 'success';
   const server = createServer((req, res) => {
     requests++;
     if (profile === 'compact' || profile === 'image-effects') {
@@ -260,6 +260,17 @@ export async function createNativeFixture(
           model: 'ping',
           choices: [{ index: 0, delta, finish_reason }],
         });
+        if (
+          summaryOutcome === 'tool' &&
+          !payload.messages.some((message: any) => message.role === 'tool')
+        ) {
+          res.write(
+            `data: ${JSON.stringify(chunk({ role: 'assistant', tool_calls: [{ index: 0, id: 'owned_ls', type: 'function', function: { name: 'ls', arguments: '{"path":"."}' } }] }))}\n\n`
+          );
+          res.write(`data: ${JSON.stringify(chunk({}, 'tool_calls'))}\n\n`);
+          res.end('data: [DONE]\n\n');
+          return;
+        }
         res.write(
           `data: ${JSON.stringify(chunk({ role: 'assistant', content: 'OWNED COMPACTION SUMMARY' }))}\n\n`
         );
@@ -441,7 +452,7 @@ export async function createNativeFixture(
         return Object.freeze([...summaryRequests]);
       },
       setSummaryOutcome(outcome) {
-        if (profile !== 'compact' || !['success', 'failure', 'hold'].includes(outcome))
+        if (profile !== 'compact' || !['success', 'failure', 'hold', 'tool'].includes(outcome))
           throw new Error('Unowned summary outcome');
         summaryOutcome = outcome;
       },

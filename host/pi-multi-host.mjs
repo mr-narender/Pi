@@ -684,10 +684,16 @@ async function createSessionRunner(sessionKey, runtimeHost, hostEmit) {
             images: command.images,
             streamingBehavior: command.streamingBehavior,
             source: 'rpc',
-            preflightResult: (didSucceed) => {
-              if (didSucceed) {
+            preflightResult: (disposition) => {
+              if (disposition === true || ['handled', 'queued', 'started'].includes(disposition)) {
                 preflightSucceeded = true;
-                output(success(id, 'prompt'));
+                output(
+                  success(
+                    id,
+                    'prompt',
+                    typeof disposition === 'string' ? { disposition } : undefined
+                  )
+                );
               }
             },
           })
@@ -699,12 +705,18 @@ async function createSessionRunner(sessionKey, runtimeHost, hostEmit) {
         return undefined;
       }
       case 'steer': {
-        await session.steer(command.message, command.images, { source: 'rpc' });
-        return success(id, 'steer');
+        const disposition = await session.steer(command.message, command.images, { source: 'rpc' });
+        return success(id, 'steer', typeof disposition === 'string' ? { disposition } : undefined);
       }
       case 'follow_up': {
-        await session.followUp(command.message, command.images, { source: 'rpc' });
-        return success(id, 'follow_up');
+        const disposition = await session.followUp(command.message, command.images, {
+          source: 'rpc',
+        });
+        return success(
+          id,
+          'follow_up',
+          typeof disposition === 'string' ? { disposition } : undefined
+        );
       }
       case 'abort': {
         await session.abort();

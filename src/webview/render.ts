@@ -500,6 +500,13 @@ function renderToolContent(text: string): string {
   return `<div class="clampable"><div class="clamp-body">${inner}</div><button type="button" class="code-showmore">Show more</button></div>`;
 }
 
+function renderDuration(durationMs: unknown, label: string): string {
+  if (typeof durationMs !== 'number' || !Number.isFinite(durationMs) || durationMs < 0) return '';
+  const text =
+    durationMs < 1000 ? `${Math.round(durationMs)} ms` : `${(durationMs / 1000).toFixed(1)} s`;
+  return `<span class="native-duration muted" data-duration-ms="${durationMs}" aria-label="${escapeHtml(label)}: ${durationMs} milliseconds" title="${durationMs} ms reported by Pi">${text}</span>`;
+}
+
 function renderTimelineNode(node: TimelineNode, streamingAnswer = false): string {
   switch (node.kind) {
     case 'thinking':
@@ -517,12 +524,12 @@ function renderTimelineNode(node: TimelineNode, streamingAnswer = false): string
       const fileActions = editPath
         ? `<div class="tl-file-actions"><span class="tl-file-path">${escapeHtml(editPath)}</span><button type="button" class="tl-file-btn" data-file-open="${escapeHtml(editPath)}">Open file</button><button type="button" class="tl-file-btn" data-file-diff="${escapeHtml(editPath)}">Open changes</button>${approve}</div>`
         : '';
-      return `<div class="tl-node tl-tool"><div class="tl-card"><div class="tl-head">${META_ICONS.tool}<span class="tl-label">Tool</span><code class="tool-name">${escapeHtml(node.name)}</code></div>${body}${fileActions}</div></div>`;
+      return `<div class="tl-node tl-tool"><div class="tl-card"><div class="tl-head">${META_ICONS.tool}<span class="tl-label">Tool</span><code class="tool-name">${escapeHtml(node.name)}</code>${renderDuration(node.durationMs, 'Tool execution time')}</div>${body}${fileActions}</div></div>`;
     }
     case 'toolResult': {
       const err = node.isError === true;
       // Results collapse by default (they're often long/noisy); errors stay open.
-      return `<div class="tl-node tl-result${err ? ' is-error' : ''}"><details class="tl-card"${err ? ' open' : ''}><summary class="tl-head">${err ? META_ICONS.error : META_ICONS.result}<span class="tl-label">${err ? 'Error' : 'Result'}</span>${node.name ? `<code class="tool-name">${escapeHtml(node.name)}</code>` : ''}${CARET_ICON}</summary>${renderToolContent(node.text)}</details></div>`;
+      return `<div class="tl-node tl-result${err ? ' is-error' : ''}"><details class="tl-card"${err ? ' open' : ''}><summary class="tl-head">${err ? META_ICONS.error : META_ICONS.result}<span class="tl-label">${err ? 'Error' : 'Result'}</span>${node.name ? `<code class="tool-name">${escapeHtml(node.name)}</code>` : ''}${renderDuration(node.durationMs, 'Tool execution time')}${CARET_ICON}</summary>${renderToolContent(node.text)}</details></div>`;
     }
     case 'toolPair': {
       const call = node.call;
@@ -546,7 +553,7 @@ function renderTimelineNode(node: TimelineNode, streamingAnswer = false): string
       const summaryLabel = err
         ? 'Error'
         : `Result · ${lineCount} line${lineCount === 1 ? '' : 's'}`;
-      return `<div class="tl-node tl-tool${err ? ' is-error' : ''}"><div class="tl-card"><div class="tl-head">${META_ICONS.tool}<span class="tl-label">Tool</span><code class="tool-name">${escapeHtml(call.name)}</code>${err ? '<span class="tl-flag-error">failed</span>' : ''}</div>${callBody}${fileActions}<details class="tl-result-inline${err ? ' is-error' : ''}"${open}><summary class="tl-result-head">${err ? META_ICONS.error : META_ICONS.result}<span class="tl-label">${summaryLabel}</span>${CARET_ICON}</summary>${renderToolContent(result.text)}</details></div></div>`;
+      return `<div class="tl-node tl-tool${err ? ' is-error' : ''}"><div class="tl-card"><div class="tl-head">${META_ICONS.tool}<span class="tl-label">Tool</span><code class="tool-name">${escapeHtml(call.name)}</code>${renderDuration(result.durationMs ?? call.durationMs, 'Tool execution time')}${err ? '<span class="tl-flag-error">failed</span>' : ''}</div>${callBody}${fileActions}<details class="tl-result-inline${err ? ' is-error' : ''}"${open}><summary class="tl-result-head">${err ? META_ICONS.error : META_ICONS.result}<span class="tl-label">${summaryLabel}</span>${CARET_ICON}</summary>${renderToolContent(result.text)}</details></div></div>`;
     }
     case 'image':
       return `<div class="tl-node tl-tool"><div class="tl-card"><div class="tl-head">${META_ICONS.image}<span class="tl-label">Image</span><span class="tool-name">${escapeHtml(node.mimeType)}</span></div>${renderMessageImage(node)}</div></div>`;
@@ -1317,7 +1324,7 @@ function renderMessageArticle(
   void isLast;
   return `
         <article class="message-card message-${escapeHtml(role)}" data-mid="${escapeHtml(message.id)}"${roleLabel ? ` aria-label="${roleLabel} said"` : ''}>
-          ${roleLabel ? `<div class="message-role">${roleLabel}</div>` : ''}
+          ${roleLabel ? `<div class="message-role">${roleLabel}${role === 'assistant' ? renderDuration(message.durationMs, 'Assistant generation time') : ''}</div>` : ''}
           ${body}${captured}
           ${message.attachments.length > 0 ? `<div class="detail-stack">${message.attachments.map((attachment) => renderAttachment(attachment)).join('')}</div>` : ''}
           ${showCopy ? `<div class="msg-actions">${role === 'user' ? `<button type="button" class="msg-edit" title="Edit &amp; restart from here" aria-label="Edit and restart the chat from this message"${editDisabled}>${EDIT_ICON}</button>` : ''}<button type="button" class="msg-copy"${message.capturedContext ? ` data-copy-raw="${escapeHtml(message.text)}"` : ''} title="Copy message" aria-label="Copy message">${COPY_ICON}</button></div>` : ''}
@@ -1341,7 +1348,7 @@ function renderMessageBody(
 /** A standalone tool-result / bash-execution message rendered as a Result card. */
 function renderResultMessage(message: WebviewSnapshot['messages'][number]): string {
   const text = message.text ?? '';
-  return `<div class="timeline timeline-standalone"><div class="tl-node tl-result"><details class="tl-card"><summary class="tl-head">${META_ICONS.result}<span class="tl-label">Result</span>${CARET_ICON}</summary>${renderClampedOutput(text)}</details></div></div>`;
+  return `<div class="timeline timeline-standalone"><div class="tl-node tl-result"><details class="tl-card"><summary class="tl-head">${META_ICONS.result}<span class="tl-label">Result</span>${renderDuration(message.durationMs, 'Tool execution time')}${CARET_ICON}</summary>${renderClampedOutput(text)}</details></div></div>`;
 }
 
 function renderContextChip(item: PendingContextItem): string {
