@@ -28,6 +28,7 @@ jobs:
     timeout-minutes: 30
     outputs:
       source-sha: ${{ steps.source.outputs.sha }}
+      release: ${{ steps.scope.outputs.release }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
@@ -45,6 +46,9 @@ jobs:
           npm ci --prefix .github/pi-sdk --install-strategy=nested
           echo "$GITHUB_WORKSPACE/.github/pi-sdk/node_modules/.bin" >> "$GITHUB_PATH"
           echo "PI_SRC=$GITHUB_WORKSPACE/.github/pi-sdk/node_modules/@earendil-works/pi-coding-agent" >> "$GITHUB_ENV"
+      - name: Classify changed paths
+        id: scope
+        run: node scripts/ci-change-scope.mjs
       - name: Format
         run: npm run format:check
       - name: Lint
@@ -54,37 +58,48 @@ jobs:
       - name: Test types
         run: npx --no-install tsc -p test/tsconfig.json --noEmit
       - name: Non-clean build
+        if: steps.scope.outputs.build == 'true'
         run: node scripts/build.mjs
       - name: Coverage contract
         run: npm run validate:coverage
       - name: Unit
+        if: steps.scope.outputs.build == 'true'
         run: npm run test:unit
       - name: Integration
+        if: steps.scope.outputs.build == 'true'
         run: npm run test:integration
       - name: Real Pi
+        if: steps.scope.outputs.build == 'true'
         run: npm run smoke:real-pi
       - name: VS Code extension host
+        if: steps.scope.outputs.build == 'true'
         env:
           PI_TEST_VSCODE_VERSION: 1.141.0
         run: xvfb-run -a npm run test:extension
       - name: Host drift
+        if: steps.scope.outputs.build == 'true'
         run: npm run check:drift
       - name: Package and inspect stable VSIX
+        if: steps.scope.outputs.build == 'true'
         run: |
           mkdir -p "$RUNNER_TEMP/pi-release"
           npx --no-install vsce package --no-dependencies --out "$RUNNER_TEMP/pi-release/pi.vsix"
           node scripts/inspect-vsix.mjs "$RUNNER_TEMP/pi-release/pi.vsix" "$RUNNER_TEMP/pi-release/receipt.json"
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        if: steps.scope.outputs.build == 'true'
         with:
           name: pi-${{ steps.source.outputs.sha }}
           path: ${{ runner.temp }}/pi-release/
           if-no-files-found: error
           retention-days: 30
+      - name: Validate CI and changed tests
+        if: steps.scope.outputs.build != 'true'
+        run: node scripts/ci-change-scope.mjs validate
 
   release:
     name: Publish stable Pi
     needs: pi-quality
-    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && github.repository == 'mr-narender/Pi'
+    if: needs.pi-quality.outputs.release == 'true' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && github.repository == 'mr-narender/Pi'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
