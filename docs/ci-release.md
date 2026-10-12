@@ -8,8 +8,14 @@ types, test types, non-clean build, coverage contract, unit, integration, real P
 VS Code extension host and VSIX inspection, plus upstream RPC drift. PRs check
 the exact PR head; main checks the exact pushed commit. Fork PR jobs have read-only
 permissions and receive no publishing secret. Actions are pinned to full official
-commit SHAs. Node **26.11.1**, Pi SDK **1.1.0** and VS Code **1.141.0** are pinned;
-both the extension and isolated SDK dependency trees use committed lockfiles.
+commit SHAs. Node **26.11.1**, Pi SDK **1.1.0** and VS Code **1.141.0** are pinned.
+The pinned checkout/setup/artifact actions use their native Node 24 runtimes
+(Actions Runner 2.327.1 or newer), separately from the project's Node version.
+Upload v6 and download v7 retain the immutable named artifact transfer used here.
+Azure login alone receives `AZURE_CORE_OUTPUT=json` because its private CLI
+version probe parses JSON. The release job and publishing children retain
+`AZURE_CORE_OUTPUT=none`; permissions and OIDC scope are unchanged.
+Both the extension and isolated SDK dependency trees use committed lockfiles.
 The isolated SDK lock uses npm's nested layout to keep the existing native test
 permission boundary limited to that SDK package; it does not grant parent-directory
 read access for hoisted dependencies.

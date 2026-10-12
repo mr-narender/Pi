@@ -29,12 +29,12 @@ jobs:
     outputs:
       source-sha: ${{ steps.source.outputs.sha }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
           fetch-depth: 0
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: 26.11.1
       - name: Bind source and install locked dependencies
@@ -74,7 +74,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/pi-release"
           npx --no-install vsce package --no-dependencies --out "$RUNNER_TEMP/pi-release/pi.vsix"
           node scripts/inspect-vsix.mjs "$RUNNER_TEMP/pi-release/pi.vsix" "$RUNNER_TEMP/pi-release/receipt.json"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: pi-${{ steps.source.outputs.sha }}
           path: ${{ runner.temp }}/pi-release/
@@ -94,22 +94,23 @@ jobs:
     env:
       AZURE_CORE_OUTPUT: none
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           ref: ${{ needs.pi-quality.outputs.source-sha }}
           persist-credentials: false
           fetch-depth: 0
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: 26.11.1
       - run: npm ci --ignore-scripts
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: pi-${{ needs.pi-quality.outputs.source-sha }}
           path: ${{ runner.temp }}/pi-release/
       - name: Sign in with main-only workload identity
         uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.0.0
         env:
+          AZURE_CORE_OUTPUT: json
           AZURE_CONFIG_DIR: ${{ runner.temp }}/pi-azure
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
