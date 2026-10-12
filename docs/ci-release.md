@@ -3,9 +3,22 @@
 Issue: [#13](https://github.com/mr-narender/Pi/issues/13).
 
 `.github/workflows/pi.yml` checks every PR into main and every main push. The
-single required-check candidate is **pi-quality**. It covers format, lint, source
-types, test types, non-clean build, coverage contract, unit, integration, real Pi,
-VS Code extension host and VSIX inspection, plus upstream RPC drift. PRs check
+single required-check candidate is **pi-quality**, which remains present for every
+event. Format, lint, source/test types and the coverage contract always run.
+Workflow, infrastructure, documentation and test-only changes run CI/release
+regressions and changed unit/integration tests directly, without an extension
+build, VSIX package or Azure login. Helper-only edits receive static checks and
+CI/release regressions; the build-dependent optional-module test and extension
+host are reserved for the full runtime gate.
+
+Changes under `src/`, `host/`, `media/`, `resources/`, root `package.json`/`package-lock.json`,
+`.vscodeignore`, `tsconfig.json` or `scripts/build.mjs` run the full non-clean
+build, unit, integration, real Pi, VS Code extension host, host drift and VSIX
+inspection. README, CHANGELOG, NOTICE, LICENSE and new infrastructure paths are
+validation-only. PR scope uses the checked-out head against its base merge-base;
+push scope uses the whole before-to-after range. NUL-delimited Git paths retain
+deletions and both sides of renames. An unavailable baseline conservatively runs
+the full gate with publication disabled. PRs check
 the exact PR head; main checks the exact pushed commit. Fork PR jobs have read-only
 permissions and receive no publishing secret. Actions are pinned to full official
 commit SHAs. Node **26.11.1**, Pi SDK **1.1.0** and VS Code **1.141.0** are pinned.
@@ -43,6 +56,11 @@ skip publication, including multi-commit/rebase merges. Full checkout history
 binds that before commit to main ancestry; initial/deleted/rewritten main histories
 fail and require owner recovery. Rollbacks, prerelease
 channels, wrong tag commits or conflicting remote checksums fail closed.
+Automatic Azure login/publication runs only when a main push changes a runtime
+input and increases the stable version. Runtime changes with an unchanged version
+build and validate without publication. Explicit manual **profile** and
+**retry-pending-release** operations retain their existing full quality/artifact
+proof and main-only authorization route.
 
 Marketplace authentication uses GitHub main-only OIDC and pinned `azure/login`,
 with no subscription required. Only the trusted main release job receives
