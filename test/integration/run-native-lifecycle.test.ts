@@ -18,7 +18,7 @@ async function until(predicate: () => boolean) {
 
 for (const mode of ['shared', 'dedicated'] as const) {
   test(
-    `Pi 1.1.0 ${mode} abort/completion and native duration persist across session reload`,
+    `current Pi ${mode} abort/completion and native duration persist across session reload`,
     { timeout: 30000 },
     async () => {
       const fixture = await createNativeFixture('compact');

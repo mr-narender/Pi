@@ -114,7 +114,7 @@ for (const mode of ['shared', 'dedicated'] as const) {
       let child: Awaited<ReturnType<typeof spawnNativeSdkHost>>['child'] | undefined;
       let transport: RpcTransport | undefined;
       try {
-        const currentModifiers = (await resolveNativeCli()).version === '1.1.0';
+        const currentModifiers = ['1.1.0', '1.2.0'].includes((await resolveNativeCli()).version);
         const started = await spawnNativeSdkHost(
           fixture,
           mode,
@@ -181,7 +181,7 @@ for (const mode of ['shared', 'dedicated'] as const) {
               .find((entry) => entry.customType === 'pi.share')
               .data.tools.map((tool: any) => tool.name),
             ['ls'],
-            '1.1.0 native modifiers preserve --no-tools and add only the selected read-only tool'
+            'current native modifiers preserve --no-tools and add only the selected read-only tool'
           );
         }
         assert.equal(fixture.requests, 0);

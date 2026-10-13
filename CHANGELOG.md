@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.31
+
+- Support the audited Pi 1.2.0 SDK from the configured executable or PATH while
+  preserving older supported engines, runtime warmup and quick chat switching.
+- Discover OpenRouter's key-specific models when opening model selection, show
+  cached choices immediately, and retain cached results when offline or discovery
+  fails. Refreshes remain outside activation and warmup.
+- Verify cancellation, steering and extension-triggered runs during Pi 1.2.0
+  startup, including truthful final outcomes and RPC input attribution.
+
 ## 0.2.30
 
 - Respect Pi 1.1.0 cancellation and final run outcomes, keeping stopped tasks

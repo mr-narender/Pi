@@ -39,10 +39,10 @@ interface FuzzyItem extends vscode.QuickPickItem {
  * separator-agnostic fuzzy matcher. */
 function showFuzzyQuickPick<T extends FuzzyItem>(
   items: T[],
-  options: { title: string; placeHolder: string; query?: string }
+  options: { title: string; placeHolder: string; query?: string; reload?: Promise<T[]> }
 ): Promise<T | undefined> {
   return new Promise((resolve) => {
-    const decorated = items.map((item) => ({ ...item, alwaysShow: true }));
+    let decorated = items.map((item) => ({ ...item, alwaysShow: true }));
     const qp = vscode.window.createQuickPick<T>();
     qp.title = options.title;
     qp.placeholder = options.placeHolder;
@@ -55,11 +55,13 @@ function showFuzzyQuickPick<T extends FuzzyItem>(
       qp.items = decorated.filter((item) => fuzzyModelMatch(value, item.searchText));
     });
     let picked: T | undefined;
+    let closed = false;
     qp.onDidAccept(() => {
       picked = qp.selectedItems[0];
       qp.hide();
     });
     qp.onDidHide(() => {
+      closed = true;
       resolve(picked);
       qp.dispose();
     });
@@ -68,6 +70,22 @@ function showFuzzyQuickPick<T extends FuzzyItem>(
       qp.items = decorated.filter((item) => fuzzyModelMatch(options.query!, item.searchText));
     }
     qp.show();
+    if (options.reload) {
+      qp.busy = true;
+      void options.reload.then(
+        (fresh) => {
+          if (closed) return;
+          decorated = fresh.map((item) => ({ ...item, alwaysShow: true }));
+          qp.items = decorated.filter((item) => fuzzyModelMatch(qp.value, item.searchText));
+          qp.busy = false;
+        },
+        () => {
+          if (closed) return;
+          qp.busy = false;
+          qp.placeholder = 'Model refresh unavailable; cached models shown';
+        }
+      );
+    }
   });
 }
 
@@ -92,34 +110,48 @@ export async function pickChatModel(
     apply?: (provider: string, id: string) => Promise<boolean>;
   }
 ): Promise<PickedModel | undefined> {
+  const valid = options?.valid ?? controller.captureLocalCommandOrigin?.();
   const models = options?.models ?? (await controller.getAvailableModels());
+  if (valid && !valid())
+    throw new Error('The originating chat changed; model selection cancelled.');
   const current = asRecord(controller.snapshot.state.model);
   const currentProvider = current ? asString(current.provider) : undefined;
   const currentId = current ? asString(current.id) : undefined;
 
   const byProvider = new Map<string, JsonObject[]>();
-  for (const model of models) {
-    const provider = String(model.provider ?? 'provider');
-    (byProvider.get(provider) ?? byProvider.set(provider, []).get(provider)!).push(model);
-  }
-  const providers = Array.from(byProvider.keys()).sort();
-
-  let provider = providers[0];
-  if (providers.length > 1) {
-    const providerPick = await showFuzzyQuickPick(
-      providers.map((name) => ({
+  const groupModels = (catalog: JsonObject[]) => {
+    byProvider.clear();
+    for (const model of catalog) {
+      const provider = String(model.provider ?? 'provider');
+      (byProvider.get(provider) ?? byProvider.set(provider, []).get(provider)!).push(model);
+    }
+  };
+  groupModels(models);
+  const refresh = controller.refreshAvailableModels?.().then((fresh) => {
+    if (valid && !valid())
+      throw new Error('The originating chat changed; model selection cancelled.');
+    groupModels(fresh);
+  });
+  const providerItems = () =>
+    Array.from(new Set([...byProvider.keys(), ...(controller.modelDiscoveryProviders ?? [])]))
+      .sort()
+      .map((name) => ({
         label: `${name === currentProvider ? '$(check) ' : ''}$(server) ${name}`,
         description: `${byProvider.get(name)?.length ?? 0} model(s)`,
         searchText: name,
         name,
-      })),
-      {
-        title: 'Chat Settings — Provider',
-        placeHolder: 'Choose a model provider',
-      }
-    );
+      }));
+  const providers = providerItems().map((item) => item.name);
+
+  let provider = providers[0];
+  if (providers.length > 1 || (!providers.length && refresh)) {
+    const providerPick = await showFuzzyQuickPick(providerItems(), {
+      title: 'Chat Settings — Provider',
+      placeHolder: 'Choose a model provider',
+      reload: refresh?.then(providerItems),
+    });
     if (!providerPick) return undefined;
-    if (options?.valid && !options.valid()) {
+    if (valid && !valid()) {
       throw new Error('The originating chat changed; model selection cancelled.');
     }
     provider = providerPick.name;
@@ -127,56 +159,58 @@ export async function pickChatModel(
   if (!provider) return undefined;
 
   type ModelItem = FuzzyItem & { model: JsonObject };
-  const modelItems: ModelItem[] = (byProvider.get(provider) ?? [])
-    .slice()
-    .sort((a, b) =>
-      compareModelRankDesc(
-        {
-          id: String(a.id ?? ''),
-          name: String(a.name ?? ''),
-          contextWindow: Number(a.contextWindow) || 0,
-        },
-        {
-          id: String(b.id ?? ''),
-          name: String(b.name ?? ''),
-          contextWindow: Number(b.contextWindow) || 0,
-        }
+  const modelItems = (): ModelItem[] =>
+    (byProvider.get(provider) ?? [])
+      .slice()
+      .sort((a, b) =>
+        compareModelRankDesc(
+          {
+            id: String(a.id ?? ''),
+            name: String(a.name ?? ''),
+            contextWindow: Number(a.contextWindow) || 0,
+          },
+          {
+            id: String(b.id ?? ''),
+            name: String(b.name ?? ''),
+            contextWindow: Number(b.contextWindow) || 0,
+          }
+        )
       )
-    )
-    .map((model) => {
-      const id = String(model.id ?? 'model');
-      const name = String(model.name ?? '');
-      const inputs = Array.isArray(model.input) ? model.input.map(String) : [];
-      const bits = [
-        model.reasoning ? '$(lightbulb) thinking' : 'no thinking',
-        typeof model.contextWindow === 'number'
-          ? `ctx ${formatTokenCount(model.contextWindow)}`
-          : undefined,
-        typeof model.maxTokens === 'number'
-          ? `out ${formatTokenCount(model.maxTokens)}`
-          : undefined,
-        inputs.includes('image') ? 'images' : undefined,
-      ].filter(Boolean);
-      return {
-        label: `${provider === currentProvider && id === currentId ? '$(check) ' : ''}${id}`,
-        description: name,
-        detail: bits.join('  \u00b7  '),
-        // Any punctuation/spacing you type — "claude 4.8", "claude-4-8",
-        // "claude.4.8" — matches this the same way.
-        searchText: [provider, id, name].filter(Boolean).join(' '),
-        model,
-      };
-    });
+      .map((model) => {
+        const id = String(model.id ?? 'model');
+        const name = String(model.name ?? '');
+        const inputs = Array.isArray(model.input) ? model.input.map(String) : [];
+        const bits = [
+          model.reasoning ? '$(lightbulb) thinking' : 'no thinking',
+          typeof model.contextWindow === 'number'
+            ? `ctx ${formatTokenCount(model.contextWindow)}`
+            : undefined,
+          typeof model.maxTokens === 'number'
+            ? `out ${formatTokenCount(model.maxTokens)}`
+            : undefined,
+          inputs.includes('image') ? 'images' : undefined,
+        ].filter(Boolean);
+        return {
+          label: `${provider === currentProvider && id === currentId ? '$(check) ' : ''}${id}`,
+          description: name,
+          detail: bits.join('  \u00b7  '),
+          // Any punctuation/spacing you type — "claude 4.8", "claude-4-8",
+          // "claude.4.8" — matches this the same way.
+          searchText: [provider, id, name].filter(Boolean).join(' '),
+          model,
+        };
+      });
 
-  const modelPick = await showFuzzyQuickPick(modelItems, {
+  const modelPick = await showFuzzyQuickPick(modelItems(), {
     query: options?.query,
     title: `Chat Settings — Model (${provider})`,
     placeHolder: 'Choose a model from this provider',
+    reload: refresh?.then(modelItems),
   });
   if (!modelPick) {
     return undefined;
   }
-  if (options?.valid && !options.valid()) {
+  if (valid && !valid()) {
     throw new Error('The originating chat changed; model selection cancelled.');
   }
   const id = String(modelPick.model.id ?? '');

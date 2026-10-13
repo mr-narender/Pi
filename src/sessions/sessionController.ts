@@ -1345,8 +1345,29 @@ export class SessionController implements vscode.Disposable {
       throw new Error('The originating chat changed; scope selection cancelled.');
   }
 
+  public modelDiscoveryProviders: string[] = [];
+
   public async getAvailableModels(): Promise<JsonObject[]> {
     const data = await this.requireClient().getAvailableModels();
+    this.modelDiscoveryProviders = Array.isArray(data?.discoveryProviders)
+      ? data.discoveryProviders.filter(
+          (provider): provider is string => typeof provider === 'string'
+        )
+      : [];
+    return Array.isArray(data?.models) ? (data.models as JsonObject[]) : [];
+  }
+
+  /** Picker-only discovery: never called during activation, warmup or chat switching. */
+  public async refreshAvailableModels(): Promise<JsonObject[]> {
+    const valid = this.captureLocalCommandOrigin();
+    const data = await this.requireClient().getAvailableModels(true);
+    if (!valid()) throw new Error('The originating chat changed; model discovery cancelled.');
+    if (data?.discoveryError) throw new Error('Model refresh unavailable. Using cached models.');
+    this.modelDiscoveryProviders = Array.isArray(data?.discoveryProviders)
+      ? data.discoveryProviders.filter(
+          (provider): provider is string => typeof provider === 'string'
+        )
+      : [];
     return Array.isArray(data?.models) ? (data.models as JsonObject[]) : [];
   }
 

@@ -134,7 +134,7 @@ test('Pi CI has one exact required aggregate covering every quality gate with pi
     JSON.parse(readFileSync('.github/pi-sdk/package.json', 'utf8')).dependencies[
       '@earendil-works/pi-coding-agent'
     ],
-    '1.1.0'
+    '1.2.0'
   );
   for (const job of Object.values(workflow.jobs) as any[]) {
     for (const step of job.steps.filter((s: any) => s.uses))

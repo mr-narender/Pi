@@ -179,7 +179,17 @@ export class RpcClient {
     return this.command('cycle_model', {}, 'short');
   }
 
-  public async getAvailableModels(): Promise<JsonObject | undefined> {
+  public async getAvailableModels(refreshOpenRouter = false): Promise<JsonObject | undefined> {
+    if (refreshOpenRouter) {
+      let caps: JsonObject | undefined;
+      try {
+        caps = await this.command('get_capabilities', {}, 'short');
+      } catch {
+        /* Stock RPC retains ordinary cached model selection. */
+      }
+      if (caps?.protocol === 1 && caps.sdkVersion === '1.2.0' && caps.modelDiscovery === true)
+        return this.command('get_available_models', { refreshOpenRouter: true }, 'long');
+    }
     return this.command('get_available_models', {}, 'short');
   }
 
