@@ -21,7 +21,7 @@ deletions and both sides of renames. An unavailable baseline conservatively runs
 the full gate with publication disabled. PRs check
 the exact PR head; main checks the exact pushed commit. Fork PR jobs have read-only
 permissions and receive no publishing secret. Actions are pinned to full official
-commit SHAs. Node **26.11.1**, Pi SDK **1.1.0** and VS Code **1.141.0** are pinned.
+commit SHAs. Node **26.11.1**, Pi SDK **1.2.0** and VS Code **1.141.0** are pinned.
 The pinned checkout/setup/artifact actions use their native Node 24 runtimes
 (Actions Runner 2.327.1 or newer), separately from the project's Node version.
 Upload v6 and download v7 retain the immutable named artifact transfer used here.

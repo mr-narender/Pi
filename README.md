@@ -51,7 +51,7 @@ storage. Auto-install is **off by default** — nothing is ever
 downloaded without your consent.
 
 The native host supports the audited Pi SDK versions **0.99.1, 0.99.2, 1.0.0,
-1.0.4 and 1.1.0**. Other versions and custom wrappers use stock RPC; features
+1.0.4, 1.1.0 and 1.2.0**. Other versions and custom wrappers use stock RPC; features
 requiring the native SDK report their unsupported capability.
 
 Resolution is deterministic: an explicit `piRpc.executable` wins, otherwise the
@@ -169,6 +169,10 @@ one uses a native editor tab. The **editor-title Pi Chat Actions**
 menu additionally offers rename, retry (including with another model), find, copy as
 Markdown, thinking level, compaction, attachments, health, logs, and help.
 Model and thinking controls live in the composer status chip; there is no composer gear.
+With Pi 1.2.0, opening model selection refreshes OpenRouter's key-specific models
+in the background while cached choices remain usable. Discovery does not run during
+activation or warmup. Offline mode keeps cached models; a failed refresh shows a
+clear fallback message in the picker.
 
 ## Settings worth knowing (Settings → Pi RPC)
 

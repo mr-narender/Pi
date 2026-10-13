@@ -102,3 +102,24 @@ test('auto-install off never applies an already staged managed update', async ()
     rmSync(storage, { recursive: true, force: true });
   }
 });
+
+for (const version of ['1.1.0', '1.2.0']) {
+  test(`managed Pi ${version} is reused with auto-install off`, async () => {
+    const storage = mkdtempSync(join(tmpdir(), 'pi-managed-supported-'));
+    const live = writeManaged(storage, 'pi', version);
+    try {
+      const ensureManagedPi = await loadManaged(false);
+      const warnings: string[] = [];
+      assert.equal(
+        await ensureManagedPi(
+          { globalStorageUri: { fsPath: storage } },
+          { info() {}, warn: (message: string) => warnings.push(message), error() {} }
+        ),
+        join(live, 'dist', 'cli.js')
+      );
+      assert.deepEqual(warnings, []);
+    } finally {
+      rmSync(storage, { recursive: true, force: true });
+    }
+  });
+}

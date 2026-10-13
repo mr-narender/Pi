@@ -19,6 +19,7 @@ import * as crypto from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { createImportCommands } from './import-commands.mjs';
 import { createAuthCommands } from './auth-commands.mjs';
+import { discoverOpenRouterModels } from './model-discovery.mjs';
 import { createScopeOperations, modelDto, scopeCommandDispatcher } from './scoped-models.mjs';
 import { createPreferenceOperations, serializePreferenceDefaults } from './preferences.mjs';
 import {
@@ -758,6 +759,7 @@ async function createSessionRunner(sessionKey, runtimeHost, hostEmit) {
           lifecycleProjection: 1,
           protocol: 1,
           sdkVersion: metadata.version,
+          modelDiscovery: metadata.version === '1.2.0',
           closeChat: true,
           engineCommands: {
             contract: 1,
@@ -881,8 +883,22 @@ async function createSessionRunner(sessionKey, runtimeHost, hostEmit) {
       case 'auth_logout':
         return success(id, command.type, await authCommands.logout(command.providerId));
       case 'get_available_models': {
+        const runtime = session.modelRuntime;
+        const discoveryError =
+          command.refreshOpenRouter === true && metadata.version === '1.2.0'
+            ? await discoverOpenRouterModels(runtime, runtimeHost.modelDiscoveryOffline)
+            : undefined;
+        if (runtime !== session.modelRuntime) throw new Error('MODEL_DISCOVERY_STALE');
         const models = session.modelRuntime.getAvailableSnapshot();
-        return success(id, 'get_available_models', { models: models.map(modelDto) });
+        return success(id, 'get_available_models', {
+          models: models.map(modelDto),
+          // An authenticated provider may have no cached models on its first use.
+          discoveryProviders:
+            metadata.version === '1.2.0' && runtime.hasConfiguredAuth('openrouter')
+              ? ['openrouter']
+              : [],
+          discoveryError,
+        });
       }
       // =================================================================
       // Thinking

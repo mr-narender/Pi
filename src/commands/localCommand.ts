@@ -98,7 +98,8 @@ const operations = {
   ): Promise<boolean> => {
     const models = await controller.getAvailableModels();
     if (!valid()) throw new Error('The originating chat changed; model selection cancelled.');
-    if (!models.length) throw new Error('No available models. Check provider authentication.');
+    if (!models.length && !controller.refreshAvailableModels)
+      throw new Error('No available models. Check provider authentication.');
     const exact = args ? exactModelReference(args, models) : undefined;
     if (exact) {
       return apply(String(exact.provider), String(exact.id));

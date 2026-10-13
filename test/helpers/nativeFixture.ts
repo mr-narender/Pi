@@ -131,13 +131,18 @@ async function sdkIdentity(sdk: Awaited<ReturnType<typeof resolveNativeCli>>) {
 
 const ownedLifecycleVetoSource =
   "export default function ownedLifecycleVeto(pi) {\n  pi.on('session_before_switch', () => ({ cancel: true }));\n  pi.on('session_before_fork', () => ({ cancel: true }));\n  pi.on('session_before_tree', () => ({ cancel: true }));\n  pi.on('session_shutdown', () => {\n    throw new Error('owned disposal failure');\n  });\n}\n";
+const ownedStartupLifecycleSource =
+  "import { appendFileSync, existsSync } from 'node:fs';\nimport { join } from 'node:path';\nexport default function ownedStartupLifecycle(pi) {\n  const trace = (data) =>\n    appendFileSync(join(process.cwd(), 'startup-trace.jsonl'), JSON.stringify(data) + '\\n');\n  pi.on('input', (event) => {\n    trace({ type: 'input', source: event.source, text: event.text });\n  });\n  pi.on('before_agent_start', async (event, ctx) => {\n    trace({\n      type: event.type,\n      messageType: event.messageType,\n      idle: ctx.isIdle(),\n      hasPrompt: 'prompt' in event,\n    });\n    if (event.messageType === 'user' && event.prompt.startsWith('owned start-block')) {\n      const deadline = Date.now() + 8000;\n      while (!existsSync(join(process.cwd(), 'startup-release'))) {\n        if (Date.now() > deadline) throw new Error('owned startup release timed out');\n        await new Promise((resolve) => setTimeout(resolve, 10));\n      }\n    }\n    return { message: { customType: 'owned-setup', content: 'OWNED RUN SETUP', display: false } };\n  });\n  pi.registerCommand('owned-custom', {\n    handler: async () => {\n      pi.sendMessage(\n        { customType: 'owned-pending', content: 'OWNED NEXT TURN', display: false },\n        { deliverAs: 'nextTurn' }\n      );\n      pi.sendMessage(\n        { customType: 'owned-custom', content: 'OWNED CUSTOM START', display: true },\n        { triggerTurn: true }\n      );\n    },\n  });\n}\n";
+
 type NativeProfile =
   | 'default'
   | 'scopes'
   | 'compact'
   | 'compact-veto'
   | 'image-effects'
-  | 'lifecycle-veto';
+  | 'lifecycle-veto'
+  | 'startup'
+  | 'openrouter';
 interface OwnedState {
   readonly profile: NativeProfile;
   readonly vetoAsset?: string;
@@ -194,9 +199,16 @@ export async function createNativeFixture(
   profile: NativeProfile = 'default'
 ): Promise<NativeFixture> {
   if (
-    !['default', 'scopes', 'compact', 'compact-veto', 'image-effects', 'lifecycle-veto'].includes(
-      profile
-    )
+    ![
+      'default',
+      'scopes',
+      'compact',
+      'compact-veto',
+      'image-effects',
+      'lifecycle-veto',
+      'startup',
+      'openrouter',
+    ].includes(profile)
   )
     throw new Error('Unowned fixture profile');
   if (Number(process.versions.node.split('.')[0]) < 26)
@@ -235,7 +247,38 @@ export async function createNativeFixture(
   let summaryOutcome: 'success' | 'failure' | 'hold' | 'tool' = 'success';
   const server = createServer((req, res) => {
     requests++;
-    if (profile === 'compact' || profile === 'image-effects') {
+    if (profile === 'openrouter') {
+      req.resume();
+      const endpoint = req.url?.split('?')[0];
+      if (req.method === 'GET' && endpoint === '/api/models/providers/openrouter') {
+        res.writeHead(404).end();
+      } else if (req.method === 'GET' && endpoint === '/v1/models/user') {
+        const first = req.headers.authorization === 'Bearer owned-openrouter-key-one';
+        const second = req.headers.authorization === 'Bearer owned-openrouter-key-two';
+        if (!first && !second) {
+          res.writeHead(401).end();
+          return;
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json' }).end(
+          JSON.stringify({
+            data: [
+              {
+                id: first ? 'openai/gpt-5-mini' : 'openai/gpt-5-nano',
+                context_length: 24000,
+                top_provider: { context_length: 32000, max_completion_tokens: 777 },
+                pricing: {
+                  prompt: '0.000002',
+                  completion: '0.000004',
+                  input_cache_read: '0.000001',
+                },
+              },
+            ],
+          })
+        );
+      } else res.writeHead(400).end();
+      return;
+    }
+    if (profile === 'compact' || profile === 'image-effects' || profile === 'startup') {
       let body = '';
       req.on('data', (chunk) => {
         body += chunk;
@@ -339,10 +382,18 @@ export async function createNativeFixture(
                 }
               : provider,
           'fixture-beta': provider,
+          ...(profile === 'openrouter'
+            ? { openrouter: { baseUrl: `http://127.0.0.1:${port}/v1` } }
+            : {}),
         },
       })
     );
-    await writeFile(authFile, '{}');
+    await writeFile(
+      authFile,
+      profile === 'openrouter'
+        ? JSON.stringify({ openrouter: { type: 'api_key', key: 'owned-openrouter-key-one' } })
+        : '{}'
+    );
     const settings = {
       packages: [],
       extensions: [],
@@ -375,6 +426,7 @@ export async function createNativeFixture(
       LANG: 'en_US.UTF-8',
       TZ: 'UTC',
     };
+    if (profile === 'openrouter') delete env.PI_OFFLINE;
     // No subprocesses, workers, addons, inspector or WASI permissions. SDK is read-only.
     const nodeArgs = [
       '--permission',
@@ -390,7 +442,9 @@ export async function createNativeFixture(
         ? 'compact-veto.mjs'
         : profile === 'lifecycle-veto'
           ? 'lifecycle-veto.mjs'
-          : undefined;
+          : profile === 'startup'
+            ? 'startup-lifecycle.mjs'
+            : undefined;
     const vetoAsset = vetoName ? join(root, vetoName) : undefined;
     const ownedAssets = new Map<string, Buffer>();
     if (vetoAsset) {
@@ -398,7 +452,11 @@ export async function createNativeFixture(
       if (
         !bytes.equals(
           Buffer.from(
-            profile === 'lifecycle-veto' ? ownedLifecycleVetoSource : ownedCompactVetoSource
+            profile === 'lifecycle-veto'
+              ? ownedLifecycleVetoSource
+              : profile === 'startup'
+                ? ownedStartupLifecycleSource
+                : ownedCompactVetoSource
           )
         )
       )
@@ -496,13 +554,29 @@ export async function createNativeFixture(
 export async function nativeSdkHostPlan(
   fixture: NativeFixture,
   mode: 'shared' | 'dedicated',
-  scenario: 'default' | 'patterns' | 'project' | 'parity' | 'engine' | 'tool-modifiers' = 'default'
+  scenario:
+    | 'default'
+    | 'patterns'
+    | 'project'
+    | 'parity'
+    | 'engine'
+    | 'tool-modifiers'
+    | 'openrouter-offline' = 'default'
 ) {
   const state = ownedFixtures.get(fixture);
   if (
     !state ||
     (mode !== 'shared' && mode !== 'dedicated') ||
-    !['default', 'patterns', 'project', 'parity', 'engine', 'tool-modifiers'].includes(scenario)
+    ![
+      'default',
+      'patterns',
+      'project',
+      'parity',
+      'engine',
+      'tool-modifiers',
+      'openrouter-offline',
+    ].includes(scenario) ||
+    (scenario === 'openrouter-offline' && state.profile !== 'openrouter')
   )
     throw new Error('Unowned SDK host fixture');
   await validateOwned(state);
@@ -514,6 +588,7 @@ export async function nativeSdkHostPlan(
       'startup-adapter.mjs',
       'preferences.mjs',
       'auth-commands.mjs',
+      'model-discovery.mjs',
       'import-commands.mjs',
       'import-validation.mjs',
     ]) {
@@ -524,15 +599,27 @@ export async function nativeSdkHostPlan(
       // probes sibling package roots outside this read-only SDK authority.
       // Fixed veto profile only: no filesystem permission widening.
       const bytes =
-        ['compact-veto', 'lifecycle-veto'].includes(state.profile) && name === 'pi-multi-host.mjs'
+        ['compact-veto', 'lifecycle-veto', 'startup'].includes(state.profile) &&
+        name === 'pi-multi-host.mjs'
           ? Buffer.from(
               original
                 .toString()
                 .replace("piImport('dist/index.js')", "piImport('dist/bundle/index.js')")
             )
           : original;
-      await writeFile(target, bytes, { mode: 0o600 });
-      assets.set(target, bytes);
+      const sealedBytes =
+        state.profile === 'openrouter' && name === 'startup-adapter.mjs'
+          ? Buffer.from(
+              bytes
+                .toString()
+                .replace(
+                  'allowModelNetwork: false,',
+                  `allowModelNetwork: false, catalogBaseUrl: 'http://127.0.0.1:${fixture.port}',`
+                )
+            )
+          : bytes;
+      await writeFile(target, sealedBytes, { mode: 0o600 });
+      assets.set(target, sealedBytes);
       state.requiredPaths.push(target);
     }
     state.hostAssets = assets;
@@ -541,7 +628,7 @@ export async function nativeSdkHostPlan(
   const openArgs = [
     '--mode',
     'rpc',
-    '--offline',
+    ...(state.profile !== 'openrouter' || scenario === 'openrouter-offline' ? ['--offline'] : []),
     scenario === 'project' ? '--approve' : '--no-approve',
     '--no-session',
     '--no-extensions',
@@ -620,7 +707,14 @@ export async function spawnNativePublicAuth(fixture: NativeFixture, callbackBarr
 export async function spawnNativeSdkHost(
   fixture: NativeFixture,
   mode: 'shared' | 'dedicated',
-  scenario: 'default' | 'patterns' | 'project' | 'parity' | 'engine' | 'tool-modifiers' = 'default'
+  scenario:
+    | 'default'
+    | 'patterns'
+    | 'project'
+    | 'parity'
+    | 'engine'
+    | 'tool-modifiers'
+    | 'openrouter-offline' = 'default'
 ) {
   const plan = await nativeSdkHostPlan(fixture, mode, scenario);
   return {

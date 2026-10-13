@@ -8,6 +8,8 @@ test('scopes SDK capability gate rejects mismatched package/version and missing 
   const { validateSdkMetadata, validateSdkApi } = await import(
     pathToFileURL(resolve('host/startup-adapter.mjs')).href
   );
+  assert.equal(isSupportedPiSdkVersion('1.2.0'), true);
+  validateSdkMetadata({ name: '@earendil-works/pi-coding-agent', version: '1.2.0' });
   assert.ok(SUPPORTED_PI_SDK_VERSIONS.includes('1.1.0'));
   for (const version of SUPPORTED_PI_SDK_VERSIONS) {
     assert.equal(isSupportedPiSdkVersion(version), true);
@@ -17,6 +19,8 @@ test('scopes SDK capability gate rejects mismatched package/version and missing 
     { name: 'unknown', version: '0.99.1' },
     { name: '@earendil-works/pi-coding-agent', version: '0.99.3' },
     { name: '@earendil-works/pi-coding-agent', version: '1.1.1' },
+    { name: '@earendil-works/pi-coding-agent', version: '1.2.1' },
+    { name: '@earendil-works/pi-coding-agent', version: '1.2.0-next' },
     { name: '@earendil-works/pi-coding-agent', version: '1.1.0-next' },
     { name: 'unknown', version: '1.1.0' },
     {},
