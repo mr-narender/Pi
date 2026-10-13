@@ -91,6 +91,10 @@ for (const mode of ['prompt', 'steer', 'follow_up'])
             module.exports
           );
           const calls: any[] = [];
+          let reachedApplied!: () => void;
+          const nativeApplied = new Promise<void>((resolve) => {
+            reachedApplied = resolve;
+          });
           let observeApplied!: () => void;
           const appliedObservation = new Promise<void>((r) => {
             observeApplied = r;
@@ -100,7 +104,10 @@ for (const mode of ['prompt', 'steer', 'follow_up'])
             engineCommand: async (type: string, _origin: any, payload: any) => {
               calls.push({ type, payload });
               const result = await command(type, payload);
-              if (type === 'auth_poll' && result?.status === 'applied') await appliedObservation;
+              if (type === 'auth_poll' && result?.status === 'applied') {
+                reachedApplied();
+                await appliedObservation;
+              }
               return result;
             },
           };
@@ -148,6 +155,8 @@ for (const mode of ['prompt', 'steer', 'follow_up'])
             await sleep(5);
           }
           assert.equal((await command('inspect')).stored, true);
+          // Credential storage precedes native login completion; invalidate only the held GUI observation.
+          await nativeApplied;
           if (outcome === 'cancel') progress.cancel();
           if (outcome === 'stale') current = false;
           if (outcome === 'dispose') controller.authDisposed = true;
