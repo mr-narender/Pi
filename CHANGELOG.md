@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.32
+
+- Use the available editor-pane width for conversations and the composer, with
+  responsive sizing for single, split and narrow chat panes.
+- Preserve the working indicator across streaming updates so remote snapshots
+  do not restart its browser-local animation.
+- Smooth batched remote replies through the selected typewriter speed, including
+  text arriving with completion, while keeping lifecycle controls accurate and
+  displaying reopened history immediately.
+
 ## 0.2.31
 
 - Support the audited Pi 1.2.0 SDK from the configured executable or PATH while

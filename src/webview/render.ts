@@ -1243,7 +1243,7 @@ function renderFreshSessionDetails(snapshot: WebviewSnapshot): string {
   ].join('')}</div></div></details>`;
 }
 
-function renderMessages(snapshot: WebviewSnapshot): string {
+function renderMessages(snapshot: WebviewSnapshot, revealMessageId?: string): string {
   if (snapshot.messages.length === 0) {
     return `
       <div class="empty-state" data-testid="empty-state">
@@ -1274,10 +1274,10 @@ function renderMessages(snapshot: WebviewSnapshot): string {
         return renderMessageArticle(
           message,
           isLast,
-          busy &&
+          (message.id === revealMessageId ||
+            (busy && message.id === snapshot.currentAssistantMessageId)) &&
             snapshot.bindingState !== 'cached' &&
             snapshot.bindingState !== 'draft' &&
-            message.id === snapshot.currentAssistantMessageId &&
             message.role === 'assistant',
           modelName,
           !snapshot.isCompacting
@@ -1486,7 +1486,7 @@ function chatFontStyle(snapshot: WebviewSnapshot): string {
 // A "working" animation shown while Pi generates (like the TUI spinner).
 function renderWorking(snapshot: WebviewSnapshot): string {
   const anim = snapshot.workingAnimation || 'braille';
-  return `<span class="working" data-anim="${escapeHtml(anim)}" role="status" aria-label="π is working"><svg class="working-logo" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><g fill="currentColor"><path d="M3.2 5.4 L20 5.4 L18.4 8 L4.8 8 Z"/><rect x="6.1" y="8" width="2.7" height="10.6" rx="1.1"/><path d="M14.4 8 h2.7 v8.4 l-2.7 2.2 Z"/><path d="M9.8 19.2 l2.1 -1.6 l-2.1 -1.6 v3.2 Z" opacity="0.9"/></g></svg><span class="working-glyph" aria-hidden="true"></span></span>`;
+  return `<span id="pi-working" class="working" data-anim="${escapeHtml(anim)}" role="status" aria-label="π is working"><svg class="working-logo" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><g fill="currentColor"><path d="M3.2 5.4 L20 5.4 L18.4 8 L4.8 8 Z"/><rect x="6.1" y="8" width="2.7" height="10.6" rx="1.1"/><path d="M14.4 8 h2.7 v8.4 l-2.7 2.2 Z"/><path d="M9.8 19.2 l2.1 -1.6 l-2.1 -1.6 v3.2 Z" opacity="0.9"/></g></svg><span class="working-glyph" aria-hidden="true"></span></span>`;
 }
 
 // The working indicator sits as a banner at the top of the composer so it is
@@ -1522,7 +1522,7 @@ function renderQueueTray(snapshot: WebviewSnapshot): string {
   return `<div class="queue-tray"><div class="section-label">Queued for π</div>${rows}</div>`;
 }
 
-export function renderChatApp(snapshot: WebviewSnapshot): string {
+export function renderChatApp(snapshot: WebviewSnapshot, revealMessageId?: string): string {
   const busy = snapshot.isStreaming || snapshot.connectionState === 'busy';
   const interactive = snapshot.connectionState === 'ready' || snapshot.connectionState === 'busy';
   const faulted = snapshot.connectionState === 'faulted';
@@ -1586,7 +1586,7 @@ export function renderChatApp(snapshot: WebviewSnapshot): string {
             }<span class="loading-dots" aria-hidden="true"></span></p><p class="connecting-hint">Warming up the runtime…</p></div>`
           : faulted && snapshot.messages.length === 0
             ? `<div class="empty-state"><p class="empty-copy">Couldn’t start Pi for this workspace.</p><div class="button-row compact"><button type="button" data-command="piRpcInternal.restart">Try again</button><button type="button" data-command="piRpcInternal.showLogs">Show logs</button></div></div>`
-            : renderMessages(snapshot)
+            : renderMessages(snapshot, revealMessageId)
       }<button type="button" id="jump-latest" class="jump-latest" title="Scroll to latest" aria-label="Scroll to latest message" hidden><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9.5l6 6 6-6"/></svg></button></main>
 
       ${renderApprovals(snapshot)}

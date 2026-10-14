@@ -3,6 +3,39 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { JSDOM } from 'jsdom';
 
+test('editor chat sizing remains fluid for single, split and narrow panes', () => {
+  const css = readFileSync('src/webview/media/chat.css', 'utf8');
+  for (const width of [1600, 800, 420, 320]) {
+    const dom = new JSDOM(
+      `<style>${css}</style><div id="app" style="width:${width}px;height:900px"><div class="layout"><main id="messages" class="conversation"><article class="message-card"></article><div class="empty-state"></div><div class="connecting-state"></div><div class="older-sentinel"></div></main><div class="plan-strip"></div><section class="composer-dock"></section></div></div>`
+    );
+    const computed = (selector: string) =>
+      dom.window.getComputedStyle(dom.window.document.querySelector(selector)!);
+    for (const selector of [
+      '.message-card',
+      '.empty-state',
+      '.connecting-state',
+      '.older-sentinel',
+      '.plan-strip',
+    ]) {
+      assert.equal(
+        computed(selector).width,
+        '100%',
+        `${width}px: ${selector} must consume its pane instead of imposing a fixed width cap`
+      );
+    }
+    assert.equal(
+      computed('.composer-dock').width,
+      'calc(100% - 32px)',
+      `${width}px: composer keeps only its side gutters`
+    );
+    assert.equal(computed('.composer-dock').position, 'fixed');
+    assert.equal(computed('.composer-dock').bottom, '14px');
+    assert.equal(computed('.layout').height, '100dvh');
+    dom.window.close();
+  }
+});
+
 test('assistant layout has no timeline rail or marker styling', () => {
   const css = readFileSync('src/webview/media/chat.css', 'utf8');
   assert.doesNotMatch(css, /\.timeline::before/);
