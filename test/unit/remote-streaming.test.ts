@@ -14,6 +14,7 @@ const media = {
   removeEventListener: (_: string, fn: () => void) => listeners.delete(fn),
 };
 const timers = new Map<number, () => void>();
+const sentMessages: unknown[] = [];
 const delays = new Map<number, number>();
 let nextTimer = 0;
 const originalSet = globalThis.setInterval;
@@ -37,7 +38,13 @@ Object.assign(globalThis, {
     disconnect() {}
   },
   matchMedia: () => media,
-  acquireVsCodeApi: () => ({ postMessage() {}, getState() {}, setState() {} }),
+  acquireVsCodeApi: () => ({
+    postMessage(message: unknown) {
+      sentMessages.push(message);
+    },
+    getState() {},
+    setState() {},
+  }),
   setInterval: (fn: () => void, ms: number) => {
     timers.set(++nextTimer, fn);
     delays.set(nextTimer, ms);
@@ -400,6 +407,162 @@ test('authoritative composer resets still win before settled reveal completes', 
     'authoritative restored draft'
   );
 });
+test('activity updates on the answer fast path without resetting reveal, glyph, or composer', async () => {
+  const initial = 'streaming '.repeat(200);
+  const activity = {
+    tools: [{ id: 't1', name: 'read', status: 'running' as const }],
+    output: 'first output',
+    files: [{ path: 'first.ts' }],
+    statuses: [],
+  };
+  send(initial, { sessionId: 'activity-live', activity });
+  await new Promise((resolve) => setTimeout(resolve, 180));
+  tick();
+  const panel = dom.window.document.getElementById('activity-panel') as HTMLDetailsElement;
+  panel.open = true;
+  const sources = dom.window.document.getElementById('activity-tab-sources')!;
+  sources.click();
+  const glyph = dom.window.document.querySelector('.working-glyph')!;
+  const frame = glyph.textContent;
+  const revealed = text();
+  const field = dom.window.document.getElementById('composer-field') as HTMLTextAreaElement;
+  field.value = 'in-progress draft';
+  field.dispatchEvent(new dom.window.Event('compositionstart', { bubbles: true }));
+  send(initial + 'more text', {
+    sessionId: 'activity-live',
+    activity: { ...activity, output: 'second output', files: [{ path: 'new.ts' }] },
+  });
+  assert.equal(dom.window.document.getElementById('activity-panel'), panel);
+  assert.equal(panel.open, true);
+  assert.equal(
+    dom.window.document.getElementById('activity-tab-sources')?.getAttribute('aria-selected'),
+    'true'
+  );
+  assert.equal(dom.window.document.querySelector('.activity-output')?.textContent, 'second output');
+  assert.equal(dom.window.document.querySelector('.working-glyph'), glyph);
+  assert.equal(glyph.textContent, frame);
+  assert.equal(text(), revealed);
+  assert.equal(field.value, 'in-progress draft');
+  const before = sentMessages.length;
+  dom.window.document.querySelector<HTMLButtonElement>('#activity-panel [data-file-open]')!.click();
+  assert.deepEqual(sentMessages.slice(before), [{ type: 'openFile', path: 'new.ts' }]);
+  field.dispatchEvent(new dom.window.Event('compositionend', { bubbles: true }));
+  tick();
+  assert.ok(text().length > revealed.length);
+  assert.notEqual(glyph.textContent, frame, 'the local working timer advances between host frames');
+});
+
+test('activity keyboard tabs and expanded state survive structural and settled snapshots', async () => {
+  const activity = { tools: [], output: '', files: [], statuses: [] };
+  send('answer', { sessionId: 'activity-keys', activity });
+  await new Promise((resolve) => setTimeout(resolve, 180));
+  const panel = dom.window.document.getElementById('activity-panel') as HTMLDetailsElement;
+  panel.open = true;
+  const output = dom.window.document.getElementById('activity-tab-output')!;
+  output.click();
+  output.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'End', bubbles: true }));
+  assert.equal(dom.window.document.activeElement?.id, 'activity-tab-agents');
+  dom.window.document.activeElement!.dispatchEvent(
+    new dom.window.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })
+  );
+  assert.equal(dom.window.document.activeElement?.id, 'activity-tab-output');
+  dom.window.document.activeElement!.dispatchEvent(
+    new dom.window.KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true })
+  );
+  assert.equal(dom.window.document.activeElement?.id, 'activity-tab-agents');
+  send('complete', {
+    sessionId: 'activity-keys',
+    activity,
+    connectionState: 'ready',
+    currentAssistantMessageId: undefined,
+  });
+  assert.equal(
+    (dom.window.document.getElementById('activity-panel') as HTMLDetailsElement).open,
+    true
+  );
+  assert.equal(
+    dom.window.document.getElementById('activity-tab-agents')?.getAttribute('aria-selected'),
+    'true'
+  );
+  assert.equal(
+    dom.window.document.getElementById('activity-view-agents')?.hasAttribute('hidden'),
+    false
+  );
+});
+
+test('instant and reduced-motion code streams defer highlighting until settled', async () => {
+  const raw = '```typescript\nexport const value = "remote";\n```';
+  for (const reduced of [false, true]) {
+    preference(reduced);
+    const mode = {
+      sessionId: `instant-code-${reduced}`,
+      typewriterSpeed: reduced ? 'normal' : 'off',
+    };
+    send(raw, { ...mode, isStreaming: true });
+    await new Promise((resolve) => setTimeout(resolve, 180));
+    assert.match(text(), /export const value/);
+    assert.equal(
+      dom.window.document.querySelector('#messages .hljs-keyword'),
+      null,
+      'instant display must not re-highlight a growing fence'
+    );
+    send(raw, { ...mode, isStreaming: false, connectionState: 'ready' });
+    assert.ok(dom.window.document.querySelector('#messages .hljs-keyword'));
+  }
+  preference(false);
+});
+
+test('incoming deltas preserve revealed DOM until the next reveal tick', async () => {
+  send('**remote output** '.repeat(100), { sessionId: 'paint-budget', isStreaming: true });
+  await new Promise((resolve) => setTimeout(resolve, 180));
+  tick();
+  const target = dom.window.document.querySelector('.js-stream-text')!;
+  const revealed = target.firstChild;
+  assert.ok(revealed);
+  send('**remote output** '.repeat(101), { sessionId: 'paint-budget', isStreaming: true });
+  assert.equal(
+    target.firstChild,
+    revealed,
+    'unchanged revealed prefix must not replace DOM on incoming snapshots'
+  );
+  send('CORRECTED '.repeat(100), { sessionId: 'paint-budget', isStreaming: true });
+  assert.notEqual(
+    target.firstChild,
+    revealed,
+    'corrections must invalidate the previous revealed prefix'
+  );
+});
+
+test('structural snapshots do not expose an unrevealed answer when morphdom reuses its node', async () => {
+  const raw = '**remote backlog** '.repeat(100);
+  send(raw, { sessionId: 'structural-paint', isStreaming: true });
+  await new Promise((resolve) => setTimeout(resolve, 180));
+  tick();
+  const revealed = text();
+  assert.ok(revealed.length > 0 && revealed.length < raw.length);
+  send(raw, {
+    sessionId: 'structural-paint',
+    isStreaming: true,
+    queue: { steering: ['next'], followUp: [] },
+  });
+  await new Promise((resolve) => setTimeout(resolve, 180));
+  assert.equal(text(), revealed, 'full render must restore the local reveal prefix');
+});
+
+test('optional highlighter readiness does not rebuild history during a live reply', async () => {
+  send('**still streaming** '.repeat(100), { sessionId: 'highlight-ready', isStreaming: true });
+  await new Promise((resolve) => setTimeout(resolve, 180));
+  tick();
+  const target = dom.window.document.querySelector('.js-stream-text')!;
+  const revealed = target.firstChild;
+  dom.window.document.dispatchEvent(new dom.window.Event('pi-highlight-ready'));
+  assert.equal(
+    target.firstChild,
+    revealed,
+    'highlighter loading must not rebuild the active transcript'
+  );
+});
+
 test('local reveals preserve a scrolled-up reader and follow an already pinned reader', async () => {
   send('new answer '.repeat(200), {
     sessionId: 'scroll',

@@ -28,7 +28,6 @@ export interface PiRpcSettings {
   workingAnimation: string;
   chatFontFamily: string;
   chatFontSize: number;
-  notifyOnComplete: boolean;
   typewriterSpeed: string;
   autoCompactThreshold: number;
   autoCompactMode: 'auto' | 'off';
@@ -95,7 +94,6 @@ export function getSettings(): PiRpcSettings {
     workingAnimation: config.get<string>('workingAnimation', 'braille'),
     chatFontFamily: config.get<string>('chatFontFamily', ''),
     chatFontSize: config.get<number>('chatFontSize', 0),
-    notifyOnComplete: config.get<boolean>('notifyOnComplete', true),
     typewriterSpeed: config.get<string>('typewriterSpeed', 'normal'),
     autoCompactThreshold: config.get<number>('autoCompactThreshold', 70),
     // 'auto' = detect the current model's max context and compact at

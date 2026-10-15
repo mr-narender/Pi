@@ -15,6 +15,7 @@ import type {
 } from '../state/types';
 import type { ComposerSessionState, PendingImageItem } from './composer';
 import { summarizeUsage } from './usageSummary';
+import { projectActivity } from './activity';
 
 // Default number of trailing messages sent to the webview. The webview lazily
 // requests older batches on scroll-up, so we never eagerly ship a huge chat.
@@ -571,6 +572,7 @@ export function createWebviewSnapshot(
   );
   return {
     sequence,
+    activity: projectActivity(state, foldedMessages),
     title: state.title,
     connectionState: state.connectionState,
     catalogGeneration: state.generation,

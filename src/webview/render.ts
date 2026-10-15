@@ -116,7 +116,7 @@ function renderMessageStream(
       const streamData = streamingAnswer ? ` data-raw="${escapeHtml(raw)}"` : '';
       out.push(
         `<div class="message-body${streamClass}"${streamData}>${textRun
-          .map((t) => renderRichText(t))
+          .map((t) => renderRichText(t, streamingAnswer))
           .join('')}</div>`
       );
       textRun = [];
@@ -560,7 +560,7 @@ function renderTimelineNode(node: TimelineNode, streamingAnswer = false): string
     case 'response': {
       const streamClass = streamingAnswer ? ' js-stream-text' : '';
       const streamData = streamingAnswer ? ` data-raw="${escapeHtml(node.text)}"` : '';
-      return `<div class="tl-node tl-response"><div class="tl-card tl-answer"><div class="tl-head tl-answer-head">${META_ICONS.response}<span class="tl-label">π Response</span></div><div class="tl-body${streamClass}"${streamData}>${renderRichText(node.text)}</div></div></div>`;
+      return `<div class="tl-node tl-response"><div class="tl-card tl-answer"><div class="tl-head tl-answer-head">${META_ICONS.response}<span class="tl-label">π Response</span></div><div class="tl-body${streamClass}"${streamData}>${renderRichText(node.text, streamingAnswer)}</div></div></div>`;
     }
     default:
       return '';
@@ -901,7 +901,7 @@ function renderMarkdownBlock(text: string): string {
   return out.join('');
 }
 
-export function renderRichText(raw: string): string {
+export function renderRichText(raw: string, streaming = false): string {
   const lines = raw.split('\n');
   const out: string[] = [];
   let buffer: string[] = [];
@@ -946,7 +946,10 @@ export function renderRichText(raw: string): string {
       }
       // Syntax-highlight the block (falls back to plain escaped text). The
       // resolved language (explicit or auto-detected) drives the label + class.
-      const highlighted = highlightCode(codeText, language, escapeHtml);
+      // Re-highlighting a growing fence blocks animation; finalize syntax after the reveal.
+      const highlighted = streaming
+        ? { html: escapeHtml(codeText), language }
+        : highlightCode(codeText, language, escapeHtml);
       const labelLang = language.trim() || highlighted.language || '';
       // Fenced code renders as its OWN block with a Copy button. Only show a
       // language label for a REAL language — never a generic "text"/"code".
@@ -1522,6 +1525,48 @@ function renderQueueTray(snapshot: WebviewSnapshot): string {
   return `<div class="queue-tray"><div class="section-label">Queued for π</div>${rows}</div>`;
 }
 
+export function renderActivityContent(
+  snapshot: WebviewSnapshot,
+  selected: 'output' | 'sources' | 'agents' = 'output'
+): string {
+  const activity = snapshot.activity;
+  const tools = activity?.tools ?? [];
+  const tabs = (['output', 'sources', 'agents'] as const)
+    .map(
+      (tab) =>
+        `<button type="button" role="tab" id="activity-tab-${tab}" data-activity-tab="${tab}" aria-controls="activity-view-${tab}" aria-selected="${selected === tab}" tabindex="${selected === tab ? 0 : -1}">${tab === 'sources' ? 'Sources' : tab === 'agents' ? 'Agents' : 'Output'}</button>`
+    )
+    .join('');
+  const view = (name: typeof selected, content: string) =>
+    `<section role="tabpanel" id="activity-view-${name}" data-activity-view="${name}" aria-labelledby="activity-tab-${name}" tabindex="0"${selected === name ? '' : ' hidden'}>${content}</section>`;
+  const output = tools.length
+    ? `<ol class="activity-tools">${tools.map((tool) => `<li><span>${escapeHtml(tool.name)}</span><span class="muted">${escapeHtml(tool.status)}${tool.durationMs === undefined ? '' : ` · ${escapeHtml(String(tool.durationMs))} ms`}</span></li>`).join('')}</ol>${activity?.output ? `<pre class="activity-output">${escapeHtml(activity.output)}</pre>` : '<p class="muted">Waiting for tool output.</p>'}`
+    : '<p class="muted">Tool activity will appear here as Pi works.</p>';
+  const statuses = (activity?.statuses ?? [])
+    .map(
+      (status) =>
+        `<div class="activity-status"><strong>${escapeHtml(status.label)}</strong><span>${escapeHtml(status.text)}</span></div>`
+    )
+    .join('');
+  const files = activity?.files ?? [];
+  const sources = files.length
+    ? `<p class="muted">Files read, edited or attached in this chat.</p><ul class="activity-files">${files.map((file) => `<li><button type="button" data-file-open="${escapeHtml(file.path)}">${escapeHtml(file.path)}</button></li>`).join('')}</ul>`
+    : '<p class="muted">No files reported in this chat yet.</p>';
+  return `<div class="activity-tabs" role="tablist" aria-label="Activity views">${tabs}</div>${view('output', output + statuses)}${view('sources', sources)}${view('agents', '<p class="muted">No subagent details have been reported to this view. Reported tool activity is available in Output.</p>')}`;
+}
+
+export function renderActivityPanel(snapshot: WebviewSnapshot): string {
+  const live =
+    snapshot.bindingState !== 'cached' &&
+    snapshot.bindingState !== 'draft' &&
+    !snapshot.switchingSession &&
+    (snapshot.isStreaming || snapshot.connectionState === 'busy');
+  const running = live
+    ? (snapshot.activity?.tools.filter((tool) => tool.status === 'running').length ?? 0)
+    : 0;
+  return `<details id="activity-panel" class="activity-panel" data-preserve-open><summary aria-label="Show activity">Activity${running ? `<span class="activity-count">${running}</span>` : ''}<span aria-hidden="true">⌄</span></summary><div id="activity-content" class="activity-content">${renderActivityContent(snapshot)}</div></details>`;
+}
+
 export function renderChatApp(snapshot: WebviewSnapshot, revealMessageId?: string): string {
   const busy = snapshot.isStreaming || snapshot.connectionState === 'busy';
   const interactive = snapshot.connectionState === 'ready' || snapshot.connectionState === 'busy';
@@ -1567,6 +1612,7 @@ export function renderChatApp(snapshot: WebviewSnapshot, revealMessageId?: strin
   return `
     <a class="skip-link" href="#composer-field">Skip to composer</a>
     <div class="layout" data-testid="chat-app" data-mermaid-session="${escapeHtml(snapshot.sessionFile || snapshot.sessionId || snapshot.workspaceFolderName || 'session')}"${chatFontStyle(snapshot)}>
+      ${renderActivityPanel(snapshot)}
       <div class="header-summary visually-hidden" aria-label="Current chat summary">${escapeHtml(summaryLine)}</div>
       <div id="a11y-status" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></div>
 

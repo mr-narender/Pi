@@ -23,6 +23,7 @@ import {
   focusTargetFromSnapshot,
   nextPreviewTrapTarget,
   planChipRemovalFocus,
+  renderActivityPanel,
   renderChatApp,
   renderRichText,
   shouldClearSnapshotFocus,
@@ -30,6 +31,49 @@ import {
 
 const vscode = acquireVsCodeApi();
 const root = document.getElementById('app');
+let activityTab: 'output' | 'sources' | 'agents' = 'output';
+function selectActivityTab(tab: typeof activityTab): void {
+  activityTab = tab;
+  for (const button of document.querySelectorAll<HTMLElement>('[data-activity-tab]')) {
+    const selected = button.dataset.activityTab === tab;
+    button.setAttribute('aria-selected', String(selected));
+    button.tabIndex = selected ? 0 : -1;
+  }
+  for (const view of document.querySelectorAll<HTMLElement>('[data-activity-view]'))
+    view.hidden = view.dataset.activityView !== tab;
+}
+root?.addEventListener('click', (event) => {
+  const target = event.target as HTMLElement;
+  const button = target.closest<HTMLButtonElement>('#activity-panel button');
+  if (!button) return;
+  const tab = button.dataset.activityTab;
+  if (tab === 'output' || tab === 'sources' || tab === 'agents') selectActivityTab(tab);
+  const path = button.dataset.fileOpen;
+  if (path) vscode.postMessage({ type: 'openFile', path });
+});
+root?.addEventListener('keydown', (event) => {
+  const button = (event.target as HTMLElement).closest<HTMLElement>('[data-activity-tab]');
+  if (!button || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+  event.preventDefault();
+  const tabs = ['output', 'sources', 'agents'] as const;
+  const index = tabs.indexOf(activityTab);
+  selectActivityTab(
+    event.key === 'Home'
+      ? 'output'
+      : event.key === 'End'
+        ? 'agents'
+        : tabs[(index + (event.key === 'ArrowRight' ? 1 : 2)) % tabs.length]!
+  );
+  document.getElementById(`activity-tab-${activityTab}`)?.focus();
+});
+function updateActivityPanel(snapshot: WebviewSnapshot): void {
+  const panel = document.getElementById('activity-panel') as HTMLDetailsElement | null;
+  if (!panel) return;
+  const open = panel.open;
+  morphdom(panel, renderActivityPanel(snapshot));
+  panel.open = open;
+  selectActivityTab(activityTab);
+}
 let currentSnapshot: WebviewSnapshot | undefined;
 let mermaidDialogSrc: string | undefined;
 let mermaidDialogKey: string | undefined;
@@ -38,7 +82,7 @@ let mermaidRenderId = 0;
 const mermaidSvgCache = new Map<string, Promise<string>>();
 installCustomTooltips();
 document.addEventListener('pi-highlight-ready', () => {
-  if (currentSnapshot) renderNow(currentSnapshot);
+  if (currentSnapshot && !isLiveWorking(currentSnapshot)) renderNow(currentSnapshot);
 });
 
 // Wiring guard for morphdom: renderNow re-runs the event wiring on every render,
@@ -904,6 +948,7 @@ function render(snapshot: WebviewSnapshot): void {
     const text = lastStreamText(snapshot);
     if (el && typeof text === 'string') {
       el.setAttribute('data-raw', text);
+      updateActivityPanel(snapshot);
       advanceTypewriter();
       keepPinnedToBottom();
       return;
@@ -952,6 +997,7 @@ function render(snapshot: WebviewSnapshot): void {
 let scrubbedForSeq: number | undefined;
 
 function renderNow(snapshot: WebviewSnapshot): void {
+  streamPaintedNode = undefined;
   if (workingDisposed) return;
   if (
     pendingLocalCommand &&
@@ -1109,6 +1155,7 @@ function renderNow(snapshot: WebviewSnapshot): void {
     root.innerHTML = renderChatApp(snapshot, streamMessageId);
   }
   renderedStructureSig = structureSignature(snapshot);
+  selectActivityTab(activityTab);
 
   // Robust sent-text-reappears guard: after an optimistic submit-clear we hold
   // `lastSubmittedText`. If ANY re-render (including an authoritative composer
@@ -1534,6 +1581,7 @@ function renderNow(snapshot: WebviewSnapshot): void {
   }
 
   for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>('[data-file-open]'))) {
+    if (button.closest('#activity-panel')) continue;
     bindOnce(button, 'click', () => {
       const path = button.getAttribute('data-file-open');
       if (path) {
@@ -2149,6 +2197,15 @@ let streamRevealLen = 0;
 let streamMessageId: string | undefined;
 let streamSpeed: string | undefined;
 let streamDeadline = 0;
+let streamPaintedNode: HTMLElement | undefined;
+let streamPaintedText = '';
+function paintStream(node: HTMLElement): void {
+  const revealed = streamRaw.slice(0, streamRevealLen);
+  if (streamPaintedNode === node && streamPaintedText === revealed) return;
+  node.innerHTML = renderRichText(revealed, true);
+  streamPaintedNode = node;
+  streamPaintedText = revealed;
+}
 function stopTypewriter(): void {
   if (streamTimer) {
     clearInterval(streamTimer);
@@ -2215,6 +2272,8 @@ const TYPEWRITER_SPEEDS: Record<string, { divisor: number; interval: number }> =
 };
 function resetTypewriter(): void {
   stopTypewriter();
+  streamPaintedNode = undefined;
+  streamPaintedText = '';
   streamMessageId = undefined;
   streamRaw = '';
   streamRevealLen = 0;
@@ -2280,7 +2339,7 @@ function advanceTypewriter(): void {
   }
   const raw = el.getAttribute('data-raw') ?? '';
   if (speed === 'off' || prefersReducedMotion()) {
-    el.innerHTML = renderRichText(raw);
+    el.innerHTML = renderRichText(raw, isLiveWorking(currentSnapshot));
     if (!finishSettledReveal()) resetTypewriter();
     return;
   }
@@ -2295,7 +2354,7 @@ function advanceTypewriter(): void {
   if (streamRaw !== raw || streamSpeed !== speed)
     streamDeadline = performance.now() + (speed === 'slow' ? 4000 : speed === 'fast' ? 1200 : 2400);
   streamRaw = raw;
-  el.innerHTML = renderRichText(raw.slice(0, streamRevealLen));
+  paintStream(el);
   if (streamTimer && streamSpeed !== speed) stopTypewriter();
   streamSpeed = speed;
   if (streamRevealLen >= raw.length) {
@@ -2324,7 +2383,7 @@ function advanceTypewriter(): void {
           )
         );
         streamRevealLen = Math.min(streamRaw.length, streamRevealLen + step);
-        node.innerHTML = renderRichText(streamRaw.slice(0, streamRevealLen));
+        paintStream(node);
         keepPinnedToBottom();
         if (streamRevealLen >= streamRaw.length) {
           stopTypewriter();

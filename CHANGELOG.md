@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.2.34
+
+- Deliver ongoing chat updates during continuous Pi event streams instead of
+  delaying the pending update until the stream stops.
+- Keep streamed code responsive by skipping unchanged text repaints and applying
+  syntax highlighting after the reply finishes.
+- Mark unseen successful replies on their chat tabs instead of sending completion
+  notifications or sounds; clear the marker when the chat is viewed.
+- Preserve completed messages and visible errors when the stock Pi RPC state
+  omits its optional active-branch identifier.
+- Add a compact activity inspector for reported tool output, sources and
+  execution details, with a clear state when subagent details are unavailable.
+
 ## 0.2.32
 
 - Use the available editor-pane width for conversations and the composer, with

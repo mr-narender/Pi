@@ -107,7 +107,7 @@ shared Pi runtime pool     configurable workers host sessions (per-session exten
 | **Ask Pi**         | Right-click a selection or use the inline **CodeLens** above functions to Explain / Fix / Refactor               |
 | **Navigate**       | Command palette (`Cmd/Ctrl+K`), find-in-chat (`Cmd/Ctrl+F`), jump-to-latest, conversation map                    |
 | **Flow**           | Queue/steer follow-ups, Continue, abort/stop, auto-retry, auto-compaction, usage & cost chip                     |
-| **Feel**           | Enter-to-send, typewriter streaming, working animation, chat-font controls, completion notifications, a11y       |
+| **Feel**           | Enter-to-send, typewriter streaming, working animation, chat-font controls, completion tab markers, a11y         |
 | **Remote (phone)** | **Connect a phone** to watch the live chat in a browser and take control to drive it                             |
 
 ### While Pi is working

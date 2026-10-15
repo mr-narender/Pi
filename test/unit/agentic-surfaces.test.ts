@@ -138,6 +138,7 @@ test('tab disposal retains the tracked controller for the delete stop safeguard'
   const host = { resource };
   manager.trackedControllers = new Set([controller]);
   manager.sessions = { keyFor: () => 'chat:a', unbind() {} };
+  manager.unseenCompletions = new Set();
   manager.hosts = new Map([[resource.toString(), host]]);
   manager.openChatsEmitter = { fire() {} };
   manager.cache = { markClosed: async () => {} };

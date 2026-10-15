@@ -30,9 +30,25 @@ async function classes(notifications: unknown[] = []) {
     ],
   });
   const require = createRequire(`${process.cwd()}/package.json`);
+  const focusListeners = new Set<() => void>();
   const vscode = {
+    EventEmitter: class {
+      event = () => ({ dispose() {} });
+      fire() {}
+      dispose() {}
+    },
+    OverviewRulerLane: { Full: 1, Center: 2 },
+    StatusBarAlignment: { Right: 1 },
     workspace: { getConfiguration: () => ({ get: (_key: string, fallback: unknown) => fallback }) },
-    window: { state: { focused: false } },
+    window: {
+      state: { focused: false },
+      createTextEditorDecorationType: () => ({ dispose() {} }),
+      createStatusBarItem: () => ({ dispose() {}, hide() {} }),
+      onDidChangeWindowState: (listener: () => void) => {
+        focusListeners.add(listener);
+        return { dispose: () => focusListeners.delete(listener) };
+      },
+    },
   };
   const module = { exports: {} as any };
   new Function('require', 'module', 'exports', compiled.outputFiles[0]!.text)(
@@ -45,10 +61,134 @@ async function classes(notifications: unknown[] = []) {
     module,
     module.exports
   );
-  return module.exports;
+  return {
+    ...module.exports,
+    focusWindow: (focused: boolean) => {
+      vscode.window.state.focused = focused;
+      for (const listener of focusListeners) listener();
+    },
+  };
 }
 
-test('only successfully settled runs trigger completion review and notifications', async () => {
+test('completed tabs stay quietly marked through snapshots until viewed, restarted or closed', async () => {
+  const notices: unknown[] = [];
+  const { ChatTabManager, focusWindow } = await classes(notices);
+  const manager = new ChatTabManager(
+    {
+      workspaceState: {
+        get: (_key: string, fallback: unknown) => fallback,
+        update: async () => {},
+      },
+    },
+    { list: () => [], remove() {} },
+    {},
+    {}
+  );
+  manager.getActiveContext = () => undefined;
+  manager.checkContextPressure = async () => {};
+  manager.activateResource = async () => undefined;
+  manager.keyFor = () => 'owned';
+  const resource = { toString: () => 'owned-resource' };
+  let state = createInitialControllerState('owned', '/owned');
+  const controller = {
+    get snapshot() {
+      return state;
+    },
+    folder: { uri: { fsPath: '/owned' } },
+  };
+  let postedMarker: boolean | undefined;
+  const host = {
+    resource,
+    panel: { title: 'Owned chat', visible: false, active: false, webview: { postMessage() {} } },
+    postSnapshot: async (_snapshot: unknown, title: string, unseen: boolean) => {
+      postedMarker = unseen;
+      host.panel.title = `${unseen ? '● ' : ''}${title}`;
+    },
+    dispose() {},
+  };
+  manager.hosts.set(resource.toString(), host);
+  manager.sessions.setOwner(controller, resource);
+  const update = (event: any) => {
+    state = reduceEvent(state, event);
+    manager.detectTurnCompletion(controller);
+  };
+  const complete = () => {
+    update({ type: 'agent_start' });
+    update({ type: 'agent_settled' });
+  };
+  try {
+    state = { ...state, runOutcome: 'completed' };
+    manager.detectTurnCompletion(controller);
+    assert.equal(
+      host.panel.title,
+      'Owned chat',
+      'reopened completed history is not newly completed'
+    );
+    for (const outcome of ['aborted', 'failed']) {
+      update({ type: 'agent_start' });
+      if (outcome === 'failed')
+        update({ type: 'message_end', message: { role: 'assistant', stopReason: 'error' } });
+      update({ type: 'agent_settled', aborted: outcome === 'aborted' });
+      assert.equal(host.panel.title, 'Owned chat');
+    }
+    complete();
+    assert.equal(host.panel.title, '● Owned chat', 'even a quick hidden success is marked');
+    manager.contextForResource = () => ({ controller, resource, target: {} });
+    manager.buildSnapshot = async () => ({
+      title: 'Renamed chat',
+      bindingState: 'current',
+      messages: [],
+      pendingImages: [],
+    });
+    manager.follow.handleSnapshot = () => {};
+    await manager.renderResourceNow(resource);
+    assert.equal(postedMarker, true);
+    assert.equal(
+      host.panel.title,
+      '● Renamed chat',
+      'later snapshots and renames retain the marker'
+    );
+    host.panel.visible = true;
+    await manager.onHostViewStateChanged(host, false);
+    assert.equal(
+      host.panel.title,
+      '● Renamed chat',
+      'an unfocused window has not viewed the result'
+    );
+    focusWindow(true);
+    assert.equal(host.panel.title, 'Renamed chat', 'window focus clears a visible split pane');
+    complete();
+    assert.equal(
+      host.panel.title,
+      'Renamed chat',
+      'visible results in the focused window stay unmarked'
+    );
+    host.panel.visible = false;
+    complete();
+    assert.match(host.panel.title, /^● /);
+    host.panel.visible = true;
+    await manager.onHostViewStateChanged(host, false);
+    assert.doesNotMatch(
+      host.panel.title,
+      /^● /,
+      'viewing an inactive split pane clears its marker'
+    );
+    host.panel.visible = false;
+    complete();
+    update({ type: 'agent_start' });
+    assert.doesNotMatch(host.panel.title, /^● /, 'starting new work clears the old completion');
+    update({ type: 'agent_settled' });
+    await manager.onHostDisposed(host);
+    assert.equal(manager.unseenCompletions.size, 0);
+    assert.doesNotMatch(host.panel.title, /^● /);
+    assert.equal(notices.length, 0, 'successful completion never enters the toast/sound notifier');
+  } finally {
+    manager.dispose();
+    assert.equal(manager.unseenCompletions.size, 0);
+  }
+});
+
+test('only successfully settled runs trigger completion review without completion notifications', async () => {
   const notices: unknown[] = [];
   const { ChatTabManager } = await classes(notices);
   const manager = Object.create(ChatTabManager.prototype);
@@ -56,6 +196,7 @@ test('only successfully settled runs trigger completion review and notifications
   Object.assign(manager, {
     lastRunOutcome: new WeakMap(),
     busySince: new WeakMap(),
+    unseenCompletions: new Set(),
     sessions: { ownerOf: () => undefined },
     hosts: new Map(),
     turnReview: {
@@ -90,7 +231,7 @@ test('only successfully settled runs trigger completion review and notifications
     update({ type: 'compaction_end' });
   }
   assert.equal(reviews.filter((value) => value === 'complete').length, 1);
-  assert.equal(notices.length, 1);
+  assert.equal(notices.length, 0);
 });
 
 test('aborted/failed settled events do not schedule extension auto-compaction or Continue', async () => {
@@ -184,6 +325,7 @@ for (const disposition of ['handled', 'rejected', 'queued', 'started-before-hand
     Object.assign(manager, {
       lastRunOutcome: new WeakMap(),
       busySince: new WeakMap(),
+      unseenCompletions: new Set(),
       sessions: { ownerOf: () => undefined },
       hosts: new Map(),
       turnReview: {

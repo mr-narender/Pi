@@ -218,7 +218,20 @@ export interface WebviewPendingImageItem {
   requiresReselect?: boolean;
 }
 
+export interface WebviewActivity {
+  tools: Array<{
+    id: string;
+    name: string;
+    status: 'running' | 'completed' | 'error';
+    durationMs?: number;
+  }>;
+  output: string;
+  files: Array<{ path: string }>;
+  statuses: Array<{ label: string; text: string }>;
+}
+
 export interface WebviewSnapshot {
+  activity?: WebviewActivity;
   /** Most recent task list π wrote — rendered as the plan strip. */
   plan?: { items: Array<{ text: string; done: boolean }>; done: number };
   /** Zed-style follow toggle state (crosshair button). */

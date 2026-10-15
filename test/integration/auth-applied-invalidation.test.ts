@@ -28,10 +28,21 @@ for (const mode of ['prompt', 'steer', 'follow_up'])
     test(
       `stored callback invalidated before GUI observation editor/${mode}/${outcome}`,
       { timeout: 15000 },
-      async () => {
+      async (t) => {
         const fixture = await createNativeFixture('scopes');
+        t.after(() => fixture.dispose());
         const child = await spawnNativePublicAuth(fixture, true);
-        const pending = new Map<number, (data: any) => void>();
+        const pending = new Map<number, { resolve(data: any): void; reject(error: Error): void }>();
+        let stopped: Error | undefined;
+        let stage = 'native initialization';
+        let fail!: (error: Error) => void;
+        const interrupted = new Promise<never>((_resolve, reject) => {
+          fail = reject;
+        });
+        const waitFor = async <T>(promise: Promise<T>, name: string): Promise<T> => {
+          stage = name;
+          return Promise.race([promise, interrupted]);
+        };
         let seq = 0;
         let ready!: () => void;
         const initialized = new Promise<void>((r) => (ready = r));
@@ -40,19 +51,50 @@ for (const mode of ['prompt', 'steer', 'follow_up'])
           const value = JSON.parse(line);
           if (value.oauthStore) ready();
           else {
-            pending.get(value.id)?.(value.data);
+            pending.get(value.id)?.resolve(value.data);
             pending.delete(value.id);
           }
         });
         const command = (type: string, payload?: any): Promise<any> =>
-          new Promise((resolve) => {
+          new Promise((resolve, reject) => {
+            if (stopped) return reject(stopped);
             const id = ++seq;
-            pending.set(id, resolve);
+            pending.set(id, { resolve, reject });
             child.stdin!.write(JSON.stringify({ id, type, payload }) + '\n');
           });
         const progress = new CancellationTokenSource();
+        let observeApplied: (() => void) | undefined;
+        let cleanup: Promise<void> | undefined;
+        const stop = () => {
+          if (cleanup) return cleanup;
+          stopped = new Error(`Native auth fixture stopped during ${stage}`);
+          fail(stopped);
+          for (const request of pending.values()) request.reject(stopped);
+          pending.clear();
+          progress.cancel();
+          observeApplied?.();
+          lines.close();
+          child.stdin!.end();
+          child.kill();
+          cleanup = fixture.dispose();
+          return cleanup;
+        };
+        t.after(stop);
+        const abort = () => {
+          void stop();
+        };
+        t.signal.addEventListener('abort', abort, { once: true });
+        child.once('error', () => {
+          void stop();
+        });
+        child.once('exit', () => {
+          void stop();
+        });
+        child.stdin!.on('error', () => {
+          void stop();
+        });
         try {
-          await initialized;
+          await waitFor(initialized, 'native initialization');
           let entered!: () => void;
           const inputEntered = new Promise<void>((r) => (entered = r));
           let inputToken: any;
@@ -95,7 +137,6 @@ for (const mode of ['prompt', 'steer', 'follow_up'])
           const nativeApplied = new Promise<void>((resolve) => {
             reachedApplied = resolve;
           });
-          let observeApplied!: () => void;
           const appliedObservation = new Promise<void>((r) => {
             observeApplied = r;
           });
@@ -148,25 +189,28 @@ for (const mode of ['prompt', 'steer', 'follow_up'])
           const send = instance
             .handleRequestSend(resource, mode, 'ack')
             .finally(() => (settled = true));
-          await inputEntered;
-          await command('release');
+          await waitFor(inputEntered, 'held GUI input');
+          await waitFor(command('release'), 'native callback release');
           for (let i = 0; i < 100; i++) {
-            if ((await command('inspect')).stored) break;
+            if ((await waitFor(command('inspect'), 'credential storage')).stored) break;
             await sleep(5);
           }
-          assert.equal((await command('inspect')).stored, true);
+          assert.equal(
+            (await waitFor(command('inspect'), 'stored credential inspection')).stored,
+            true
+          );
           // Credential storage precedes native login completion; invalidate only the held GUI observation.
-          await nativeApplied;
+          await waitFor(nativeApplied, 'native applied result before GUI observation');
           if (outcome === 'cancel') progress.cancel();
           if (outcome === 'stale') current = false;
           if (outcome === 'dispose') controller.authDisposed = true;
           await sleep(60);
-          observeApplied();
+          observeApplied!();
           await sleep(600);
           assert.equal(settled, true, 'operation settles without manually dismissing held UI');
           assert.equal(inputToken.isCancellationRequested, true, 'obsolete input dismissed');
-          await send;
-          const native = await command('inspect');
+          await waitFor(send, 'GUI completion');
+          const native = await waitFor(command('inspect'), 'final native inspection');
           assert.equal(native.stored, true, 'already committed credential is not rolled back');
           assert.equal(native.aborted, false, 'completed native flow is not aborted');
           assert.equal(
@@ -181,11 +225,8 @@ for (const mode of ['prompt', 'steer', 'follow_up'])
             );
           assert.equal(fixture.requests, 0);
         } finally {
-          progress.cancel();
-          lines.close();
-          child.stdin!.end();
-          child.kill();
-          await fixture.dispose();
+          t.signal.removeEventListener('abort', abort);
+          await stop();
         }
       }
     );

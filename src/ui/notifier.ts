@@ -1,10 +1,7 @@
 import * as vscode from 'vscode';
 
-// #3 (review round 2): ONE coalescing notifier for background-chat events.
-// During parallel work, completion + approval + context toasts stacked five
-// deep; now anything arriving within a short window collapses into a single
-// digest ("π: 2 finished · 1 needs approval") with one entry point.
-type Kind = 'completed' | 'approval' | 'context';
+// Coalesce background approval and context warnings into one entry point.
+type Kind = 'approval' | 'context';
 
 interface Item {
   kind: Kind;
@@ -28,19 +25,6 @@ class Notifier {
   }
 
   private flush(): void {
-    if (
-      process.platform === 'darwin' &&
-      vscode.workspace.getConfiguration('piRpc').get<boolean>('soundOnComplete', false)
-    ) {
-      try {
-        // Fire-and-forget system sound; no API in VS Code for this.
-        void import('node:child_process').then(({ spawn }) =>
-          spawn('afplay', ['/System/Library/Sounds/Glass.aiff'], { stdio: 'ignore' })
-        );
-      } catch {
-        /* sound is best-effort */
-      }
-    }
     this.timer = undefined;
     const items = this.pending.splice(0);
     if (items.length === 0) {
@@ -55,17 +39,11 @@ class Notifier {
 
   private single(item: Item): void {
     const open = item.open;
-    const show =
-      item.kind === 'completed'
-        ? vscode.window.showInformationMessage
-        : vscode.window.showWarningMessage;
     const message =
-      item.kind === 'completed'
-        ? `π finished responding in ${item.title}.`
-        : item.kind === 'approval'
-          ? `π is waiting for your approval in ${item.title}.`
-          : `π chat ${item.title} is at ${item.detail ?? 'high'} context — compact soon to avoid losing thread.`;
-    void show(message, 'Open Chat').then((choice) => {
+      item.kind === 'approval'
+        ? `π is waiting for your approval in ${item.title}.`
+        : `π chat ${item.title} is at ${item.detail ?? 'high'} context — compact soon to avoid losing thread.`;
+    void vscode.window.showWarningMessage(message, 'Open Chat').then((choice) => {
       if (choice === 'Open Chat') {
         open?.();
       }
@@ -75,12 +53,8 @@ class Notifier {
   private digest(items: Item[]): void {
     const count = (kind: Kind): number => items.filter((item) => item.kind === kind).length;
     const parts: string[] = [];
-    const completed = count('completed');
     const approval = count('approval');
     const context = count('context');
-    if (completed > 0) {
-      parts.push(`${completed} finished`);
-    }
     if (approval > 0) {
       parts.push(`${approval} need${approval === 1 ? 's' : ''} approval`);
     }
@@ -88,11 +62,7 @@ class Notifier {
       parts.push(`${context} near context limit`);
     }
     const message = `π: ${parts.join(' · ')}`;
-    const show =
-      approval > 0 || context > 0
-        ? vscode.window.showWarningMessage
-        : vscode.window.showInformationMessage;
-    void show(message, 'Show Chats').then((choice) => {
+    void vscode.window.showWarningMessage(message, 'Show Chats').then((choice) => {
       if (choice === 'Show Chats') {
         void vscode.commands.executeCommand('piRpc.showRunningChats');
       }
