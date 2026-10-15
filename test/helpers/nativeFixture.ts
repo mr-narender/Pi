@@ -19,9 +19,12 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { isSupportedPiSdkVersion } from '../../src/process/piLauncher';
 
-// Public package metadata only: never execute the PATH wrapper or read user config.
+// Public package metadata only: never execute a wrapper or read user config.
 export async function resolveNativeCli() {
-  const candidates = (process.env.PATH || '').split(sep === '/' ? ':' : ';');
+  const candidates = [
+    resolve('.github/pi-sdk/node_modules/.bin'),
+    ...(process.env.PATH || '').split(sep === '/' ? ':' : ';'),
+  ];
   for (const directory of candidates) {
     try {
       const cli = await realpath(join(directory, 'pi'));
