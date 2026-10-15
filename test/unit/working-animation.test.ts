@@ -112,6 +112,32 @@ test('live frame-family switches paint the new choice without accumulating timer
     render({ connectionState: 'ready' });
   }
 });
+test('remote structural snapshots preserve indicator subtree and painted frame between updates', async () => {
+  await import('../../src/webview/media/chat.js');
+  render({ workingAnimation: 'braille' });
+  await new Promise((resolve) => setTimeout(resolve, 180));
+  const indicator = dom.window.document.querySelector('.working')!;
+  const glyph = indicator.querySelector('.working-glyph')!;
+  const mutations: MutationRecord[] = [];
+  const observer = new dom.window.MutationObserver((records) => mutations.push(...records));
+  observer.observe(indicator, { subtree: true, childList: true, characterData: true });
+  for (let i = 0; i < 3; i++) {
+    render({ workingAnimation: 'braille', statuses: { status: String(i) } });
+    await new Promise((resolve) => setTimeout(resolve, 180));
+    assert.equal(dom.window.document.querySelector('.working'), indicator);
+    assert.equal(indicator.querySelector('.working-glyph'), glyph);
+    assert.equal(
+      mutations.length + observer.takeRecords().length,
+      0,
+      'snapshots must not rewrite/reset the animated subtree'
+    );
+  }
+  const frame = glyph.textContent;
+  for (const callback of timers.values()) callback();
+  assert.notEqual(glyph.textContent, frame, 'local animation continues without a remote snapshot');
+  observer.disconnect();
+  render({ connectionState: 'ready' });
+});
 test('live switches to CSS dots/bars/dolphin stop frame timers and switching back starts exactly one', async () => {
   await import('../../src/webview/media/chat.js');
   {

@@ -875,6 +875,7 @@ function preserveComposerForRejectedAck(snapshot: WebviewSnapshot): WebviewSnaps
 function render(snapshot: WebviewSnapshot): void {
   if (workingDisposed) return;
   snapshot = preserveComposerForRejectedAck(snapshot);
+  prepareTypewriter(snapshot);
   currentSnapshot = snapshot;
   if (!isLiveWorking(snapshot)) {
     if (flushTimer) {
@@ -1093,11 +1094,19 @@ function renderNow(snapshot: WebviewSnapshot): void {
   // A new wiring pass so bindOnce only wires freshly-added nodes.
   currentWirePass += 1;
   try {
-    morphdom(root, `<div id="app">${renderChatApp(snapshot)}</div>`);
+    morphdom(root, `<div id="app">${renderChatApp(snapshot, streamMessageId)}</div>`, {
+      onBeforeElUpdated(from, to) {
+        // Preserve CSS animation timelines and frame glyphs across remote snapshots.
+        return !(
+          from.id === 'pi-working' &&
+          from.getAttribute('data-anim') === to.getAttribute('data-anim')
+        );
+      },
+    });
   } catch {
     // Defensive: if a morph ever fails, fall back to a full rebuild so the chat
     // never gets stuck.
-    root.innerHTML = renderChatApp(snapshot);
+    root.innerHTML = renderChatApp(snapshot, streamMessageId);
   }
   renderedStructureSig = structureSignature(snapshot);
 
@@ -2131,13 +2140,15 @@ window.addEventListener('keydown', (event) => {
   }
 });
 
-// Typewriter smoothing: Pi streams the answer as coarse `message_update`
-// snapshots (~every 400ms), not token deltas. We reveal the newly-arrived
-// characters gradually so it reads like the TUI's smooth typing. The streaming
+// Host snapshots can coalesce several text deltas, especially over SSH.
+// Reveal new live text locally, including a backlog after the backend settles. The streaming
 // answer element is marked `.js-stream-text` with the full text in `data-raw`.
 let streamTimer: ReturnType<typeof setInterval> | undefined;
 let streamRaw = '';
 let streamRevealLen = 0;
+let streamMessageId: string | undefined;
+let streamSpeed: string | undefined;
+let streamDeadline = 0;
 function stopTypewriter(): void {
   if (streamTimer) {
     clearInterval(streamTimer);
@@ -2170,7 +2181,7 @@ function structureSignature(s: WebviewSnapshot): string {
     })
     .join('#');
   return (
-    `${msgs}|${s.connectionState}|${s.isCompacting ? 1 : 0}` +
+    `${commandSessionKey(s)}|${msgs}|${s.connectionState}|${s.isCompacting ? 1 : 0}|${s.workingAnimation}` +
     `|q${(s.queue?.steering.length ?? 0) + (s.queue?.followUp.length ?? 0)}` +
     `|a${s.approvals?.length ?? 0}|p${s.pendingContextItems.length}/${s.pendingImages.length}`
   );
@@ -2202,44 +2213,126 @@ const TYPEWRITER_SPEEDS: Record<string, { divisor: number; interval: number }> =
   normal: { divisor: 8, interval: 28 },
   fast: { divisor: 5, interval: 18 },
 };
+function resetTypewriter(): void {
+  stopTypewriter();
+  streamMessageId = undefined;
+  streamRaw = '';
+  streamRevealLen = 0;
+}
+function prepareTypewriter(snapshot: WebviewSnapshot): void {
+  const previous = currentSnapshot;
+  const sameSession = commandSessionKey(snapshot) === commandSessionKey(previous);
+  if (
+    !sameSession ||
+    snapshot.switchingSession ||
+    snapshot.bindingState === 'cached' ||
+    snapshot.bindingState === 'draft'
+  )
+    resetTypewriter();
+  if (snapshot.typewriterSpeed === 'off' || prefersReducedMotion()) {
+    resetTypewriter();
+    return;
+  }
+  if (
+    snapshot.switchingSession ||
+    snapshot.bindingState === 'cached' ||
+    snapshot.bindingState === 'draft'
+  )
+    return;
+  const last = snapshot.messages.at(-1);
+  if (last?.role === 'user' && last.id !== previous?.messages.at(-1)?.id) resetTypewriter();
+  const changedAnswer =
+    sameSession &&
+    isLiveWorking(previous) &&
+    last?.role === 'assistant' &&
+    (last.id !== previous?.messages.at(-1)?.id ||
+      lastStreamText(snapshot) !== lastStreamText(previous));
+  const id = isLiveWorking(snapshot)
+    ? snapshot.currentAssistantMessageId
+    : changedAnswer
+      ? last?.id
+      : undefined;
+  if (id && id !== streamMessageId) {
+    resetTypewriter();
+    streamMessageId = id;
+  }
+  if (streamMessageId && !snapshot.messages.some((message) => message.id === streamMessageId))
+    resetTypewriter();
+}
+function finishSettledReveal(): boolean {
+  if (!streamMessageId || !currentSnapshot || isLiveWorking(currentSnapshot)) return false;
+  // This local redraw has no authority to overwrite edits awaiting a remote draft echo.
+  const snapshot =
+    currentSnapshot.composerResetSeq === lastComposerResetSeq
+      ? { ...currentSnapshot, draft: composerField()?.value ?? currentSnapshot.draft }
+      : currentSnapshot;
+  resetTypewriter();
+  // Restore settled formatting/recovery controls; render defers safely during inline editing.
+  render(snapshot);
+  return true;
+}
 function advanceTypewriter(): void {
-  const busy = currentSnapshot?.connectionState === 'busy';
   const speed = currentSnapshot?.typewriterSpeed ?? 'normal';
-  const el = busy ? streamTarget() : undefined;
-  if (!el || speed === 'off' || prefersReducedMotion()) {
-    // Off, stream ended, or no live answer: the render already shows the full
-    // text. Reset for the next turn.
-    stopTypewriter();
-    streamRaw = '';
-    streamRevealLen = 0;
+  const el = streamTarget();
+  if (!el) {
+    if (!finishSettledReveal()) resetTypewriter();
     return;
   }
   const raw = el.getAttribute('data-raw') ?? '';
-  // New message or a shrink -> restart the reveal from zero.
-  if (raw.length < streamRevealLen || (streamRaw && !raw.startsWith(streamRaw.slice(0, 12)))) {
-    streamRevealLen = 0;
+  if (speed === 'off' || prefersReducedMotion()) {
+    el.innerHTML = renderRichText(raw);
+    if (!finishSettledReveal()) resetTypewriter();
+    return;
   }
+  if (!streamMessageId) return;
+  // Corrections may share a long prefix: never retain characters that changed.
+  if (!raw.startsWith(streamRaw)) {
+    let common = 0;
+    while (common < streamRevealLen && common < raw.length && raw[common] === streamRaw[common])
+      common++;
+    streamRevealLen = common;
+  }
+  if (streamRaw !== raw || streamSpeed !== speed)
+    streamDeadline = performance.now() + (speed === 'slow' ? 4000 : speed === 'fast' ? 1200 : 2400);
   streamRaw = raw;
-  // Sync the DOM to the currently-revealed prefix in the SAME frame as the
-  // render() innerHTML swap, so there is no flash of the full text.
   el.innerHTML = renderRichText(raw.slice(0, streamRevealLen));
-  const tuning = TYPEWRITER_SPEEDS[speed] ?? { divisor: 8, interval: 28 };
-  if (!streamTimer) {
-    streamTimer = setInterval(() => {
-      const node = streamTarget();
-      if (!node || currentSnapshot?.connectionState !== 'busy') {
-        stopTypewriter();
-        return;
-      }
-      const target = streamRaw.length;
-      if (streamRevealLen >= target) {
-        return; // caught up; wait for the next update to grow the target
-      }
-      const step = Math.max(2, Math.ceil((target - streamRevealLen) / tuning.divisor));
-      streamRevealLen = Math.min(target, streamRevealLen + step);
-      node.innerHTML = renderRichText(streamRaw.slice(0, streamRevealLen));
-      keepPinnedToBottom();
-    }, tuning.interval);
+  if (streamTimer && streamSpeed !== speed) stopTypewriter();
+  streamSpeed = speed;
+  if (streamRevealLen >= raw.length) {
+    stopTypewriter();
+    finishSettledReveal();
+    return;
+  }
+  if (!streamTimer && streamRevealLen < raw.length) {
+    streamTimer = setInterval(
+      () => {
+        const node = streamTarget();
+        if (!node || workingDisposed) {
+          resetTypewriter();
+          return;
+        }
+        const selectedSpeed = currentSnapshot?.typewriterSpeed ?? 'normal';
+        const tuning = TYPEWRITER_SPEEDS[selectedSpeed] ?? TYPEWRITER_SPEEDS.normal!;
+        const remaining = streamRaw.length - streamRevealLen;
+        // Cap ordinary chunks and catch up by the deadline after delayed browser frames.
+        const step = Math.max(
+          2,
+          Math.min(96, Math.ceil(remaining / tuning.divisor)),
+          Math.ceil(
+            (remaining * tuning.interval) /
+              Math.max(tuning.interval, streamDeadline - performance.now())
+          )
+        );
+        streamRevealLen = Math.min(streamRaw.length, streamRevealLen + step);
+        node.innerHTML = renderRichText(streamRaw.slice(0, streamRevealLen));
+        keepPinnedToBottom();
+        if (streamRevealLen >= streamRaw.length) {
+          stopTypewriter();
+          finishSettledReveal();
+        }
+      },
+      (TYPEWRITER_SPEEDS[speed] ?? TYPEWRITER_SPEEDS.normal!).interval
+    );
   }
 }
 
@@ -2255,8 +2348,12 @@ let workingTimer: ReturnType<typeof setInterval> | undefined;
 let workingFrame = 0;
 let workingDisposed = false;
 const workingMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
-workingMotion.addEventListener('change', startWorkingAnimation);
-const workingClassObserver = new MutationObserver(startWorkingAnimation);
+function motionChanged(): void {
+  startWorkingAnimation();
+  advanceTypewriter();
+}
+workingMotion.addEventListener('change', motionChanged);
+const workingClassObserver = new MutationObserver(motionChanged);
 workingClassObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] });
 function stopWorkingAnimation(): void {
   if (workingTimer) {
@@ -2287,7 +2384,8 @@ function startWorkingAnimation(): void {
   const paint = (): void => {
     const glyph = document.querySelector('.working .working-glyph');
     if (glyph) {
-      glyph.textContent = frames[prefersReducedMotion() ? 0 : workingFrame % frames.length] ?? '';
+      const frame = frames[prefersReducedMotion() ? 0 : workingFrame % frames.length] ?? '';
+      if (glyph.textContent !== frame) glyph.textContent = frame;
     }
   };
   paint();
@@ -2424,7 +2522,8 @@ window.addEventListener('beforeunload', () => {
   pendingSnapshot = undefined;
   deferredSnapshot = undefined;
   stopWorkingAnimation();
-  workingMotion.removeEventListener('change', startWorkingAnimation);
+  resetTypewriter();
+  workingMotion.removeEventListener('change', motionChanged);
   workingClassObserver.disconnect();
 });
 
