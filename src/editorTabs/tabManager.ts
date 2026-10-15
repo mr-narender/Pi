@@ -164,7 +164,7 @@ export interface ChatHost extends vscode.Disposable {
     title: string;
     reveal(viewColumn?: vscode.ViewColumn, preserveFocus?: boolean): void;
   };
-  postSnapshot(snapshot: WebviewSnapshot, title: string): Promise<void>;
+  postSnapshot(snapshot: WebviewSnapshot, title: string, unseenCompletion?: boolean): Promise<void>;
   post(message: unknown): void;
   hasAttachment(uri: string): boolean;
   reveal(): void;
@@ -220,8 +220,12 @@ class ChatEditorHost implements vscode.Disposable {
     return this.document.uri;
   }
 
-  public async postSnapshot(snapshot: WebviewSnapshot, title: string): Promise<void> {
-    this.panel.title = formatTabTitle(title);
+  public async postSnapshot(
+    snapshot: WebviewSnapshot,
+    title: string,
+    unseenCompletion = false
+  ): Promise<void> {
+    this.panel.title = `${unseenCompletion ? '● ' : ''}${formatTabTitle(title)}`;
     this.attachmentFileUris = collectOpenableAttachmentUris(snapshot);
     // IMPORTANT: do not await postMessage here. When this host is created from
     // resolveCustomEditor, VS Code only establishes the webview messaging
@@ -274,11 +278,12 @@ export class ChatTabManager implements vscode.Disposable {
   public readonly remoteSharing: RemoteSharingService;
   private readonly resourceSequence = new Map<string, number>();
   private readonly activeResourceByWorkspace = new Map<string, string>();
-  // Only native successful run completion triggers review and notifications.
+  // Only an observed successful run triggers review and an unseen tab marker.
   // Keyed by CONTROLLER (not folder): with parallel per-tab controllers, several
   // chats share a folder and folder-keyed busy tracking collides across them.
   private readonly lastRunOutcome = new WeakMap<SessionController, string | undefined>();
   private readonly busySince = new WeakMap<SessionController, number>();
+  private readonly unseenCompletions = new Set<string>();
   private turnReview: TurnReview | undefined;
 
   public setTurnReview(review: TurnReview): void {
@@ -305,6 +310,9 @@ export class ChatTabManager implements vscode.Disposable {
       getActiveContext: () => this.getActiveContext(),
     });
     this.sessions = new SessionIndex(context.workspaceState);
+    this.controllerSubscriptions.push(
+      vscode.window.onDidChangeWindowState(() => this.clearViewedCompletions())
+    );
     for (const controller of registry.list()) {
       this.trackController(controller);
     }
@@ -396,6 +404,12 @@ export class ChatTabManager implements vscode.Disposable {
 
   public dispose(): void {
     this.follow.dispose();
+    for (const pending of this.pendingRender.values()) {
+      clearTimeout(pending.timer);
+      for (const done of pending.resolvers) done();
+    }
+    this.pendingRender.clear();
+    this.lastRenderAt.clear();
     if (this.reapTimer) {
       clearInterval(this.reapTimer);
       this.reapTimer = undefined;
@@ -407,6 +421,7 @@ export class ChatTabManager implements vscode.Disposable {
       host.dispose();
     }
     this.hosts.clear();
+    this.unseenCompletions.clear();
     this.cache.dispose();
     this.openChatsEmitter.dispose();
   }
@@ -1030,6 +1045,7 @@ export class ChatTabManager implements vscode.Disposable {
     // resolve back to the raw draft key and miss the registry entry).
     const controllerKey = this.keyFor(host.resource);
     const resourceKey = host.resource.toString();
+    this.setUnseenCompletion(host.resource, false);
     this.sessions.unbind(resourceKey);
     if (this.hosts.get(resourceKey) === host) {
       this.hosts.delete(resourceKey);
@@ -1057,6 +1073,7 @@ export class ChatTabManager implements vscode.Disposable {
     // seems to be opened" (the real one was open, the list just never found
     // out focus had moved to it).
     this.openChatsEmitter.fire();
+    this.clearViewedCompletions();
     if (!active) {
       return;
     }
@@ -2088,17 +2105,33 @@ export class ChatTabManager implements vscode.Disposable {
     }
   }
 
-  /**
-   * Notify when Pi finishes a *long* turn while the user isn't watching this
-   * chat. Tracks successful settled runs; skips quick turns and skips when
-   * the chat is the focused, active tab.
-   */
+  private setUnseenCompletion(resource: vscode.Uri, unseen: boolean): void {
+    const key = resource.toString();
+    const host = this.hosts.get(key);
+    if (unseen) {
+      if (this.unseenCompletions.has(key) || !host) return;
+      this.unseenCompletions.add(key);
+      host.panel.title = `● ${host.panel.title}`;
+    } else if (this.unseenCompletions.delete(key) && host) {
+      host.panel.title = host.panel.title.replace(/^● /, '');
+    }
+  }
+
+  private clearViewedCompletions(): void {
+    if (!vscode.window.state.focused) return;
+    for (const host of this.hosts.values())
+      if (host.panel.visible) this.setUnseenCompletion(host.resource, false);
+  }
+
+  /** A quiet tab marker remains until its completed chat is visible in the focused window. */
   private detectTurnCompletion(controller: SessionController): void {
     const now = controller.snapshot.runOutcome;
     const prev = this.lastRunOutcome.get(controller);
     this.lastRunOutcome.set(controller, now);
     if (now === 'running' && !this.busySince.has(controller)) {
       this.busySince.set(controller, Date.now());
+      const owner = this.sessions.ownerOf(controller);
+      if (owner) this.setUnseenCompletion(owner, false);
       if (getSettings().turnReview) {
         void this.turnReview?.onTurnStart(controller);
       }
@@ -2112,8 +2145,9 @@ export class ChatTabManager implements vscode.Disposable {
       return;
     }
     if (now === 'completed' && prev !== 'completed') {
-      const startedAt = this.busySince.get(controller);
+      const observedRun = this.busySince.has(controller);
       this.busySince.delete(controller);
+      if (!observedRun) return;
       const ownerResource = this.sessions.ownerOf(controller);
       const ownerHost = ownerResource ? this.hosts.get(ownerResource.toString()) : undefined;
       // Watched chats stay silent while their editor tab is visible.
@@ -2132,20 +2166,7 @@ export class ChatTabManager implements vscode.Disposable {
           void this.checkContextPressure(controller);
         }
       }
-      const elapsed = startedAt ? Date.now() - startedAt : 0;
-      if (!getSettings().notifyOnComplete || elapsed < 4000 || watching) {
-        return;
-      }
-      const label = basename(controller.folder.uri.fsPath) || 'workspace';
-      notifier.notify({
-        kind: 'completed',
-        title: `'${label}'`,
-        open: () =>
-          void this.openCurrentChat({
-            folderUri: controller.folder.uri.toString(),
-            focusComposer: true,
-          }),
-      });
+      if (ownerResource && !watching) this.setUnseenCompletion(ownerResource, true);
     }
   }
 
@@ -2264,18 +2285,22 @@ export class ChatTabManager implements vscode.Disposable {
       return this.renderResourceNow(resource, options);
     }
     return new Promise((resolve) => {
-      const pending = entry ?? { timer: setTimeout(() => undefined, 0), resolvers: [], active };
+      if (entry) {
+        entry.active = active;
+        entry.resolvers.push(resolve);
+        return;
+      }
+      // A fixed trailing deadline keeps continuous token deltas from starving delivery.
+      const pending = { timer: setTimeout(() => undefined, 0), resolvers: [resolve], active };
       clearTimeout(pending.timer);
-      pending.active = active;
-      pending.resolvers.push(resolve);
       pending.timer = setTimeout(() => {
         this.pendingRender.delete(key);
         this.lastRenderAt.set(key, Date.now());
-        void this.renderResourceNow(resource, { active: pending.active }).finally(() => {
-          for (const done of pending.resolvers) {
-            done();
-          }
-        });
+        void this.renderResourceNow(resource, { active: pending.active })
+          .catch(() => this.logger.warn('Chat snapshot update failed'))
+          .finally(() => {
+            for (const done of pending.resolvers) done();
+          });
       }, 50);
       this.pendingRender.set(key, pending);
     });
@@ -2319,7 +2344,7 @@ export class ChatTabManager implements vscode.Disposable {
         (payload) => void host.panel.webview.postMessage(payload),
         snapshot.connectionState === 'busy' || snapshot.isStreaming === true
       );
-      await host.postSnapshot(snapshot, title);
+      await host.postSnapshot(snapshot, title, this.unseenCompletions.has(resource.toString()));
       // Mirror the active chat to a remote session, if one is running.
       if (options?.active ?? false) {
         this.remoteSharing.pushSnapshot(snapshot);

@@ -2,7 +2,7 @@
   "name": "pi",
   "displayName": "Pi – this one is (y)ours",
   "description": "An unofficial, personal VS Code chat UI for the Pi coding agent (pi.dev). Not affiliated with pi.dev — shared for anyone who wants it.",
-  "version": "0.2.32",
+  "version": "0.2.34",
   "publisher": "mr-narender",
   "license": "MIT",
   "private": true,
@@ -734,11 +734,6 @@
           "maximum": 32,
           "description": "Chat text font size in px. 0 = default."
         },
-        "piRpc.notifyOnComplete": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show a notification when Pi finishes a long response while the chat is not focused."
-        },
         "piRpc.typewriterSpeed": {
           "type": "string",
           "enum": [
@@ -863,11 +858,6 @@
           "type": "boolean",
           "default": true,
           "description": "macOS: keep the system awake (caffeinate) while any π turn is running."
-        },
-        "piRpc.soundOnComplete": {
-          "type": "boolean",
-          "default": false,
-          "description": "Play a short sound when a background chat finishes (macOS)."
         },
         "piRpc.requireApprovalForEdits": {
           "type": "boolean",

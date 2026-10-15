@@ -1210,7 +1210,11 @@ export class SessionController implements vscode.Disposable {
     if (!valid() || !native || native.sessionId !== sessionId || native.sessionFile !== sessionFile)
       return;
     const leafId =
-      typeof native.leafId === 'string' && native.leafId.length > 0 ? native.leafId : null;
+      typeof native.leafId === 'string' && native.leafId.length > 0
+        ? native.leafId
+        : native.leafId === null
+          ? null
+          : undefined;
     const persisted = sessionFile
       ? await this.readActiveSessionMessages(sessionFile, leafId)
       : undefined;

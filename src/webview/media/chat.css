@@ -4396,3 +4396,114 @@ body.vscode-high-contrast .chat-list-row.active {
 .composer-card > .attachment-tray .chip-list {
   gap: 6px;
 }
+/* A pane-local inspector overlays the transcript without shrinking the composer. */
+.activity-panel {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  z-index: 12;
+  width: max-content;
+  max-width: calc(100% - 24px);
+  font-size: 12px;
+}
+.activity-panel > summary {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+  min-height: 30px;
+  padding: 0 9px;
+  border-radius: 6px;
+  background: var(--vscode-editor-background, #fff);
+  color: var(--vscode-descriptionForeground, #666);
+  cursor: pointer;
+  list-style: none;
+}
+.activity-panel > summary::-webkit-details-marker {
+  display: none;
+}
+.activity-panel[open] {
+  width: 340px;
+}
+.activity-panel[open] > summary {
+  border-radius: 8px 8px 0 0;
+}
+.activity-content {
+  max-height: max(0px, min(55dvh, 460px, calc(100dvh - var(--composer-clearance, 150px) - 48px)));
+  overflow: auto;
+  padding: 10px 12px 12px;
+  border: 1px solid var(--vscode-widget-border, #ddd);
+  border-radius: 8px 0 8px 8px;
+  background: var(--vscode-editor-background, #fff);
+  color: var(--vscode-editor-foreground, #222);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  overflow-wrap: anywhere;
+}
+.activity-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+.activity-tabs button {
+  flex: 1;
+  border: 0;
+  border-radius: 5px;
+  padding: 5px 7px;
+  background: transparent;
+  color: var(--vscode-descriptionForeground, #666);
+}
+.activity-tabs button[aria-selected='true'] {
+  background: var(--vscode-list-inactiveSelectionBackground, #eee);
+  color: var(--vscode-editor-foreground, #222);
+}
+.activity-panel [hidden] {
+  display: none;
+}
+.activity-tools,
+.activity-files {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.activity-tools li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 8px 0;
+}
+.activity-tools li > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.activity-tools li .muted {
+  flex-shrink: 0;
+}
+.activity-output {
+  font: 11px/1.5 var(--vscode-editor-font-family, monospace);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: 12px 0 0;
+  padding: 0;
+  background: transparent;
+}
+.activity-files button {
+  display: block;
+  max-width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--vscode-textLink-foreground, #0066cc);
+  text-align: left;
+  overflow-wrap: anywhere;
+  padding: 6px 0;
+}
+.activity-status {
+  display: grid;
+  gap: 3px;
+  margin-top: 12px;
+}
+.activity-status span {
+  white-space: pre-wrap;
+}
+.activity-count {
+  font-variant-numeric: tabular-nums;
+}
