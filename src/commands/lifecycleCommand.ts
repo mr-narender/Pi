@@ -141,14 +141,14 @@ export async function handleLifecycleCommand(
         ...current,
         draft: unchanged ? (result.editorText ?? '') : current.draft,
         localCommandAck: unchanged ? submissionId : undefined,
-        localCommandReplacement:
-          unchanged && submissionId
-            ? {
-                originKey,
-                replacementKey: JSON.stringify([replacement.sessionFile, replacement.sessionId]),
-                frame,
-              }
-            : undefined,
+        localCommandReplacement: submissionId
+          ? {
+              submissionId,
+              originKey,
+              replacementKey: JSON.stringify([replacement.sessionFile, replacement.sessionId]),
+              frame,
+            }
+          : undefined,
       };
       await surface.replace(replacement, next, () => result.valid() && surface.valid());
       await render();

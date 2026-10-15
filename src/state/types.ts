@@ -275,6 +275,7 @@ export interface WebviewSnapshot {
   // caret while the user types.
   localCommandAck?: string;
   localCommandReplacement?: {
+    submissionId?: string;
     originKey: string;
     replacementKey: string;
     frame: number;

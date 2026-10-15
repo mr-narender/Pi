@@ -179,8 +179,9 @@ export interface ComposerSessionState {
   draft: string;
   /** In-memory ownership revision for asynchronous local commands. */
   localCommandAck?: string;
-  /** Native-authorized identity transition, scoped to the invoking frame and ACK. */
+  /** Native-authorized identity transition, scoped to the invoking frame and submission. */
   localCommandReplacement?: {
+    submissionId?: string;
     originKey: string;
     replacementKey: string;
     frame: number;

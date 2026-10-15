@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.35
+
+- Preserve unsent composer edits, native undo and transcript selections across
+  passive remote updates and delayed send acknowledgements.
+- Coalesce active-session cache writes while keeping in-memory snapshots current
+  and flushing settled sessions and tab changes promptly.
+- Simplify the transcript into full-width text with compact role labels, without
+  message cards; retain code previews, approvals and chat controls.
+
 ## 0.2.34
 
 - Deliver ongoing chat updates during continuous Pi event streams instead of

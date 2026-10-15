@@ -282,7 +282,12 @@ function updateSlashMenu(): void {
   // Further retries require a later user/snapshot event and a cooldown; no polling.
   if (!slashComplete && !slashRequested && slashAttempts >= 2 && Date.now() >= slashRetryAfter)
     slashAttempts = 0;
-  if (!slashComplete && !slashRequested && slashAttempts < 2) {
+  if (
+    !slashComplete &&
+    !slashRequested &&
+    slashAttempts < 2 &&
+    (currentSnapshot?.connectionState === 'ready' || currentSnapshot?.connectionState === 'busy')
+  ) {
     slashRequested = true;
     slashAttempts++;
     slashRequestId = `${webviewGeneration}:catalog:${++slashRequestSequence}`;
@@ -458,6 +463,8 @@ let pendingFocusTargetId: string | undefined;
 let pendingFocusFallbackId: string | undefined;
 let previewReturnFocusId: string | undefined;
 let lastComposerResetSeq: number | undefined;
+let renderedComposerKey: string | undefined;
+let appliedFocusRequest: string | undefined;
 // Signature of the last FULLY-rendered snapshot's structure (everything except
 // the growing text of the streaming answer). Lets us patch just the answer
 // during a reply instead of rebuilding the whole transcript (flicker source).
@@ -479,6 +486,7 @@ let historyStash: string | undefined;
 let lastSubmittedText: string | undefined;
 let editRevision = 0;
 let renderedEditRevision = 0;
+let pendingSend: { sessionKey: string; frame: number | undefined; revision: number } | undefined;
 let submissionSequence = 0;
 const webviewGeneration = `${Date.now()}-${Math.random()}`;
 let pendingLocalCommand:
@@ -566,6 +574,7 @@ function submitComposer(command: string): void {
   // immediately now, no preview popup).
   const textarea = document.getElementById(COMPOSER_FIELD_ID) as HTMLTextAreaElement | null;
   if (textarea && parseCoreSlash(textarea.value)) {
+    pendingSend = undefined;
     pendingLocalCommand = {
       draft: isCoreMenuCommand(textarea.value) ? '' : textarea.value,
       consumed: isCoreMenuCommand(textarea.value) ? textarea.value : undefined,
@@ -583,6 +592,11 @@ function submitComposer(command: string): void {
     autosizeComposer(textarea);
   }
   if (textarea && !pendingLocalCommand) {
+    pendingSend = {
+      sessionKey: commandSessionKey(currentSnapshot),
+      frame: currentSnapshot?.composerResetSeq,
+      revision: editRevision,
+    };
     lastSubmittedText = textarea.value; // remember it so no later render restores it
     textarea.value = '';
   }
@@ -876,11 +890,13 @@ function acceptsCommandReplacement(snapshot: WebviewSnapshot): boolean {
   return !!(
     pendingLocalCommand &&
     replacement &&
-    snapshot.localCommandAck === pendingLocalCommand.id &&
+    (snapshot.localCommandAck === pendingLocalCommand.id ||
+      replacement.submissionId === pendingLocalCommand.id) &&
     replacement.originKey === pendingLocalCommand.sessionKey &&
     replacement.replacementKey === commandSessionKey(snapshot) &&
     replacement.frame === (pendingLocalCommand.frame ?? 0) &&
-    snapshot.composerResetSeq === replacement.frame + 1
+    (snapshot.composerResetSeq ?? 0) ===
+      replacement.frame + (snapshot.localCommandAck === pendingLocalCommand.id ? 1 : 0)
   );
 }
 
@@ -999,6 +1015,14 @@ let scrubbedForSeq: number | undefined;
 function renderNow(snapshot: WebviewSnapshot): void {
   streamPaintedNode = undefined;
   if (workingDisposed) return;
+  const preserveReplacementDraft =
+    pendingLocalCommand !== undefined &&
+    editRevision !== pendingLocalCommand.revision &&
+    acceptsCommandReplacement(snapshot);
+  if (renderedComposerKey !== commandSessionKey(snapshot)) {
+    lastSubmittedText = undefined;
+    scrubbedForSeq = undefined;
+  }
   if (
     pendingLocalCommand &&
     pendingLocalCommand.sessionKey !== commandSessionKey(snapshot) &&
@@ -1061,14 +1085,29 @@ function renderNow(snapshot: WebviewSnapshot): void {
   // resets the caret to position 0.
   const previousComposer = document.getElementById(COMPOSER_FIELD_ID) as HTMLTextAreaElement | null;
   const composerWasFocused = !!previousComposer && document.activeElement === previousComposer;
-  const preservedValue = composerWasFocused ? previousComposer.value : undefined;
   const preservedStart = composerWasFocused ? previousComposer.selectionStart : undefined;
   const preservedEnd = composerWasFocused ? previousComposer.selectionEnd : undefined;
+  const composerKey = commandSessionKey(snapshot);
+  const sameComposer = renderedComposerKey === composerKey;
 
   // An authoritative composer reset (send-clear, copy-to-composer, restore)
   // must overwrite the field even if it was focused.
   const resetSeq = snapshot.composerResetSeq;
   let authoritativeReset = resetSeq !== undefined && resetSeq !== lastComposerResetSeq;
+  let rebaseDraft = false;
+  if (pendingSend && (pendingSend.sessionKey !== composerKey || resetSeq !== pendingSend.frame)) {
+    if (
+      previousComposer &&
+      pendingSend.sessionKey === composerKey &&
+      resetSeq === (pendingSend.frame ?? 0) + 1 &&
+      !snapshot.draft &&
+      editRevision !== pendingSend.revision
+    ) {
+      authoritativeReset = false;
+      rebaseDraft = true;
+    }
+    pendingSend = undefined;
+  }
   if (
     authoritativeReset &&
     pendingLocalCommand &&
@@ -1105,6 +1144,14 @@ function renderNow(snapshot: WebviewSnapshot): void {
     renderedEditRevision = editRevision;
     lastComposerResetSeq = resetSeq;
   }
+  // Keep the native textarea value (and undo buffer) intact before morphdom runs.
+  if (previousComposer && (sameComposer || preserveReplacementDraft) && !authoritativeReset) {
+    snapshot = { ...snapshot, draft: previousComposer.value };
+  }
+  if (rebaseDraft) {
+    vscode.postMessage({ type: 'setDraft', text: snapshot.draft, resetSeq });
+  }
+  renderedComposerKey = composerKey;
 
   // Preserve open dropdown menus across re-render so passive snapshots
   // (streaming, status) don't close the More/Attach menu mid-interaction.
@@ -1192,17 +1239,15 @@ function renderNow(snapshot: WebviewSnapshot): void {
   restoreMermaidDialog();
 
   const textarea = document.getElementById(COMPOSER_FIELD_ID) as HTMLTextAreaElement | null;
-  if (textarea && composerWasFocused && !authoritativeReset && document.hasFocus()) {
-    if (typeof preservedValue === 'string') {
-      // Never restore text that was just submitted while the draft is empty
-      // (the extension cleared it) — that is the sent-text-reappears bug.
-      const wouldReshowSubmitted =
-        preservedValue.length > 0 &&
-        preservedValue === lastSubmittedText &&
-        (snapshot.draft ?? '') === '';
-      textarea.value = wouldReshowSubmitted ? '' : preservedValue;
-    }
-    textarea.focus();
+  const transcriptSelection = window.getSelection()?.isCollapsed === false;
+  if (
+    textarea &&
+    composerWasFocused &&
+    !authoritativeReset &&
+    document.hasFocus() &&
+    !transcriptSelection
+  ) {
+    if (document.activeElement !== textarea) textarea.focus();
     const caret = preservedStart ?? textarea.value.length;
     const caretEnd = preservedEnd ?? caret;
     try {
@@ -1210,7 +1255,13 @@ function renderNow(snapshot: WebviewSnapshot): void {
     } catch {
       /* setSelectionRange can throw for some input types; ignore */
     }
-  } else if (textarea && composerWasFocused && authoritativeReset && document.hasFocus()) {
+  } else if (
+    textarea &&
+    composerWasFocused &&
+    authoritativeReset &&
+    document.hasFocus() &&
+    !transcriptSelection
+  ) {
     textarea.focus();
     const end = textarea.value.length;
     try {
@@ -2560,7 +2611,13 @@ function applyFocus(): void {
   if (focusElement(pendingTargetId) || focusElement(pendingFallbackId)) {
     return;
   }
+  if (!currentSnapshot.preview && window.getSelection()?.isCollapsed === false) return;
   const targetId = focusTargetFromSnapshot(currentSnapshot);
+  const request = targetId
+    ? JSON.stringify([commandSessionKey(currentSnapshot), targetId])
+    : undefined;
+  if (request === appliedFocusRequest) return;
+  appliedFocusRequest = request;
   if (focusElement(targetId)) {
     if (shouldClearSnapshotFocus(currentSnapshot.focus)) {
       vscode.postMessage({ type: 'setFocus', focus: 'none' });
@@ -2570,7 +2627,6 @@ function applyFocus(): void {
   if (focusElement(PREVIEW_DIALOG_ID)) {
     return;
   }
-  focusElement(COMPOSER_FIELD_ID);
 }
 
 window.addEventListener('beforeunload', () => {

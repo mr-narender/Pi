@@ -402,7 +402,13 @@ export class ChatTabManager implements vscode.Disposable {
     }
   }
 
-  public dispose(): void {
+  private disposePromise: Promise<void> | undefined;
+
+  public dispose(): Promise<void> {
+    return (this.disposePromise ??= this.disposeNow());
+  }
+
+  private async disposeNow(): Promise<void> {
     this.follow.dispose();
     for (const pending of this.pendingRender.values()) {
       clearTimeout(pending.timer);
@@ -422,7 +428,7 @@ export class ChatTabManager implements vscode.Disposable {
     }
     this.hosts.clear();
     this.unseenCompletions.clear();
-    this.cache.dispose();
+    await this.cache.dispose();
     this.openChatsEmitter.dispose();
   }
 
@@ -2350,14 +2356,21 @@ export class ChatTabManager implements vscode.Disposable {
         this.remoteSharing.pushSnapshot(snapshot);
       }
     }
-    await this.cache.set({
-      target: context.target,
-      resource: resource.toString(),
-      lastKnownTitle: title,
-      lastSnapshot: toPersistedChatSnapshot(snapshot),
-      lastViewedAt: Date.now(),
-      isLiveBound: snapshot.bindingState === 'current',
-    });
+    const previousSnapshot = this.cache.get(resource)?.lastSnapshot;
+    const wasWorking =
+      previousSnapshot?.connectionState === 'busy' || previousSnapshot?.isStreaming === true;
+    const working = snapshot.connectionState === 'busy' || snapshot.isStreaming === true;
+    await this.cache.set(
+      {
+        target: context.target,
+        resource: resource.toString(),
+        lastKnownTitle: title,
+        lastSnapshot: toPersistedChatSnapshot(snapshot),
+        lastViewedAt: Date.now(),
+        isLiveBound: snapshot.bindingState === 'current',
+      },
+      { defer: !wasWorking || working }
+    );
   }
 
   private titleForContext(context: ChatTabContext, snapshot: WebviewSnapshot): string {

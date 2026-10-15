@@ -1678,10 +1678,10 @@ button.ghost:hover,
 
 .work-phase {
   margin: 6px 0;
-  border: 1px solid var(--vscode-panel-border);
-  border-radius: 8px;
-  padding: 4px 8px;
-  background: color-mix(in srgb, var(--vscode-editor-background) 88%, transparent);
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
 }
 
 .work-phase > summary.work-phase-head {
@@ -2360,36 +2360,14 @@ button.ghost:hover,
 #messages .timeline-standalone {
   margin-top: 0;
 }
-/* Agent bubble: neutral surface, same shape. */
-#messages .message-assistant .message-body {
-  align-self: flex-start;
-  width: fit-content;
-  max-width: 100%;
-  padding: 9px 13px;
-  background: var(--pi-agent-bubble);
-  border: 1px solid var(--vscode-panel-border);
-  border-radius: 14px 14px 14px 4px;
-}
-
-/* You: right-aligned, hairline-outlined (no fill) so it's clearly the user. */
+/* Roles share one reading edge; captions distinguish the speaker. */
 #messages .message-user {
-  align-self: flex-end;
-  align-items: flex-end;
-  /* Full width available; short messages still hug their content (fit-content),
-     long ones can span the full editor width. */
+  align-self: stretch;
+  align-items: flex-start;
   max-width: 100%;
 }
 #messages .message-user .message-role {
-  text-align: right;
-}
-/* User bubble: subtle tint; the final layer resolves its theme color. */
-#messages .message-user .message-body {
-  align-self: flex-end;
-  width: fit-content;
-  padding: 9px 13px;
-  border: 1px solid var(--pi-user-bubble-border);
-  border-radius: 14px 14px 4px 14px;
-  background: var(--pi-user-bubble);
+  text-align: left;
 }
 
 /* ---- Fenced code: its OWN block — language header + Copy, subtle surface,
@@ -2748,14 +2726,16 @@ button.ghost:hover,
   margin-top: 6px;
 }
 
-/* Assistant turn: plain stacked cards. */
+/* Assistant turn: continuous text with compact, collapsible metadata. */
 #messages .timeline {
   margin-top: 2px;
   padding-left: 0;
+  align-self: stretch;
+  width: 100%;
 }
 #messages .tl-node {
   position: relative;
-  margin: 0 0 16px; /* cozy density */
+  margin: 0 0 12px;
   min-width: 0;
 }
 #messages .tl-node:last-child {
@@ -2764,9 +2744,9 @@ button.ghost:hover,
 #messages .tl-card {
   box-sizing: border-box;
   min-width: 0;
-  border: 1px solid var(--vscode-panel-border);
-  border-radius: 12px;
-  padding: 11px 14px; /* cozy density */
+  border: 0;
+  border-radius: 0;
+  padding: 0;
   background: transparent;
 }
 #messages .tl-head {
@@ -2786,9 +2766,9 @@ button.ghost:hover,
 }
 #messages .tl-label {
   font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
 }
 #messages .tl-caret {
   margin-left: auto;
@@ -2876,10 +2856,6 @@ button.ghost:hover,
 #messages .tl-response .tl-label,
 #messages .tl-response .meta-icon {
   color: var(--vscode-charts-green, #57c7a0);
-}
-/* The agent's answer in the timeline is the neutral bubble too, for consistency. */
-#messages .tl-answer {
-  background: var(--pi-agent-bubble);
 }
 #messages .tl-answer .tl-body {
   color: var(--vscode-foreground);
@@ -3775,16 +3751,11 @@ body {
   opacity: 0.78;
 }
 
-#messages .message-user .message-body {
-  max-width: min(78%, 680px);
-  padding: 10px 13px;
-  border: 0;
-  border-radius: 14px 14px 4px 14px;
-  background: var(--pi-surface-control);
-}
-
+#messages .message-user .message-body,
 #messages .message-assistant .message-body {
+  align-self: stretch;
   width: 100%;
+  max-width: 100%;
   padding: 0;
   border: 0;
   border-radius: 0;
@@ -3803,8 +3774,6 @@ body {
   backdrop-filter: none;
 }
 
-.work-phase,
-#messages .tl-card,
 .plan-strip,
 .session-details,
 .approval-card,
@@ -3821,12 +3790,8 @@ body {
   backdrop-filter: none;
 }
 
-.work-phase {
-  padding: 5px 10px;
-}
-
 .work-phase > summary.work-phase-head {
-  min-height: 30px;
+  min-height: 24px;
   font-size: 11.5px;
   opacity: 0.8;
 }
@@ -3840,17 +3805,6 @@ body {
   letter-spacing: 0;
 }
 
-.work-phase .tl-node .tl-card {
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-}
-
-.work-phase .tl-node + .tl-node {
-  border-top: 1px solid var(--pi-hairline-soft);
-}
-
 #messages .meta-block {
   padding-left: 0;
   border-left: 0;
@@ -3862,7 +3816,6 @@ body {
 }
 
 #messages .tl-card.tl-answer:has(.js-stream-text) {
-  border-color: var(--pi-hairline);
   animation: none;
 }
 
@@ -4315,8 +4268,6 @@ body.chat-list-view {
 }
 
 body.vscode-high-contrast .composer-dock,
-body.vscode-high-contrast .work-phase,
-body.vscode-high-contrast #messages .tl-card,
 body.vscode-high-contrast .session-details,
 body.vscode-high-contrast .chat-list-row:hover,
 body.vscode-high-contrast .chat-list-row.active {

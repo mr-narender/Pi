@@ -563,6 +563,146 @@ test('optional highlighter readiness does not rebuild history during a live repl
   );
 });
 
+test('passive remote snapshots preserve blurred unsent edits without rewriting the native value', (t) => {
+  t.mock.method(dom.window.document, 'hasFocus', () => true);
+  const state = {
+    sessionId: 'passive-draft',
+    connectionState: 'ready' as const,
+    composerResetSeq: 0,
+  };
+  render(state);
+  const field = dom.window.document.getElementById('composer-field') as HTMLTextAreaElement;
+  field.value = 'local unacknowledged text';
+  field.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  field.blur();
+  const descriptor = Object.getOwnPropertyDescriptor(
+    dom.window.HTMLTextAreaElement.prototype,
+    'value'
+  )!;
+  let writes = 0;
+  Object.defineProperty(field, 'value', {
+    configurable: true,
+    get() {
+      return descriptor.get!.call(this);
+    },
+    set(value) {
+      writes++;
+      descriptor.set!.call(this, value);
+    },
+  });
+  render({ ...state, statuses: { remote: 'updated' } });
+  assert.equal(field.value, 'local unacknowledged text');
+  assert.equal(writes, 0, 'passive updates must preserve the browser undo buffer');
+  assert.notEqual(dom.window.document.activeElement, field);
+  delete (field as unknown as { value?: string }).value;
+  render({ ...state, composerResetSeq: 1, draft: 'explicit restored draft' });
+  assert.equal(field.value, 'explicit restored draft', 'explicit host resets still apply');
+});
+
+test('passive snapshots do not steal a transcript selection', (t) => {
+  t.mock.method(dom.window.document, 'hasFocus', () => true);
+  const state = {
+    sessionId: 'selection',
+    connectionState: 'ready' as const,
+    messages: answer('Select this response'),
+    focus: 'none' as const,
+  };
+  render(state);
+  const field = dom.window.document.getElementById('composer-field') as HTMLTextAreaElement;
+  field.focus();
+  const selection = dom.window.getSelection()!;
+  const range = dom.window.document.createRange();
+  range.selectNodeContents(dom.window.document.querySelector('.message-body')!);
+  selection.removeAllRanges();
+  selection.addRange(range);
+  let focuses = 0;
+  t.mock.method(field, 'focus', () => {
+    focuses++;
+  });
+  render({ ...state, statuses: { remote: 'updated' } });
+  assert.equal(focuses, 0);
+  assert.equal(selection.toString(), 'Select this response');
+  selection.removeAllRanges();
+});
+
+test('new text typed after sending survives the delayed remote clear acknowledgement', () => {
+  const state = { sessionId: 'send-draft', connectionState: 'ready' as const, composerResetSeq: 0 };
+  render(state);
+  const field = dom.window.document.getElementById('composer-field') as HTMLTextAreaElement;
+  field.value = 'first submitted message';
+  field.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  field.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  assert.equal(field.value, '');
+  field.value = 'next unsent message';
+  field.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  field.blur();
+  render({ ...state, composerResetSeq: 1 });
+  assert.equal(field.value, 'next unsent message');
+  assert.deepEqual(sentMessages.at(-1), {
+    type: 'setDraft',
+    text: 'next unsent message',
+    resetSeq: 1,
+  });
+  render({ ...state, composerResetSeq: 2, draft: 'explicit replacement' });
+  assert.equal(field.value, 'explicit replacement');
+});
+
+test('a persistent composer focus echo does not steal focus from another control', (t) => {
+  t.mock.method(dom.window.document, 'hasFocus', () => true);
+  const state = {
+    sessionId: 'focus-echo',
+    connectionState: 'ready' as const,
+    focus: 'composer' as const,
+  };
+  render(state);
+  const field = dom.window.document.getElementById('composer-field') as HTMLTextAreaElement;
+  assert.equal(dom.window.document.activeElement, field);
+  const button = dom.window.document.querySelector('button')!;
+  button.focus();
+  render({ ...state, statuses: { remote: 'updated' } });
+  assert.equal(dom.window.document.activeElement, button);
+  render({ ...state, focus: 'none' });
+  render(state);
+  assert.equal(
+    dom.window.document.activeElement,
+    field,
+    'a new explicit focus request still applies'
+  );
+});
+
+test('submitted text from another session cannot clear the newly opened session draft', () => {
+  render({ sessionId: 'submit-origin', connectionState: 'ready', composerResetSeq: 0 });
+  const field = dom.window.document.getElementById('composer-field') as HTMLTextAreaElement;
+  field.value = 'same valid draft';
+  field.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  field.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  render({
+    sessionId: 'different-session',
+    connectionState: 'ready',
+    composerResetSeq: 0,
+    draft: 'same valid draft',
+  });
+  assert.equal(field.value, 'same valid draft');
+});
+
+test('edits during a local command cannot overwrite an unrelated session draft', () => {
+  render({ sessionId: 'command-origin', connectionState: 'ready', composerResetSeq: 0 });
+  const field = dom.window.document.getElementById('composer-field') as HTMLTextAreaElement;
+  field.value = '/model';
+  field.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  field.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  field.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  field.value = 'new outgoing edits';
+  field.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  render({
+    sessionId: 'unrelated-session',
+    connectionState: 'ready',
+    composerResetSeq: 0,
+    draft: 'saved incoming draft',
+  });
+  assert.equal(field.value, 'saved incoming draft');
+});
+
 test('local reveals preserve a scrolled-up reader and follow an already pinned reader', async () => {
   send('new answer '.repeat(200), {
     sessionId: 'scroll',
