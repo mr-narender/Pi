@@ -1,5 +1,5 @@
 import type { WebviewSnapshot } from '../state/types';
-import { isLiveWorking } from './working';
+import { isLiveWorking, workingLabel } from './working';
 import { friendlyApiStatus, parseProviderError } from './apiError';
 import { highlightCode } from './highlight';
 import { chipPrivacyLabel, summarizeChip, type PendingContextItem } from './composer';
@@ -1557,7 +1557,7 @@ function renderShareBar(snapshot: WebviewSnapshot): string {
 }
 
 function renderWorkingBanner(snapshot: WebviewSnapshot): string {
-  return `<div class="working-banner">${renderWorking(snapshot)}<span class="working-label">Working\u2026</span></div>`;
+  return `<div class="working-banner">${renderWorking(snapshot)}<span class="working-label">${workingLabel(snapshot)}</span></div>`;
 }
 
 // Queued steering / follow-up messages the user lined up while Pi was busy.

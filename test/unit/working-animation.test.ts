@@ -15,6 +15,7 @@ const media = {
   removeEventListener: (_: string, fn: () => void) => listeners.delete(fn),
 };
 const timers = new Map<number, () => void>();
+const phraseTimers = new Map<number, () => void>();
 let nextTimer = 0;
 const originalSet = globalThis.setInterval;
 const originalClear = globalThis.clearInterval;
@@ -38,11 +39,14 @@ Object.assign(globalThis, {
   },
   matchMedia: () => media,
   acquireVsCodeApi: () => ({ postMessage() {}, getState() {}, setState() {} }),
-  setInterval: (fn: () => void) => {
-    timers.set(++nextTimer, fn);
+  setInterval: (fn: () => void, delay: number) => {
+    (delay === 6000 ? phraseTimers : timers).set(++nextTimer, fn);
     return nextTimer;
   },
-  clearInterval: (id: number) => timers.delete(id),
+  clearInterval: (id: number) => {
+    timers.delete(id);
+    phraseTimers.delete(id);
+  },
 });
 Object.assign(dom.window, { matchMedia: () => media });
 Object.assign(dom.window.HTMLElement.prototype, { scrollTo() {}, scrollIntoView() {} });
@@ -166,6 +170,35 @@ test('live switches to CSS dots/bars/dolphin stop frame timers and switching bac
     }
   }
 });
+test('playful phrases survive snapshots, rotate locally and yield to real states', async () => {
+  render({ sessionId: 'one', workingAnimation: 'dots' });
+  await new Promise((resolve) => setTimeout(resolve, 180));
+  const label = () => dom.window.document.querySelector('.working-label')?.textContent;
+  assert.equal(label(), 'Conjuring…');
+  assert.equal(phraseTimers.size, 1);
+  for (const tick of phraseTimers.values()) tick();
+  assert.equal(label(), 'Untangling…');
+  render({ sessionId: 'one', workingAnimation: 'dots', statuses: { changed: 'yes' } });
+  await new Promise((resolve) => setTimeout(resolve, 180));
+  assert.equal(label(), 'Untangling…');
+  render({ sessionId: 'one', isCompacting: true });
+  await new Promise((resolve) => setTimeout(resolve, 180));
+  assert.equal(label(), 'Compacting conversation…');
+  assert.equal(phraseTimers.size, 0);
+  render({ approvals: [{ id: 'permission', method: 'confirm' }] });
+  await new Promise((resolve) => setTimeout(resolve, 180));
+  assert.equal(label(), 'Waiting for your approval');
+  assert.equal(phraseTimers.size, 0);
+  render({ sessionId: 'two' });
+  await new Promise((resolve) => setTimeout(resolve, 180));
+  assert.equal(label(), 'Conjuring…');
+  preference(true);
+  assert.equal(phraseTimers.size, 0);
+  preference(false);
+  assert.equal(phraseTimers.size, 1);
+  render({ bindingState: 'cached' });
+  assert.equal(phraseTimers.size, 0);
+});
 test('all six working choices honor timer ownership, reduced motion and idle/disposal on editor tabs', async () => {
   await import('../../src/webview/media/chat.js');
   for (const [workingAnimation, intervalCount, glyphPattern] of [
@@ -180,6 +213,7 @@ test('all six working choices honor timer ownership, reduced motion and idle/dis
       render({ workingAnimation });
       await new Promise((resolve) => setTimeout(resolve, 180));
       assert.equal(timers.size, intervalCount, `${workingAnimation}: owns only its expected timer`);
+      assert.equal(phraseTimers.size, 1, `${workingAnimation}: wording rotates independently`);
       assert.equal(
         dom.window.document.querySelector('.working')?.getAttribute('data-anim'),
         workingAnimation
@@ -213,6 +247,7 @@ test('all six working choices honor timer ownership, reduced motion and idle/dis
   assert.equal(timers.size, 1);
   dom.window.dispatchEvent(new dom.window.Event('beforeunload'));
   assert.equal(timers.size, 0);
+  assert.equal(phraseTimers.size, 0);
   assert.equal(listeners.size, 0);
   render();
   await new Promise((resolve) => setTimeout(resolve, 180));

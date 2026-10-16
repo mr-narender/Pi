@@ -1,5 +1,13 @@
 import type { WebviewSnapshot } from '../state/types';
 
+export const WORKING_PHRASES = ['Conjuring…', 'Untangling…', 'Brewing ideas…', 'Wrangling bits…'];
+
+export function workingLabel(snapshot: WebviewSnapshot, phrase = 0): string {
+  if (snapshot.approvals?.length) return 'Waiting for your approval';
+  if (snapshot.isCompacting) return 'Compacting conversation…';
+  return WORKING_PHRASES[phrase % WORKING_PHRASES.length]!;
+}
+
 // Missing bindingState is the standalone/shared renderer's live representation.
 // Cached and draft tabs do not own the runtime, even if their snapshot is busy.
 export function isLiveWorking(

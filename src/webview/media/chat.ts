@@ -6,7 +6,7 @@ declare function acquireVsCodeApi(): {
 
 import morphdom from 'morphdom';
 import { optionalModule } from './optionalModules';
-import { isLiveWorking } from '../working';
+import { isLiveWorking, workingLabel, WORKING_PHRASES } from '../working';
 import { isCoreMenuCommand, parseCoreSlash } from '../../commands/coreSlash';
 import { mergeLocalCommands } from '../../commands/coreCatalog';
 import { deriveScreenChanges } from '../editToolPath';
@@ -1015,6 +1015,7 @@ function render(snapshot: WebviewSnapshot): void {
     }
     pendingSnapshot = undefined;
     stopWorkingAnimation();
+    stopWorkingPhrases();
     document.querySelector('.working-banner')?.remove();
   }
   if (!root) {
@@ -2524,6 +2525,43 @@ const WORKING_FRAMES: Record<string, string[]> = {
 let workingTimer: ReturnType<typeof setInterval> | undefined;
 let workingFrame = 0;
 let workingDisposed = false;
+let phraseTimer: ReturnType<typeof setInterval> | undefined;
+let workingPhrase = 0;
+let workingPhraseSession: string | undefined;
+function stopWorkingPhrases(): void {
+  if (phraseTimer) clearInterval(phraseTimer);
+  phraseTimer = undefined;
+  workingPhrase = 0;
+  workingPhraseSession = undefined;
+}
+function updateWorkingPhrase(): void {
+  if (workingDisposed || !isLiveWorking(currentSnapshot)) {
+    stopWorkingPhrases();
+    return;
+  }
+  const snapshot = currentSnapshot!;
+  const session = snapshot.sessionFile ?? snapshot.sessionId ?? 'draft';
+  if (workingPhraseSession !== session) {
+    stopWorkingPhrases();
+    workingPhraseSession = session;
+  }
+  const label = document.querySelector('.working-label');
+  if (!label) {
+    stopWorkingPhrases();
+    return;
+  }
+  const text = workingLabel(snapshot, workingPhrase);
+  if (label.textContent !== text) label.textContent = text;
+  if (prefersReducedMotion() || snapshot.isCompacting || snapshot.approvals?.length) {
+    if (phraseTimer) clearInterval(phraseTimer);
+    phraseTimer = undefined;
+  } else if (!phraseTimer) {
+    phraseTimer = setInterval(() => {
+      workingPhrase = (workingPhrase + 1) % WORKING_PHRASES.length;
+      updateWorkingPhrase();
+    }, 6000);
+  }
+}
 const workingMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 function motionChanged(): void {
   startWorkingAnimation();
@@ -2539,6 +2577,7 @@ function stopWorkingAnimation(): void {
   }
 }
 function startWorkingAnimation(): void {
+  updateWorkingPhrase();
   const container = document.querySelector('.working');
   if (workingDisposed || !isLiveWorking(currentSnapshot) || !container) {
     stopWorkingAnimation();
@@ -2699,6 +2738,7 @@ function applyFocus(): void {
 window.addEventListener('beforeunload', () => {
   persistViewState();
   workingDisposed = true;
+  stopWorkingPhrases();
   if (flushTimer) clearTimeout(flushTimer);
   flushTimer = undefined;
   pendingSnapshot = undefined;

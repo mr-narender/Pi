@@ -2,6 +2,8 @@
 
 ## 0.2.35
 
+- Use matching Pi chat-bubble icons in editor tabs and the sidebar, with gentle
+  local working phrases that yield to approval and compaction states.
 - Open Mermaid diagrams in Preview by default, preserve explicit Code choices,
   and size nodes to their labels without stretching diagrams across the pane.
   Reduce Soft card padding and spacing while retaining clear reply boundaries.

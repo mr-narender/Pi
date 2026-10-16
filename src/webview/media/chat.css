@@ -4277,23 +4277,18 @@ body.chat-list-view {
 }
 
 .chat-list-row-icon {
-  width: 8px;
-  height: 8px;
-  margin-left: 2px;
-  border-radius: 50%;
-  color: transparent;
-  background: var(--vscode-descriptionForeground);
-  opacity: 0.55;
+  width: 16px;
+  height: 16px;
+  color: var(--vscode-descriptionForeground);
+  background: transparent;
 }
 
 .chat-list-row.active .chat-list-row-icon {
-  color: transparent;
-  background: var(--pi-accent);
-  opacity: 1;
+  color: var(--pi-accent);
 }
 
 .chat-list-row-icon svg {
-  display: none;
+  display: block;
 }
 
 .chat-list-row-text {

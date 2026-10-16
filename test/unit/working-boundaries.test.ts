@@ -133,8 +133,8 @@ test('actual DOM rapid idle, all choices, motion, ownership and hidden node remo
     });
     await wait();
     assert.ok(document.querySelector('.working-logo'));
-    assert.match(document.querySelector('.working-label')!.textContent!, /Working/);
-    assert.equal(intervals.size, ['braille', 'earth', 'moon'].includes(workingAnimation) ? 1 : 0);
+    assert.match(document.querySelector('.working-label')!.textContent!, /Conjuring/);
+    assert.equal(intervals.size, ['braille', 'earth', 'moon'].includes(workingAnimation) ? 2 : 1);
     motion(true);
     assert.equal(intervals.size, 0);
     motion(false);
@@ -159,7 +159,7 @@ test('actual DOM rapid idle, all choices, motion, ownership and hidden node remo
 test('native body class toggles JS frames without polling while status survives', async () => {
   send({ connectionState: 'busy', workingAnimation: 'earth' });
   await wait();
-  assert.equal(intervals.size, 1);
+  assert.equal(intervals.size, 2);
   assert.equal(observedClasses.size, 1);
   document.body.classList.add('vscode-reduce-motion');
   await Promise.resolve();
@@ -167,7 +167,7 @@ test('native body class toggles JS frames without polling while status survives'
   assert.ok(document.querySelector('.working-label'));
   document.body.classList.remove('vscode-reduce-motion');
   await Promise.resolve();
-  assert.equal(intervals.size, 1);
+  assert.equal(intervals.size, 2);
   motion(true);
   document.body.classList.add('vscode-reduce-motion');
   await Promise.resolve();
@@ -175,14 +175,14 @@ test('native body class toggles JS frames without polling while status survives'
   assert.equal(intervals.size, 0);
   document.body.classList.remove('vscode-reduce-motion');
   await Promise.resolve();
-  assert.equal(intervals.size, 1);
+  assert.equal(intervals.size, 2);
   send({ connectionState: 'ready', isStreaming: false });
 });
 test('connected streaming and cached ownership also gate DOM timers', async () => {
   send({ connectionState: 'ready', isStreaming: true, workingAnimation: 'moon' });
   await wait();
   assert.ok(document.querySelector('.working-logo'));
-  assert.equal(intervals.size, 1);
+  assert.equal(intervals.size, 2);
   send({ bindingState: 'cached', connectionState: 'busy', isStreaming: true });
   assert.equal(document.querySelector('.working-logo'), null);
   assert.equal(intervals.size, 0);
