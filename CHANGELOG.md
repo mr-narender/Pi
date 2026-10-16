@@ -2,6 +2,8 @@
 
 ## 0.2.35
 
+- Route Undo/Redo shortcuts to the composer and make submitted text recoverable
+  with Undo, without retracting or resending the message.
 - Preserve unsent composer edits, native undo and transcript selections across
   passive remote updates and delayed send acknowledgements.
 - Coalesce active-session cache writes while keeping in-memory snapshots current

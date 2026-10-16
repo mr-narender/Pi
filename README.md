@@ -152,6 +152,11 @@ eye on it (or nudging it) from the couch.
 | `Cmd+Enter` / `Ctrl+Enter` | Also sends (works while composing) |
 | `Cmd+K` / `Ctrl+K`         | Command palette of in-chat actions |
 | `Cmd+F` / `Ctrl+F`         | Find in the current chat           |
+| `Cmd+Z` / `Ctrl+Z`         | Undo composer text edits           |
+| `Cmd+Shift+Z` / `Ctrl+Y`   | Redo composer text edits           |
+
+Undo after sending restores the submitted text into the composer for editing.
+It does not retract or resend the message. `Ctrl+Shift+Z` also supports Redo.
 
 ## Chat menus
 

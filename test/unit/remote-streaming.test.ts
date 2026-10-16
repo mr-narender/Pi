@@ -703,6 +703,79 @@ test('edits during a local command cannot overwrite an unrelated session draft',
   assert.equal(field.value, 'saved incoming draft');
 });
 
+test('composer Undo and Redo shortcuts stay inside the focused input instead of routing to VS Code', (t) => {
+  render({ sessionId: 'keyboard-editing', connectionState: 'ready', composerResetSeq: 0 });
+  const field = dom.window.document.getElementById('composer-field') as HTMLTextAreaElement;
+  const commands: string[] = [];
+  Object.defineProperty(dom.window.document, 'execCommand', {
+    configurable: true,
+    value: (command: string) => {
+      commands.push(command);
+      return true;
+    },
+  });
+  t.after(() => {
+    Reflect.deleteProperty(dom.window.document, 'execCommand');
+  });
+  const cases = [
+    { key: 'z', metaKey: true, command: 'undo' },
+    { key: 'Z', metaKey: true, shiftKey: true, command: 'redo' },
+    { key: 'z', ctrlKey: true, command: 'undo' },
+    { key: 'Z', ctrlKey: true, shiftKey: true, command: 'redo' },
+    { key: 'y', ctrlKey: true, command: 'redo' },
+  ];
+  for (const { command, ...keys } of cases) {
+    const event = new dom.window.KeyboardEvent('keydown', {
+      ...keys,
+      bubbles: true,
+      cancelable: true,
+    });
+    field.dispatchEvent(event);
+    assert.equal(commands.at(-1), command);
+    assert.equal(event.defaultPrevented, true);
+  }
+  for (const extra of [{ isComposing: true }, { altKey: true }]) {
+    const event = new dom.window.KeyboardEvent('keydown', {
+      key: 'z',
+      ctrlKey: true,
+      ...extra,
+      bubbles: true,
+      cancelable: true,
+    });
+    field.dispatchEvent(event);
+    assert.equal(event.defaultPrevented, false);
+  }
+  assert.equal(commands.length, cases.length);
+});
+
+test('submit clears text through a native undoable edit without clearing the host draft before send', (t) => {
+  render({ sessionId: 'undo-submit', connectionState: 'ready', composerResetSeq: 0 });
+  const field = dom.window.document.getElementById('composer-field') as HTMLTextAreaElement;
+  field.value = 'restore this submitted text';
+  field.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  const commands: string[] = [];
+  Object.defineProperty(dom.window.document, 'execCommand', {
+    configurable: true,
+    value: (command: string) => {
+      commands.push(command);
+      if (command === 'delete') {
+        field.value = '';
+        field.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+      }
+      return true;
+    },
+  });
+  t.after(() => {
+    Reflect.deleteProperty(dom.window.document, 'execCommand');
+  });
+  const start = sentMessages.length;
+  field.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  assert.deepEqual(commands, ['delete']);
+  assert.equal(field.value, '');
+  assert.equal(sentMessages.slice(start).filter((m: any) => m.type === 'setDraft').length, 0);
+  assert.equal(sentMessages.slice(start).filter((m: any) => m.type === 'requestSend').length, 1);
+});
+
 test('local reveals preserve a scrolled-up reader and follow an already pinned reader', async () => {
   send('new answer '.repeat(200), {
     sessionId: 'scroll',

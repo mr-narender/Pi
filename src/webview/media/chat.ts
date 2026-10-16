@@ -129,6 +129,20 @@ let slashMatches: Array<{ name: string; description: string }> = [];
 function composerField(): HTMLTextAreaElement | null {
   return document.getElementById(COMPOSER_FIELD_ID) as HTMLTextAreaElement | null;
 }
+let editingComposer = false;
+function replaceComposerText(field: HTMLTextAreaElement, text: string): void {
+  if (field.value === text) return;
+  field.focus();
+  field.select();
+  editingComposer = true;
+  try {
+    // Native editing retains Undo; the caller owns draft/send notification ordering.
+    document.execCommand?.(text ? 'insertText' : 'delete', false, text);
+    if (field.value !== text) field.value = text;
+  } finally {
+    editingComposer = false;
+  }
+}
 
 // User prompts in this chat, oldest->newest (deduped), for history navigation.
 function promptHistory(): string[] {
@@ -174,7 +188,7 @@ function navigateHistory(ta: HTMLTextAreaElement, direction: 'older' | 'newer'):
     } else {
       // Past the newest entry: restore the draft that was in progress.
       editRevision++;
-      ta.value = historyStash ?? '';
+      replaceComposerText(ta, historyStash ?? '');
       exitHistory();
       const end = ta.value.length;
       ta.setSelectionRange(end, end);
@@ -184,7 +198,7 @@ function navigateHistory(ta: HTMLTextAreaElement, direction: 'older' | 'newer'):
     }
   }
   editRevision++;
-  ta.value = items[historyIndex] ?? '';
+  replaceComposerText(ta, items[historyIndex] ?? '');
   const end = ta.value.length;
   ta.setSelectionRange(end, end);
   autosizeComposer(ta);
@@ -223,7 +237,7 @@ function acceptSlash(name: string): void {
   if (!field) {
     return;
   }
-  field.value = `/${name} `;
+  replaceComposerText(field, `/${name} `);
   field.dispatchEvent(new Event('input', { bubbles: true }));
   closeSlashMenu();
   field.focus();
@@ -367,7 +381,7 @@ function acceptMention(path: string): void {
   const ctx = mentionContext(field);
   if (ctx) {
     const caret = field.selectionStart ?? field.value.length;
-    field.value = field.value.slice(0, ctx.start) + field.value.slice(caret);
+    replaceComposerText(field, field.value.slice(0, ctx.start) + field.value.slice(caret));
     field.dispatchEvent(new Event('input', { bubbles: true }));
     field.focus();
     field.setSelectionRange(ctx.start, ctx.start);
@@ -588,7 +602,7 @@ function submitComposer(command: string): void {
     pendingLocalCommand = undefined;
   }
   if (textarea && pendingLocalCommand?.consumed) {
-    textarea.value = '';
+    replaceComposerText(textarea, '');
     autosizeComposer(textarea);
   }
   if (textarea && !pendingLocalCommand) {
@@ -598,7 +612,7 @@ function submitComposer(command: string): void {
       revision: editRevision,
     };
     lastSubmittedText = textarea.value; // remember it so no later render restores it
-    textarea.value = '';
+    replaceComposerText(textarea, '');
   }
   vscode.postMessage({
     type: 'requestSend',
@@ -1274,6 +1288,7 @@ function renderNow(snapshot: WebviewSnapshot): void {
   if (textarea) {
     autosizeComposer(textarea);
     bindOnce(textarea, 'input', () => {
+      if (editingComposer) return;
       exitHistory(); // typing leaves history-navigation mode
       editRevision++;
       lastSubmittedText = undefined; // fresh text — stop guarding
@@ -1411,6 +1426,23 @@ function renderNow(snapshot: WebviewSnapshot): void {
       }
     });
     bindOnce(textarea, 'keydown', (event) => {
+      if (!event.isComposing && !event.altKey && (event.metaKey || event.ctrlKey)) {
+        const key = event.key.toLowerCase();
+        const command =
+          key === 'z'
+            ? event.shiftKey
+              ? 'redo'
+              : 'undo'
+            : key === 'y' && event.ctrlKey && !event.shiftKey
+              ? 'redo'
+              : undefined;
+        if (command) {
+          event.preventDefault();
+          event.stopPropagation();
+          document.execCommand?.(command);
+          return;
+        }
+      }
       // Handle composer-only thinking before Tab can accept a completion.
       if (event.key === 'Tab' && event.shiftKey) {
         if (event.ctrlKey || event.metaKey || event.altKey || event.isComposing) {
