@@ -42,6 +42,11 @@ test('native Pi folder and saved-workspace cwd spellings discover and reopen bot
       assert.deepEqual(index.sessions.map((s) => s.path).sort(), [...files].sort());
       for (const record of index.sessions) {
         const reopened = sdk.SessionManager.open(record.path, undefined, workspacePath);
+        assert.equal(
+          reopened.getSessionFile(),
+          record.path,
+          'resume keeps the discovered JSONL path verbatim'
+        );
         assert.equal(reopened.getHeader().id, record.id);
         assert.ok(
           reopened.getEntries().some((entry: { type: string }) => entry.type === 'message')

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.38
+
+- Preserve each chat's exact session file and working folder when reopening a
+  folder window as a saved workspace, including drafts bound to that folder.
+- Report an unavailable chat clearly instead of silently opening an empty draft.
+- Let restored Pi tabs own startup instead of creating an unrelated session in
+  the first workspace folder when automatic startup is enabled.
+
 ## 0.2.37
 
 - Restore sidebar chat history across all workspace folders and indexed other

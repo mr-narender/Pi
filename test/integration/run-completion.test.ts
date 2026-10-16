@@ -75,6 +75,10 @@ test('completed tabs stay quietly marked through snapshots until viewed, restart
   const { ChatTabManager, focusWindow } = await classes(notices);
   const manager = new ChatTabManager(
     {
+      globalState: {
+        get: (_key: string, fallback: unknown) => fallback,
+        update: async () => {},
+      },
       workspaceState: {
         get: (_key: string, fallback: unknown) => fallback,
         update: async () => {},

@@ -10,7 +10,7 @@ import { canonicalChatTarget, chatTargetSessionKey, type ChatTabTarget } from '.
  *     does not reliably preserve a URI's query on restore).
  *
  * We satisfy both by putting a short, deterministic id in the PATH and keeping
- * a `path -> identity` map persisted in workspace state. The id is a stable
+ * a `path -> identity` map persisted in extension global state. The id is a stable
  * hash of the target identity, so the URI is deterministic (safe for tab
  * keying) and the breadcrumb stays clean. On restore, the map is rehydrated
  * and `lookupChatUri` recovers the full identity from the path.
@@ -48,12 +48,20 @@ export function chatPathFor(target: ChatTabTarget): string {
 }
 
 /** Load the persisted path -> identity map (call once on activation). */
-export function initChatUriRegistry(store_: Memento): void {
+export function initChatUriRegistry(store_: Memento, legacyWorkspaceState?: Memento): void {
   memento = store_;
-  const saved = store_.get<Record<string, ChatTabTarget>>(STORE_KEY, {});
+  const saved = {
+    ...legacyWorkspaceState?.get<Record<string, ChatTabTarget>>(STORE_KEY, {}),
+    ...store_.get<Record<string, ChatTabTarget>>(STORE_KEY, {}),
+  };
   store = new Map(
     Object.entries(saved).map(([path, target]) => [path, canonicalChatTarget(target)])
   );
+  for (const [path, target] of store) {
+    if (!memento.get<ChatTabTarget | undefined>(`${STORE_KEY}:${path}`, undefined)) {
+      void memento.update(`${STORE_KEY}:${path}`, target);
+    }
+  }
 }
 
 /** Remember (and persist) the identity behind a chat URI path. */
@@ -69,12 +77,15 @@ export function rememberChatUri(path: string, target: ChatTabTarget): void {
     }
     store.delete(oldest);
   }
-  void memento?.update(STORE_KEY, Object.fromEntries(store));
+  // Separate keys keep another window's save from overwriting this identity.
+  void memento?.update(`${STORE_KEY}:${path}`, canonical);
 }
 
 /** Recover the identity behind a chat URI path, if known. */
 export function lookupChatUri(path: string): ChatTabTarget | undefined {
-  return store.get(path);
+  return (
+    memento?.get<ChatTabTarget | undefined>(`${STORE_KEY}:${path}`, undefined) ?? store.get(path)
+  );
 }
 
 /** Test-only: reset in-memory registry state. */

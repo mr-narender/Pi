@@ -283,7 +283,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const uiState = new ChatUiState(context);
   // Rehydrate the chat URI short-id map before any custom-editor tab is
   // restored, so restored tabs resolve to their session identity.
-  initChatUriRegistry(context.workspaceState);
+  initChatUriRegistry(context.globalState, context.workspaceState);
   const chatTabs = new ChatTabManager(context, registry, uiState, logger);
   deactivateChatTabs = () => chatTabs.dispose();
   const turnReview = new TurnReview(logger, context.workspaceState);
@@ -1797,7 +1797,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     })
   );
   const firstFolder = vscode.workspace.workspaceFolders?.[0];
-  if (settings.autoStart && vscode.workspace.isTrusted && firstFolder) {
+  // Restored chat tabs start their own sessions; do not allocate an unrelated first-folder chat.
+  const hasChatTab = vscode.window.tabGroups.all.some((group) =>
+    group.tabs.some((tab) => {
+      const input = tab.input as { viewType?: string } | undefined;
+      return input?.viewType === 'piRpc.chatEditor';
+    })
+  );
+  if (settings.autoStart && vscode.workspace.isTrusted && firstFolder && !hasChatTab) {
     const controller = registry.getOrCreate(firstFolder);
     broker.track(controller);
     registry.setActive(controller);
