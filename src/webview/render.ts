@@ -642,6 +642,11 @@ function renderInlineMarkdown(text: string): string {
     /\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g,
     (_m, label: string, url: string) => `<a class="md-link" data-href="${url}">${label}</a>`
   );
+  html = html.replace(
+    /(?<!!)\[([^\]\n]+)\]\(((?:[\w@.-]+\/)*[\w@.-]+\.[a-zA-Z0-9]{1,8})\)/g,
+    (_m, label: string, path: string) =>
+      `<a class="md-link file-link" data-file-open="${path}">${label}</a>`
+  );
   // Autolink bare URLs. The `(^|[\s(])` prefix prevents matching URLs already
   // moved into a data-href="…" attribute above (those are preceded by a quote).
   html = html.replace(/(^|[\s(])(https?:\/\/[^\s<>"')]+)/g, (_m, pre: string, url: string) => {
@@ -655,7 +660,10 @@ function renderInlineMarkdown(text: string): string {
   html = html.replace(/(?<![\w_])_(?!\s)([^\n_]+?)_(?![\w_])/g, '<em>$1</em>');
   // Strikethrough ~~text~~ (GFM).
   html = html.replace(/~~(?!\s)([^\n~]+?)~~/g, '<del>$1</del>');
-  return linkifyFileMentions(html);
+  return html
+    .split(/(<a\b[^>]*>[\s\S]*?<\/a>)/g)
+    .map((part) => (part.startsWith('<a ') ? part : linkifyFileMentions(part)))
+    .join('');
 }
 
 // A workspace-relative path with an extension, at least one slash, and an

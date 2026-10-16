@@ -3716,7 +3716,7 @@ button.composer-thinking svg {
    Quiet hierarchy, flat rows and one surface per related group. All colors
    remain VS Code theme-driven; high contrast keeps its native borders. */
 :root {
-  --pi-accent: var(--vscode-focusBorder, #007aff);
+  --pi-accent: var(--vscode-textLink-foreground, #007aff);
   --pi-tool-accent: var(--pi-accent);
   --pi-hairline: color-mix(in srgb, var(--vscode-foreground) 14%, transparent);
   --pi-hairline-soft: color-mix(in srgb, var(--vscode-foreground) 9%, transparent);

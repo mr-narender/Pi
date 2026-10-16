@@ -51,6 +51,22 @@ function snapshot(overrides: Partial<WebviewSnapshot> = {}): WebviewSnapshot {
   };
 }
 
+test('local Markdown file links show their label and use the existing file-open action', () => {
+  for (const label of ['diagram.mmd', '`diagram.mmd`', '`src/diagram.mmd`']) {
+    const doc = new JSDOM(renderRichText(`Created [${label}](diagram.mmd).`)).window.document;
+    const link = doc.querySelector('[data-file-open]');
+    assert.ok(link);
+    assert.equal(link.getAttribute('data-file-open'), 'diagram.mmd');
+    assert.equal(link.textContent, label.replaceAll('`', ''));
+    assert.equal(link.querySelector('a'), null);
+    assert.doesNotMatch(doc.body.textContent!, /\]\(diagram/);
+  }
+  const unsafe = new JSDOM(renderRichText('[unsafe](javascript:alert)')).window.document;
+  assert.equal(unsafe.querySelector('[data-file-open], [data-href]'), null);
+  const image = new JSDOM(renderRichText('![image](diagram.png)')).window.document;
+  assert.equal(image.querySelector('[data-file-open]'), null);
+});
+
 test('one Pi turn shares a single bubble across tools and the final reply', () => {
   const messages: WebviewSnapshot['messages'] = [
     { id: 'u1', role: 'user', text: 'Draw a diagram', attachments: [] },

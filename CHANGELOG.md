@@ -13,6 +13,8 @@
   and multiline labels fit their node boundaries.
 - Keep tool work, previews and the final explanation in one Soft card per Pi
   turn; fold completed tool metadata even when only one tool ran.
+- Render local Markdown file links as readable file actions, and use the theme's
+  text-link color for accent text instead of a potentially transparent focus border.
 - Give each Pi reply one soft card with a clear label, keeping work details
   compact and code previews distinct inside the reply.
 - Route Undo/Redo shortcuts to the composer and make submitted text recoverable
