@@ -2,14 +2,14 @@
 
 ## 0.2.35
 
+- Give each Pi reply one soft card with a clear label, keeping work details
+  compact and code previews distinct inside the reply.
 - Route Undo/Redo shortcuts to the composer and make submitted text recoverable
   with Undo, without retracting or resending the message.
 - Preserve unsent composer edits, native undo and transcript selections across
   passive remote updates and delayed send acknowledgements.
 - Coalesce active-session cache writes while keeping in-memory snapshots current
   and flushing settled sessions and tab changes promptly.
-- Simplify the transcript into full-width text with compact role labels, without
-  message cards; retain code previews, approvals and chat controls.
 
 ## 0.2.34
 

@@ -267,7 +267,11 @@ function renderAssistantBody(
     }
     const runNodes = run;
     run = [];
-    const html = runNodes.map((node) => renderTimelineNode(node, false)).join('');
+    const html = runNodes
+      .map((node, index) =>
+        renderTimelineNode(node, false, `${message.id}:${rendered.length}:${index}`)
+      )
+      .join('');
     if (runNodes.length < 2) {
       rendered.push(html);
       return;
@@ -316,7 +320,13 @@ function renderAssistantBody(
       continue;
     }
     flushRun();
-    rendered.push(renderTimelineNode(node, streamingAnswer && index === nodes.length - 1));
+    rendered.push(
+      renderTimelineNode(
+        node,
+        streamingAnswer && index === nodes.length - 1,
+        `${message.id}:${index}`
+      )
+    );
   }
   flushRun();
   return `<div class="timeline">${finalizeWorkPhases(rendered.join(''))}</div>`;
@@ -507,10 +517,10 @@ function renderDuration(durationMs: unknown, label: string): string {
   return `<span class="native-duration muted" data-duration-ms="${durationMs}" aria-label="${escapeHtml(label)}: ${durationMs} milliseconds" title="${durationMs} ms reported by Pi">${text}</span>`;
 }
 
-function renderTimelineNode(node: TimelineNode, streamingAnswer = false): string {
+function renderTimelineNode(node: TimelineNode, streamingAnswer: boolean, nodeId: string): string {
   switch (node.kind) {
     case 'thinking':
-      return `<div class="tl-node tl-thinking"><details class="tl-card" open><summary class="tl-head">${META_ICONS.thinking}<span class="tl-label">Thinking</span>${CARET_ICON}</summary><div class="tl-body tl-think">${renderRichText(node.text)}</div></details></div>`;
+      return `<div class="tl-node tl-thinking"><details class="tl-card" data-preserve-open id="thinking-${escapeHtml(nodeId)}"><summary class="tl-head">${META_ICONS.thinking}<span class="tl-label">Thinking</span>${CARET_ICON}</summary><div class="tl-body tl-think">${renderRichText(node.text)}</div></details></div>`;
     case 'tool': {
       const editPath = editToolFilePath(node.name, node.args);
       const replacements = editReplacements(node.name, node.args);
@@ -1316,7 +1326,7 @@ function renderMessageArticle(
   if (role === 'assistant' && !body && message.attachments.length === 0) {
     return '';
   }
-  const roleLabel = role === 'assistant' ? 'π' : role === 'user' ? 'You' : '';
+  const roleLabel = role === 'assistant' ? 'Pi' : role === 'user' ? 'You' : '';
   const showCopy = role === 'assistant' || role === 'user';
   const captured = message.capturedContext?.length
     ? `<div class="detail-stack captured-context-list" aria-label="Captured files">${message.capturedContext.map((item, index) => renderCapturedContext(item, `captured-context-${message.id}-${index}`)).join('')}</div>`

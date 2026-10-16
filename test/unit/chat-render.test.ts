@@ -226,7 +226,7 @@ test('empty assistant start defers the shared reply row until the first streamin
       ];
       render();
       assert.equal(current.isStreaming, true);
-      assert.equal(root.querySelector('.message-assistant .message-role')?.textContent, 'π');
+      assert.equal(root.querySelector('.message-assistant .message-role')?.textContent, 'Pi');
       assert.equal(root.querySelector('.js-stream-text')?.getAttribute('data-raw'), text);
       assert.match(root.querySelector('.message-assistant')!.textContent!, /P/);
     }
@@ -278,7 +278,7 @@ test('RPC start and text deltas project into a reply before message_end', () => 
     render();
     assert.equal(state.state.isStreaming, true);
     if (event.delta === 'P' || event.delta === 'ONG') {
-      assert.equal(root.querySelector('.message-assistant .message-role')?.textContent, 'π');
+      assert.equal(root.querySelector('.message-assistant .message-role')?.textContent, 'Pi');
       assert.equal(
         root.querySelector('.js-stream-text')?.getAttribute('data-raw'),
         event.delta === 'P' ? '  P' : '  PONG'
@@ -955,7 +955,7 @@ test('accessibility: live status region, transcript live=off, author labels', ()
   assert.match(html, /id="messages"[^>]*aria-live="off"/);
   assert.match(html, /data-command="piRpc.chatSettings"/); // model action inside the chip popover
   assert.match(html, /aria-label="You said"/);
-  assert.match(html, /aria-label="π said"/);
+  assert.match(html, /aria-label="Pi said"/);
 });
 
 test('renderRichText renders a GFM table as an HTML table with alignment', () => {

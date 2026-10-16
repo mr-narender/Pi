@@ -776,6 +776,35 @@ test('submit clears text through a native undoable edit without clearing the hos
   assert.equal(sentMessages.slice(start).filter((m: any) => m.type === 'requestSend').length, 1);
 });
 
+test('Thinking starts compact and preserves user expansion across passive snapshots', () => {
+  const state = {
+    sessionId: 'thinking-disclosure',
+    connectionState: 'ready' as const,
+    messages: [
+      {
+        id: 'thinking-a',
+        role: 'assistant' as const,
+        text: 'Answer',
+        attachments: [],
+        blocks: [
+          { kind: 'thinking' as const, text: 'Work details' },
+          { kind: 'text' as const, text: 'Answer' },
+        ],
+      },
+    ],
+  };
+  render(state);
+  const detail = () =>
+    dom.window.document.querySelector<HTMLDetailsElement>('.tl-thinking > details')!;
+  assert.equal(detail().open, false);
+  detail().open = true;
+  render({ ...state, statuses: { task: 'updated' } });
+  assert.equal(detail().open, true);
+  detail().open = false;
+  render({ ...state, statuses: { task: 'updated again' } });
+  assert.equal(detail().open, false);
+});
+
 test('local reveals preserve a scrolled-up reader and follow an already pinned reader', async () => {
   send('new answer '.repeat(200), {
     sessionId: 'scroll',
