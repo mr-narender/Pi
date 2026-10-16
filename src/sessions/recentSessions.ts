@@ -109,7 +109,8 @@ export function getDefaultSessionDirForWorkspace(
   workspacePath: string,
   agentDir = getAgentDir()
 ): string {
-  const resolvedWorkspace = resolve(workspacePath);
+  // Saved workspaces can retain an alias while Pi records its canonical process cwd.
+  const resolvedWorkspace = normalizeWorkspaceCwd(workspacePath);
   const safePath = `--${resolvedWorkspace.replace(/^[/\\]/, '').replace(/[/\\:]/g, '-')}--`;
   return join(resolve(agentDir), 'sessions', safePath);
 }
