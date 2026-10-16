@@ -1,7 +1,11 @@
 import * as vscode from 'vscode';
 import * as path from 'node:path';
 import type { ChatTabManager } from '../../editorTabs/tabManager';
-import type { RecentSessionService } from '../../sessions/recentSessionService';
+import type {
+  RecentSessionService,
+  RecentSessionsState,
+} from '../../sessions/recentSessionService';
+import { normalizeWorkspaceCwd } from '../../sessions/recentSessions';
 import { buildChatListModel } from '../../webview/chatListData';
 import {
   applyPendingDeletions,
@@ -44,6 +48,7 @@ export class AgenticChatListHost implements vscode.Disposable {
   private refreshTimer: ReturnType<typeof setTimeout> | undefined;
   private snapshotState: SnapshotDecisionState = { hasShownRealData: false };
   private pendingDeletions: PendingDeletion[] = [];
+  private filterText = '';
 
   public constructor(
     private readonly extensionUri: vscode.Uri,
@@ -58,6 +63,11 @@ export class AgenticChatListHost implements vscode.Disposable {
       chatTabs.onDidChangeOpenChats(() => this.scheduleRefresh()),
       recentSessions.onDidChange(() => this.scheduleRefresh())
     );
+    const foldersChanged = vscode.workspace?.onDidChangeWorkspaceFolders?.(() => {
+      void recentSessions.refresh();
+      this.scheduleRefresh();
+    });
+    if (foldersChanged) this.disposables.push(foldersChanged);
   }
 
   public attach(view: vscode.WebviewView): void {
@@ -101,13 +111,40 @@ export class AgenticChatListHost implements vscode.Disposable {
     }));
     const model = buildChatListModel({
       openChats,
-      recent: this.recentSessions.getState(this.folder),
+      recent: this.recentState(),
       favorites: this.favorites(),
     });
     if (this.pendingDeletions.length === 0) {
       return model;
     }
     return { ...model, rows: applyPendingDeletions(model, this.pendingDeletions) };
+  }
+
+  private recentState(): RecentSessionsState {
+    const folders = vscode.workspace?.workspaceFolders ?? [this.folder];
+    const states = folders.map((folder) => ({
+      folder,
+      state: this.recentSessions.getState(folder),
+    }));
+    const items = states.flatMap(({ folder, state }) =>
+      state.items.map((item) => ({
+        ...item,
+        cwd: item.cwd || folder.uri.fsPath,
+        workspaceLabel: item.workspaceLabel || folder.name,
+      }))
+    );
+    const others = states.flatMap(({ state }) => state.others ?? []);
+    const empty = items.length === 0 && others.length === 0;
+    return {
+      items,
+      others,
+      filterText: this.filterText,
+      loading: empty && states.some(({ state }) => state.loading),
+      error:
+        empty && states.every(({ state }) => !state.loading)
+          ? states.find(({ state }) => state.error)?.state.error
+          : undefined,
+    };
   }
 
   private async pushSnapshot(): Promise<void> {
@@ -133,10 +170,11 @@ export class AgenticChatListHost implements vscode.Disposable {
     const open = row.isOpen
       ? this.chatTabs.listOpenChats().find((chat) => `open:${chat.resource.toString()}` === rowId)
       : undefined;
+    const state = this.recentState();
     const recent = row.sessionPath
-      ? this.recentSessions
-          .getState(this.folder)
-          .items.find((item) => item.path === row.sessionPath)
+      ? [...state.items, ...(state.others ?? [])].find(
+          (item) => normalizeWorkspaceCwd(item.path) === normalizeWorkspaceCwd(row.sessionPath!)
+        )
       : undefined;
     const folderPath = open?.controller.folder.uri.fsPath || recent?.cwd || this.folder.uri.fsPath;
     type Change = { uri: vscode.Uri };
@@ -211,21 +249,36 @@ export class AgenticChatListHost implements vscode.Disposable {
       case 'openChat': {
         const resource = asString(record.resource);
         const sessionPath = asString(record.sessionPath);
-        if (record.isOpen && resource) {
-          await vscode.commands.executeCommand('piRpcInternal.revealOpenChat', { resource });
-        } else if (sessionPath) {
-          await vscode.commands.executeCommand('piRpc.switchSession', {
-            sessionPath,
-            label: asString(record.label),
+        const row = this.buildModel().rows.find((item) =>
+          record.isOpen && resource
+            ? item.isOpen && item.openCommand.resource === resource
+            : !!sessionPath && item.sessionPath === sessionPath
+        );
+        if (!row) return;
+        if (row.isOpen && row.openCommand.resource) {
+          await vscode.commands.executeCommand('piRpcInternal.revealOpenChat', {
+            resource: row.openCommand.resource,
+          });
+        } else if (row.sessionPath) {
+          const recent = this.recentState();
+          const session = [...recent.items, ...(recent.others ?? [])].find(
+            (item) => item.path === row.sessionPath
+          );
+          if (!session?.cwd) return;
+          await vscode.commands.executeCommand('piRpcInternal.openOtherChat', {
+            sessionPath: session.path,
+            cwd: session.cwd,
           });
         }
         return;
       }
       case 'filterChats': {
-        // Full-history search: RecentSessionService applies the filter over
-        // name/preview/workspace/model/id BEFORE our 20-row cap, and fires
-        // its change event → scheduleRefresh → push. Empty text clears.
-        this.recentSessions.setFilter(this.folder, asString(record.text) ?? '');
+        // Filter after merging roots and other projects, before the row cap.
+        for (const folder of vscode.workspace?.workspaceFolders ?? [this.folder]) {
+          this.recentSessions.clearFilter(folder);
+        }
+        this.filterText = asString(record.text) ?? '';
+        this.scheduleRefresh();
         return;
       }
       case 'toggleFavoriteChat': {

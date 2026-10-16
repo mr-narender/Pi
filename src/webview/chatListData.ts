@@ -1,4 +1,8 @@
-import type { RecentSessionRecord } from '../sessions/recentSessions';
+import {
+  filterRecentSessions,
+  normalizeWorkspaceCwd,
+  type RecentSessionRecord,
+} from '../sessions/recentSessions';
 import type { RecentSessionsState } from '../sessions/recentSessionService';
 import type { ChatListModel, ChatListRow } from './chatListShared';
 
@@ -62,6 +66,21 @@ function sessionDisplayName(session: RecentSessionRecord): string {
 
 export function buildChatListModel(input: ChatListInput): ChatListModel {
   const rows: ChatListRow[] = [];
+  const canonicalPaths = new Map<string, string>();
+  const canonicalPath = (path: string): string => {
+    let canonical = canonicalPaths.get(path);
+    if (canonical === undefined) {
+      canonical = normalizeWorkspaceCwd(path);
+      canonicalPaths.set(path, canonical);
+    }
+    return canonical;
+  };
+  const sessions = new Map<string, RecentSessionRecord>();
+  for (const session of [...input.recent.items, ...(input.recent.others ?? [])]) {
+    const key = canonicalPath(session.path);
+    if (!sessions.has(key)) sessions.set(key, session);
+  }
+  const recentItems = filterRecentSessions([...sessions.values()], input.recent.filterText);
   const favorites = input.favorites ?? new Set<string>();
   const favoriteRank = (path?: string): number => (path && favorites.has(path) ? 1 : 0);
   // Open chats form one block above history: favorites first, then
@@ -72,18 +91,17 @@ export function buildChatListModel(input: ChatListInput): ChatListModel {
   // newest thing. Sort is stable, so ties and unknowns keep tab order (the
   // pre-sort behavior).
   const recordBySessionPath = new Map<string, RecentSessionRecord>();
-  for (const session of input.recent.items) {
-    recordBySessionPath.set(session.path, session);
+  for (const session of sessions.values()) {
+    recordBySessionPath.set(canonicalPath(session.path), session);
   }
   const openChatTime = (chat: OpenChatEntry): number => {
-    const t = chat.sessionFile ? recordBySessionPath.get(chat.sessionFile)?.modifiedAt : undefined;
+    const t = chat.sessionFile
+      ? recordBySessionPath.get(canonicalPath(chat.sessionFile))?.modifiedAt
+      : undefined;
     // Same "known timestamp" rule as recentSessions.ts (finite and > 0).
     return t !== undefined && Number.isFinite(t) && t > 0 ? t : Number.MAX_SAFE_INTEGER;
   };
-  // Search filter: the recents in input.recent.items arrive PRE-filtered by
-  // RecentSessionService (setFilter → filterRecentSessions over name/preview/
-  // workspace/model/id), so only the open block needs filtering here — by
-  // the same title the row will actually display.
+  // Open tabs search the displayed title; indexed history also searches metadata.
   const query = input.recent.filterText.trim().toLowerCase();
   const sortedOpenChats = [...input.openChats].sort(
     (a, b) =>
@@ -93,7 +111,9 @@ export function buildChatListModel(input: ChatListInput): ChatListModel {
     // Prefer the indexed session's resolved name (first-prompt preview et
     // al) over the raw tab title ("Session 36"); keep the tab title when
     // the record can't produce anything better.
-    const record = chat.sessionFile ? recordBySessionPath.get(chat.sessionFile) : undefined;
+    const record = chat.sessionFile
+      ? recordBySessionPath.get(canonicalPath(chat.sessionFile))
+      : undefined;
     const resolved = record ? sessionDisplayName(record) : undefined;
     const title = resolved && resolved !== 'Untitled chat' ? resolved : chat.title;
     if (query && !title.toLowerCase().includes(query)) {
@@ -120,19 +140,27 @@ export function buildChatListModel(input: ChatListInput): ChatListModel {
   }
 
   const openSessionFiles = new Set(
-    input.openChats.map((chat) => chat.sessionFile).filter((path): path is string => Boolean(path))
+    input.openChats
+      .map((chat) => chat.sessionFile)
+      .filter((path): path is string => Boolean(path))
+      .map(canonicalPath)
   );
   // Favorites sort BEFORE the 20-row cap so a starred chat can never age
   // out of the list; the stable sort keeps newest-first order inside both
   // the favorite and non-favorite groups.
-  const visibleRecents = input.recent.items
-    .filter((s) => !openSessionFiles.has(s.path))
-    .sort((a, b) => favoriteRank(b.path) - favoriteRank(a.path))
+  const visibleRecents = recentItems
+    .filter((s) => !openSessionFiles.has(canonicalPath(s.path)))
+    .sort(
+      (a, b) =>
+        favoriteRank(b.path) - favoriteRank(a.path) ||
+        b.modifiedAt - a.modifiedAt ||
+        a.path.localeCompare(b.path)
+    )
     .slice(0, 20);
   for (const session of visibleRecents) {
     const title = sessionDisplayName(session);
     rows.push({
-      id: `recent:${session.id}`,
+      id: `recent:${encodeURIComponent(canonicalPath(session.path))}`,
       title,
       // Relative time is NOT baked in here — the renderer formats
       // modifiedAt at paint time so "5m ago" can refresh client-side.

@@ -63,7 +63,7 @@ test('mappings survive restore: rehydrate from persisted memento', () => {
   initChatUriRegistry(memento);
   const path = chatPathFor(sessionTarget);
   rememberChatUri(path, sessionTarget);
-  assert.ok(memento.data.get('piRpc.chatUriMap'), 'mapping should be persisted');
+  assert.ok(memento.data.get(`piRpc.chatUriMap:${path}`), 'mapping should be persisted');
 
   // Simulate a fresh window (new in-memory store) that rehydrates from state.
   __resetChatUriRegistry();
@@ -79,4 +79,18 @@ test('different sessions map to distinct short paths', () => {
     sessionFile: '/Users/x/.pi/agent/sessions/--Users-x-proj--/2026-07-19T03-40_aaaa.jsonl',
   });
   assert.notEqual(a, b);
+});
+
+test('folder identities migrate to shared state and restore unchanged in a saved workspace', () => {
+  const folderState = fakeMemento();
+  const sharedState = fakeMemento();
+  const workspaceState = fakeMemento();
+  const path = chatPathFor(sessionTarget);
+  folderState.data.set('piRpc.chatUriMap', { [path]: sessionTarget });
+  initChatUriRegistry(sharedState, folderState);
+  assert.deepEqual(lookupChatUri(path), sessionTarget);
+  __resetChatUriRegistry();
+  initChatUriRegistry(sharedState, workspaceState);
+  assert.deepEqual(lookupChatUri(path), sessionTarget);
+  assert.equal(lookupChatUri(path)?.sessionFile, sessionTarget.sessionFile);
 });

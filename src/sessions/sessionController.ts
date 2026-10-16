@@ -998,9 +998,12 @@ export class SessionController implements vscode.Disposable {
         } catch (error) {
           // Never duplicate a slow scan on the extension host after worker timeout.
           if (error instanceof Error && error.name === 'SessionIndexTimeoutError') throw error;
+          // Pi allocates new session paths before persisting their first message.
+          const messages = await readSessionHistory(sessionFile, activeLeafId);
           this.logger.warn(
             `History worker unavailable; reading local transcript: ${String(error)}`
           );
+          return messages;
         }
       }
       return await readSessionHistory(sessionFile, activeLeafId);

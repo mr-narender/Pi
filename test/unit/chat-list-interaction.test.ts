@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { JSDOM } from 'jsdom';
+import { buildChatListModel } from '../../src/webview/chatListData';
 
 const dom = new JSDOM('<!doctype html><html><body><div id="app"></div></body></html>', {
   url: 'https://webview.test/',
@@ -53,4 +54,33 @@ test('Agentic view relies on native title actions and row actions target trusted
   document.querySelector<HTMLButtonElement>('[data-act="changes"]')!.click();
   assert.deepEqual(posted.at(-1), { type: 'showChatChanges', rowId: 'recent:one' });
   assert.equal(document.body.hasAttribute('data-agentic-theme'), false);
+});
+
+test('copied session UUIDs have distinct row identities and isolated open/delete actions', () => {
+  const items = ['/project-a/copied.jsonl', '/project-b/copied.jsonl'].map((path, index) => ({
+    id: 'copied-uuid',
+    path,
+    cwd: `/project-${index}`,
+    workspaceLabel: `project-${index}`,
+    displayName: `copy ${index}`,
+    modifiedAt: index + 1,
+    createdAt: 1,
+    messageCount: 1,
+  }));
+  const model = buildChatListModel({
+    openChats: [],
+    recent: { loading: false, filterText: '', items },
+  });
+  assert.equal(new Set(model.rows.map((row) => row.id)).size, 2);
+  dom.window.dispatchEvent(
+    new dom.window.MessageEvent('message', { data: { type: 'listSnapshot', model } })
+  );
+  const rows = [...dom.window.document.querySelectorAll<HTMLElement>('.chat-list-row')];
+  posted.length = 0;
+  rows[0]!.click();
+  assert.equal(posted.length, 1);
+  assert.equal(posted[0]!.sessionPath, model.rows[0]!.sessionPath);
+  posted.length = 0;
+  rows[1]!.querySelector<HTMLButtonElement>('[data-act="delete"]')!.click();
+  assert.deepEqual(posted, [{ type: 'deleteChat', sessionPath: model.rows[1]!.sessionPath }]);
 });

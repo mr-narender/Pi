@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { basename } from 'node:path';
 import { existsSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import { getSettings, tabTitleSettings } from '../config/settings';
 import { pickChatModel } from '../commands/modelPicker';
 import { assertNotCoreSlashPrompt } from '../commands/coreSlash';
@@ -309,7 +310,7 @@ export class ChatTabManager implements vscode.Disposable {
       activateResource: (resource, options) => this.activateResource(resource, options),
       getActiveContext: () => this.getActiveContext(),
     });
-    this.sessions = new SessionIndex(context.workspaceState);
+    this.sessions = new SessionIndex(context.globalState, context.workspaceState);
     this.controllerSubscriptions.push(
       vscode.window.onDidChangeWindowState(() => this.clearViewedCompletions())
     );
@@ -1025,7 +1026,7 @@ export class ChatTabManager implements vscode.Disposable {
         kind: 'workspaceDraft',
         // Unique per click: every New Chat is a FRESH draft tab, and a draft
         // that became a session keeps living in its own tab (bound in place).
-        draftId: `d${this.nextSessionNumber()}`,
+        draftId: randomUUID(),
       },
       options
     );
@@ -1991,28 +1992,11 @@ export class ChatTabManager implements vscode.Disposable {
     }));
   }
 
-  /**
-   * Stable identity key for a chat resource. Derived from the parsed target
-   * (workspace + session), NOT the raw URI string, so tabs are keyed by what
-   * they represent even if the cosmetic URI path/label changes.
-   */
-  /**
-   * A usable fallback target (New Chat for the active/first workspace folder)
-   * for when a chat URI cannot be resolved to a known session — so a stale
-   * restored tab opens as a fresh chat instead of erroring.
-   */
-  public fallbackDraftTarget(): ChatTabTarget | undefined {
-    const folder = this.registry.getActive()?.folder ?? vscode.workspace.workspaceFolders?.[0];
-    return folder
-      ? { workspaceFolderUri: folder.uri.toString(), kind: 'workspaceDraft' }
-      : undefined;
-  }
-
   // ALL tab↔session identity questions route through SessionIndex (#2 of the
   // hardening review) — bindings, owners, effective targets, registry keys.
   private readonly sessions: SessionIndex;
 
-  private resolveTarget(resource: vscode.Uri): ChatTabTarget | undefined {
+  public resolveTarget(resource: vscode.Uri): ChatTabTarget | undefined {
     return this.sessions.resolveTarget(resource);
   }
 
