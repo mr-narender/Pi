@@ -4,6 +4,8 @@ import { chatTargetSessionKey, type ChatTabTarget } from './uriContract';
 import type { SessionController } from '../sessions/sessionController';
 import { VersionedStore } from '../state/store';
 
+type SavedBinding = { source: 'live' | 'legacy'; target: ChatTabTarget } | { source: 'ambiguous' };
+
 /**
  * #2 (hardening review): the ONE owner of tab↔session identity. Previously this
  * lived in five coordinated mechanisms spread through ChatTabManager
@@ -22,9 +24,11 @@ export class SessionIndex {
   private readonly bindings = new Map<string, ChatTabTarget>();
   private loaded = false;
   private readonly store: VersionedStore;
+  private readonly legacyStore?: VersionedStore;
 
-  public constructor(memento: vscode.Memento) {
+  public constructor(memento: vscode.Memento, legacyWorkspaceState?: vscode.Memento) {
     this.store = new VersionedStore(memento);
+    if (legacyWorkspaceState) this.legacyStore = new VersionedStore(legacyWorkspaceState);
   }
 
   private load(): void {
@@ -32,18 +36,25 @@ export class SessionIndex {
       return;
     }
     this.loaded = true;
-    const raw = this.store.get<Record<string, ChatTabTarget>>('draftBindings', {});
-    for (const [uri, target] of Object.entries(raw)) {
+    const raw = {
+      ...this.legacyStore?.get<Record<string, ChatTabTarget>>('draftBindings', {}),
+      ...this.store.get<Record<string, ChatTabTarget>>('draftBindings', {}),
+    };
+    for (const [uri, original] of Object.entries(raw)) {
+      const target =
+        this.legacyStore?.get<ChatTabTarget>(`draftBinding:${uri}`, original) ?? original;
       this.bindings.set(uri, target);
+      this.legacyStore?.set(`draftBinding:${uri}`, target);
+      const saved = this.store.get<SavedBinding | undefined>(`draftBinding:${uri}`, undefined);
+      if (!saved) {
+        this.store.set<SavedBinding>(`draftBinding:${uri}`, { source: 'legacy', target });
+      } else if (
+        saved.source === 'legacy' &&
+        chatTargetSessionKey(saved.target) !== chatTargetSessionKey(target)
+      ) {
+        this.store.set<SavedBinding>(`draftBinding:${uri}`, { source: 'ambiguous' });
+      }
     }
-  }
-
-  private persist(): void {
-    const raw: Record<string, ChatTabTarget> = {};
-    for (const [uri, target] of this.bindings) {
-      raw[uri] = target;
-    }
-    this.store.set('draftBindings', raw);
   }
 
   /** The EFFECTIVE target for a resource: a bound draft resolves to its session. */
@@ -54,10 +65,24 @@ export class SessionIndex {
     }
     if (parsed.kind === 'workspaceDraft') {
       this.load();
-      const bound = this.bindings.get(resource.toString());
-      if (bound) {
-        return bound;
+      // Counter-based legacy drafts can mean different chats in different workspaces.
+      if (!parsed.draftId || /^d\d+$/.test(parsed.draftId)) {
+        const local =
+          this.legacyStore?.get<ChatTabTarget | undefined>(
+            `draftBinding:${resource.toString()}`,
+            this.bindings.get(resource.toString())
+          ) ?? this.bindings.get(resource.toString());
+        if (local) return local;
       }
+      const saved = this.store.get<SavedBinding | undefined>(
+        `draftBinding:${resource.toString()}`,
+        undefined
+      );
+      if (saved?.source === 'live') return saved.target;
+      const local = this.bindings.get(resource.toString());
+      if (local) return local;
+      if (saved?.source === 'legacy') return saved.target;
+      if (saved?.source === 'ambiguous') return undefined;
     }
     return parsed;
   }
@@ -71,16 +96,29 @@ export class SessionIndex {
   public bind(resource: vscode.Uri, target: ChatTabTarget): void {
     this.load();
     this.bindings.set(resource.toString(), target);
-    this.persist();
+    const parsed = parseChatUri(resource);
+    if (parsed?.kind === 'workspaceDraft' && (!parsed.draftId || /^d\d+$/.test(parsed.draftId))) {
+      const key = `draftBinding:${resource.toString()}`;
+      this.legacyStore?.set(key, target);
+      const saved = this.store.get<SavedBinding | undefined>(key, undefined);
+      this.store.set<SavedBinding>(
+        key,
+        !saved ||
+          (saved.source !== 'ambiguous' &&
+            chatTargetSessionKey(saved.target) === chatTargetSessionKey(target))
+          ? { source: 'legacy', target }
+          : { source: 'ambiguous' }
+      );
+      return;
+    }
+    this.store.set<SavedBinding>(`draftBinding:${resource.toString()}`, { source: 'live', target });
   }
 
   /** @returns true when a binding existed and was removed. */
   public unbind(resourceKey: string): boolean {
     this.load();
     const had = this.bindings.delete(resourceKey);
-    if (had) {
-      this.persist();
-    }
+    // Closing a tab drops live ownership, not its saved restore identity.
     return had;
   }
 
