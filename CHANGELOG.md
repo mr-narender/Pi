@@ -2,6 +2,9 @@
 
 ## 0.2.35
 
+- Open Mermaid diagrams in Preview by default, preserve explicit Code choices,
+  and size nodes to their labels without stretching diagrams across the pane.
+  Reduce Soft card padding and spacing while retaining clear reply boundaries.
 - Give each Pi reply one soft card with a clear label, keeping work details
   compact and code previews distinct inside the reply.
 - Route Undo/Redo shortcuts to the composer and make submitted text recoverable

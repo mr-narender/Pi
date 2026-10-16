@@ -805,6 +805,54 @@ test('Thinking starts compact and preserves user expansion across passive snapsh
   assert.equal(detail().open, false);
 });
 
+test('Mermaid defaults to Preview and preserves an explicit Code choice across snapshots', () => {
+  const state = {
+    sessionId: 'mermaid-default',
+    connectionState: 'ready' as const,
+    messages: answer('```mermaid\nflowchart LR\nA --> B\n```'),
+  };
+  render(state);
+  const wrap = () => dom.window.document.querySelector<HTMLElement>('.mermaid-wrap')!;
+  assert.equal(wrap().dataset.mermaidView, 'preview');
+  assert.equal(wrap().querySelector<HTMLElement>('.mermaid-preview')!.hidden, false);
+  wrap().querySelector<HTMLButtonElement>('[data-mermaid-mode="code"]')!.click();
+  render({ ...state, statuses: { task: 'updated' } });
+  assert.equal(wrap().dataset.mermaidView, 'code');
+  assert.equal(wrap().querySelector<HTMLElement>('.mermaid-code')!.hidden, false);
+});
+
+test('streaming preserves an explicit Mermaid Code choice through reveal ticks', async () => {
+  send('```mermaid\nflowchart LR\nA --> B\n```\n' + 'more text '.repeat(100), {
+    sessionId: 'mermaid-stream',
+    isStreaming: true,
+  });
+  await new Promise((resolve) => setTimeout(resolve, 180));
+  for (let i = 0; i < 12; i++) tick();
+  const wrap = () => dom.window.document.querySelector<HTMLElement>('.mermaid-wrap')!;
+  assert.ok(wrap());
+  wrap().querySelector<HTMLButtonElement>('[data-mermaid-mode="code"]')!.click();
+  assert.equal(wrap().dataset.mermaidView, 'code');
+  tick();
+  assert.equal(wrap().dataset.mermaidView, 'code');
+  assert.equal(wrap().querySelector<HTMLElement>('.mermaid-code')!.hidden, false);
+});
+
+test('settled typewriter catch-up defers Mermaid rendering until reveal finishes', async () => {
+  send('', { sessionId: 'mermaid-catch-up' });
+  await new Promise((resolve) => setTimeout(resolve, 180));
+  send('```mermaid\nflowchart LR\nA --> B\n```\n' + 'more text '.repeat(100), {
+    sessionId: 'mermaid-catch-up',
+    connectionState: 'ready',
+    isStreaming: false,
+    currentAssistantMessageId: undefined,
+  });
+  for (let i = 0; i < 12; i++) tick();
+  assert.equal(
+    dom.window.document.querySelector('.mermaid-loading')?.textContent,
+    'Preview will appear when the response finishes.'
+  );
+});
+
 test('local reveals preserve a scrolled-up reader and follow an already pinned reader', async () => {
   send('new answer '.repeat(200), {
     sessionId: 'scroll',

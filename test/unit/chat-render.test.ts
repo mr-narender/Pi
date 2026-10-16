@@ -1092,7 +1092,12 @@ test('renderRichText gives Mermaid blocks a native preview shell and expanded vi
   assert.equal(root.querySelector('.mermaid-error')?.hasAttribute('hidden'), true);
   assert.equal(root.querySelectorAll('.mermaid-toggle').length, 2);
   assert.equal(root.querySelector('.mermaid-expand')?.hasAttribute('disabled'), true);
-  assert.equal(root.querySelector('.mermaid-preview')?.hasAttribute('hidden'), true);
+  assert.equal(root.querySelector('.mermaid-preview')?.hasAttribute('hidden'), false);
+  assert.equal(root.querySelector('.mermaid-code')?.hasAttribute('hidden'), true);
+  assert.equal(
+    root.querySelector('[data-mermaid-mode="preview"]')?.getAttribute('aria-pressed'),
+    'true'
+  );
   dom.window.close();
 });
 

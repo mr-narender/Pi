@@ -2481,7 +2481,7 @@ button.ghost:hover,
 }
 #messages .mermaid-preview-stage {
   display: grid;
-  min-height: 160px;
+  min-height: 96px;
   place-items: center;
 }
 #messages .mermaid-image {
@@ -3774,15 +3774,15 @@ body {
 
 #messages .message-assistant {
   width: 100%;
-  margin: 10px 0 24px;
-  padding: 17px 20px 20px;
+  margin: 8px 0 16px;
+  padding: 12px 14px;
   border: 1px solid var(--pi-hairline);
   border-radius: 14px;
   background: var(--pi-surface-group);
 }
 
 #messages .message-assistant .message-role {
-  margin-bottom: 12px;
+  margin-bottom: 8px;
   font-size: 12px;
   font-weight: 650;
   letter-spacing: 0;
@@ -3963,7 +3963,7 @@ body {
 }
 
 #messages .mermaid-preview {
-  padding: 26px;
+  padding: 14px;
   background: var(--vscode-editor-background);
 }
 

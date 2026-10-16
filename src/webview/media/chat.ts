@@ -701,7 +701,7 @@ function loadMermaid(): Promise<typeof import('mermaid').default> {
         securityLevel: 'strict',
         suppressErrorRendering: true,
         theme: 'base',
-        flowchart: { htmlLabels: false, useMaxWidth: true },
+        flowchart: { htmlLabels: false, useMaxWidth: false, minNodeWidth: 0 },
         themeVariables: {
           background: 'transparent',
           fontFamily: cssColor('--vscode-font-family', 'system-ui, sans-serif'),
@@ -785,13 +785,32 @@ function setMermaidView(wrap: HTMLElement, mode: 'code' | 'preview'): void {
     button.classList.toggle('is-active', active);
     button.setAttribute('aria-pressed', String(active));
   }
-  if (mode === 'preview') void renderMermaidPreview(wrap);
+  if (mode === 'preview') {
+    if (wrap.closest('.js-stream-text')) {
+      const loading = wrap.querySelector('.mermaid-loading');
+      if (loading) loading.textContent = 'Preview will appear when the response finishes.';
+    } else {
+      void renderMermaidPreview(wrap);
+    }
+  }
 }
 
 function mermaidKey(wrap: HTMLElement): string {
   const message = wrap.closest<HTMLElement>('[data-mid]');
   const index = Array.from(message?.querySelectorAll('.mermaid-wrap') ?? []).indexOf(wrap);
   return `${wrap.closest<HTMLElement>('.layout')?.dataset.mermaidSession ?? ''}:${message?.dataset.mid ?? ''}:${index}`;
+}
+
+function bindMermaidToggles(container: HTMLElement): void {
+  for (const button of Array.from(
+    container.querySelectorAll<HTMLButtonElement>('.mermaid-toggle')
+  )) {
+    bindOnce(button, 'click', () => {
+      const wrap = button.closest<HTMLElement>('.mermaid-wrap');
+      const mode = button.dataset.mermaidMode;
+      if (wrap && (mode === 'code' || mode === 'preview')) setMermaidView(wrap, mode);
+    });
+  }
 }
 
 function closeMermaidDialog(): void {
@@ -1188,10 +1207,11 @@ function renderNow(snapshot: WebviewSnapshot): void {
       openMenus.add(id);
     }
   }
-  const previewMermaids = new Set(
-    Array.from(
-      document.querySelectorAll<HTMLElement>('.mermaid-wrap[data-mermaid-view="preview"]')
-    ).map(mermaidKey)
+  const mermaidModes = new Map(
+    Array.from(document.querySelectorAll<HTMLElement>('.mermaid-wrap')).map((wrap) => [
+      mermaidKey(wrap),
+      wrap.dataset.mermaidView === 'code' ? ('code' as const) : ('preview' as const),
+    ])
   );
 
   // Patch the DOM instead of rebuilding it (root.innerHTML = ...). Rebuilding
@@ -1246,9 +1266,7 @@ function renderNow(snapshot: WebviewSnapshot): void {
     el.open = true;
   }
   for (const wrap of Array.from(document.querySelectorAll<HTMLElement>('.mermaid-wrap'))) {
-    if (previewMermaids.has(mermaidKey(wrap))) {
-      setMermaidView(wrap, 'preview');
-    }
+    setMermaidView(wrap, mermaidModes.get(mermaidKey(wrap)) ?? 'preview');
   }
   restoreMermaidDialog();
 
@@ -1680,13 +1698,7 @@ function renderNow(snapshot: WebviewSnapshot): void {
       }
     });
   }
-  for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>('.mermaid-toggle'))) {
-    bindOnce(button, 'click', () => {
-      const wrap = button.closest<HTMLElement>('.mermaid-wrap');
-      const mode = button.dataset.mermaidMode;
-      if (wrap && (mode === 'code' || mode === 'preview')) setMermaidView(wrap, mode);
-    });
-  }
+  bindMermaidToggles(root);
   for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>('.mermaid-expand'))) {
     bindOnce(button, 'click', () => {
       const wrap = button.closest<HTMLElement>('.mermaid-wrap');
@@ -2285,7 +2297,14 @@ let streamPaintedText = '';
 function paintStream(node: HTMLElement): void {
   const revealed = streamRaw.slice(0, streamRevealLen);
   if (streamPaintedNode === node && streamPaintedText === revealed) return;
+  const modes = Array.from(node.querySelectorAll<HTMLElement>('.mermaid-wrap')).map(
+    (wrap) => wrap.dataset.mermaidView
+  );
   node.innerHTML = renderRichText(revealed, true);
+  Array.from(node.querySelectorAll<HTMLElement>('.mermaid-wrap')).forEach((wrap, index) => {
+    setMermaidView(wrap, modes[index] === 'code' ? 'code' : 'preview');
+  });
+  bindMermaidToggles(node);
   streamPaintedNode = node;
   streamPaintedText = revealed;
 }

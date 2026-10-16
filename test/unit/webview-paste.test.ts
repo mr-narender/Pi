@@ -218,6 +218,11 @@ test('Mermaid preview toggles, expands, closes with Escape, and restores focus',
   const imageSrc = wrap.querySelector<HTMLImageElement>('.mermaid-image')!.src;
   assert.match(imageSrc, /^data:image\/svg\+xml/);
   assert.match(decodeURIComponent(imageSrc), /<svg/);
+  const svgRoot = new dom.window.DOMParser().parseFromString(
+    decodeURIComponent(imageSrc.slice(imageSrc.indexOf(',') + 1)),
+    'image/svg+xml'
+  ).documentElement;
+  assert.notEqual(svgRoot.getAttribute('width'), '100%', 'diagram must retain an intrinsic width');
   assert.equal(expand.disabled, false);
   expand.click();
   const dialog = dom.window.document.getElementById('mermaid-dialog')!;
@@ -317,7 +322,7 @@ test('Mermaid preview stays isolated as an SVG image', async () => {
   assert.doesNotMatch(svg, /<script|javascript:|onload=/i);
 });
 
-test('identical Mermaid blocks keep independent Preview state across snapshots', () => {
+test('identical Mermaid blocks keep independent Code and Preview choices across snapshots', () => {
   const repeated = ['```mermaid', 'flowchart LR', 'A --> B', '```'].join('\n');
   const repeatedSnapshot = snapshot({
     sequence: 3,
@@ -338,6 +343,7 @@ test('identical Mermaid blocks keep independent Preview state across snapshots',
   const wraps = Array.from(dom.window.document.querySelectorAll<HTMLElement>('.mermaid-wrap'));
   assert.equal(wraps.length, 2);
   wraps[0]!.querySelector<HTMLButtonElement>('[data-mermaid-mode="preview"]')!.click();
+  wraps[1]!.querySelector<HTMLButtonElement>('[data-mermaid-mode="code"]')!.click();
   dom.window.dispatchEvent(
     new dom.window.MessageEvent('message', {
       data: { type: 'snapshot', snapshot: { ...repeatedSnapshot, sequence: 4 } },
