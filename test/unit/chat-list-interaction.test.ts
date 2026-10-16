@@ -84,3 +84,31 @@ test('copied session UUIDs have distinct row identities and isolated open/delete
   rows[1]!.querySelector<HTMLButtonElement>('[data-act="delete"]')!.click();
   assert.deepEqual(posted, [{ type: 'deleteChat', sessionPath: model.rows[1]!.sessionPath }]);
 });
+
+test('sidebar folder selector precedes search and sends only a list filter message', () => {
+  const model = buildChatListModel({
+    openChats: [],
+    recent: { loading: false, filterText: '', items: [] },
+    folders: ['/projects/a', '/projects/b'],
+    selectedFolder: '/projects/a',
+  });
+  dom.window.dispatchEvent(
+    new dom.window.MessageEvent('message', {
+      data: { type: 'listSnapshot', model },
+    })
+  );
+  const select = dom.window.document.querySelector<HTMLSelectElement>('#chat-list-folder')!;
+  assert.equal(select.value, '/projects/a');
+  select.value = '/projects/b';
+  posted.length = 0;
+  select.dispatchEvent(new dom.window.Event('change'));
+  assert.deepEqual(posted, [{ type: 'filterChatFolder', path: '/projects/b' }]);
+  assert.equal(dom.window.document.querySelector('#folder-select'), null);
+  const html = dom.window.document.getElementById('app')!.innerHTML;
+  assert.ok(html.indexOf('chat-list-folder') < html.indexOf('chat-list-search'));
+  assert.equal(
+    model.selectedFolder,
+    '/projects/a',
+    'selection does not mutate the active snapshot'
+  );
+});

@@ -1173,8 +1173,6 @@ export class ChatTabManager implements vscode.Disposable {
         return this.handleRemoveImageItem(context, host.resource, parsed.itemId);
       case 'openAttachment':
         return this.handleOpenAttachment(host, parsed.uri);
-      case 'switchFolder':
-        return this.handleSwitchFolder(parsed.folderUri);
       case 'debugLog':
         context.controller.log('info', `[webview] ${parsed.text}`);
         return;
@@ -1308,11 +1306,6 @@ export class ChatTabManager implements vscode.Disposable {
           }
         });
     }
-  }
-
-  private async handleSwitchFolder(folderUri: string): Promise<void> {
-    this.registry.setActive(folderUri);
-    await this.openCurrentChat({ folderUri });
   }
 
   // Batch 5 of the onMessage de-bloat (A4): screen/file-op handlers.

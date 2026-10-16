@@ -35,7 +35,6 @@ export type WebviewInboundMessage =
   | { type: 'removeContextItem'; itemId: string }
   | { type: 'removeImageItem'; itemId: string }
   | { type: 'openAttachment'; uri: string }
-  | { type: 'switchFolder'; folderUri: string }
   | { type: 'loadOlder' }
   | { type: 'openExternal'; url: string }
   | { type: 'openFile'; path: string }
@@ -220,10 +219,6 @@ export function parseWebviewMessage(value: unknown): WebviewInboundMessage | und
       }
       return response;
     }
-    case 'switchFolder':
-      return typeof record.folderUri === 'string'
-        ? { type: 'switchFolder', folderUri: record.folderUri }
-        : undefined;
     default:
       return undefined;
   }

@@ -1557,11 +1557,6 @@ function renderNow(snapshot: WebviewSnapshot): void {
     });
   }
 
-  bindOnce(document.getElementById('folder-select'), 'change', (event) => {
-    const target = event.target as HTMLSelectElement;
-    vscode.postMessage({ type: 'switchFolder', folderUri: target.value });
-  });
-
   for (const button of Array.from(
     root.querySelectorAll<HTMLButtonElement>('button[data-send-command]')
   )) {
