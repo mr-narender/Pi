@@ -1,7 +1,7 @@
 import { createReadStream, existsSync, realpathSync } from 'node:fs';
 import { readFile, readdir, stat } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
-import { basename, join, resolve } from 'node:path';
+import { basename, join, parse, resolve, win32 } from 'node:path';
 import { createInterface } from 'node:readline';
 import { redactText } from '../diagnostics/redaction';
 
@@ -109,8 +109,8 @@ export function getDefaultSessionDirForWorkspace(
   workspacePath: string,
   agentDir = getAgentDir()
 ): string {
-  // Saved workspaces can retain an alias while Pi records its canonical process cwd.
-  const resolvedWorkspace = normalizeWorkspaceCwd(workspacePath);
+  // Match Pi's storage spelling; canonical identity is used only for discovery/comparison.
+  const resolvedWorkspace = resolve(workspacePath);
   const safePath = `--${resolvedWorkspace.replace(/^[/\\]/, '').replace(/[/\\:]/g, '-')}--`;
   return join(resolve(agentDir), 'sessions', safePath);
 }
@@ -415,13 +415,17 @@ async function readSessionRecords(
  * drop any trailing separators. Best-effort — never throws.
  */
 export function normalizeWorkspaceCwd(value: string): string {
-  let normalized = resolve(value);
+  const windows = process.platform === 'win32' || /^(?:[a-z]:[/\\]|\\\\)/i.test(value);
+  let normalized = windows ? win32.resolve(value) : resolve(value);
   try {
     normalized = realpathSync.native(normalized);
   } catch {
     // Path may not exist (deleted worktree); fall back to the resolved form.
   }
-  return normalized.replace(/[/\\]+$/, '');
+  const root = (windows ? win32.parse(normalized) : parse(normalized)).root;
+  normalized =
+    normalized.length > root.length ? normalized.replace(windows ? /[/\\]+$/ : /\/+$/, '') : root;
+  return windows ? normalized.toLowerCase() : normalized;
 }
 
 /**
@@ -441,14 +445,51 @@ export async function readRecentSessionsIndex(
 ): Promise<RecentSessionsIndex> {
   const resolvedWorkspacePath = resolve(context.workspacePath);
   const { sessionDir, filterByWorkspaceCwd } = await resolveSessionDir(context);
-  if (!existsSync(sessionDir)) {
-    return { sessionDir, filterByWorkspaceCwd, sessions: [] };
+  const directories = new Set([sessionDir]);
+  if (!filterByWorkspaceCwd) {
+    // Existing Pi buckets retain the cwd spelling used at creation (including
+    // symlink aliases). Probe headers, never decode the lossy bucket name.
+    const root = getSessionsRootDir();
+    const buckets = (await readdir(root, { withFileTypes: true }).catch(() => [])).filter(
+      (entry) => entry.isDirectory() && entry.name.startsWith('--') && entry.name.endsWith('--')
+    );
+    for (let offset = 0; offset < buckets.length; offset += 16) {
+      await Promise.all(
+        buckets.slice(offset, offset + 16).map(async (bucket) => {
+          const directory = join(root, bucket.name);
+          if (directories.has(directory)) return;
+          const entries = await readdir(directory, { withFileTypes: true }).catch(() => []);
+          for (const entry of entries) {
+            if (!entry.isFile() || !entry.name.endsWith('.jsonl')) continue;
+            const header = await readSessionHeader(join(directory, entry.name));
+            if (header?.type !== 'session' || typeof header.cwd !== 'string' || !header.cwd)
+              continue;
+            if (sameWorkspaceCwd(header.cwd, resolvedWorkspacePath)) {
+              directories.add(directory);
+              break;
+            }
+          }
+        })
+      );
+    }
   }
 
-  const entries = await readdir(sessionDir, { withFileTypes: true });
-  const files = entries
-    .filter((entry) => entry.isFile() && entry.name.endsWith('.jsonl'))
-    .map((entry) => join(sessionDir, entry.name))
+  const files = (
+    await Promise.all(
+      [...directories].map(async (directory) => {
+        const entries = await readdir(directory, { withFileTypes: true }).catch(
+          (error: NodeJS.ErrnoException) => {
+            if (error.code === 'ENOENT' || directory !== sessionDir) return [];
+            throw error;
+          }
+        );
+        return entries
+          .filter((entry) => entry.isFile() && entry.name.endsWith('.jsonl'))
+          .map((entry) => join(directory, entry.name));
+      })
+    )
+  )
+    .flat()
     .sort((left, right) => left.localeCompare(right));
   const now = Date.now();
 
@@ -458,7 +499,7 @@ export async function readRecentSessionsIndex(
       if (!item.session) {
         return false;
       }
-      return !filterByWorkspaceCwd || sameWorkspaceCwd(item.session.cwd, resolvedWorkspacePath);
+      return sameWorkspaceCwd(item.session.cwd, resolvedWorkspacePath);
     })
     .sort(
       (left, right) =>
@@ -523,7 +564,7 @@ export async function readAllProjectsSessions(
   if (!existsSync(root)) {
     return [];
   }
-  const excluded = new Set(excludeCwds.map((cwd) => resolve(cwd)));
+  const excluded = new Set(excludeCwds.map(normalizeWorkspaceCwd));
   // macOS tmpdir() is /var/folders/… while session cwds record the resolved
   // /private/var/folders/… — match both spellings.
   const tempRoot = resolve(tmpdir());
@@ -556,7 +597,10 @@ export async function readAllProjectsSessions(
       const cwd = resolve(record.cwd);
       // Skip the current window's own projects (already listed) and throwaway
       // temp-dir sessions (diagnostics, tests).
-      if (excluded.has(cwd) || tempRoots.some((root) => cwd.startsWith(root))) {
+      if (
+        excluded.has(normalizeWorkspaceCwd(cwd)) ||
+        tempRoots.some((root) => cwd.startsWith(root))
+      ) {
         continue;
       }
       sessions.push({ ...record, workspaceLabel: projectLabelForCwd(cwd) });

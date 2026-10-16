@@ -1,8 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, realpath, rm, symlink, utimes, writeFile } from 'node:fs/promises';
+import {
+  mkdtemp,
+  mkdir,
+  readFile,
+  realpath,
+  rm,
+  symlink,
+  utimes,
+  writeFile,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import {
   filterRecentSessions,
   formatRelativeTimestamp,
@@ -53,10 +62,105 @@ test('folder and saved-workspace aliases discover the same physical directory hi
       saved.sessions.map((s) => s.path),
       direct.sessions.map((s) => s.path)
     );
-    assert.equal(saved.sessionDir, direct.sessionDir);
   } finally {
     if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR;
     else process.env.PI_CODING_AGENT_DIR = previous;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('history written under multiple Pi cwd spellings is visible from every folder alias', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'pi-workspace-aliases-'));
+  const project = join(root, 'project');
+  const alias = join(root, 'saved-workspace');
+  const agentDir = join(root, 'agent');
+  const previous = process.env.PI_CODING_AGENT_DIR;
+  process.env.PI_CODING_AGENT_DIR = agentDir;
+  try {
+    await mkdir(project);
+    await symlink(project, alias, 'junction');
+    const canonical = await realpath(project);
+    // Pi encodes the supplied cwd; it does not realpath it before choosing a bucket.
+    for (const [id, cwd] of [
+      ['direct', canonical],
+      ['saved', alias],
+    ] as const) {
+      const bucket = `--${resolve(cwd)
+        .replace(/^[/\\]/, '')
+        .replace(/[/\\:]/g, '-')}--`;
+      const dir = join(agentDir, 'sessions', bucket);
+      await mkdir(dir, { recursive: true });
+      await writeSession(join(dir, `${id}.jsonl`), { type: 'session', id, cwd }, []);
+    }
+    for (const workspacePath of [canonical, alias]) {
+      const index = await readRecentSessionsIndex({ workspaceName: 'project', workspacePath });
+      assert.deepEqual(index.sessions.map((s) => s.id).sort(), ['direct', 'saved']);
+    }
+  } finally {
+    if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR;
+    else process.env.PI_CODING_AGENT_DIR = previous;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('alias discovery checks later headers in a bucket with colliding encoded cwd names', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'pi-workspace-collision-'));
+  const project = join(root, 'project');
+  const alias = join(root, 'a-b', 'c');
+  const other = join(root, 'a', 'b-c');
+  const agentDir = join(root, 'agent');
+  const previous = process.env.PI_CODING_AGENT_DIR;
+  process.env.PI_CODING_AGENT_DIR = agentDir;
+  try {
+    await mkdir(project);
+    await mkdir(join(root, 'a-b'));
+    await mkdir(other, { recursive: true });
+    await symlink(project, alias, 'junction');
+    const dir = getDefaultSessionDirForWorkspace(alias, agentDir);
+    assert.equal(dir, getDefaultSessionDirForWorkspace(other, agentDir));
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, '0-corrupt.jsonl'), 'not a session\n');
+    await writeSession(
+      join(dir, 'a-other.jsonl'),
+      { type: 'session', id: 'other', cwd: other },
+      []
+    );
+    const mine = join(dir, 'z-mine.jsonl');
+    await writeSession(mine, { type: 'session', id: 'mine', cwd: alias }, []);
+    const index = await readRecentSessionsIndex({
+      workspaceName: 'Project',
+      workspacePath: project,
+    });
+    assert.deepEqual(
+      index.sessions.map((s) => s.path),
+      [mine]
+    );
+    assert.equal(
+      (await readFile(mine, 'utf8')).includes('mine'),
+      true,
+      'discovery leaves files intact'
+    );
+  } finally {
+    if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR;
+    else process.env.PI_CODING_AGENT_DIR = previous;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('primary session directory errors remain errors rather than a successful empty list', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'pi-workspace-directory-error-'));
+  const invalidDirectory = join(root, 'file');
+  try {
+    await writeFile(invalidDirectory, 'not a directory');
+    await assert.rejects(
+      readRecentSessionsIndex({
+        workspaceName: 'Project',
+        workspacePath: root,
+        additionalArgs: ['--session-dir', invalidDirectory],
+      }),
+      { code: 'ENOTDIR' }
+    );
+  } finally {
     await rm(root, { recursive: true, force: true });
   }
 });
@@ -416,4 +520,22 @@ test('sameWorkspaceCwd is lenient for sessions with no recorded cwd', () => {
 
 test('sameWorkspaceCwd rejects genuinely different directories', () => {
   assert.equal(sameWorkspaceCwd('/Users/x/other', '/Users/x/proj'), false);
+  if (process.platform !== 'win32') {
+    assert.equal(sameWorkspaceCwd('/home/user/project\\', '/home/user/project'), false);
+  }
+  assert.notEqual(normalizeWorkspaceCwd('/'), '', 'root identity must not become an empty string');
+});
+
+test('workspace identity handles Windows drives and UNC casing without folding Linux paths', () => {
+  assert.equal(sameWorkspaceCwd('C:\\Users\\Narender\\Dev\\', 'c:/users/narender/dev'), true);
+  assert.equal(
+    sameWorkspaceCwd('\\\\SERVER\\Share\\Project', '\\\\server\\share\\project\\'),
+    true
+  );
+  assert.equal(
+    sameWorkspaceCwd('/home/user/Project', '/home/user/project'),
+    process.platform === 'win32'
+  );
+  assert.equal(sameWorkspaceCwd('C:\\work\\project', 'D:\\work\\project'), false);
+  assert.equal(sameWorkspaceCwd('\\\\server\\share-a', '\\\\server\\share-b'), false);
 });
