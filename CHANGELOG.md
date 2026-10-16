@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.36
+
+- Discover the same chat history when opening a folder directly or through a
+  saved workspace, including sessions stored under symlink aliases.
+- Match Windows drive and UNC path casing consistently, preserve POSIX path
+  identity, and keep sessions from unrelated projects out of the current list.
+- Preserve storage errors rather than replacing the chat list with an empty result.
+
 ## 0.2.35
 
 - Use matching Pi chat-bubble icons in editor tabs and the sidebar, with gentle
