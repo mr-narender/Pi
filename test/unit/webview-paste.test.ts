@@ -320,6 +320,11 @@ test('Mermaid preview stays isolated as an SVG image', async () => {
   );
   const svg = decodeURIComponent(wrap.querySelector<HTMLImageElement>('.mermaid-image')!.src);
   assert.doesNotMatch(svg, /<script|javascript:|onload=/i);
+  assert.equal(
+    /foreignObject/i.test(svg),
+    false,
+    'SVG text must not depend on fixed HTML label boxes'
+  );
 });
 
 test('a closed Mermaid fence renders before the active reply finishes', async () => {

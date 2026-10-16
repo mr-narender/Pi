@@ -696,15 +696,18 @@ let mermaidReady: Promise<typeof import('mermaid').default> | undefined;
 function loadMermaid(): Promise<typeof import('mermaid').default> {
   return (mermaidReady ??= optionalModule('Mermaid')
     .then(({ default: mermaid }) => {
+      const fontFamily = cssColor('--vscode-font-family', 'system-ui, sans-serif');
       mermaid.initialize({
         startOnLoad: false,
         securityLevel: 'strict',
         suppressErrorRendering: true,
         theme: 'base',
-        flowchart: { htmlLabels: false, useMaxWidth: false, minNodeWidth: 0 },
+        htmlLabels: false,
+        fontFamily,
+        flowchart: { useMaxWidth: false, minNodeWidth: 0 },
         themeVariables: {
           background: 'transparent',
-          fontFamily: cssColor('--vscode-font-family', 'system-ui, sans-serif'),
+          fontFamily,
           primaryColor: cssColor('--vscode-editorWidget-background', '#f5f5f5'),
           primaryTextColor: cssColor('--vscode-editor-foreground', '#242424'),
           primaryBorderColor: cssColor('--vscode-panel-border', '#8a8a8a'),
