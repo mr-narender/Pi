@@ -822,7 +822,7 @@ test('Mermaid defaults to Preview and preserves an explicit Code choice across s
 });
 
 test('streaming preserves an explicit Mermaid Code choice through reveal ticks', async () => {
-  send('```mermaid\nflowchart LR\nA --> B\n```\n' + 'more text '.repeat(100), {
+  send('```mermaid\nflowchart LR\nA --> B\n' + '%% more text\n'.repeat(100), {
     sessionId: 'mermaid-stream',
     isStreaming: true,
   });
@@ -837,10 +837,10 @@ test('streaming preserves an explicit Mermaid Code choice through reveal ticks',
   assert.equal(wrap().querySelector<HTMLElement>('.mermaid-code')!.hidden, false);
 });
 
-test('settled typewriter catch-up defers Mermaid rendering until reveal finishes', async () => {
+test('settled typewriter catch-up defers incomplete Mermaid rendering', async () => {
   send('', { sessionId: 'mermaid-catch-up' });
   await new Promise((resolve) => setTimeout(resolve, 180));
-  send('```mermaid\nflowchart LR\nA --> B\n```\n' + 'more text '.repeat(100), {
+  send('```mermaid\nflowchart LR\nA --> B\n' + '%% more text\n'.repeat(100), {
     sessionId: 'mermaid-catch-up',
     connectionState: 'ready',
     isStreaming: false,

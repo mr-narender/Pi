@@ -934,6 +934,7 @@ export function renderRichText(raw: string, streaming = false): string {
         code.push(lines[index] ?? '');
         index += 1;
       }
+      const closed = index < lines.length;
       index += 1; // skip closing fence
       const codeText = code.join('\n');
       // JSON in Pi's ANSWER: render it as the same structured table used for
@@ -950,7 +951,7 @@ export function renderRichText(raw: string, streaming = false): string {
       }
       if (language.toLowerCase() === 'mermaid') {
         out.push(
-          `<div class="code-wrap mermaid-wrap" data-lang="mermaid" data-mermaid-view="preview"><div class="code-lang"><span class="code-lang-name">Mermaid</span><div class="code-actions"><button type="button" class="mermaid-toggle" data-mermaid-mode="code" aria-pressed="false">Code</button><button type="button" class="mermaid-toggle is-active" data-mermaid-mode="preview" aria-pressed="true">Preview</button><button type="button" class="code-btn mermaid-expand" aria-label="Open diagram full screen" title="Open diagram full screen" disabled>&#x26F6;</button><button type="button" class="code-btn code-copy" aria-label="Copy code" title="Copy code">${COPY_ICON_SVG}</button></div></div><pre class="code-block mermaid-code" hidden><code>${escapeHtml(codeText)}</code></pre><div class="mermaid-preview"><div class="mermaid-preview-stage" role="img" aria-label="Mermaid diagram preview"><span class="mermaid-loading">Rendering diagram…</span></div><p class="mermaid-error" role="alert" hidden>Couldn’t render this diagram. Check the Mermaid syntax.</p></div></div>`
+          `<div class="code-wrap mermaid-wrap" data-lang="mermaid" data-mermaid-view="preview" data-mermaid-complete="${closed}"><div class="code-lang"><span class="code-lang-name">Mermaid</span><div class="code-actions"><button type="button" class="mermaid-toggle" data-mermaid-mode="code" aria-pressed="false">Code</button><button type="button" class="mermaid-toggle is-active" data-mermaid-mode="preview" aria-pressed="true">Preview</button><button type="button" class="code-btn mermaid-expand" aria-label="Open diagram full screen" title="Open diagram full screen" disabled>&#x26F6;</button><button type="button" class="code-btn code-copy" aria-label="Copy code" title="Copy code">${COPY_ICON_SVG}</button></div></div><pre class="code-block mermaid-code" hidden><code>${escapeHtml(codeText)}</code></pre><div class="mermaid-preview"><div class="mermaid-preview-stage" role="img" aria-label="Mermaid diagram preview"><span class="mermaid-loading">Rendering diagram…</span></div><p class="mermaid-error" role="alert" hidden>Couldn’t render this diagram. Check the Mermaid syntax.</p></div></div>`
         );
         continue;
       }

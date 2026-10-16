@@ -322,6 +322,35 @@ test('Mermaid preview stays isolated as an SVG image', async () => {
   assert.doesNotMatch(svg, /<script|javascript:|onload=/i);
 });
 
+test('a closed Mermaid fence renders before the active reply finishes', async () => {
+  const text = '```mermaid\nflowchart LR\nA --> B\n```\nStill writing the explanation';
+  dom.window.dispatchEvent(
+    new dom.window.MessageEvent('message', {
+      data: {
+        type: 'snapshot',
+        snapshot: snapshot({
+          sessionId: 'active-diagram',
+          connectionState: 'busy',
+          isStreaming: true,
+          typewriterSpeed: 'off',
+          currentAssistantMessageId: 'active-diagram',
+          messages: [{ id: 'active-diagram', role: 'assistant', text, attachments: [] }],
+        }),
+      },
+    })
+  );
+  await waitFor(
+    () => Boolean(dom.window.document.querySelector('[data-mid="active-diagram"] .mermaid-image')),
+    'live Mermaid preview'
+  );
+  const wrap = dom.window.document.querySelector<HTMLElement>(
+    '[data-mid="active-diagram"] .mermaid-wrap'
+  )!;
+  wrap.querySelector<HTMLButtonElement>('.mermaid-expand')!.click();
+  assert.equal(dom.window.document.getElementById('mermaid-dialog')!.hidden, false);
+  dom.window.document.getElementById('mermaid-dialog-close')!.click();
+});
+
 test('identical Mermaid blocks keep independent Code and Preview choices across snapshots', () => {
   const repeated = ['```mermaid', 'flowchart LR', 'A --> B', '```'].join('\n');
   const repeatedSnapshot = snapshot({

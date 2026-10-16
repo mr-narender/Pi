@@ -744,6 +744,7 @@ async function renderMermaidPreview(wrap: HTMLElement): Promise<void> {
   const error = preview?.querySelector<HTMLElement>('.mermaid-error');
   const expand = wrap.querySelector<HTMLButtonElement>('.mermaid-expand');
   if (!source || !stage || !error || !expand) return;
+  if (stage.querySelector('.mermaid-image')) return;
 
   stage.setAttribute('aria-busy', 'true');
   error.hidden = true;
@@ -786,7 +787,7 @@ function setMermaidView(wrap: HTMLElement, mode: 'code' | 'preview'): void {
     button.setAttribute('aria-pressed', String(active));
   }
   if (mode === 'preview') {
-    if (wrap.closest('.js-stream-text')) {
+    if (wrap.closest('.js-stream-text') && wrap.dataset.mermaidComplete !== 'true') {
       const loading = wrap.querySelector('.mermaid-loading');
       if (loading) loading.textContent = 'Preview will appear when the response finishes.';
     } else {
@@ -801,7 +802,7 @@ function mermaidKey(wrap: HTMLElement): string {
   return `${wrap.closest<HTMLElement>('.layout')?.dataset.mermaidSession ?? ''}:${message?.dataset.mid ?? ''}:${index}`;
 }
 
-function bindMermaidToggles(container: HTMLElement): void {
+function bindCodeControls(container: HTMLElement): void {
   for (const button of Array.from(
     container.querySelectorAll<HTMLButtonElement>('.mermaid-toggle')
   )) {
@@ -809,6 +810,40 @@ function bindMermaidToggles(container: HTMLElement): void {
       const wrap = button.closest<HTMLElement>('.mermaid-wrap');
       const mode = button.dataset.mermaidMode;
       if (wrap && (mode === 'code' || mode === 'preview')) setMermaidView(wrap, mode);
+    });
+  }
+  for (const button of Array.from(
+    container.querySelectorAll<HTMLButtonElement>('.mermaid-expand')
+  )) {
+    bindOnce(button, 'click', () => {
+      const wrap = button.closest<HTMLElement>('.mermaid-wrap');
+      const src = wrap?.querySelector<HTMLImageElement>('.mermaid-image')?.src;
+      if (!wrap || !src) return;
+      mermaidDialogSrc = src;
+      mermaidDialogKey = mermaidKey(wrap);
+      mermaidReturnFocus = button;
+      restoreMermaidDialog();
+      document.getElementById(MERMAID_DIALOG_CLOSE_ID)?.focus();
+    });
+  }
+  for (const button of Array.from(container.querySelectorAll<HTMLButtonElement>('.code-copy'))) {
+    bindOnce(button, 'click', () => {
+      const code = button.closest('.code-wrap')?.querySelector('.code-block code');
+      const text = code?.textContent ?? '';
+      void navigator.clipboard
+        ?.writeText(text)
+        .then(() => {
+          const previous = button.innerHTML;
+          button.innerHTML = COPIED_ICON_SVG;
+          button.classList.add('is-copied');
+          button.setAttribute('aria-label', 'Copied');
+          setTimeout(() => {
+            button.innerHTML = previous;
+            button.classList.remove('is-copied');
+            button.setAttribute('aria-label', 'Copy code');
+          }, 1200);
+        })
+        .catch(() => undefined);
     });
   }
 }
@@ -1698,39 +1733,7 @@ function renderNow(snapshot: WebviewSnapshot): void {
       }
     });
   }
-  bindMermaidToggles(root);
-  for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>('.mermaid-expand'))) {
-    bindOnce(button, 'click', () => {
-      const wrap = button.closest<HTMLElement>('.mermaid-wrap');
-      const src = wrap?.querySelector<HTMLImageElement>('.mermaid-image')?.src;
-      if (!wrap || !src) return;
-      mermaidDialogSrc = src;
-      mermaidDialogKey = mermaidKey(wrap);
-      mermaidReturnFocus = button;
-      restoreMermaidDialog();
-      document.getElementById(MERMAID_DIALOG_CLOSE_ID)?.focus();
-    });
-  }
-  for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>('.code-copy'))) {
-    bindOnce(button, 'click', () => {
-      const code = button.closest('.code-wrap')?.querySelector('.code-block code');
-      const text = code?.textContent ?? '';
-      void navigator.clipboard
-        ?.writeText(text)
-        .then(() => {
-          const previous = button.innerHTML;
-          button.innerHTML = COPIED_ICON_SVG;
-          button.classList.add('is-copied');
-          button.setAttribute('aria-label', 'Copied');
-          setTimeout(() => {
-            button.innerHTML = previous;
-            button.classList.remove('is-copied');
-            button.setAttribute('aria-label', 'Copy code');
-          }, 1200);
-        })
-        .catch(() => undefined);
-    });
-  }
+  bindCodeControls(root);
 
   bindOnce(document.getElementById(PREVIEW_DIALOG_ID), 'keydown', handlePreviewKeydown);
   bindOnce(document.getElementById(MERMAID_DIALOG_CLOSE_ID), 'click', closeMermaidDialog);
@@ -2297,14 +2300,22 @@ let streamPaintedText = '';
 function paintStream(node: HTMLElement): void {
   const revealed = streamRaw.slice(0, streamRevealLen);
   if (streamPaintedNode === node && streamPaintedText === revealed) return;
-  const modes = Array.from(node.querySelectorAll<HTMLElement>('.mermaid-wrap')).map(
-    (wrap) => wrap.dataset.mermaidView
-  );
+  const diagrams = Array.from(node.querySelectorAll<HTMLElement>('.mermaid-wrap'));
   node.innerHTML = renderRichText(revealed, true);
   Array.from(node.querySelectorAll<HTMLElement>('.mermaid-wrap')).forEach((wrap, index) => {
-    setMermaidView(wrap, modes[index] === 'code' ? 'code' : 'preview');
+    const previous = diagrams[index];
+    if (
+      previous?.dataset.mermaidComplete === 'true' &&
+      wrap.dataset.mermaidComplete === 'true' &&
+      previous.querySelector('.mermaid-code code')?.textContent ===
+        wrap.querySelector('.mermaid-code code')?.textContent
+    ) {
+      wrap.replaceWith(previous);
+      return;
+    }
+    setMermaidView(wrap, previous?.dataset.mermaidView === 'code' ? 'code' : 'preview');
   });
-  bindMermaidToggles(node);
+  bindCodeControls(node);
   streamPaintedNode = node;
   streamPaintedText = revealed;
 }
@@ -2441,7 +2452,9 @@ function advanceTypewriter(): void {
   }
   const raw = el.getAttribute('data-raw') ?? '';
   if (speed === 'off' || prefersReducedMotion()) {
-    el.innerHTML = renderRichText(raw, isLiveWorking(currentSnapshot));
+    streamRaw = raw;
+    streamRevealLen = raw.length;
+    paintStream(el);
     if (!finishSettledReveal()) resetTypewriter();
     return;
   }
