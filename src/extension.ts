@@ -64,6 +64,7 @@ import { RemoteHostClient } from './remote/hostClient';
 import { pairingLink } from './remote/remoteConfig';
 import { showPairingPanel, closePairingPanel, setPairingStatus } from './remote/pairingPanel';
 import type { SessionController } from './sessions/sessionController';
+let deactivateChatTabs: (() => Promise<void>) | undefined;
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -284,6 +285,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // restored, so restored tabs resolve to their session identity.
   initChatUriRegistry(context.workspaceState);
   const chatTabs = new ChatTabManager(context, registry, uiState, logger);
+  deactivateChatTabs = () => chatTabs.dispose();
   const turnReview = new TurnReview(logger, context.workspaceState);
   const inlineReview = new InlineReview(turnReview);
   context.subscriptions.push(inlineReview);
@@ -1804,4 +1806,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     refreshViews();
   }
 }
-export function deactivate(): void {}
+export async function deactivate(): Promise<void> {
+  await deactivateChatTabs?.();
+  deactivateChatTabs = undefined;
+}

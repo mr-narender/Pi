@@ -6,7 +6,7 @@ declare function acquireVsCodeApi(): {
 
 import morphdom from 'morphdom';
 import { optionalModule } from './optionalModules';
-import { isLiveWorking } from '../working';
+import { isLiveWorking, workingLabel, WORKING_PHRASES } from '../working';
 import { isCoreMenuCommand, parseCoreSlash } from '../../commands/coreSlash';
 import { mergeLocalCommands } from '../../commands/coreCatalog';
 import { deriveScreenChanges } from '../editToolPath';
@@ -129,6 +129,20 @@ let slashMatches: Array<{ name: string; description: string }> = [];
 function composerField(): HTMLTextAreaElement | null {
   return document.getElementById(COMPOSER_FIELD_ID) as HTMLTextAreaElement | null;
 }
+let editingComposer = false;
+function replaceComposerText(field: HTMLTextAreaElement, text: string): void {
+  if (field.value === text) return;
+  field.focus();
+  field.select();
+  editingComposer = true;
+  try {
+    // Native editing retains Undo; the caller owns draft/send notification ordering.
+    document.execCommand?.(text ? 'insertText' : 'delete', false, text);
+    if (field.value !== text) field.value = text;
+  } finally {
+    editingComposer = false;
+  }
+}
 
 // User prompts in this chat, oldest->newest (deduped), for history navigation.
 function promptHistory(): string[] {
@@ -174,7 +188,7 @@ function navigateHistory(ta: HTMLTextAreaElement, direction: 'older' | 'newer'):
     } else {
       // Past the newest entry: restore the draft that was in progress.
       editRevision++;
-      ta.value = historyStash ?? '';
+      replaceComposerText(ta, historyStash ?? '');
       exitHistory();
       const end = ta.value.length;
       ta.setSelectionRange(end, end);
@@ -184,7 +198,7 @@ function navigateHistory(ta: HTMLTextAreaElement, direction: 'older' | 'newer'):
     }
   }
   editRevision++;
-  ta.value = items[historyIndex] ?? '';
+  replaceComposerText(ta, items[historyIndex] ?? '');
   const end = ta.value.length;
   ta.setSelectionRange(end, end);
   autosizeComposer(ta);
@@ -223,7 +237,7 @@ function acceptSlash(name: string): void {
   if (!field) {
     return;
   }
-  field.value = `/${name} `;
+  replaceComposerText(field, `/${name} `);
   field.dispatchEvent(new Event('input', { bubbles: true }));
   closeSlashMenu();
   field.focus();
@@ -282,7 +296,12 @@ function updateSlashMenu(): void {
   // Further retries require a later user/snapshot event and a cooldown; no polling.
   if (!slashComplete && !slashRequested && slashAttempts >= 2 && Date.now() >= slashRetryAfter)
     slashAttempts = 0;
-  if (!slashComplete && !slashRequested && slashAttempts < 2) {
+  if (
+    !slashComplete &&
+    !slashRequested &&
+    slashAttempts < 2 &&
+    (currentSnapshot?.connectionState === 'ready' || currentSnapshot?.connectionState === 'busy')
+  ) {
     slashRequested = true;
     slashAttempts++;
     slashRequestId = `${webviewGeneration}:catalog:${++slashRequestSequence}`;
@@ -362,7 +381,7 @@ function acceptMention(path: string): void {
   const ctx = mentionContext(field);
   if (ctx) {
     const caret = field.selectionStart ?? field.value.length;
-    field.value = field.value.slice(0, ctx.start) + field.value.slice(caret);
+    replaceComposerText(field, field.value.slice(0, ctx.start) + field.value.slice(caret));
     field.dispatchEvent(new Event('input', { bubbles: true }));
     field.focus();
     field.setSelectionRange(ctx.start, ctx.start);
@@ -458,6 +477,8 @@ let pendingFocusTargetId: string | undefined;
 let pendingFocusFallbackId: string | undefined;
 let previewReturnFocusId: string | undefined;
 let lastComposerResetSeq: number | undefined;
+let renderedComposerKey: string | undefined;
+let appliedFocusRequest: string | undefined;
 // Signature of the last FULLY-rendered snapshot's structure (everything except
 // the growing text of the streaming answer). Lets us patch just the answer
 // during a reply instead of rebuilding the whole transcript (flicker source).
@@ -479,6 +500,7 @@ let historyStash: string | undefined;
 let lastSubmittedText: string | undefined;
 let editRevision = 0;
 let renderedEditRevision = 0;
+let pendingSend: { sessionKey: string; frame: number | undefined; revision: number } | undefined;
 let submissionSequence = 0;
 const webviewGeneration = `${Date.now()}-${Math.random()}`;
 let pendingLocalCommand:
@@ -566,6 +588,7 @@ function submitComposer(command: string): void {
   // immediately now, no preview popup).
   const textarea = document.getElementById(COMPOSER_FIELD_ID) as HTMLTextAreaElement | null;
   if (textarea && parseCoreSlash(textarea.value)) {
+    pendingSend = undefined;
     pendingLocalCommand = {
       draft: isCoreMenuCommand(textarea.value) ? '' : textarea.value,
       consumed: isCoreMenuCommand(textarea.value) ? textarea.value : undefined,
@@ -579,12 +602,17 @@ function submitComposer(command: string): void {
     pendingLocalCommand = undefined;
   }
   if (textarea && pendingLocalCommand?.consumed) {
-    textarea.value = '';
+    replaceComposerText(textarea, '');
     autosizeComposer(textarea);
   }
   if (textarea && !pendingLocalCommand) {
+    pendingSend = {
+      sessionKey: commandSessionKey(currentSnapshot),
+      frame: currentSnapshot?.composerResetSeq,
+      revision: editRevision,
+    };
     lastSubmittedText = textarea.value; // remember it so no later render restores it
-    textarea.value = '';
+    replaceComposerText(textarea, '');
   }
   vscode.postMessage({
     type: 'requestSend',
@@ -668,15 +696,18 @@ let mermaidReady: Promise<typeof import('mermaid').default> | undefined;
 function loadMermaid(): Promise<typeof import('mermaid').default> {
   return (mermaidReady ??= optionalModule('Mermaid')
     .then(({ default: mermaid }) => {
+      const fontFamily = cssColor('--vscode-font-family', 'system-ui, sans-serif');
       mermaid.initialize({
         startOnLoad: false,
         securityLevel: 'strict',
         suppressErrorRendering: true,
         theme: 'base',
-        flowchart: { htmlLabels: false, useMaxWidth: true },
+        htmlLabels: false,
+        fontFamily,
+        flowchart: { useMaxWidth: false, minNodeWidth: 0 },
         themeVariables: {
           background: 'transparent',
-          fontFamily: cssColor('--vscode-font-family', 'system-ui, sans-serif'),
+          fontFamily,
           primaryColor: cssColor('--vscode-editorWidget-background', '#f5f5f5'),
           primaryTextColor: cssColor('--vscode-editor-foreground', '#242424'),
           primaryBorderColor: cssColor('--vscode-panel-border', '#8a8a8a'),
@@ -716,6 +747,7 @@ async function renderMermaidPreview(wrap: HTMLElement): Promise<void> {
   const error = preview?.querySelector<HTMLElement>('.mermaid-error');
   const expand = wrap.querySelector<HTMLButtonElement>('.mermaid-expand');
   if (!source || !stage || !error || !expand) return;
+  if (stage.querySelector('.mermaid-image')) return;
 
   stage.setAttribute('aria-busy', 'true');
   error.hidden = true;
@@ -757,13 +789,66 @@ function setMermaidView(wrap: HTMLElement, mode: 'code' | 'preview'): void {
     button.classList.toggle('is-active', active);
     button.setAttribute('aria-pressed', String(active));
   }
-  if (mode === 'preview') void renderMermaidPreview(wrap);
+  if (mode === 'preview') {
+    if (wrap.closest('.js-stream-text') && wrap.dataset.mermaidComplete !== 'true') {
+      const loading = wrap.querySelector('.mermaid-loading');
+      if (loading) loading.textContent = 'Preview will appear when the response finishes.';
+    } else {
+      void renderMermaidPreview(wrap);
+    }
+  }
 }
 
 function mermaidKey(wrap: HTMLElement): string {
   const message = wrap.closest<HTMLElement>('[data-mid]');
   const index = Array.from(message?.querySelectorAll('.mermaid-wrap') ?? []).indexOf(wrap);
   return `${wrap.closest<HTMLElement>('.layout')?.dataset.mermaidSession ?? ''}:${message?.dataset.mid ?? ''}:${index}`;
+}
+
+function bindCodeControls(container: HTMLElement): void {
+  for (const button of Array.from(
+    container.querySelectorAll<HTMLButtonElement>('.mermaid-toggle')
+  )) {
+    bindOnce(button, 'click', () => {
+      const wrap = button.closest<HTMLElement>('.mermaid-wrap');
+      const mode = button.dataset.mermaidMode;
+      if (wrap && (mode === 'code' || mode === 'preview')) setMermaidView(wrap, mode);
+    });
+  }
+  for (const button of Array.from(
+    container.querySelectorAll<HTMLButtonElement>('.mermaid-expand')
+  )) {
+    bindOnce(button, 'click', () => {
+      const wrap = button.closest<HTMLElement>('.mermaid-wrap');
+      const src = wrap?.querySelector<HTMLImageElement>('.mermaid-image')?.src;
+      if (!wrap || !src) return;
+      mermaidDialogSrc = src;
+      mermaidDialogKey = mermaidKey(wrap);
+      mermaidReturnFocus = button;
+      restoreMermaidDialog();
+      document.getElementById(MERMAID_DIALOG_CLOSE_ID)?.focus();
+    });
+  }
+  for (const button of Array.from(container.querySelectorAll<HTMLButtonElement>('.code-copy'))) {
+    bindOnce(button, 'click', () => {
+      const code = button.closest('.code-wrap')?.querySelector('.code-block code');
+      const text = code?.textContent ?? '';
+      void navigator.clipboard
+        ?.writeText(text)
+        .then(() => {
+          const previous = button.innerHTML;
+          button.innerHTML = COPIED_ICON_SVG;
+          button.classList.add('is-copied');
+          button.setAttribute('aria-label', 'Copied');
+          setTimeout(() => {
+            button.innerHTML = previous;
+            button.classList.remove('is-copied');
+            button.setAttribute('aria-label', 'Copy code');
+          }, 1200);
+        })
+        .catch(() => undefined);
+    });
+  }
 }
 
 function closeMermaidDialog(): void {
@@ -876,11 +961,13 @@ function acceptsCommandReplacement(snapshot: WebviewSnapshot): boolean {
   return !!(
     pendingLocalCommand &&
     replacement &&
-    snapshot.localCommandAck === pendingLocalCommand.id &&
+    (snapshot.localCommandAck === pendingLocalCommand.id ||
+      replacement.submissionId === pendingLocalCommand.id) &&
     replacement.originKey === pendingLocalCommand.sessionKey &&
     replacement.replacementKey === commandSessionKey(snapshot) &&
     replacement.frame === (pendingLocalCommand.frame ?? 0) &&
-    snapshot.composerResetSeq === replacement.frame + 1
+    (snapshot.composerResetSeq ?? 0) ===
+      replacement.frame + (snapshot.localCommandAck === pendingLocalCommand.id ? 1 : 0)
   );
 }
 
@@ -928,6 +1015,7 @@ function render(snapshot: WebviewSnapshot): void {
     }
     pendingSnapshot = undefined;
     stopWorkingAnimation();
+    stopWorkingPhrases();
     document.querySelector('.working-banner')?.remove();
   }
   if (!root) {
@@ -999,6 +1087,14 @@ let scrubbedForSeq: number | undefined;
 function renderNow(snapshot: WebviewSnapshot): void {
   streamPaintedNode = undefined;
   if (workingDisposed) return;
+  const preserveReplacementDraft =
+    pendingLocalCommand !== undefined &&
+    editRevision !== pendingLocalCommand.revision &&
+    acceptsCommandReplacement(snapshot);
+  if (renderedComposerKey !== commandSessionKey(snapshot)) {
+    lastSubmittedText = undefined;
+    scrubbedForSeq = undefined;
+  }
   if (
     pendingLocalCommand &&
     pendingLocalCommand.sessionKey !== commandSessionKey(snapshot) &&
@@ -1061,14 +1157,29 @@ function renderNow(snapshot: WebviewSnapshot): void {
   // resets the caret to position 0.
   const previousComposer = document.getElementById(COMPOSER_FIELD_ID) as HTMLTextAreaElement | null;
   const composerWasFocused = !!previousComposer && document.activeElement === previousComposer;
-  const preservedValue = composerWasFocused ? previousComposer.value : undefined;
   const preservedStart = composerWasFocused ? previousComposer.selectionStart : undefined;
   const preservedEnd = composerWasFocused ? previousComposer.selectionEnd : undefined;
+  const composerKey = commandSessionKey(snapshot);
+  const sameComposer = renderedComposerKey === composerKey;
 
   // An authoritative composer reset (send-clear, copy-to-composer, restore)
   // must overwrite the field even if it was focused.
   const resetSeq = snapshot.composerResetSeq;
   let authoritativeReset = resetSeq !== undefined && resetSeq !== lastComposerResetSeq;
+  let rebaseDraft = false;
+  if (pendingSend && (pendingSend.sessionKey !== composerKey || resetSeq !== pendingSend.frame)) {
+    if (
+      previousComposer &&
+      pendingSend.sessionKey === composerKey &&
+      resetSeq === (pendingSend.frame ?? 0) + 1 &&
+      !snapshot.draft &&
+      editRevision !== pendingSend.revision
+    ) {
+      authoritativeReset = false;
+      rebaseDraft = true;
+    }
+    pendingSend = undefined;
+  }
   if (
     authoritativeReset &&
     pendingLocalCommand &&
@@ -1105,6 +1216,14 @@ function renderNow(snapshot: WebviewSnapshot): void {
     renderedEditRevision = editRevision;
     lastComposerResetSeq = resetSeq;
   }
+  // Keep the native textarea value (and undo buffer) intact before morphdom runs.
+  if (previousComposer && (sameComposer || preserveReplacementDraft) && !authoritativeReset) {
+    snapshot = { ...snapshot, draft: previousComposer.value };
+  }
+  if (rebaseDraft) {
+    vscode.postMessage({ type: 'setDraft', text: snapshot.draft, resetSeq });
+  }
+  renderedComposerKey = composerKey;
 
   // Preserve open dropdown menus across re-render so passive snapshots
   // (streaming, status) don't close the More/Attach menu mid-interaction.
@@ -1127,10 +1246,11 @@ function renderNow(snapshot: WebviewSnapshot): void {
       openMenus.add(id);
     }
   }
-  const previewMermaids = new Set(
-    Array.from(
-      document.querySelectorAll<HTMLElement>('.mermaid-wrap[data-mermaid-view="preview"]')
-    ).map(mermaidKey)
+  const mermaidModes = new Map(
+    Array.from(document.querySelectorAll<HTMLElement>('.mermaid-wrap')).map((wrap) => [
+      mermaidKey(wrap),
+      wrap.dataset.mermaidView === 'code' ? ('code' as const) : ('preview' as const),
+    ])
   );
 
   // Patch the DOM instead of rebuilding it (root.innerHTML = ...). Rebuilding
@@ -1185,24 +1305,20 @@ function renderNow(snapshot: WebviewSnapshot): void {
     el.open = true;
   }
   for (const wrap of Array.from(document.querySelectorAll<HTMLElement>('.mermaid-wrap'))) {
-    if (previewMermaids.has(mermaidKey(wrap))) {
-      setMermaidView(wrap, 'preview');
-    }
+    setMermaidView(wrap, mermaidModes.get(mermaidKey(wrap)) ?? 'preview');
   }
   restoreMermaidDialog();
 
   const textarea = document.getElementById(COMPOSER_FIELD_ID) as HTMLTextAreaElement | null;
-  if (textarea && composerWasFocused && !authoritativeReset && document.hasFocus()) {
-    if (typeof preservedValue === 'string') {
-      // Never restore text that was just submitted while the draft is empty
-      // (the extension cleared it) — that is the sent-text-reappears bug.
-      const wouldReshowSubmitted =
-        preservedValue.length > 0 &&
-        preservedValue === lastSubmittedText &&
-        (snapshot.draft ?? '') === '';
-      textarea.value = wouldReshowSubmitted ? '' : preservedValue;
-    }
-    textarea.focus();
+  const transcriptSelection = window.getSelection()?.isCollapsed === false;
+  if (
+    textarea &&
+    composerWasFocused &&
+    !authoritativeReset &&
+    document.hasFocus() &&
+    !transcriptSelection
+  ) {
+    if (document.activeElement !== textarea) textarea.focus();
     const caret = preservedStart ?? textarea.value.length;
     const caretEnd = preservedEnd ?? caret;
     try {
@@ -1210,7 +1326,13 @@ function renderNow(snapshot: WebviewSnapshot): void {
     } catch {
       /* setSelectionRange can throw for some input types; ignore */
     }
-  } else if (textarea && composerWasFocused && authoritativeReset && document.hasFocus()) {
+  } else if (
+    textarea &&
+    composerWasFocused &&
+    authoritativeReset &&
+    document.hasFocus() &&
+    !transcriptSelection
+  ) {
     textarea.focus();
     const end = textarea.value.length;
     try {
@@ -1223,6 +1345,7 @@ function renderNow(snapshot: WebviewSnapshot): void {
   if (textarea) {
     autosizeComposer(textarea);
     bindOnce(textarea, 'input', () => {
+      if (editingComposer) return;
       exitHistory(); // typing leaves history-navigation mode
       editRevision++;
       lastSubmittedText = undefined; // fresh text — stop guarding
@@ -1360,6 +1483,23 @@ function renderNow(snapshot: WebviewSnapshot): void {
       }
     });
     bindOnce(textarea, 'keydown', (event) => {
+      if (!event.isComposing && !event.altKey && (event.metaKey || event.ctrlKey)) {
+        const key = event.key.toLowerCase();
+        const command =
+          key === 'z'
+            ? event.shiftKey
+              ? 'redo'
+              : 'undo'
+            : key === 'y' && event.ctrlKey && !event.shiftKey
+              ? 'redo'
+              : undefined;
+        if (command) {
+          event.preventDefault();
+          event.stopPropagation();
+          document.execCommand?.(command);
+          return;
+        }
+      }
       // Handle composer-only thinking before Tab can accept a completion.
       if (event.key === 'Tab' && event.shiftKey) {
         if (event.ctrlKey || event.metaKey || event.altKey || event.isComposing) {
@@ -1597,45 +1737,7 @@ function renderNow(snapshot: WebviewSnapshot): void {
       }
     });
   }
-  for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>('.mermaid-toggle'))) {
-    bindOnce(button, 'click', () => {
-      const wrap = button.closest<HTMLElement>('.mermaid-wrap');
-      const mode = button.dataset.mermaidMode;
-      if (wrap && (mode === 'code' || mode === 'preview')) setMermaidView(wrap, mode);
-    });
-  }
-  for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>('.mermaid-expand'))) {
-    bindOnce(button, 'click', () => {
-      const wrap = button.closest<HTMLElement>('.mermaid-wrap');
-      const src = wrap?.querySelector<HTMLImageElement>('.mermaid-image')?.src;
-      if (!wrap || !src) return;
-      mermaidDialogSrc = src;
-      mermaidDialogKey = mermaidKey(wrap);
-      mermaidReturnFocus = button;
-      restoreMermaidDialog();
-      document.getElementById(MERMAID_DIALOG_CLOSE_ID)?.focus();
-    });
-  }
-  for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>('.code-copy'))) {
-    bindOnce(button, 'click', () => {
-      const code = button.closest('.code-wrap')?.querySelector('.code-block code');
-      const text = code?.textContent ?? '';
-      void navigator.clipboard
-        ?.writeText(text)
-        .then(() => {
-          const previous = button.innerHTML;
-          button.innerHTML = COPIED_ICON_SVG;
-          button.classList.add('is-copied');
-          button.setAttribute('aria-label', 'Copied');
-          setTimeout(() => {
-            button.innerHTML = previous;
-            button.classList.remove('is-copied');
-            button.setAttribute('aria-label', 'Copy code');
-          }, 1200);
-        })
-        .catch(() => undefined);
-    });
-  }
+  bindCodeControls(root);
 
   bindOnce(document.getElementById(PREVIEW_DIALOG_ID), 'keydown', handlePreviewKeydown);
   bindOnce(document.getElementById(MERMAID_DIALOG_CLOSE_ID), 'click', closeMermaidDialog);
@@ -2202,7 +2304,22 @@ let streamPaintedText = '';
 function paintStream(node: HTMLElement): void {
   const revealed = streamRaw.slice(0, streamRevealLen);
   if (streamPaintedNode === node && streamPaintedText === revealed) return;
+  const diagrams = Array.from(node.querySelectorAll<HTMLElement>('.mermaid-wrap'));
   node.innerHTML = renderRichText(revealed, true);
+  Array.from(node.querySelectorAll<HTMLElement>('.mermaid-wrap')).forEach((wrap, index) => {
+    const previous = diagrams[index];
+    if (
+      previous?.dataset.mermaidComplete === 'true' &&
+      wrap.dataset.mermaidComplete === 'true' &&
+      previous.querySelector('.mermaid-code code')?.textContent ===
+        wrap.querySelector('.mermaid-code code')?.textContent
+    ) {
+      wrap.replaceWith(previous);
+      return;
+    }
+    setMermaidView(wrap, previous?.dataset.mermaidView === 'code' ? 'code' : 'preview');
+  });
+  bindCodeControls(node);
   streamPaintedNode = node;
   streamPaintedText = revealed;
 }
@@ -2339,7 +2456,9 @@ function advanceTypewriter(): void {
   }
   const raw = el.getAttribute('data-raw') ?? '';
   if (speed === 'off' || prefersReducedMotion()) {
-    el.innerHTML = renderRichText(raw, isLiveWorking(currentSnapshot));
+    streamRaw = raw;
+    streamRevealLen = raw.length;
+    paintStream(el);
     if (!finishSettledReveal()) resetTypewriter();
     return;
   }
@@ -2406,6 +2525,43 @@ const WORKING_FRAMES: Record<string, string[]> = {
 let workingTimer: ReturnType<typeof setInterval> | undefined;
 let workingFrame = 0;
 let workingDisposed = false;
+let phraseTimer: ReturnType<typeof setInterval> | undefined;
+let workingPhrase = 0;
+let workingPhraseSession: string | undefined;
+function stopWorkingPhrases(): void {
+  if (phraseTimer) clearInterval(phraseTimer);
+  phraseTimer = undefined;
+  workingPhrase = 0;
+  workingPhraseSession = undefined;
+}
+function updateWorkingPhrase(): void {
+  if (workingDisposed || !isLiveWorking(currentSnapshot)) {
+    stopWorkingPhrases();
+    return;
+  }
+  const snapshot = currentSnapshot!;
+  const session = snapshot.sessionFile ?? snapshot.sessionId ?? 'draft';
+  if (workingPhraseSession !== session) {
+    stopWorkingPhrases();
+    workingPhraseSession = session;
+  }
+  const label = document.querySelector('.working-label');
+  if (!label) {
+    stopWorkingPhrases();
+    return;
+  }
+  const text = workingLabel(snapshot, workingPhrase);
+  if (label.textContent !== text) label.textContent = text;
+  if (prefersReducedMotion() || snapshot.isCompacting || snapshot.approvals?.length) {
+    if (phraseTimer) clearInterval(phraseTimer);
+    phraseTimer = undefined;
+  } else if (!phraseTimer) {
+    phraseTimer = setInterval(() => {
+      workingPhrase = (workingPhrase + 1) % WORKING_PHRASES.length;
+      updateWorkingPhrase();
+    }, 6000);
+  }
+}
 const workingMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 function motionChanged(): void {
   startWorkingAnimation();
@@ -2421,6 +2577,7 @@ function stopWorkingAnimation(): void {
   }
 }
 function startWorkingAnimation(): void {
+  updateWorkingPhrase();
   const container = document.querySelector('.working');
   if (workingDisposed || !isLiveWorking(currentSnapshot) || !container) {
     stopWorkingAnimation();
@@ -2560,7 +2717,13 @@ function applyFocus(): void {
   if (focusElement(pendingTargetId) || focusElement(pendingFallbackId)) {
     return;
   }
+  if (!currentSnapshot.preview && window.getSelection()?.isCollapsed === false) return;
   const targetId = focusTargetFromSnapshot(currentSnapshot);
+  const request = targetId
+    ? JSON.stringify([commandSessionKey(currentSnapshot), targetId])
+    : undefined;
+  if (request === appliedFocusRequest) return;
+  appliedFocusRequest = request;
   if (focusElement(targetId)) {
     if (shouldClearSnapshotFocus(currentSnapshot.focus)) {
       vscode.postMessage({ type: 'setFocus', focus: 'none' });
@@ -2570,12 +2733,12 @@ function applyFocus(): void {
   if (focusElement(PREVIEW_DIALOG_ID)) {
     return;
   }
-  focusElement(COMPOSER_FIELD_ID);
 }
 
 window.addEventListener('beforeunload', () => {
   persistViewState();
   workingDisposed = true;
+  stopWorkingPhrases();
   if (flushTimer) clearTimeout(flushTimer);
   flushTimer = undefined;
   pendingSnapshot = undefined;

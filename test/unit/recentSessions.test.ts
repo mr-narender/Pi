@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, rm, utimes, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, realpath, rm, symlink, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -21,6 +21,45 @@ async function writeSession(
     'utf8'
   );
 }
+
+test('folder and saved-workspace aliases discover the same physical directory history', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'pi-workspace-history-'));
+  const project = join(root, 'project');
+  const alias = join(root, 'workspace-project');
+  const agentDir = join(root, 'agent');
+  const previous = process.env.PI_CODING_AGENT_DIR;
+  process.env.PI_CODING_AGENT_DIR = agentDir;
+  try {
+    await mkdir(project);
+    await symlink(project, alias, 'junction');
+    const canonical = await realpath(project);
+    const dir = getDefaultSessionDirForWorkspace(canonical, agentDir);
+    await mkdir(dir, { recursive: true });
+    await writeSession(
+      join(dir, 'same-chat.jsonl'),
+      { type: 'session', id: 'same-chat', cwd: canonical },
+      [{ type: 'message', message: { role: 'user', content: 'Folder history check' } }]
+    );
+    const direct = await readRecentSessionsIndex({
+      workspaceName: 'project',
+      workspacePath: canonical,
+    });
+    const saved = await readRecentSessionsIndex({
+      workspaceName: 'Renamed workspace folder',
+      workspacePath: alias,
+    });
+    assert.equal(direct.sessions.length, 1);
+    assert.deepEqual(
+      saved.sessions.map((s) => s.path),
+      direct.sessions.map((s) => s.path)
+    );
+    assert.equal(saved.sessionDir, direct.sessionDir);
+  } finally {
+    if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR;
+    else process.env.PI_CODING_AGENT_DIR = previous;
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 test('readRecentSessionsIndex loads and sorts sessions from the default Pi session directory', async () => {
   const root = await mkdtemp(join(tmpdir(), 'pi-rpc-recent-'));

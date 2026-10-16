@@ -1,5 +1,5 @@
 import type { WebviewSnapshot } from '../state/types';
-import { isLiveWorking } from './working';
+import { isLiveWorking, workingLabel } from './working';
 import { friendlyApiStatus, parseProviderError } from './apiError';
 import { highlightCode } from './highlight';
 import { chipPrivacyLabel, summarizeChip, type PendingContextItem } from './composer';
@@ -267,11 +267,12 @@ function renderAssistantBody(
     }
     const runNodes = run;
     run = [];
-    const html = runNodes.map((node) => renderTimelineNode(node, false)).join('');
-    if (runNodes.length < 2) {
-      rendered.push(html);
-      return;
-    }
+    const html = runNodes
+      .map((node, index) =>
+        renderTimelineNode(node, false, `${message.id}:${rendered.length}:${index}`)
+      )
+      .join('');
+    const previews = runNodes.map(renderWrittenMermaid).join('');
     // Say WHAT the agent did, not how many "steps": tool names with counts,
     // plus how many files were touched. ("3 steps" was meaningless.)
     const toolCounts = new Map<string, number>();
@@ -306,7 +307,7 @@ function renderAssistantBody(
     // finalizeWorkPhases() at join time.
     const open = hasError ? ' open' : streamingAnswer ? '__PHASE_OPEN__' : '';
     rendered.push(
-      `<details class="work-phase${hasError ? ' is-error' : ''}" data-preserve-open id="wp-${escapeHtml(message.id)}-${rendered.length}"${open}><summary class="work-phase-head" title="Click to show the agent's work">${META_ICONS.tool}<span class="work-phase-label">${escapeHtml(label)}</span><span class="work-phase-hint">show work</span>${hasError ? '<span class="tl-flag-error">failed</span>' : ''}${CARET_ICON}</summary>${html}</details>`
+      `<details class="work-phase${hasError ? ' is-error' : ''}" data-preserve-open id="wp-${escapeHtml(message.id)}-${rendered.length}"${open}><summary class="work-phase-head" title="Click to show the agent's work">${META_ICONS.tool}<span class="work-phase-label">${escapeHtml(label)}</span><span class="work-phase-hint">show work</span>${hasError ? '<span class="tl-flag-error">failed</span>' : ''}${CARET_ICON}</summary>${html}</details>${previews}`
     );
   };
   for (let index = 0; index < nodes.length; index += 1) {
@@ -316,7 +317,13 @@ function renderAssistantBody(
       continue;
     }
     flushRun();
-    rendered.push(renderTimelineNode(node, streamingAnswer && index === nodes.length - 1));
+    rendered.push(
+      renderTimelineNode(
+        node,
+        streamingAnswer && index === nodes.length - 1,
+        `${message.id}:${index}`
+      )
+    );
   }
   flushRun();
   return `<div class="timeline">${finalizeWorkPhases(rendered.join(''))}</div>`;
@@ -500,6 +507,17 @@ function renderToolContent(text: string): string {
   return `<div class="clampable"><div class="clamp-body">${inner}</div><button type="button" class="code-showmore">Show more</button></div>`;
 }
 
+function renderWrittenMermaid(node: TimelineNode): string {
+  if (node.kind !== 'toolPair' || node.result.isError || node.call.name !== 'write') return '';
+  const path = editToolFilePath(node.call.name, node.call.args);
+  if (!path || !/\.(mmd|mermaid)$/i.test(path)) return '';
+  const args = tryParseJson(node.call.args ?? '');
+  if (!args || typeof args !== 'object' || Array.isArray(args)) return '';
+  const content = (args as Record<string, unknown>).content;
+  if (typeof content !== 'string' || !content.trim()) return '';
+  return renderMermaidBlock(content, true, path.split(/[\\/]/).at(-1));
+}
+
 function renderDuration(durationMs: unknown, label: string): string {
   if (typeof durationMs !== 'number' || !Number.isFinite(durationMs) || durationMs < 0) return '';
   const text =
@@ -507,10 +525,10 @@ function renderDuration(durationMs: unknown, label: string): string {
   return `<span class="native-duration muted" data-duration-ms="${durationMs}" aria-label="${escapeHtml(label)}: ${durationMs} milliseconds" title="${durationMs} ms reported by Pi">${text}</span>`;
 }
 
-function renderTimelineNode(node: TimelineNode, streamingAnswer = false): string {
+function renderTimelineNode(node: TimelineNode, streamingAnswer: boolean, nodeId: string): string {
   switch (node.kind) {
     case 'thinking':
-      return `<div class="tl-node tl-thinking"><details class="tl-card" open><summary class="tl-head">${META_ICONS.thinking}<span class="tl-label">Thinking</span>${CARET_ICON}</summary><div class="tl-body tl-think">${renderRichText(node.text)}</div></details></div>`;
+      return `<div class="tl-node tl-thinking"><details class="tl-card" data-preserve-open id="thinking-${escapeHtml(nodeId)}"><summary class="tl-head">${META_ICONS.thinking}<span class="tl-label">Thinking</span>${CARET_ICON}</summary><div class="tl-body tl-think">${renderRichText(node.text)}</div></details></div>`;
     case 'tool': {
       const editPath = editToolFilePath(node.name, node.args);
       const replacements = editReplacements(node.name, node.args);
@@ -624,6 +642,11 @@ function renderInlineMarkdown(text: string): string {
     /\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g,
     (_m, label: string, url: string) => `<a class="md-link" data-href="${url}">${label}</a>`
   );
+  html = html.replace(
+    /(?<!!)\[([^\]\n]+)\]\(((?:[\w@.-]+\/)*[\w@.-]+\.[a-zA-Z0-9]{1,8})\)/g,
+    (_m, label: string, path: string) =>
+      `<a class="md-link file-link" data-file-open="${path}">${label}</a>`
+  );
   // Autolink bare URLs. The `(^|[\s(])` prefix prevents matching URLs already
   // moved into a data-href="…" attribute above (those are preceded by a quote).
   html = html.replace(/(^|[\s(])(https?:\/\/[^\s<>"')]+)/g, (_m, pre: string, url: string) => {
@@ -637,7 +660,10 @@ function renderInlineMarkdown(text: string): string {
   html = html.replace(/(?<![\w_])_(?!\s)([^\n_]+?)_(?![\w_])/g, '<em>$1</em>');
   // Strikethrough ~~text~~ (GFM).
   html = html.replace(/~~(?!\s)([^\n~]+?)~~/g, '<del>$1</del>');
-  return linkifyFileMentions(html);
+  return html
+    .split(/(<a\b[^>]*>[\s\S]*?<\/a>)/g)
+    .map((part) => (part.startsWith('<a ') ? part : linkifyFileMentions(part)))
+    .join('');
 }
 
 // A workspace-relative path with an extension, at least one slash, and an
@@ -901,6 +927,10 @@ function renderMarkdownBlock(text: string): string {
   return out.join('');
 }
 
+function renderMermaidBlock(codeText: string, closed: boolean, title = 'Mermaid'): string {
+  return `<div class="code-wrap mermaid-wrap" data-lang="mermaid" data-mermaid-view="preview" data-mermaid-complete="${closed}"><div class="code-lang"><span class="code-lang-name">${escapeHtml(title)}</span><div class="code-actions"><button type="button" class="mermaid-toggle" data-mermaid-mode="code" aria-pressed="false">Code</button><button type="button" class="mermaid-toggle is-active" data-mermaid-mode="preview" aria-pressed="true">Preview</button><button type="button" class="code-btn mermaid-expand" aria-label="Open diagram full screen" title="Open diagram full screen" disabled>&#x26F6;</button><button type="button" class="code-btn code-copy" aria-label="Copy code" title="Copy code">${COPY_ICON_SVG}</button></div></div><pre class="code-block mermaid-code" hidden><code>${escapeHtml(codeText)}</code></pre><div class="mermaid-preview"><div class="mermaid-preview-stage" role="img" aria-label="Mermaid diagram preview"><span class="mermaid-loading">Rendering diagram…</span></div><p class="mermaid-error" role="alert" hidden>Couldn’t render this diagram. Check the Mermaid syntax.</p></div></div>`;
+}
+
 export function renderRichText(raw: string, streaming = false): string {
   const lines = raw.split('\n');
   const out: string[] = [];
@@ -924,6 +954,7 @@ export function renderRichText(raw: string, streaming = false): string {
         code.push(lines[index] ?? '');
         index += 1;
       }
+      const closed = index < lines.length;
       index += 1; // skip closing fence
       const codeText = code.join('\n');
       // JSON in Pi's ANSWER: render it as the same structured table used for
@@ -939,9 +970,7 @@ export function renderRichText(raw: string, streaming = false): string {
         continue;
       }
       if (language.toLowerCase() === 'mermaid') {
-        out.push(
-          `<div class="code-wrap mermaid-wrap" data-lang="mermaid" data-mermaid-view="code"><div class="code-lang"><span class="code-lang-name">Mermaid</span><div class="code-actions"><button type="button" class="mermaid-toggle is-active" data-mermaid-mode="code" aria-pressed="true">Code</button><button type="button" class="mermaid-toggle" data-mermaid-mode="preview" aria-pressed="false">Preview</button><button type="button" class="code-btn mermaid-expand" aria-label="Open diagram full screen" title="Open diagram full screen" disabled>&#x26F6;</button><button type="button" class="code-btn code-copy" aria-label="Copy code" title="Copy code">${COPY_ICON_SVG}</button></div></div><pre class="code-block mermaid-code"><code>${escapeHtml(codeText)}</code></pre><div class="mermaid-preview" hidden><div class="mermaid-preview-stage" role="img" aria-label="Mermaid diagram preview"><span class="mermaid-loading">Rendering diagram…</span></div><p class="mermaid-error" role="alert" hidden>Couldn’t render this diagram. Check the Mermaid syntax.</p></div></div>`
-        );
+        out.push(renderMermaidBlock(codeText, closed));
         continue;
       }
       // Syntax-highlight the block (falls back to plain escaped text). The
@@ -1269,25 +1298,49 @@ function renderMessages(snapshot: WebviewSnapshot, revealMessageId?: string): st
     : '';
   const busy = snapshot.isStreaming || snapshot.connectionState === 'busy';
   const modelName = modelLabel(snapshot);
-  return (
-    olderSentinel +
-    snapshot.messages
-      .map((message, index, all) => {
-        const isLast = index === all.length - 1;
-        return renderMessageArticle(
-          message,
-          isLast,
-          (message.id === revealMessageId ||
-            (busy && message.id === snapshot.currentAssistantMessageId)) &&
-            snapshot.bindingState !== 'cached' &&
-            snapshot.bindingState !== 'draft' &&
-            message.role === 'assistant',
-          modelName,
-          !snapshot.isCompacting
-        );
-      })
-      .join('')
-  );
+  const rendered: string[] = [olderSentinel];
+  let turn: string[] = [];
+  let turnId = '';
+  let durationMs: number | undefined;
+  const flushTurn = (): void => {
+    if (!turn.length) return;
+    rendered.push(
+      `<section class="assistant-turn" id="turn-${escapeHtml(turnId)}" aria-label="Pi reply"><div class="message-role">Pi${renderDuration(durationMs, 'Assistant generation time (recorded)')}</div>${turn.join('')}</section>`
+    );
+    turn = [];
+    durationMs = undefined;
+  };
+  for (const [index, message] of snapshot.messages.entries()) {
+    const inTurn = message.role === 'assistant' || (turn.length > 0 && isResultRole(message.role));
+    if (!inTurn) flushTurn();
+    const html = renderMessageArticle(
+      message,
+      index === snapshot.messages.length - 1,
+      (message.id === revealMessageId ||
+        (busy && message.id === snapshot.currentAssistantMessageId)) &&
+        snapshot.bindingState !== 'cached' &&
+        snapshot.bindingState !== 'draft' &&
+        message.role === 'assistant',
+      modelName,
+      !snapshot.isCompacting,
+      !inTurn
+    );
+    if (!html) continue;
+    if (inTurn) {
+      if (!turn.length) turnId = message.id;
+      turn.push(html);
+      if (
+        message.role === 'assistant' &&
+        typeof message.durationMs === 'number' &&
+        Number.isFinite(message.durationMs) &&
+        message.durationMs >= 0
+      ) {
+        durationMs = (durationMs ?? 0) + message.durationMs;
+      }
+    } else rendered.push(html);
+  }
+  flushTurn();
+  return rendered.join('');
 }
 
 // Pi emits tool results (and bash executions) as SEPARATE messages with these
@@ -1309,14 +1362,15 @@ function renderMessageArticle(
   isLast = false,
   streamingAnswer = false,
   modelName = '',
-  allowEdit = true
+  allowEdit = true,
+  showRole = true
 ): string {
   const role = message.role;
   const body = renderMessageBody(message, streamingAnswer, modelName);
   if (role === 'assistant' && !body && message.attachments.length === 0) {
     return '';
   }
-  const roleLabel = role === 'assistant' ? 'π' : role === 'user' ? 'You' : '';
+  const roleLabel = role === 'assistant' ? 'Pi' : role === 'user' ? 'You' : '';
   const showCopy = role === 'assistant' || role === 'user';
   const captured = message.capturedContext?.length
     ? `<div class="detail-stack captured-context-list" aria-label="Captured files">${message.capturedContext.map((item, index) => renderCapturedContext(item, `captured-context-${message.id}-${index}`)).join('')}</div>`
@@ -1327,7 +1381,7 @@ function renderMessageArticle(
   void isLast;
   return `
         <article class="message-card message-${escapeHtml(role)}" data-mid="${escapeHtml(message.id)}"${roleLabel ? ` aria-label="${roleLabel} said"` : ''}>
-          ${roleLabel ? `<div class="message-role">${roleLabel}${role === 'assistant' ? renderDuration(message.durationMs, 'Assistant generation time') : ''}</div>` : ''}
+          ${showRole && roleLabel ? `<div class="message-role">${roleLabel}${role === 'assistant' ? renderDuration(message.durationMs, 'Assistant generation time') : ''}</div>` : ''}
           ${body}${captured}
           ${message.attachments.length > 0 ? `<div class="detail-stack">${message.attachments.map((attachment) => renderAttachment(attachment)).join('')}</div>` : ''}
           ${showCopy ? `<div class="msg-actions">${role === 'user' ? `<button type="button" class="msg-edit" title="Edit &amp; restart from here" aria-label="Edit and restart the chat from this message"${editDisabled}>${EDIT_ICON}</button>` : ''}<button type="button" class="msg-copy"${message.capturedContext ? ` data-copy-raw="${escapeHtml(message.text)}"` : ''} title="Copy message" aria-label="Copy message">${COPY_ICON}</button></div>` : ''}
@@ -1503,7 +1557,7 @@ function renderShareBar(snapshot: WebviewSnapshot): string {
 }
 
 function renderWorkingBanner(snapshot: WebviewSnapshot): string {
-  return `<div class="working-banner">${renderWorking(snapshot)}<span class="working-label">Working\u2026</span></div>`;
+  return `<div class="working-banner">${renderWorking(snapshot)}<span class="working-label">${workingLabel(snapshot)}</span></div>`;
 }
 
 // Queued steering / follow-up messages the user lined up while Pi was busy.

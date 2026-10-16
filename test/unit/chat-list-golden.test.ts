@@ -47,6 +47,21 @@ function row(overrides: Partial<ChatListRow> = {}): ChatListRow {
   };
 }
 
+test('active and recent chats share the editor tab Pi bubble icon', () => {
+  const tab = new JSDOM(readFileSync('media/tab-icon.svg', 'utf8'));
+  const paths = (document: ParentNode) =>
+    [...document.querySelectorAll('path')].map((path) => path.getAttribute('d'));
+  for (const active of [false, true]) {
+    const sidebar = new JSDOM(renderChatListRow(row({ active })));
+    assert.deepEqual(
+      paths(sidebar.window.document.querySelector('.chat-list-row-icon')!),
+      paths(tab.window.document)
+    );
+    sidebar.window.close();
+  }
+  tab.window.close();
+});
+
 test('golden: chat-list row — active open chat', () => {
   checkGolden(
     'chat-list-row-active-open',

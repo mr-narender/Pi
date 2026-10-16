@@ -8,10 +8,8 @@ import { formatRelativeTime, type ChatListModel, type ChatListRow } from './chat
 
 const ICON_DIFF =
   '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="2" y="2" width="12" height="12" rx="2"/><path d="M8 2v12M4 6h2m-1-1v2m5 4h2"/></svg>';
-const ICON_CHECK =
-  '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.2 3.2L13 4.5"/></svg>';
 const ICON_CHAT =
-  '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3.5A1.5 1.5 0 0 1 3.5 2h9A1.5 1.5 0 0 1 14 3.5v6A1.5 1.5 0 0 1 12.5 11H8l-3.2 2.6a.5.5 0 0 1-.8-.4V11h-.5A1.5 1.5 0 0 1 2 9.5v-6Z"/></svg>';
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-9l-6 4v-4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z"/><path d="M7 9h10M10 9v5M15 9v5"/></svg>';
 const ICON_TRASH =
   '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4.5h10M6.5 4.5V3a1 1 0 0 1 1-1h1a1 1 0 0 1 1 1v1.5M4.5 4.5l.5 8a1 1 0 0 0 1 .9h4a1 1 0 0 0 1-.9l.5-8"/></svg>';
 const STAR_PATH = 'M8 1.8l1.9 3.9 4.3.6-3.1 3 .7 4.2L8 11.5l-3.8 2 .7-4.2-3.1-3 4.3-.6L8 1.8z';
@@ -78,7 +76,7 @@ export function renderChatListRow(row: ChatListRow, now = Date.now()): string {
   // keyboard-focusable targets for the listbox arrow-key navigation wired
   // in media/chatList.ts.
   return `<div class="chat-list-row${row.active ? ' active' : ''}${row.favorite ? ' favorite' : ''}" data-id="${esc(row.id)}" role="option" tabindex="-1" aria-selected="${row.active ? 'true' : 'false'}" aria-label="${esc(row.title)}">
-    <span class="chat-list-row-icon">${row.active ? ICON_CHECK : ICON_CHAT}</span>
+    <span class="chat-list-row-icon">${ICON_CHAT}</span>
     <span class="chat-list-row-text" data-tooltip="${esc(row.title)}" data-tooltip-pos="above">
       <span class="chat-list-row-title">${row.favorite ? `<span class="chat-list-row-favbadge">${ICON_STAR_FILLED}</span>` : ''}${esc(row.title)}</span>
       ${detail || rowSizeWarning(row) ? `<span class="chat-list-row-detail">${detail ? esc(detail) : ''}${rowSizeWarning(row) ? `${detail ? ' · ' : ''}${rowSizeWarning(row)}` : ''}</span>` : ''}

@@ -563,6 +563,296 @@ test('optional highlighter readiness does not rebuild history during a live repl
   );
 });
 
+test('passive remote snapshots preserve blurred unsent edits without rewriting the native value', (t) => {
+  t.mock.method(dom.window.document, 'hasFocus', () => true);
+  const state = {
+    sessionId: 'passive-draft',
+    connectionState: 'ready' as const,
+    composerResetSeq: 0,
+  };
+  render(state);
+  const field = dom.window.document.getElementById('composer-field') as HTMLTextAreaElement;
+  field.value = 'local unacknowledged text';
+  field.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  field.blur();
+  const descriptor = Object.getOwnPropertyDescriptor(
+    dom.window.HTMLTextAreaElement.prototype,
+    'value'
+  )!;
+  let writes = 0;
+  Object.defineProperty(field, 'value', {
+    configurable: true,
+    get() {
+      return descriptor.get!.call(this);
+    },
+    set(value) {
+      writes++;
+      descriptor.set!.call(this, value);
+    },
+  });
+  render({ ...state, statuses: { remote: 'updated' } });
+  assert.equal(field.value, 'local unacknowledged text');
+  assert.equal(writes, 0, 'passive updates must preserve the browser undo buffer');
+  assert.notEqual(dom.window.document.activeElement, field);
+  delete (field as unknown as { value?: string }).value;
+  render({ ...state, composerResetSeq: 1, draft: 'explicit restored draft' });
+  assert.equal(field.value, 'explicit restored draft', 'explicit host resets still apply');
+});
+
+test('passive snapshots do not steal a transcript selection', (t) => {
+  t.mock.method(dom.window.document, 'hasFocus', () => true);
+  const state = {
+    sessionId: 'selection',
+    connectionState: 'ready' as const,
+    messages: answer('Select this response'),
+    focus: 'none' as const,
+  };
+  render(state);
+  const field = dom.window.document.getElementById('composer-field') as HTMLTextAreaElement;
+  field.focus();
+  const selection = dom.window.getSelection()!;
+  const range = dom.window.document.createRange();
+  range.selectNodeContents(dom.window.document.querySelector('.message-body')!);
+  selection.removeAllRanges();
+  selection.addRange(range);
+  let focuses = 0;
+  t.mock.method(field, 'focus', () => {
+    focuses++;
+  });
+  render({ ...state, statuses: { remote: 'updated' } });
+  assert.equal(focuses, 0);
+  assert.equal(selection.toString(), 'Select this response');
+  selection.removeAllRanges();
+});
+
+test('new text typed after sending survives the delayed remote clear acknowledgement', () => {
+  const state = { sessionId: 'send-draft', connectionState: 'ready' as const, composerResetSeq: 0 };
+  render(state);
+  const field = dom.window.document.getElementById('composer-field') as HTMLTextAreaElement;
+  field.value = 'first submitted message';
+  field.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  field.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  assert.equal(field.value, '');
+  field.value = 'next unsent message';
+  field.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  field.blur();
+  render({ ...state, composerResetSeq: 1 });
+  assert.equal(field.value, 'next unsent message');
+  assert.deepEqual(sentMessages.at(-1), {
+    type: 'setDraft',
+    text: 'next unsent message',
+    resetSeq: 1,
+  });
+  render({ ...state, composerResetSeq: 2, draft: 'explicit replacement' });
+  assert.equal(field.value, 'explicit replacement');
+});
+
+test('a persistent composer focus echo does not steal focus from another control', (t) => {
+  t.mock.method(dom.window.document, 'hasFocus', () => true);
+  const state = {
+    sessionId: 'focus-echo',
+    connectionState: 'ready' as const,
+    focus: 'composer' as const,
+  };
+  render(state);
+  const field = dom.window.document.getElementById('composer-field') as HTMLTextAreaElement;
+  assert.equal(dom.window.document.activeElement, field);
+  const button = dom.window.document.querySelector('button')!;
+  button.focus();
+  render({ ...state, statuses: { remote: 'updated' } });
+  assert.equal(dom.window.document.activeElement, button);
+  render({ ...state, focus: 'none' });
+  render(state);
+  assert.equal(
+    dom.window.document.activeElement,
+    field,
+    'a new explicit focus request still applies'
+  );
+});
+
+test('submitted text from another session cannot clear the newly opened session draft', () => {
+  render({ sessionId: 'submit-origin', connectionState: 'ready', composerResetSeq: 0 });
+  const field = dom.window.document.getElementById('composer-field') as HTMLTextAreaElement;
+  field.value = 'same valid draft';
+  field.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  field.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  render({
+    sessionId: 'different-session',
+    connectionState: 'ready',
+    composerResetSeq: 0,
+    draft: 'same valid draft',
+  });
+  assert.equal(field.value, 'same valid draft');
+});
+
+test('edits during a local command cannot overwrite an unrelated session draft', () => {
+  render({ sessionId: 'command-origin', connectionState: 'ready', composerResetSeq: 0 });
+  const field = dom.window.document.getElementById('composer-field') as HTMLTextAreaElement;
+  field.value = '/model';
+  field.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  field.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  field.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  field.value = 'new outgoing edits';
+  field.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  render({
+    sessionId: 'unrelated-session',
+    connectionState: 'ready',
+    composerResetSeq: 0,
+    draft: 'saved incoming draft',
+  });
+  assert.equal(field.value, 'saved incoming draft');
+});
+
+test('composer Undo and Redo shortcuts stay inside the focused input instead of routing to VS Code', (t) => {
+  render({ sessionId: 'keyboard-editing', connectionState: 'ready', composerResetSeq: 0 });
+  const field = dom.window.document.getElementById('composer-field') as HTMLTextAreaElement;
+  const commands: string[] = [];
+  Object.defineProperty(dom.window.document, 'execCommand', {
+    configurable: true,
+    value: (command: string) => {
+      commands.push(command);
+      return true;
+    },
+  });
+  t.after(() => {
+    Reflect.deleteProperty(dom.window.document, 'execCommand');
+  });
+  const cases = [
+    { key: 'z', metaKey: true, command: 'undo' },
+    { key: 'Z', metaKey: true, shiftKey: true, command: 'redo' },
+    { key: 'z', ctrlKey: true, command: 'undo' },
+    { key: 'Z', ctrlKey: true, shiftKey: true, command: 'redo' },
+    { key: 'y', ctrlKey: true, command: 'redo' },
+  ];
+  for (const { command, ...keys } of cases) {
+    const event = new dom.window.KeyboardEvent('keydown', {
+      ...keys,
+      bubbles: true,
+      cancelable: true,
+    });
+    field.dispatchEvent(event);
+    assert.equal(commands.at(-1), command);
+    assert.equal(event.defaultPrevented, true);
+  }
+  for (const extra of [{ isComposing: true }, { altKey: true }]) {
+    const event = new dom.window.KeyboardEvent('keydown', {
+      key: 'z',
+      ctrlKey: true,
+      ...extra,
+      bubbles: true,
+      cancelable: true,
+    });
+    field.dispatchEvent(event);
+    assert.equal(event.defaultPrevented, false);
+  }
+  assert.equal(commands.length, cases.length);
+});
+
+test('submit clears text through a native undoable edit without clearing the host draft before send', (t) => {
+  render({ sessionId: 'undo-submit', connectionState: 'ready', composerResetSeq: 0 });
+  const field = dom.window.document.getElementById('composer-field') as HTMLTextAreaElement;
+  field.value = 'restore this submitted text';
+  field.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  const commands: string[] = [];
+  Object.defineProperty(dom.window.document, 'execCommand', {
+    configurable: true,
+    value: (command: string) => {
+      commands.push(command);
+      if (command === 'delete') {
+        field.value = '';
+        field.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+      }
+      return true;
+    },
+  });
+  t.after(() => {
+    Reflect.deleteProperty(dom.window.document, 'execCommand');
+  });
+  const start = sentMessages.length;
+  field.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  assert.deepEqual(commands, ['delete']);
+  assert.equal(field.value, '');
+  assert.equal(sentMessages.slice(start).filter((m: any) => m.type === 'setDraft').length, 0);
+  assert.equal(sentMessages.slice(start).filter((m: any) => m.type === 'requestSend').length, 1);
+});
+
+test('Thinking starts compact and preserves user expansion across passive snapshots', () => {
+  const state = {
+    sessionId: 'thinking-disclosure',
+    connectionState: 'ready' as const,
+    messages: [
+      {
+        id: 'thinking-a',
+        role: 'assistant' as const,
+        text: 'Answer',
+        attachments: [],
+        blocks: [
+          { kind: 'thinking' as const, text: 'Work details' },
+          { kind: 'text' as const, text: 'Answer' },
+        ],
+      },
+    ],
+  };
+  render(state);
+  const detail = () =>
+    dom.window.document.querySelector<HTMLDetailsElement>('.tl-thinking > details')!;
+  assert.equal(detail().open, false);
+  detail().open = true;
+  render({ ...state, statuses: { task: 'updated' } });
+  assert.equal(detail().open, true);
+  detail().open = false;
+  render({ ...state, statuses: { task: 'updated again' } });
+  assert.equal(detail().open, false);
+});
+
+test('Mermaid defaults to Preview and preserves an explicit Code choice across snapshots', () => {
+  const state = {
+    sessionId: 'mermaid-default',
+    connectionState: 'ready' as const,
+    messages: answer('```mermaid\nflowchart LR\nA --> B\n```'),
+  };
+  render(state);
+  const wrap = () => dom.window.document.querySelector<HTMLElement>('.mermaid-wrap')!;
+  assert.equal(wrap().dataset.mermaidView, 'preview');
+  assert.equal(wrap().querySelector<HTMLElement>('.mermaid-preview')!.hidden, false);
+  wrap().querySelector<HTMLButtonElement>('[data-mermaid-mode="code"]')!.click();
+  render({ ...state, statuses: { task: 'updated' } });
+  assert.equal(wrap().dataset.mermaidView, 'code');
+  assert.equal(wrap().querySelector<HTMLElement>('.mermaid-code')!.hidden, false);
+});
+
+test('streaming preserves an explicit Mermaid Code choice through reveal ticks', async () => {
+  send('```mermaid\nflowchart LR\nA --> B\n' + '%% more text\n'.repeat(100), {
+    sessionId: 'mermaid-stream',
+    isStreaming: true,
+  });
+  await new Promise((resolve) => setTimeout(resolve, 180));
+  for (let i = 0; i < 12; i++) tick();
+  const wrap = () => dom.window.document.querySelector<HTMLElement>('.mermaid-wrap')!;
+  assert.ok(wrap());
+  wrap().querySelector<HTMLButtonElement>('[data-mermaid-mode="code"]')!.click();
+  assert.equal(wrap().dataset.mermaidView, 'code');
+  tick();
+  assert.equal(wrap().dataset.mermaidView, 'code');
+  assert.equal(wrap().querySelector<HTMLElement>('.mermaid-code')!.hidden, false);
+});
+
+test('settled typewriter catch-up defers incomplete Mermaid rendering', async () => {
+  send('', { sessionId: 'mermaid-catch-up' });
+  await new Promise((resolve) => setTimeout(resolve, 180));
+  send('```mermaid\nflowchart LR\nA --> B\n' + '%% more text\n'.repeat(100), {
+    sessionId: 'mermaid-catch-up',
+    connectionState: 'ready',
+    isStreaming: false,
+    currentAssistantMessageId: undefined,
+  });
+  for (let i = 0; i < 12; i++) tick();
+  assert.equal(
+    dom.window.document.querySelector('.mermaid-loading')?.textContent,
+    'Preview will appear when the response finishes.'
+  );
+});
+
 test('local reveals preserve a scrolled-up reader and follow an already pinned reader', async () => {
   send('new answer '.repeat(200), {
     sessionId: 'scroll',

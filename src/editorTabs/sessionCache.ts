@@ -25,6 +25,10 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
 export class ChatTabStateCache implements vscode.Disposable {
   private readonly states = new Map<string, ChatTabState>();
   private readonly openResources = new Set<string>();
+  private dirty = false;
+  private persistTimer: ReturnType<typeof setTimeout> | undefined;
+  private persisting: Promise<void> | undefined;
+  private disposed = false;
 
   public constructor(private readonly context: vscode.ExtensionContext) {
     const savedStates = this.context.workspaceState.get<Record<string, ChatTabState>>(
@@ -46,9 +50,16 @@ export class ChatTabStateCache implements vscode.Disposable {
     }
   }
 
-  public dispose(): void {
-    this.states.clear();
-    this.openResources.clear();
+  public async dispose(): Promise<void> {
+    this.disposed = true;
+    try {
+      await this.persist();
+    } catch {
+      // Session files remain authoritative when VS Code storage is unavailable at shutdown.
+    } finally {
+      this.states.clear();
+      this.openResources.clear();
+    }
   }
 
   public get(resource: vscode.Uri | string): ChatTabState | undefined {
@@ -63,32 +74,73 @@ export class ChatTabStateCache implements vscode.Disposable {
     return [...this.openResources.values()];
   }
 
-  public async set(state: ChatTabState): Promise<void> {
+  public async set(state: ChatTabState, options?: { defer?: boolean }): Promise<void> {
+    if (this.disposed) return;
     this.states.set(state.resource, state);
-    await this.persist();
+    this.dirty = true;
+    if (options?.defer) this.schedulePersist();
+    else await this.persist();
   }
 
   public async delete(resource: vscode.Uri | string): Promise<void> {
+    if (this.disposed) return;
     const key = typeof resource === 'string' ? resource : resource.toString();
     this.states.delete(key);
     this.openResources.delete(key);
+    this.dirty = true;
     await this.persist();
   }
 
   public async markOpen(resource: vscode.Uri | string): Promise<void> {
+    if (this.disposed) return;
     this.openResources.add(typeof resource === 'string' ? resource : resource.toString());
+    this.dirty = true;
     await this.persist();
   }
 
   public async markClosed(resource: vscode.Uri | string): Promise<void> {
+    if (this.disposed) return;
     this.openResources.delete(typeof resource === 'string' ? resource : resource.toString());
+    this.dirty = true;
     await this.persist();
   }
 
-  private async persist(): Promise<void> {
-    await Promise.all([
+  private schedulePersist(): void {
+    if (this.persistTimer || this.persisting || this.disposed) return;
+    this.persistTimer = setTimeout(() => {
+      this.persistTimer = undefined;
+      void this.persist().catch(() => {});
+    }, 500);
+    this.persistTimer.unref?.();
+  }
+
+  private persist(): Promise<void> {
+    if (this.persistTimer) {
+      clearTimeout(this.persistTimer);
+      this.persistTimer = undefined;
+    }
+    if (this.persisting) return this.persisting.then(() => this.persist());
+    if (!this.dirty) return Promise.resolve();
+    this.dirty = false;
+    let failed = false;
+    const write = Promise.allSettled([
       this.context.workspaceState.update(TAB_STATE_KEY, Object.fromEntries(this.states.entries())),
       this.context.workspaceState.update(OPEN_RESOURCES_KEY, [...this.openResources.values()]),
-    ]);
+    ])
+      .then((results) => {
+        const failed = results.find((result) => result.status === 'rejected');
+        if (failed) throw failed.reason;
+      })
+      .catch((error: unknown) => {
+        failed = true;
+        this.dirty = true;
+        throw error;
+      })
+      .finally(() => {
+        this.persisting = undefined;
+        if (this.dirty && !failed) this.schedulePersist();
+      });
+    this.persisting = write;
+    return write;
   }
 }

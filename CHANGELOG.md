@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.2.35
+
+- Use matching Pi chat-bubble icons in editor tabs and the sidebar, with gentle
+  local working phrases that yield to approval and compaction states.
+- Open Mermaid diagrams in Preview by default, preserve explicit Code choices,
+  and size nodes to their labels without stretching diagrams across the pane.
+  Reduce Soft card padding and spacing while retaining clear reply boundaries.
+- Keep completed Mermaid previews visible during active replies, including when
+  typewriter animation is disabled or reduced motion is enabled.
+- Preview successfully written `.mmd` and `.mermaid` files inline, outside folded
+  work details, using the file content already supplied by Pi.
+- Use SVG text labels and consistent font metrics for Mermaid diagrams so long
+  and multiline labels fit their node boundaries.
+- Keep tool work, previews and the final explanation in one Soft card per Pi
+  turn; fold completed tool metadata even when only one tool ran.
+- Render local Markdown file links as readable file actions, and use the theme's
+  text-link color for accent text instead of a potentially transparent focus border.
+- Find the same chat history when a folder is opened through a saved workspace
+  using an alternate path to the same physical directory.
+- Give each Pi reply one soft card with a clear label, keeping work details
+  compact and code previews distinct inside the reply.
+- Route Undo/Redo shortcuts to the composer and make submitted text recoverable
+  with Undo, without retracting or resending the message.
+- Preserve unsent composer edits, native undo and transcript selections across
+  passive remote updates and delayed send acknowledgements.
+- Coalesce active-session cache writes while keeping in-memory snapshots current
+  and flushing settled sessions and tab changes promptly.
+
 ## 0.2.34
 
 - Deliver ongoing chat updates during continuous Pi event streams instead of

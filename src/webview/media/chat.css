@@ -1677,11 +1677,11 @@ button.ghost:hover,
 }
 
 .work-phase {
-  margin: 6px 0;
-  border: 1px solid var(--vscode-panel-border);
-  border-radius: 8px;
-  padding: 4px 8px;
-  background: color-mix(in srgb, var(--vscode-editor-background) 88%, transparent);
+  margin: 0 0 14px;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
 }
 
 .work-phase > summary.work-phase-head {
@@ -2481,7 +2481,7 @@ button.ghost:hover,
 }
 #messages .mermaid-preview-stage {
   display: grid;
-  min-height: 160px;
+  min-height: 96px;
   place-items: center;
 }
 #messages .mermaid-image {
@@ -2752,6 +2752,8 @@ button.ghost:hover,
 #messages .timeline {
   margin-top: 2px;
   padding-left: 0;
+  align-self: stretch;
+  width: 100%;
 }
 #messages .tl-node {
   position: relative;
@@ -2764,9 +2766,9 @@ button.ghost:hover,
 #messages .tl-card {
   box-sizing: border-box;
   min-width: 0;
-  border: 1px solid var(--vscode-panel-border);
-  border-radius: 12px;
-  padding: 11px 14px; /* cozy density */
+  border: 0;
+  border-radius: 0;
+  padding: 0;
   background: transparent;
 }
 #messages .tl-head {
@@ -2778,8 +2780,7 @@ button.ghost:hover,
   list-style: none;
 }
 #messages .tl-answer-head {
-  cursor: default;
-  margin-bottom: 2px;
+  display: none;
 }
 #messages .tl-card > summary::-webkit-details-marker {
   display: none;
@@ -2876,10 +2877,6 @@ button.ghost:hover,
 #messages .tl-response .tl-label,
 #messages .tl-response .meta-icon {
   color: var(--vscode-charts-green, #57c7a0);
-}
-/* The agent's answer in the timeline is the neutral bubble too, for consistency. */
-#messages .tl-answer {
-  background: var(--pi-agent-bubble);
 }
 #messages .tl-answer .tl-body {
   color: var(--vscode-foreground);
@@ -3719,7 +3716,7 @@ button.composer-thinking svg {
    Quiet hierarchy, flat rows and one surface per related group. All colors
    remain VS Code theme-driven; high contrast keeps its native borders. */
 :root {
-  --pi-accent: var(--vscode-focusBorder, #007aff);
+  --pi-accent: var(--vscode-textLink-foreground, #007aff);
   --pi-tool-accent: var(--pi-accent);
   --pi-hairline: color-mix(in srgb, var(--vscode-foreground) 14%, transparent);
   --pi-hairline-soft: color-mix(in srgb, var(--vscode-foreground) 9%, transparent);
@@ -3775,6 +3772,36 @@ body {
   opacity: 0.78;
 }
 
+#messages .assistant-turn {
+  width: 100%;
+  margin: 8px 0 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--pi-hairline);
+  border-radius: 14px;
+  background: var(--pi-surface-group);
+}
+
+#messages .assistant-turn > .message-role {
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0;
+  opacity: 1;
+}
+
+#messages .assistant-turn > .message-assistant {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+#messages .assistant-turn > .message-assistant + .message-assistant {
+  margin-top: 12px;
+}
+
 #messages .message-user .message-body {
   max-width: min(78%, 680px);
   padding: 10px 13px;
@@ -3803,8 +3830,6 @@ body {
   backdrop-filter: none;
 }
 
-.work-phase,
-#messages .tl-card,
 .plan-strip,
 .session-details,
 .approval-card,
@@ -3821,10 +3846,6 @@ body {
   backdrop-filter: none;
 }
 
-.work-phase {
-  padding: 5px 10px;
-}
-
 .work-phase > summary.work-phase-head {
   min-height: 30px;
   font-size: 11.5px;
@@ -3838,17 +3859,6 @@ body {
 .work-phase-hint {
   text-transform: none;
   letter-spacing: 0;
-}
-
-.work-phase .tl-node .tl-card {
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-}
-
-.work-phase .tl-node + .tl-node {
-  border-top: 1px solid var(--pi-hairline-soft);
 }
 
 #messages .meta-block {
@@ -3966,7 +3976,7 @@ body {
 }
 
 #messages .mermaid-preview {
-  padding: 26px;
+  padding: 14px;
   background: var(--vscode-editor-background);
 }
 
@@ -4267,23 +4277,18 @@ body.chat-list-view {
 }
 
 .chat-list-row-icon {
-  width: 8px;
-  height: 8px;
-  margin-left: 2px;
-  border-radius: 50%;
-  color: transparent;
-  background: var(--vscode-descriptionForeground);
-  opacity: 0.55;
+  width: 16px;
+  height: 16px;
+  color: var(--vscode-descriptionForeground);
+  background: transparent;
 }
 
 .chat-list-row.active .chat-list-row-icon {
-  color: transparent;
-  background: var(--pi-accent);
-  opacity: 1;
+  color: var(--pi-accent);
 }
 
 .chat-list-row-icon svg {
-  display: none;
+  display: block;
 }
 
 .chat-list-row-text {
@@ -4315,14 +4320,19 @@ body.chat-list-view {
 }
 
 body.vscode-high-contrast .composer-dock,
-body.vscode-high-contrast .work-phase,
-body.vscode-high-contrast #messages .tl-card,
+body.vscode-high-contrast #messages .assistant-turn,
 body.vscode-high-contrast .session-details,
 body.vscode-high-contrast .chat-list-row:hover,
 body.vscode-high-contrast .chat-list-row.active {
   border-color: var(--vscode-panel-border);
   background: var(--vscode-editor-background);
   box-shadow: none;
+}
+
+@media (max-width: 460px) {
+  #messages .assistant-turn {
+    padding: 12px 13px 15px;
+  }
 }
 
 /* Composer attachments stay in the input context. Drag feedback uses the
