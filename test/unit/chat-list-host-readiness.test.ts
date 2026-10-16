@@ -168,6 +168,27 @@ test('workspace roots and other projects remain visible and open in their indexe
     ['parent', 'b', 'a'],
     'root order does not change history'
   );
+  await host.onMessage({ type: 'filterChatFolder', path: b.uri.fsPath });
+  assert.deepEqual(
+    host.buildModel().rows.map((row: any) => row.title),
+    ['b']
+  );
+  assert.equal(commands.length, 0, 'folder filtering never activates another chat or controller');
+  await host.onMessage({ type: 'filterChatFolder', path: '/spoofed' });
+  assert.equal(host.buildModel().selectedFolder, b.uri.fsPath, 'unknown choices are rejected');
+  await host.onMessage({ type: 'filterChats', text: 'parent' });
+  assert.equal(host.buildModel().rows.length, 0, 'search combines with the selected owner');
+  assert.equal(host.buildModel().folders.length, 3, 'empty search results retain every choice');
+  await host.onMessage({ type: 'filterChats', text: '' });
+  changed?.();
+  assert.equal(host.buildModel().selectedFolder, b.uri.fsPath, 'refresh retains selection');
+  host.detach();
+  assert.equal(
+    host.buildModel().selectedFolder,
+    b.uri.fsPath,
+    'reattachment retains host selection'
+  );
+  await host.onMessage({ type: 'filterChatFolder', path: '' });
   await host.onMessage({ type: 'openChat', sessionPath: '/sessions/b.jsonl', cwd: '/spoofed' });
   assert.deepEqual(commands, [
     ['piRpcInternal.openOtherChat', { sessionPath: '/sessions/b.jsonl', cwd: b.uri.fsPath }],
@@ -192,8 +213,10 @@ test('workspace roots and other projects remain visible and open in their indexe
     ['parent']
   );
   changed?.();
-  assert.equal(refreshes, 1);
+  assert.equal(refreshes, 2);
+  await host.onMessage({ type: 'filterChatFolder', path: b.uri.fsPath });
   vscode.workspace.workspaceFolders = [a];
+  assert.equal(host.buildModel().selectedFolder, '', 'removed owner falls back to All folders');
   await host.onMessage({ type: 'filterChats', text: '' });
   assert.deepEqual(
     host.buildModel().rows.map((row: any) => row.title),

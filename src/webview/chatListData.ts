@@ -30,6 +30,7 @@ export interface OpenChatEntry {
   resource: string;
   title: string;
   sessionFile?: string;
+  cwd?: string;
   active: boolean;
 }
 
@@ -40,6 +41,8 @@ export interface ChatListInput {
    * their block (open or history) and carry a filled star in the UI. */
   favorites?: ReadonlySet<string>;
   now?: number;
+  folders?: string[];
+  selectedFolder?: string;
 }
 
 // The extension auto-names every new session "Session N" (tabManager's
@@ -80,7 +83,32 @@ export function buildChatListModel(input: ChatListInput): ChatListModel {
     const key = canonicalPath(session.path);
     if (!sessions.has(key)) sessions.set(key, session);
   }
-  const recentItems = filterRecentSessions([...sessions.values()], input.recent.filterText);
+  const folderPaths = new Map<string, string>();
+  for (const cwd of [
+    ...(input.folders ?? []),
+    ...[...sessions.values()].map((session) => session.cwd),
+    ...input.openChats.map((chat) => chat.cwd),
+  ]) {
+    if (cwd) folderPaths.set(canonicalPath(cwd), cwd);
+  }
+  const folders = [...folderPaths]
+    .map(([path, displayPath]) => ({
+      path,
+      label: `${
+        displayPath
+          .replace(/[/\\]+$/, '')
+          .split(/[/\\]/)
+          .at(-1) || displayPath
+      } — ${displayPath}`,
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+  const requestedFolder = input.selectedFolder ? canonicalPath(input.selectedFolder) : '';
+  const selectedFolder = folderPaths.has(requestedFolder) ? requestedFolder : '';
+  const inFolder = (cwd?: string): boolean =>
+    !selectedFolder || (!!cwd && canonicalPath(cwd) === selectedFolder);
+  const recentItems = filterRecentSessions([...sessions.values()], input.recent.filterText).filter(
+    (session) => inFolder(session.cwd)
+  );
   const favorites = input.favorites ?? new Set<string>();
   const favoriteRank = (path?: string): number => (path && favorites.has(path) ? 1 : 0);
   // Open chats form one block above history: favorites first, then
@@ -115,6 +143,7 @@ export function buildChatListModel(input: ChatListInput): ChatListModel {
       ? recordBySessionPath.get(canonicalPath(chat.sessionFile))
       : undefined;
     const resolved = record ? sessionDisplayName(record) : undefined;
+    if (!inFolder(record?.cwd || chat.cwd)) continue;
     const title = resolved && resolved !== 'Untitled chat' ? resolved : chat.title;
     if (query && !title.toLowerCase().includes(query)) {
       continue;
@@ -133,10 +162,10 @@ export function buildChatListModel(input: ChatListInput): ChatListModel {
   }
 
   if (input.recent.loading) {
-    return { rows, loading: true };
+    return { rows, loading: true, folders, selectedFolder };
   }
   if (input.recent.error) {
-    return { rows, loading: false, error: input.recent.error };
+    return { rows, loading: false, error: input.recent.error, folders, selectedFolder };
   }
 
   const openSessionFiles = new Set(
@@ -175,5 +204,5 @@ export function buildChatListModel(input: ChatListInput): ChatListModel {
     });
   }
 
-  return { rows, loading: false };
+  return { rows, loading: false, folders, selectedFolder };
 }

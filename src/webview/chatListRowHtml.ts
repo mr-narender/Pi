@@ -127,10 +127,21 @@ export function renderChatListBody(
         : renderChatListGroups(model.rows, now);
 }
 
-export function renderChatListShell(bodyHtml: string, filterText = ''): string {
+export function renderChatListShell(
+  bodyHtml: string,
+  filterText = '',
+  model?: ChatListModel
+): string {
+  const folderSelector = model
+    ? `<label class="chat-list-folder-label" for="chat-list-folder">Show chats from</label>
+      <select class="chat-list-folder" id="chat-list-folder" aria-label="Show chats from">
+        <option value=""${!model.selectedFolder ? ' selected' : ''}>All folders</option>
+        ${(model.folders ?? []).map((folder) => `<option value="${esc(folder.path)}"${model.selectedFolder === folder.path ? ' selected' : ''}>${esc(folder.label)}</option>`).join('')}
+      </select>`
+    : '';
   return `
     <div class="chat-list-shell">
-      <input class="chat-list-search" id="chat-list-search" type="text" placeholder="Search chats…" aria-label="Search chats" value="${esc(filterText)}" />
+      ${folderSelector}<input class="chat-list-search" id="chat-list-search" type="text" placeholder="Search chats…" aria-label="Search chats" value="${esc(filterText)}" />
       <div class="chat-list-scroll" role="listbox" aria-label="Chats">${bodyHtml}</div>
     </div>
   `;

@@ -42,6 +42,8 @@ export interface ChatListModel {
   rows: ChatListRow[];
   loading: boolean;
   error?: string;
+  folders?: { path: string; label: string }[];
+  selectedFolder?: string;
 }
 
 export type DeleteChatMessage =
@@ -152,15 +154,17 @@ export function decideSnapshotPush(
   // preview changes the visible text with the same row ids — must re-push).
   // Detail stays OUT: it embeds wall-clock-relative text ("5m ago"), the
   // original reload-flash bug this diff exists to prevent.
-  const identity = JSON.stringify(
+  const identity = JSON.stringify([
+    model.selectedFolder ?? '',
+    model.folders ?? [],
     model.rows.map((row) => [
       row.id,
       row.active,
       row.sessionPath ?? '',
       row.favorite === true,
       row.title,
-    ])
-  );
+    ]),
+  ]);
   if (identity === state.lastIdentity && !model.loading && state.hasShownRealData) {
     return {
       push: false,

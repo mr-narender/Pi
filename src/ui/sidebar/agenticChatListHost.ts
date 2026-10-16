@@ -49,6 +49,7 @@ export class AgenticChatListHost implements vscode.Disposable {
   private snapshotState: SnapshotDecisionState = { hasShownRealData: false };
   private pendingDeletions: PendingDeletion[] = [];
   private filterText = '';
+  private selectedFolder = '';
 
   public constructor(
     private readonly extensionUri: vscode.Uri,
@@ -107,13 +108,19 @@ export class AgenticChatListHost implements vscode.Disposable {
       resource: chat.resource.toString(),
       title: chat.title,
       sessionFile: asString(chat.controller.snapshot.state.sessionFile),
+      cwd: chat.controller.folder.uri.fsPath,
       active: chat.visible,
     }));
     const model = buildChatListModel({
       openChats,
       recent: this.recentState(),
       favorites: this.favorites(),
+      folders: (vscode.workspace?.workspaceFolders ?? [this.folder]).map(
+        (folder) => folder.uri.fsPath
+      ),
+      selectedFolder: this.selectedFolder,
     });
+    this.selectedFolder = model.selectedFolder ?? '';
     if (this.pendingDeletions.length === 0) {
       return model;
     }
@@ -278,6 +285,14 @@ export class AgenticChatListHost implements vscode.Disposable {
           this.recentSessions.clearFilter(folder);
         }
         this.filterText = asString(record.text) ?? '';
+        this.scheduleRefresh();
+        return;
+      }
+      case 'filterChatFolder': {
+        const selected = asString(record.path);
+        const model = this.buildModel();
+        if (selected !== '' && !model.folders?.some((folder) => folder.path === selected)) return;
+        this.selectedFolder = selected ?? '';
         this.scheduleRefresh();
         return;
       }

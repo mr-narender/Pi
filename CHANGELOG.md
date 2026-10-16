@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.39
+
+- Move the folder selector above session search, filtering chats by their exact
+  working folder in folder windows and saved workspaces without switching the
+  open chat. Remove the folder selector from the composer.
+
 ## 0.2.38
 
 - Preserve each chat's exact session file and working folder when reopening a

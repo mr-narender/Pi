@@ -1653,16 +1653,6 @@ export function renderChatApp(snapshot: WebviewSnapshot, revealMessageId?: strin
       }`
     : '';
 
-  const folderSelect =
-    snapshot.folders.length > 1
-      ? `<label class="inline-select"><span class="visually-hidden">Workspace</span><select id="folder-select" aria-label="Choose workspace">${snapshot.folders
-          .map(
-            (folder) =>
-              `<option value="${escapeHtml(folder.uri)}" ${folder.active ? 'selected' : ''}>${escapeHtml(folder.name)}</option>`
-          )
-          .join('')}</select></label>`
-      : '';
-
   return `
     <a class="skip-link" href="#composer-field">Skip to composer</a>
     <div class="layout" data-testid="chat-app" data-mermaid-session="${escapeHtml(snapshot.sessionFile || snapshot.sessionId || snapshot.workspaceFolderName || 'session')}"${chatFontStyle(snapshot)}>
@@ -1725,7 +1715,6 @@ export function renderChatApp(snapshot: WebviewSnapshot, revealMessageId?: strin
             <div class="composer-actions-right">
               ${connecting || snapshot.isCompacting ? '' : renderFollowToggle(snapshot)}
               ${connecting || snapshot.isCompacting ? '' : renderPermissionModeToggle(snapshot)}
-              ${connecting || snapshot.isCompacting ? '' : folderSelect}
               ${busyActions}
               <button type="button" id="${SEND_BUTTON_ID}" class="send-button" data-send-command="${sendCommand}" title="${sendLabel}" aria-label="${sendLabel}" ${unsafeDisabledAttr}><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12.5 4v3a1.5 1.5 0 0 1-1.5 1.5H4.5"/><path d="M7 6L4.3 8.5 7 11"/></svg></button>
             </div>

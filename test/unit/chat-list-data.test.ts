@@ -26,11 +26,11 @@ test('buildChatListModel: repeated project records resolve each raw path once pe
       ],
     };
     buildChatListModel(input);
-    assert.equal(canonicalize.mock.callCount(), 200);
+    assert.equal(canonicalize.mock.callCount(), 201);
     buildChatListModel(input);
     assert.equal(
       canonicalize.mock.callCount(),
-      400,
+      402,
       'canonical paths are not cached across builds'
     );
   } finally {

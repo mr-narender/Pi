@@ -90,6 +90,7 @@ function render(): void {
   const activeId = (document.activeElement as HTMLElement | null)?.dataset?.id;
   const searchEl = document.getElementById('chat-list-search') as HTMLInputElement | null;
   const searchHadFocus = document.activeElement === searchEl;
+  const folderHadFocus = document.activeElement?.id === 'chat-list-folder';
   const caret = searchHadFocus ? (searchEl?.selectionStart ?? null) : null;
   // All markup comes from chatListRowHtml.ts (pure, golden-tested) — this
   // file only wires events onto it.
@@ -103,10 +104,17 @@ function render(): void {
   app.innerHTML = renderChatListShell(
     renderChatListBody(
       { ...currentModel, rows: visibleRows },
-      { filterActive: filterText.trim().length > 0 }
+      { filterActive: filterText.trim().length > 0 || !!currentModel.selectedFolder }
     ),
-    filterText
+    filterText,
+    currentModel
   );
+
+  const folder = document.getElementById('chat-list-folder') as HTMLSelectElement | null;
+  folder?.addEventListener('change', () => {
+    vscode.postMessage({ type: 'filterChatFolder', path: folder.value });
+  });
+  if (folderHadFocus) folder?.focus();
 
   const search = document.getElementById('chat-list-search') as HTMLInputElement | null;
   search?.addEventListener('input', () => {

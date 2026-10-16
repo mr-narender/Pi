@@ -229,7 +229,7 @@ test('reviewer repro 9: extension UI reducer keeps keyed statuses, widgets, titl
 test('reviewer repro 10: webview message validation rejects malformed command traffic', () => {
   assert.equal(
     parseWebviewMessage({ type: 'switchFolder', folderUri: 'file:///tmp' })?.type,
-    'switchFolder'
+    undefined
   );
   assert.equal(
     parseWebviewMessage({ type: 'openAttachment', uri: 'file:///tmp/workspace/file.txt' })?.type,
@@ -289,7 +289,8 @@ test('reviewer repro 13: multi-root selection surface is explicit in extension a
   const extension = readFileSync('src/extension.ts', 'utf8');
   const chatScript = readFileSync('src/webview/media/chat.ts', 'utf8');
   assert.ok(extension.includes('piRpcInternal.selectWorkspaceFolder'));
-  assert.ok(chatScript.includes("type: 'switchFolder'"));
+  assert.ok(!chatScript.includes("type: 'switchFolder'"));
+  assert.ok(!readFileSync('src/webview/render.ts', 'utf8').includes('id="folder-select"'));
 });
 
 function webviewSnapshot(overrides: Partial<WebviewSnapshot> = {}): WebviewSnapshot {
