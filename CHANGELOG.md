@@ -7,6 +7,8 @@
   Reduce Soft card padding and spacing while retaining clear reply boundaries.
 - Keep completed Mermaid previews visible during active replies, including when
   typewriter animation is disabled or reduced motion is enabled.
+- Preview successfully written `.mmd` and `.mermaid` files inline, outside folded
+  work details, using the file content already supplied by Pi.
 - Give each Pi reply one soft card with a clear label, keeping work details
   compact and code previews distinct inside the reply.
 - Route Undo/Redo shortcuts to the composer and make submitted text recoverable

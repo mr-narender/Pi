@@ -272,8 +272,9 @@ function renderAssistantBody(
         renderTimelineNode(node, false, `${message.id}:${rendered.length}:${index}`)
       )
       .join('');
+    const previews = runNodes.map(renderWrittenMermaid).join('');
     if (runNodes.length < 2) {
-      rendered.push(html);
+      rendered.push(html + previews);
       return;
     }
     // Say WHAT the agent did, not how many "steps": tool names with counts,
@@ -310,7 +311,7 @@ function renderAssistantBody(
     // finalizeWorkPhases() at join time.
     const open = hasError ? ' open' : streamingAnswer ? '__PHASE_OPEN__' : '';
     rendered.push(
-      `<details class="work-phase${hasError ? ' is-error' : ''}" data-preserve-open id="wp-${escapeHtml(message.id)}-${rendered.length}"${open}><summary class="work-phase-head" title="Click to show the agent's work">${META_ICONS.tool}<span class="work-phase-label">${escapeHtml(label)}</span><span class="work-phase-hint">show work</span>${hasError ? '<span class="tl-flag-error">failed</span>' : ''}${CARET_ICON}</summary>${html}</details>`
+      `<details class="work-phase${hasError ? ' is-error' : ''}" data-preserve-open id="wp-${escapeHtml(message.id)}-${rendered.length}"${open}><summary class="work-phase-head" title="Click to show the agent's work">${META_ICONS.tool}<span class="work-phase-label">${escapeHtml(label)}</span><span class="work-phase-hint">show work</span>${hasError ? '<span class="tl-flag-error">failed</span>' : ''}${CARET_ICON}</summary>${html}</details>${previews}`
     );
   };
   for (let index = 0; index < nodes.length; index += 1) {
@@ -508,6 +509,17 @@ function renderToolContent(text: string): string {
     return inner;
   }
   return `<div class="clampable"><div class="clamp-body">${inner}</div><button type="button" class="code-showmore">Show more</button></div>`;
+}
+
+function renderWrittenMermaid(node: TimelineNode): string {
+  if (node.kind !== 'toolPair' || node.result.isError || node.call.name !== 'write') return '';
+  const path = editToolFilePath(node.call.name, node.call.args);
+  if (!path || !/\.(mmd|mermaid)$/i.test(path)) return '';
+  const args = tryParseJson(node.call.args ?? '');
+  if (!args || typeof args !== 'object' || Array.isArray(args)) return '';
+  const content = (args as Record<string, unknown>).content;
+  if (typeof content !== 'string' || !content.trim()) return '';
+  return renderMermaidBlock(content, true, path.split(/[\\/]/).at(-1));
 }
 
 function renderDuration(durationMs: unknown, label: string): string {
@@ -911,6 +923,10 @@ function renderMarkdownBlock(text: string): string {
   return out.join('');
 }
 
+function renderMermaidBlock(codeText: string, closed: boolean, title = 'Mermaid'): string {
+  return `<div class="code-wrap mermaid-wrap" data-lang="mermaid" data-mermaid-view="preview" data-mermaid-complete="${closed}"><div class="code-lang"><span class="code-lang-name">${escapeHtml(title)}</span><div class="code-actions"><button type="button" class="mermaid-toggle" data-mermaid-mode="code" aria-pressed="false">Code</button><button type="button" class="mermaid-toggle is-active" data-mermaid-mode="preview" aria-pressed="true">Preview</button><button type="button" class="code-btn mermaid-expand" aria-label="Open diagram full screen" title="Open diagram full screen" disabled>&#x26F6;</button><button type="button" class="code-btn code-copy" aria-label="Copy code" title="Copy code">${COPY_ICON_SVG}</button></div></div><pre class="code-block mermaid-code" hidden><code>${escapeHtml(codeText)}</code></pre><div class="mermaid-preview"><div class="mermaid-preview-stage" role="img" aria-label="Mermaid diagram preview"><span class="mermaid-loading">Rendering diagram…</span></div><p class="mermaid-error" role="alert" hidden>Couldn’t render this diagram. Check the Mermaid syntax.</p></div></div>`;
+}
+
 export function renderRichText(raw: string, streaming = false): string {
   const lines = raw.split('\n');
   const out: string[] = [];
@@ -950,9 +966,7 @@ export function renderRichText(raw: string, streaming = false): string {
         continue;
       }
       if (language.toLowerCase() === 'mermaid') {
-        out.push(
-          `<div class="code-wrap mermaid-wrap" data-lang="mermaid" data-mermaid-view="preview" data-mermaid-complete="${closed}"><div class="code-lang"><span class="code-lang-name">Mermaid</span><div class="code-actions"><button type="button" class="mermaid-toggle" data-mermaid-mode="code" aria-pressed="false">Code</button><button type="button" class="mermaid-toggle is-active" data-mermaid-mode="preview" aria-pressed="true">Preview</button><button type="button" class="code-btn mermaid-expand" aria-label="Open diagram full screen" title="Open diagram full screen" disabled>&#x26F6;</button><button type="button" class="code-btn code-copy" aria-label="Copy code" title="Copy code">${COPY_ICON_SVG}</button></div></div><pre class="code-block mermaid-code" hidden><code>${escapeHtml(codeText)}</code></pre><div class="mermaid-preview"><div class="mermaid-preview-stage" role="img" aria-label="Mermaid diagram preview"><span class="mermaid-loading">Rendering diagram…</span></div><p class="mermaid-error" role="alert" hidden>Couldn’t render this diagram. Check the Mermaid syntax.</p></div></div>`
-        );
+        out.push(renderMermaidBlock(codeText, closed));
         continue;
       }
       // Syntax-highlight the block (falls back to plain escaped text). The

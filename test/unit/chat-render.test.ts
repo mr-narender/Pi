@@ -51,6 +51,81 @@ function snapshot(overrides: Partial<WebviewSnapshot> = {}): WebviewSnapshot {
   };
 }
 
+test('successful Mermaid file writes show Preview outside collapsed work details', () => {
+  for (const path of ['c:/Users/Narender/dev/diagram.mmd', '/work/diagram.mermaid']) {
+    const html = renderChatApp(
+      snapshot({
+        messages: [
+          {
+            id: 'diagram-write',
+            role: 'assistant',
+            text: '',
+            attachments: [],
+            blocks: [
+              { kind: 'thinking', text: 'Create the diagram' },
+              {
+                kind: 'tool',
+                name: 'write',
+                callId: 'write-1',
+                args: JSON.stringify({ path, content: 'flowchart LR\nA --> B --> C --> D --> F' }),
+              },
+              {
+                kind: 'toolResult',
+                name: 'write',
+                callId: 'write-1',
+                text: `Successfully wrote to ${path}`,
+              },
+            ],
+          },
+        ],
+      })
+    );
+    const doc = new JSDOM(html).window.document;
+    const preview = doc.querySelector('.mermaid-wrap');
+    assert.ok(preview, path);
+    assert.equal(preview.closest('.work-phase'), null);
+    assert.equal(preview.getAttribute('data-mermaid-view'), 'preview');
+    assert.equal(
+      preview.querySelector('.mermaid-code code')?.textContent,
+      'flowchart LR\nA --> B --> C --> D --> F'
+    );
+    assert.match(preview.querySelector('.code-lang-name')!.textContent!, /diagram\.(mmd|mermaid)/);
+  }
+});
+
+test('pending, failed, malformed and unrelated file writes do not show a Mermaid artifact', () => {
+  for (const scenario of ['pending', 'failed', 'malformed', 'unrelated']) {
+    const blocks: NonNullable<WebviewSnapshot['messages'][number]['blocks']> = [
+      {
+        kind: 'tool',
+        name: 'write',
+        callId: 'w',
+        args:
+          scenario === 'malformed'
+            ? '{"path":'
+            : JSON.stringify({
+                path: scenario === 'unrelated' ? '/work/file.txt' : '/work/diagram.mmd',
+                content: 'flowchart LR\nA --> B',
+              }),
+      },
+    ];
+    if (scenario !== 'pending')
+      blocks.push({
+        kind: 'toolResult',
+        name: 'write',
+        callId: 'w',
+        text: 'result',
+        isError: scenario === 'failed',
+      });
+    const html = renderChatApp(
+      snapshot({
+        messages: [{ id: 'write', role: 'assistant', text: '', attachments: [], blocks }],
+      })
+    );
+    assert.doesNotMatch(html, /mermaid-wrap/, scenario);
+  }
+});
+
 test('captured context renders inline with highlighting, exact copy payload, and separate file open', () => {
   const raw = 'review\n\n<pi-vscode-context-v1>\nowned\n</pi-vscode-context-v1>';
   const html = renderChatApp(
