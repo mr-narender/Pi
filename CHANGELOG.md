@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.37
+
+- Restore sidebar chat history across all workspace folders and indexed other
+  projects, preserving each session's original working directory when opened.
+- Suppress the expected missing-transcript warning for new sessions that Pi has
+  not written to disk yet.
+
 ## 0.2.36
 
 - Discover the same chat history when opening a folder directly or through a

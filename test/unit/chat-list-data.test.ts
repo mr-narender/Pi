@@ -1,8 +1,86 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import test, { mock } from 'node:test';
+import { realpathSync } from 'node:fs';
 import { buildChatListModel } from '../../src/webview/chatListData';
 
 const baseRecent = { loading: false, filterText: '', items: [], sessionDir: '/tmp/sessions' };
+
+test('buildChatListModel: repeated project records resolve each raw path once per build', () => {
+  const canonicalize = mock.method(realpathSync, 'native', (path: string) => path);
+  try {
+    const projects = Array.from({ length: 200 }, (_, index) => ({
+      id: String(index),
+      path: `/sessions/${index}.jsonl`,
+      displayName: `chat ${index}`,
+      cwd: '/projects/a',
+      workspaceLabel: 'a',
+      modifiedAt: index + 1,
+      createdAt: 1,
+      messageCount: 1,
+    }));
+    const recent = { ...baseRecent, others: Array.from({ length: 20 }, () => projects).flat() };
+    const input = {
+      recent,
+      openChats: [
+        { resource: 'open', title: 'open', active: true, sessionFile: projects[0]!.path },
+      ],
+    };
+    buildChatListModel(input);
+    assert.equal(canonicalize.mock.callCount(), 200);
+    buildChatListModel(input);
+    assert.equal(
+      canonicalize.mock.callCount(),
+      400,
+      'canonical paths are not cached across builds'
+    );
+  } finally {
+    canonicalize.mock.restore();
+  }
+});
+
+test('buildChatListModel: other projects merge, canonical paths deduplicate and search precedes cap', () => {
+  const items = Array.from({ length: 25 }, (_, index) => ({
+    id: String(index),
+    path: `/sessions/${index}.jsonl`,
+    displayName: `chat ${index}`,
+    cwd: '/projects/a',
+    workspaceLabel: 'a',
+    modifiedAt: index + 1,
+    createdAt: 1,
+    messageCount: 1,
+  }));
+  const parent = {
+    ...items[0]!,
+    path: '/sessions/parent.jsonl',
+    id: 'parent',
+    displayName: 'parent history',
+    cwd: '/projects',
+    workspaceLabel: 'parent',
+  };
+  const recent = {
+    ...baseRecent,
+    items,
+    others: [parent, { ...items[24]!, path: '/sessions/./24.jsonl' }],
+  };
+  const model = buildChatListModel({ openChats: [], recent });
+  assert.equal(model.rows.length, 20);
+  assert.equal(model.rows.filter((row) => row.title === 'chat 24').length, 1);
+  assert.deepEqual(
+    buildChatListModel({ openChats: [], recent: { ...recent, filterText: 'parent' } }).rows.map(
+      (row) => row.title
+    ),
+    ['parent history']
+  );
+  assert.equal(
+    buildChatListModel({
+      openChats: [
+        { resource: 'open', title: 'open', active: true, sessionFile: '/sessions/./24.jsonl' },
+      ],
+      recent,
+    }).rows.filter((row) => row.title === 'chat 24').length,
+    1
+  );
+});
 
 test('buildChatListModel: open chats come first, active flag preserved', () => {
   const model = buildChatListModel({
