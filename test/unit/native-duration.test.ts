@@ -41,7 +41,7 @@ test('Pi assistant duration survives projection and renders its native elapsed t
   ]);
   assert.equal(snapshot.messages[0]?.durationMs, 2345);
   const document = new JSDOM(renderChatApp(snapshot)).window.document;
-  const duration = document.querySelector('.message-assistant .native-duration');
+  const duration = document.querySelector('.assistant-turn > .message-role .native-duration');
   assert.equal(duration?.textContent, '2.3 s');
   assert.equal(duration?.getAttribute('data-duration-ms'), '2345');
   assert.match(duration?.getAttribute('aria-label') ?? '', /Assistant generation time/);

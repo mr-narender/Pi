@@ -3772,7 +3772,7 @@ body {
   opacity: 0.78;
 }
 
-#messages .message-assistant {
+#messages .assistant-turn {
   width: 100%;
   margin: 8px 0 16px;
   padding: 12px 14px;
@@ -3781,12 +3781,25 @@ body {
   background: var(--pi-surface-group);
 }
 
-#messages .message-assistant .message-role {
+#messages .assistant-turn > .message-role {
   margin-bottom: 8px;
   font-size: 12px;
   font-weight: 650;
   letter-spacing: 0;
   opacity: 1;
+}
+
+#messages .assistant-turn > .message-assistant {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+#messages .assistant-turn > .message-assistant + .message-assistant {
+  margin-top: 12px;
 }
 
 #messages .message-user .message-body {
@@ -4312,7 +4325,7 @@ body.chat-list-view {
 }
 
 body.vscode-high-contrast .composer-dock,
-body.vscode-high-contrast #messages .message-assistant,
+body.vscode-high-contrast #messages .assistant-turn,
 body.vscode-high-contrast .session-details,
 body.vscode-high-contrast .chat-list-row:hover,
 body.vscode-high-contrast .chat-list-row.active {
@@ -4322,7 +4335,7 @@ body.vscode-high-contrast .chat-list-row.active {
 }
 
 @media (max-width: 460px) {
-  #messages .message-assistant {
+  #messages .assistant-turn {
     padding: 12px 13px 15px;
   }
 }

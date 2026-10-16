@@ -273,10 +273,6 @@ function renderAssistantBody(
       )
       .join('');
     const previews = runNodes.map(renderWrittenMermaid).join('');
-    if (runNodes.length < 2) {
-      rendered.push(html + previews);
-      return;
-    }
     // Say WHAT the agent did, not how many "steps": tool names with counts,
     // plus how many files were touched. ("3 steps" was meaningless.)
     const toolCounts = new Map<string, number>();
@@ -1294,25 +1290,49 @@ function renderMessages(snapshot: WebviewSnapshot, revealMessageId?: string): st
     : '';
   const busy = snapshot.isStreaming || snapshot.connectionState === 'busy';
   const modelName = modelLabel(snapshot);
-  return (
-    olderSentinel +
-    snapshot.messages
-      .map((message, index, all) => {
-        const isLast = index === all.length - 1;
-        return renderMessageArticle(
-          message,
-          isLast,
-          (message.id === revealMessageId ||
-            (busy && message.id === snapshot.currentAssistantMessageId)) &&
-            snapshot.bindingState !== 'cached' &&
-            snapshot.bindingState !== 'draft' &&
-            message.role === 'assistant',
-          modelName,
-          !snapshot.isCompacting
-        );
-      })
-      .join('')
-  );
+  const rendered: string[] = [olderSentinel];
+  let turn: string[] = [];
+  let turnId = '';
+  let durationMs: number | undefined;
+  const flushTurn = (): void => {
+    if (!turn.length) return;
+    rendered.push(
+      `<section class="assistant-turn" id="turn-${escapeHtml(turnId)}" aria-label="Pi reply"><div class="message-role">Pi${renderDuration(durationMs, 'Assistant generation time (recorded)')}</div>${turn.join('')}</section>`
+    );
+    turn = [];
+    durationMs = undefined;
+  };
+  for (const [index, message] of snapshot.messages.entries()) {
+    const inTurn = message.role === 'assistant' || (turn.length > 0 && isResultRole(message.role));
+    if (!inTurn) flushTurn();
+    const html = renderMessageArticle(
+      message,
+      index === snapshot.messages.length - 1,
+      (message.id === revealMessageId ||
+        (busy && message.id === snapshot.currentAssistantMessageId)) &&
+        snapshot.bindingState !== 'cached' &&
+        snapshot.bindingState !== 'draft' &&
+        message.role === 'assistant',
+      modelName,
+      !snapshot.isCompacting,
+      !inTurn
+    );
+    if (!html) continue;
+    if (inTurn) {
+      if (!turn.length) turnId = message.id;
+      turn.push(html);
+      if (
+        message.role === 'assistant' &&
+        typeof message.durationMs === 'number' &&
+        Number.isFinite(message.durationMs) &&
+        message.durationMs >= 0
+      ) {
+        durationMs = (durationMs ?? 0) + message.durationMs;
+      }
+    } else rendered.push(html);
+  }
+  flushTurn();
+  return rendered.join('');
 }
 
 // Pi emits tool results (and bash executions) as SEPARATE messages with these
@@ -1334,7 +1354,8 @@ function renderMessageArticle(
   isLast = false,
   streamingAnswer = false,
   modelName = '',
-  allowEdit = true
+  allowEdit = true,
+  showRole = true
 ): string {
   const role = message.role;
   const body = renderMessageBody(message, streamingAnswer, modelName);
@@ -1352,7 +1373,7 @@ function renderMessageArticle(
   void isLast;
   return `
         <article class="message-card message-${escapeHtml(role)}" data-mid="${escapeHtml(message.id)}"${roleLabel ? ` aria-label="${roleLabel} said"` : ''}>
-          ${roleLabel ? `<div class="message-role">${roleLabel}${role === 'assistant' ? renderDuration(message.durationMs, 'Assistant generation time') : ''}</div>` : ''}
+          ${showRole && roleLabel ? `<div class="message-role">${roleLabel}${role === 'assistant' ? renderDuration(message.durationMs, 'Assistant generation time') : ''}</div>` : ''}
           ${body}${captured}
           ${message.attachments.length > 0 ? `<div class="detail-stack">${message.attachments.map((attachment) => renderAttachment(attachment)).join('')}</div>` : ''}
           ${showCopy ? `<div class="msg-actions">${role === 'user' ? `<button type="button" class="msg-edit" title="Edit &amp; restart from here" aria-label="Edit and restart the chat from this message"${editDisabled}>${EDIT_ICON}</button>` : ''}<button type="button" class="msg-copy"${message.capturedContext ? ` data-copy-raw="${escapeHtml(message.text)}"` : ''} title="Copy message" aria-label="Copy message">${COPY_ICON}</button></div>` : ''}

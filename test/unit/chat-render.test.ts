@@ -51,6 +51,51 @@ function snapshot(overrides: Partial<WebviewSnapshot> = {}): WebviewSnapshot {
   };
 }
 
+test('one Pi turn shares a single bubble across tools and the final reply', () => {
+  const messages: WebviewSnapshot['messages'] = [
+    { id: 'u1', role: 'user', text: 'Draw a diagram', attachments: [] },
+    {
+      id: 'work',
+      role: 'assistant',
+      durationMs: 3800,
+      text: '',
+      attachments: [],
+      blocks: [
+        {
+          kind: 'tool',
+          name: 'write',
+          callId: 'w',
+          args: JSON.stringify({ path: 'diagram.mmd', content: 'flowchart LR\nA --> B' }),
+        },
+        { kind: 'toolResult', name: 'write', callId: 'w', text: 'Successfully wrote diagram.mmd' },
+      ],
+    },
+    {
+      id: 'reply',
+      role: 'assistant',
+      text: 'Created the diagram.',
+      attachments: [],
+      durationMs: 4100,
+    },
+    { id: 'u2', role: 'user', text: 'Thanks', attachments: [] },
+    { id: 'reply2', role: 'assistant', text: 'You are welcome.', attachments: [] },
+  ];
+  const doc = new JSDOM(renderChatApp(snapshot({ messages }))).window.document;
+  const turns = doc.querySelectorAll('.assistant-turn');
+  assert.equal(turns.length, 2);
+  assert.equal(turns[0]!.querySelectorAll('[data-mid]').length, 2);
+  assert.equal(turns[0]!.querySelectorAll('.message-role').length, 1);
+  assert.equal(
+    turns[0]!.querySelector('.message-role [data-duration-ms]')!.getAttribute('data-duration-ms'),
+    '7900'
+  );
+  assert.ok(turns[0]!.querySelector('.mermaid-wrap'));
+  assert.match(turns[0]!.textContent!, /Created the diagram/);
+  assert.equal(turns[0]!.querySelector<HTMLDetailsElement>('.work-phase')!.open, false);
+  assert.equal(turns[0]!.querySelector('.mermaid-wrap')!.closest('.work-phase'), null);
+  assert.equal(turns[1]!.querySelector('[data-mid]')!.getAttribute('data-mid'), 'reply2');
+});
+
 test('successful Mermaid file writes show Preview outside collapsed work details', () => {
   for (const path of ['c:/Users/Narender/dev/diagram.mmd', '/work/diagram.mermaid']) {
     const html = renderChatApp(
@@ -301,7 +346,7 @@ test('empty assistant start defers the shared reply row until the first streamin
       ];
       render();
       assert.equal(current.isStreaming, true);
-      assert.equal(root.querySelector('.message-assistant .message-role')?.textContent, 'Pi');
+      assert.equal(root.querySelector('.assistant-turn > .message-role')?.textContent, 'Pi');
       assert.equal(root.querySelector('.js-stream-text')?.getAttribute('data-raw'), text);
       assert.match(root.querySelector('.message-assistant')!.textContent!, /P/);
     }
@@ -353,7 +398,7 @@ test('RPC start and text deltas project into a reply before message_end', () => 
     render();
     assert.equal(state.state.isStreaming, true);
     if (event.delta === 'P' || event.delta === 'ONG') {
-      assert.equal(root.querySelector('.message-assistant .message-role')?.textContent, 'Pi');
+      assert.equal(root.querySelector('.assistant-turn > .message-role')?.textContent, 'Pi');
       assert.equal(
         root.querySelector('.js-stream-text')?.getAttribute('data-raw'),
         event.delta === 'P' ? '  P' : '  PONG'
