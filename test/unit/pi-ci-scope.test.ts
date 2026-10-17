@@ -71,7 +71,7 @@ test('PR diff uses the exact head merge base, NUL paths and both sides of rename
   ]);
 });
 
-test('push classifies the entire before-to-after range and releases only increasing runtime versions', async () => {
+test('push classifies the entire before-to-after range and releases runtime changes without source version edits', async () => {
   const { changeScope } = await scope;
   for (const paths of ['src/a.ts\0docs/b.md\0', 'docs/a.md\0']) {
     for (const next of ['0.2.30', '0.2.31']) {
@@ -86,7 +86,7 @@ test('push classifies the entire before-to-after range and releases only increas
       };
       const result = changeScope('push', { before, after: head }, head, git);
       assert.equal(result.build, paths.startsWith('src/'));
-      assert.equal(result.release, paths.startsWith('src/') && next === '0.2.31');
+      assert.equal(result.release, paths.startsWith('src/'));
       assert.ok(
         calls.some(
           (args) => args.join(' ') === `diff --name-only -z --no-renames ${before} ${head}`
@@ -94,6 +94,70 @@ test('push classifies the entire before-to-after range and releases only increas
       );
     }
   }
+});
+
+test('development dependency and script changes do not publish; production manifests and lock graphs do', async () => {
+  const { needsExtensionRelease } = await scope;
+  const baseline = {
+    version: '0.2.40',
+    scripts: { lint: 'old' },
+    dependencies: { runtime: '1' },
+    devDependencies: { tooling: '1' },
+  };
+  const classify = (pkg: any, lock?: any) =>
+    needsExtensionRelease(
+      lock ? ['package-lock.json'] : ['package.json'],
+      before,
+      head,
+      (args: string[]) => {
+        const old = args[1]!.startsWith(before);
+        return JSON.stringify(
+          lock
+            ? {
+                packages: old
+                  ? {
+                      '': {},
+                      'node_modules/runtime': { version: '1' },
+                      'node_modules/tooling': { version: '1', dev: true },
+                    }
+                  : lock,
+              }
+            : old
+              ? baseline
+              : pkg
+        );
+      }
+    );
+  assert.equal(
+    classify({ ...baseline, scripts: { lint: 'new' }, devDependencies: { tooling: '2' } }),
+    false
+  );
+  assert.equal(classify({ ...baseline, dependencies: { runtime: '2' } }), true);
+  assert.equal(classify(Object.fromEntries(Object.entries(baseline).reverse())), false);
+  assert.throws(
+    () =>
+      needsExtensionRelease(['src/change.ts', 'package.json'], before, head, (args: string[]) =>
+        JSON.stringify({ version: args[1]!.startsWith(before) ? '0.2.40' : '0.2.39' })
+      ),
+    /rollback/
+  );
+  assert.equal(classify({ ...baseline, version: '0.2.41' }), true);
+  assert.equal(
+    classify(null, {
+      '': {},
+      'node_modules/runtime': { version: '1' },
+      'node_modules/tooling': { version: '2', dev: true },
+    }),
+    false
+  );
+  assert.equal(
+    classify(null, {
+      '': {},
+      'node_modules/runtime': { version: '2' },
+      'node_modules/tooling': { version: '1', dev: true },
+    }),
+    true
+  );
 });
 
 test('missing baselines build conservatively without publishing; explicit manual operations retain full proof', async () => {

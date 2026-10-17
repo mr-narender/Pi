@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.40
+
+- Move completed turn details into a quiet, left-aligned "View activity" footer
+  below each Pi reply, keeping diagrams and images visible when activity is folded.
+- Release code changes with an automatic patch version tracked by GitHub release
+  tags. Stamp package versions and release notes in CI without version commits to
+  main, and skip publication for infrastructure-only changes.
+
 ## 0.2.39
 
 - Move the folder selector above session search, filtering chats by their exact

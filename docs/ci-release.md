@@ -35,10 +35,27 @@ read access for hoisted dependencies.
 The SDK pin is only for testing; product configured-executable/PATH precedence
 and opt-in managed installation are unchanged.
 
-The version must increase in package.json, package-lock.json and CHANGELOG in the
-reviewed PR. A successful main run inspects one stable VSIX, stores its SHA256,
+Stable Git tags and their GitHub release assets track released versions outside
+the source tree. Runtime main pushes automatically choose the next patch above
+the highest numeric stable tag, including tags reserved for pending drafts.
+An explicit higher source version remains a supported release floor. The reviewed
+0.2.40 manifest/changelog starts this transition; future code PRs need no manual
+version bump. CI stamps only the manifest version, lockfile root versions and a
+deterministic CHANGELOG entry before tests and packaging. These generated changes
+stay in the runner; CI never commits to main or opens automatic version PRs.
+The VSIX still contains the exact version required by VS Code and Marketplace.
+
+Runtime paths and production manifest/dependency changes publish automatically.
+Package scripts, development dependencies, development-only lock changes and
+JSON key reordering do not publish. Workflow, test, documentation and release
+automation changes alone do not publish; the 0.2.40 explicit bump releases the
+already merged Quiet Footer change with this CI correction.
+A successful main run inspects one stable VSIX, stores its SHA256,
 source commit and bundle hashes, and passes that exact artifact to publication.
-The release job validates the receipt/source/package again without rebuilding,
+The release job independently chooses the same version from the stable tag
+ledger and recreates only those deterministic metadata edits from a clean source
+checkout. Other tracked edits or untracked files fail validation. It validates
+the receipt/source/package again without rebuilding,
 creates a draft GitHub release/tag at that commit, uploads the VSIX and receipt,
 publishes those exact VSIX bytes to Marketplace, then waits for the stable version
 listing, exact approved VSIX SHA256 and versioned Details README asset to agree
@@ -51,14 +68,13 @@ Authorization, wrong package bytes, channel conflicts and newer versions fail
 immediately. An approved package already visible at its versioned URL is never
 republished just because the version listing is stale. A propagation timeout
 retains the GitHub draft: rerun failed jobs with the same verified artifact.
-Main pushes with an unchanged version relative to the event's **before** commit
-skip publication, including multi-commit/rebase merges. Full checkout history
-binds that before commit to main ancestry; initial/deleted/rewritten main histories
-fail and require owner recovery. Rollbacks, prerelease
+Full checkout history binds the event's **before** commit to main ancestry;
+initial/deleted/rewritten main histories and a missing stable-tag baseline fail
+and require owner recovery. Rollbacks, prerelease
 channels, wrong tag commits or conflicting remote checksums fail closed.
-Automatic Azure login/publication runs only when a main push changes a runtime
-input and increases the stable version. Runtime changes with an unchanged version
-build and validate without publication. Explicit manual **profile** and
+Automatic Azure login/publication runs only when a main push changes a release
+input. Runtime changes with an unchanged source version receive the next patch
+automatically. Explicit manual **profile** and
 **retry-pending-release** operations retain their existing full quality/artifact
 proof and main-only authorization route.
 
@@ -73,40 +89,42 @@ runtime, client-secret or PAT environment variables.
 
 After source/artifact validation, main runs read the Marketplace profile using
 `az rest` and display only its validated UUID. This does not publish or require
-publisher Contributor access. Unchanged-version pushes still display that ID and
-skip publication. Child output, credentials, HTTP bodies and assertion values stay
+publisher Contributor access. Child output, credentials, HTTP bodies and assertion values stay
 private; failures expose only fixed stages/categories and bounded HTTP/exit numbers.
 
 After partial failures, **rerun failed jobs** on the same workflow run: the
 successful quality artifact is reused. Existing verified tags/assets/Marketplace
-versions are retained and completed, never overwritten or force-pushed. Do not
-rerun every job after a partial publication: ZIP timestamps can produce different
-bytes even at the same commit. The artifact is retained for 30 days; after expiry,
-recover the original package from the verified GitHub draft rather than rebuild
-and silently overwrite a published version. Rapid main pushes share a
+versions are retained and completed, never overwritten or force-pushed. Prefer
+rerunning only failed jobs after partial publication. If all jobs are
+rerun, an existing tag for that source reuses its reserved version and retrieves
+the original digest-checked VSIX and receipt from the draft or completed release.
+Fresh ZIP timestamps never replace original bytes. A crash after VSIX upload can
+regenerate only its missing receipt after exact source/archive verification;
+missing original VSIX bytes fail closed. The artifact is retained for 30 days;
+GitHub release assets remain the recovery source after expiry. Manual retry uses
+the latest reserved ancestor version, even after later infrastructure commits.
+Rapid main pushes share a
 non-cancelling concurrency group with `queue: max`; pending main runs are queued
 instead of replaced, and an active publication is not interrupted.
-
-For the pending approved **0.2.28** draft from
-`348242035cbe410d35fc3c83eedde671e8badb50`, merging this authentication correction
-does not publish a replacement package or change its version. The original VSIX
-SHA256 is `1d4c8a710e81652be563eba03bb736e130b48b72850d240dc8f4952b8cf358e8`.
-After granting the displayed profile ID Contributor access, run **Pi** manually
-on **main**, choosing **retry-pending-release**. Older workflow runs retain their
-old authentication source and cannot recover through the new OIDC flow.
+Queued older source runs skip publication when a newer descendant is already
+tagged; unrelated tagged source fails ancestry validation instead of reusing a
+version. The source/tag match, bundle hashes and original quality proof remain
+required during recovery.
 
 Manual **profile** (the default) only reads the ID. **retry-pending-release** accepts
-only the existing draft for the current package version, with no SHA/artifact
+only the latest reserved stable ancestor release, with no SHA/artifact
 input. It validates its tag, source ancestry, original successful main **pi-quality**,
 unique asset hashes, downloaded receipt/package, original packaged source and
 its match to reviewed current main, including current quality bundle hashes and
-CHANGELOG source. The draft must contain exactly its receipt and VSIX assets. All sorted archive entry
+the deterministically stamped CHANGELOG source. The original VSIX is required;
+only its missing receipt may be reconstructed. No other assets are accepted. All sorted archive entry
 names and every entry's content hash must equal the validated current quality VSIX;
 ZIP container hashes may differ because of metadata such as timestamps.
-It runs only reviewed current scripts; old source is inspected without executing its scripts or hooks. The original source parent must have an
-older version. It preserves original receipt bytes and package checksums and
-uses the existing idempotent release stages. An absent/already completed draft or
-any mismatch fails closed; this is a finite pending-draft recovery route.
+It runs only reviewed current scripts; old source is inspected without executing
+its scripts or hooks. The reserved version must exceed its prior stable tag.
+It preserves original receipt bytes and package checksums and uses the existing
+idempotent release stages. A completed release is reverified without replacing
+its assets. Missing proof or any mismatch fails closed.
 
 ## Owner setup before merge
 
@@ -130,10 +148,10 @@ any mismatch fails closed; this is a finite pending-draft recovery route.
    and all CI trust prerequisites are verified. Do not self-approve, bypass controls
    or create a new account. Human owner review and merge remain required by shared
    workflow governance.
-3. Review and merge. Future reviewed version increases publish automatically
-   after **pi-quality** succeeds and the identity has Contributor access. This
-   unchanged-version OIDC correction first provides the profile ID; then use
-   the manual pending-draft retry above for **0.2.28**.
+3. Review and merge. Future reviewed runtime changes publish automatically
+   after **pi-quality** succeeds and the identity has Contributor access.
+   Version allocation follows the stable tag ledger; infrastructure-only changes
+   validate without publication.
 
 Branch settings and secret configuration are owner operations, not activated by
 this source PR. Registry policy must retain local gates until required status,

@@ -20,6 +20,8 @@ async function recoveryFixture(scenario: string, onExtraction?: (entry: string) 
   fs.mkdirSync(directory);
   const originalRead = fs.readFileSync;
   const originalReaddir = fs.readdirSync;
+  const originalWrite = fs.writeFileSync;
+  const automatic = scenario.startsWith('automatic-');
   const version = JSON.parse(originalRead('package.json', 'utf8')).version;
   const archive = Buffer.from('owned archive bytes');
   const bundle = Buffer.from('owned compiled bundle');
@@ -71,6 +73,8 @@ async function recoveryFixture(scenario: string, onExtraction?: (entry: string) 
     ],
   };
   if (scenario === 'published') draft.draft = false;
+  if (scenario === 'automatic-published') draft.draft = false;
+  if (scenario === 'automatic-vsix-only') draft.assets = [draft.assets[1]!];
   if (scenario === 'duplicate') draft.assets.push(draft.assets[0]!);
   if (scenario === 'extra-release-asset')
     draft.assets.push({ id: 3, name: 'unreviewed.bin', digest: `sha256:${'c'.repeat(64)}` });
@@ -124,7 +128,11 @@ async function recoveryFixture(scenario: string, onExtraction?: (entry: string) 
     async createDraft() {
       assert.fail('Verified recovery must never create a draft');
     },
-    async upload() {
+    async upload(_id: number, name: string) {
+      if (scenario === 'automatic-vsix-only' && name === 'receipt.json') {
+        events.push('receipt');
+        return;
+      }
       assert.fail('Verified recovery must never replace assets');
     },
     async publishMarketplace() {
@@ -146,6 +154,13 @@ async function recoveryFixture(scenario: string, onExtraction?: (entry: string) 
     }
     return originalRead(file, options);
   });
+  mock.method(fs, 'writeFileSync', (file: any, content: any, options: any) => {
+    if (automatic && String(file).includes('/source/')) {
+      assert.equal(content, originalRead(resolve(String(file).split('/source/')[1]!), 'utf8'));
+      return;
+    }
+    return originalWrite(file, content, options);
+  });
   mock.method(fs, 'readdirSync', (file: any, options: any) => {
     if (String(file).endsWith('/source/host')) return originalReaddir('host', options);
     return originalReaddir(file, options);
@@ -155,6 +170,11 @@ async function recoveryFixture(scenario: string, onExtraction?: (entry: string) 
     assert.equal(options.stdio, 'pipe');
     if (command === 'git') {
       commands.push(args);
+      if (automatic && args[0] === 'tag') return `v0.2.27\nv${version}`;
+      if (automatic && args[0] === 'show' && args[1]!.startsWith('HEAD:'))
+        return originalRead(resolve(args[1]!.slice(5)), 'utf8');
+      if (automatic && args[0] === 'rev-parse' && args[1]!.startsWith('v'))
+        return args[1]!.startsWith('v0.2.27') ? 'd'.repeat(40) : source;
       if (args[0] === 'merge-base' && scenario === 'ancestor') throw new Error(privateMarker);
       if (args[0] === 'rev-parse')
         return args[1]!.endsWith('^')
@@ -216,7 +236,7 @@ async function recoveryFixture(scenario: string, onExtraction?: (entry: string) 
   });
   syncBuiltinESMExports();
   try {
-    const recovery = await recoverPendingRelease(directory, current, services, env);
+    const recovery = await recoverPendingRelease(directory, current, services, env, automatic);
     assert.deepEqual(recovery.receipt, receipt);
     assert.deepEqual(originalRead(join(recovery.directory, 'receipt.json')), receiptBytes);
     assert.deepEqual(originalRead(join(recovery.directory, 'pi.vsix')), archive);
@@ -230,7 +250,11 @@ async function recoveryFixture(scenario: string, onExtraction?: (entry: string) 
       github: privateMarker,
       marketplace: '/owned/azure',
     });
-    assert.deepEqual(events, ['publish', 'complete']);
+    assert.deepEqual(events, [
+      ...(scenario === 'automatic-vsix-only' ? ['receipt'] : []),
+      'publish',
+      ...(scenario === 'automatic-published' ? [] : ['complete']),
+    ]);
   } finally {
     mock.restoreAll();
     syncBuiltinESMExports();
@@ -241,6 +265,11 @@ async function recoveryFixture(scenario: string, onExtraction?: (entry: string) 
 test('pending draft recovery retains original bytes/source, checks current quality and uses no old scripts/hooks', async () => {
   await recoveryFixture('valid');
 });
+
+for (const scenario of ['automatic-published', 'automatic-vsix-only'])
+  test(`${scenario} retains the original artifact on automatic retries`, async () => {
+    await recoveryFixture(scenario);
+  });
 
 for (const scenario of [
   'published',
@@ -311,6 +340,10 @@ test('original quality proof requires canonical main push workflow, exact source
       assert.ok(url.startsWith('https://api.github.com/repos/mr-narender/Pi/actions/runs'));
       assert.equal(options.headers.Authorization, `Bearer ${privateMarker}`);
       assert.equal(options.method, undefined);
+      assert.ok(
+        !url.includes('status=completed'),
+        'In-progress reruns retain their completed quality proof'
+      );
       return Response.json(url.includes('/jobs?') ? { jobs: [job] } : { workflow_runs: [run] });
     });
     try {

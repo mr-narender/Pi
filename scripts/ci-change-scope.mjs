@@ -3,7 +3,8 @@ import { execFileSync } from 'node:child_process';
 import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { compareVersions } from './release.mjs';
+import { isDeepStrictEqual } from 'node:util';
+import { compareVersions } from './release-version.mjs';
 
 const sha = /^[a-f0-9]{40}$/;
 const gitCommand = (args) =>
@@ -22,6 +23,36 @@ export function needsExtensionBuild(paths) {
         'scripts/build.mjs',
       ].includes(path)
   );
+}
+
+export function needsExtensionRelease(paths, base, head, git = gitCommand) {
+  const runtimeChanged = needsExtensionBuild(
+    paths.filter((path) => !['package.json', 'package-lock.json'].includes(path))
+  );
+  if (paths.includes('package.json')) {
+    const previous = JSON.parse(git(['show', `${base}:package.json`]));
+    const current = JSON.parse(git(['show', `${head}:package.json`]));
+    const change = compareVersions(current.version, previous.version);
+    assert.ok(change >= 0, 'Version rollback is forbidden');
+    if (change > 0) return true;
+    const runtime = (pkg) =>
+      Object.fromEntries(
+        Object.entries(pkg).filter(
+          ([key]) => !['version', 'scripts', 'devDependencies', 'packageManager'].includes(key)
+        )
+      );
+    if (!isDeepStrictEqual(runtime(previous), runtime(current))) return true;
+  }
+  if (paths.includes('package-lock.json')) {
+    const production = (commit) => {
+      const lock = JSON.parse(git(['show', `${commit}:package-lock.json`]));
+      return Object.fromEntries(
+        Object.entries(lock.packages).filter(([name, pkg]) => name && !pkg.dev)
+      );
+    };
+    if (!isDeepStrictEqual(production(base), production(head))) return true;
+  }
+  return runtimeChanged;
 }
 
 export function changeScope(eventName, event, head, git = gitCommand) {
@@ -57,19 +88,7 @@ export function changeScope(eventName, event, head, git = gitCommand) {
   const paths = changed ? changed.slice(0, -1).split('\0') : [];
   const build = needsExtensionBuild(paths);
   let release = false;
-  if (eventName === 'push' && build) {
-    let previous;
-    try {
-      previous = git(['show', `${before}:package.json`]);
-    } catch {
-      return fallback();
-    }
-    const previousVersion = JSON.parse(previous).version;
-    const currentVersion = JSON.parse(git(['show', `${head}:package.json`])).version;
-    const comparison = compareVersions(currentVersion, previousVersion);
-    assert.ok(comparison >= 0, 'Version rollback is forbidden');
-    release = comparison > 0;
-  }
+  if (eventName === 'push' && build) release = needsExtensionRelease(paths, base, head, git);
   return { build, release, paths, fallback: false };
 }
 
@@ -81,6 +100,7 @@ export function validationTests(paths) {
       'test/unit/pi-release.test.ts',
       'test/unit/pi-release-oidc.test.ts',
       'test/unit/pi-release-recovery.test.ts',
+      'test/unit/pi-release-version.test.ts',
       ...paths.filter(
         (path) =>
           /^test\/(unit|integration)\/.+\.test\.ts$/.test(path) &&
