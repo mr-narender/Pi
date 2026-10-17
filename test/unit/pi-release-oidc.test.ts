@@ -80,6 +80,8 @@ async function runFixture(scenario: string) {
     ACTIONS_ID_TOKEN_REQUEST_TOKEN: secret,
     VSCE_PAT: secret,
   };
+  const automatic = scenario === 'automatic-unchanged';
+  if (automatic) env.PI_AUTOMATIC_RELEASE = 'true';
   if (scenario === 'source') env.GITHUB_REF = secret;
   if (scenario === 'missing-session') delete env.AZURE_CONFIG_DIR;
   if (scenario === 'pull-request') env.GITHUB_EVENT_NAME = 'pull_request';
@@ -101,6 +103,21 @@ async function runFixture(scenario: string) {
   const logs: string[] = [];
   const children: { args: string[]; env: NodeJS.ProcessEnv }[] = [];
   const inspections: NodeJS.ProcessEnv[] = [];
+  const stamped: string[] = [];
+  const originalWrite = fs.writeFileSync;
+  mock.method(fs, 'writeFileSync', (file: any, data: any, options: any) => {
+    if (
+      automatic &&
+      ['package.json', 'package-lock.json', 'CHANGELOG.md'].some(
+        (name) => String(file) === resolve(name)
+      )
+    ) {
+      assert.equal(data, originalRead(file, 'utf8'));
+      stamped.push(String(file));
+      return;
+    }
+    return originalWrite(file, data, options);
+  });
   mock.method(fs, 'readFileSync', (file: any, options: any) => {
     if (file === `${directory}/receipt.json`)
       return JSON.stringify(
@@ -119,6 +136,13 @@ async function runFixture(scenario: string) {
   mock.method(childProcess, 'execFileSync', (command: string, args: string[], options: any) => {
     if (command === 'git') {
       inspections.push(options.env);
+      if (automatic && args[0] === 'tag') return 'v0.0.0';
+      if (automatic && args[0] === 'diff') return args.includes('-z') ? 'src/extension.ts\0' : '';
+      if (automatic && args[0] === 'show')
+        return args[1]!.startsWith('HEAD:')
+          ? originalRead(resolve(args[1]!.slice(5)), 'utf8')
+          : JSON.stringify({ version });
+      if (automatic && args[0] === 'rev-parse' && args[1]!.startsWith('v')) return 'b'.repeat(40);
       if (args[0] === 'rev-parse')
         return args[1]!.endsWith('^')
           ? (env.PI_PREVIOUS_SHA ?? 'b'.repeat(40))
@@ -172,7 +196,7 @@ async function runFixture(scenario: string) {
       children.push({ args: args.slice(1), env: options.env });
       assert.deepEqual(args.slice(1, 4), ['publish', '--azure-credential', '--packagePath']);
       assert.ok(args[4]!.endsWith('/pi.vsix'));
-      if (scenario === 'dispatch-retry') {
+      if (scenario === 'dispatch-retry' || automatic) {
         published = true;
         return secret;
       }
@@ -263,7 +287,7 @@ async function runFixture(scenario: string) {
     const status = await runRelease(directory, env);
     for (const inspection of inspections) assert.deepEqual(inspection, runtime);
     assert.ok(![...errors, ...logs].join('\n').includes(secret));
-    return { status, errors, logs, children };
+    return { status, errors, logs, children, stamped };
   } finally {
     mock.restoreAll();
     syncBuiltinESMExports();
@@ -334,6 +358,14 @@ test('unchanged push and explicit profile dispatch perform only readonly profile
   assert.equal(profile.children.length, 1);
   assert.deepEqual(profile.logs, [`Marketplace profile ID: ${profileId}`]);
   assert.deepEqual(profile.errors, []);
+});
+
+test('automatic main publication validates tag ledger and metadata even when source version did not change', async () => {
+  const result = await runFixture('automatic-unchanged');
+  assert.equal(result.status, 0, result.errors.join('\n'));
+  assert.equal(result.children.length, 2);
+  assert.equal(result.stamped.length, 3);
+  assert.ok(result.logs.at(-1)!.startsWith('Released stable mr-narender.pi '));
 });
 
 test('main retry dispatch publishes the original verified draft artifact, not the new quality package', async () => {

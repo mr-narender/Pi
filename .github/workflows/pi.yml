@@ -28,7 +28,7 @@ jobs:
     timeout-minutes: 30
     outputs:
       source-sha: ${{ steps.source.outputs.sha }}
-      release: ${{ steps.scope.outputs.release }}
+      release: ${{ steps.version.outputs.release || steps.scope.outputs.release }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
@@ -53,6 +53,12 @@ jobs:
         run: npm run format:check
       - name: Lint
         run: npm run lint
+      - name: Choose stable version from release tags
+        id: version
+        if: steps.scope.outputs.release == 'true'
+        env:
+          PI_RELEASE_OPERATION: ${{ inputs.operation }}
+        run: node scripts/release-version.mjs
       - name: Source types
         run: npx --no-install tsc -p tsconfig.json --noEmit
       - name: Test types
@@ -137,4 +143,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PI_PREVIOUS_SHA: ${{ github.event.before }}
           PI_RELEASE_OPERATION: ${{ inputs.operation }}
+          PI_AUTOMATIC_RELEASE: 'true'
         run: node scripts/release.mjs "$RUNNER_TEMP/pi-release"

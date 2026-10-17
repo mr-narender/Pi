@@ -4,6 +4,14 @@ import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { resolve, join, dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { inspectVsix, sha256, subprocessEnvironment } from './inspect-vsix.mjs';
+import {
+  compareVersions,
+  planRelease,
+  stampReleaseVersion,
+  gitVersionCommand,
+} from './release-version.mjs';
+import { changeScope } from './ci-change-scope.mjs';
+export { compareVersions } from './release-version.mjs';
 
 const repository = 'mr-narender/Pi';
 const stable = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
@@ -136,14 +144,6 @@ export function previousVersionForPush(before, env = process.env) {
       stdio: 'pipe',
     })
   ).version;
-}
-export function compareVersions(a, b) {
-  assert.match(a, stable, 'Only stable versions can be released');
-  assert.match(b, stable, 'Only stable versions can be compared');
-  const left = a.split('.').map(BigInt);
-  const right = b.split('.').map(BigInt);
-  for (let i = 0; i < 3; i++) if (left[i] !== right[i]) return left[i] > right[i] ? 1 : -1;
-  return 0;
 }
 
 // Services are the two external boundaries, supplied by tests without real credentials or writes.
@@ -393,7 +393,7 @@ export function productionServices(directory, receipt, env) {
       return Buffer.from(await response.arrayBuffer());
     },
     async qualitySucceeded(source) {
-      const result = await github(`actions/runs?head_sha=${source}&status=completed&per_page=100`);
+      const result = await github(`actions/runs?head_sha=${source}&per_page=100`);
       for (const run of result.workflow_runs) {
         if (
           run.head_sha !== source ||
@@ -478,9 +478,12 @@ function assertSameArchiveContents(recovered, current, env) {
 }
 
 // Only the existing current-version draft is recoverable; callers cannot select a source or artifact.
-export async function recoverPendingRelease(directory, current, services, env) {
+export async function recoverPendingRelease(directory, current, services, env, automatic = false) {
   const draft = await services.githubRelease(`v${current.version}`);
-  assert.ok(draft && draft.draft && !draft.prerelease, 'Current-version draft required');
+  assert.ok(
+    draft && (draft.draft || automatic) && !draft.prerelease,
+    'Current-version draft required'
+  );
   assert.equal(draft.tag_name, `v${current.version}`);
   const source = draft.target_commitish;
   assert.match(source, /^[a-f0-9]{40}$/);
@@ -491,28 +494,43 @@ export async function recoverPendingRelease(directory, current, services, env) {
     stdio: 'pipe',
   });
   assert.ok(await services.qualitySucceeded(source), 'Original main quality must have succeeded');
-  assert.deepEqual(
-    draft.assets.map((entry) => entry.name).sort(),
-    ['receipt.json', `pi-${current.version}.vsix`].sort(),
-    'Only the two reviewed release assets are allowed'
-  );
+  const permittedAssets = ['receipt.json', `pi-${current.version}.vsix`];
+  if (automatic)
+    assert.ok(
+      draft.assets.every((entry) => permittedAssets.includes(entry.name)),
+      'Unexpected release asset'
+    );
+  else
+    assert.deepEqual(
+      draft.assets.map((entry) => entry.name).sort(),
+      permittedAssets.sort(),
+      'Only the two reviewed release assets are allowed'
+    );
   const asset = (name) => {
     const matches = draft.assets.filter((entry) => entry.name === name);
     assert.equal(matches.length, 1, 'Unique existing release asset required');
     assert.match(matches[0].digest, /^sha256:[a-f0-9]{64}$/);
     return matches[0];
   };
-  const receiptAsset = asset('receipt.json');
-  const bytes = await services.downloadAsset(receiptAsset);
-  assert.equal(sha256(bytes), receiptAsset.digest.slice(7));
+  const vsixAsset = asset(`pi-${current.version}.vsix`);
+  const vsix = await services.downloadAsset(vsixAsset);
+  assert.equal(`sha256:${sha256(vsix)}`, vsixAsset.digest);
+  const receiptAsset = draft.assets.some((entry) => entry.name === 'receipt.json')
+    ? asset('receipt.json')
+    : undefined;
+  assert.ok(receiptAsset || automatic, 'Existing receipt required');
+  const bytes = receiptAsset
+    ? await services.downloadAsset(receiptAsset)
+    : Buffer.from(
+        JSON.stringify({ ...current, commit: source, sha256: sha256(vsix) }, null, 2) + '\n'
+      );
+  if (receiptAsset) assert.equal(sha256(bytes), receiptAsset.digest.slice(7));
   const receipt = JSON.parse(bytes);
   assert.equal(receipt.commit, source);
   assert.equal(receipt.version, current.version);
   assert.equal(receipt.file, 'pi.vsix');
   assert.deepEqual(receipt.bundles, current.bundles, 'Current quality bundles differ');
-  const vsixAsset = asset(`pi-${current.version}.vsix`);
   assert.equal(vsixAsset.digest, `sha256:${receipt.sha256}`);
-  const vsix = await services.downloadAsset(vsixAsset);
   assert.equal(sha256(vsix), receipt.sha256);
   const recovery = mkdtempSync(join(dirname(directory), 'pi-recovery-'));
   const original = join(recovery, 'source');
@@ -528,6 +546,8 @@ export async function recoverPendingRelease(directory, current, services, env) {
         { env: childEnv, stdio: 'pipe' }
       );
       checkedOut = true;
+      const versionGit = (args, root) => gitVersionCommand(args, root, env);
+      if (automatic) stampReleaseVersion(receipt.version, original, versionGit);
       // Execute this reviewed inspector, never scripts or hooks from the old checkout.
       assert.deepEqual(
         inspectVsix(join(recovery, 'pi.vsix'), original, receipt.bundles, env),
@@ -549,7 +569,9 @@ export async function recoverPendingRelease(directory, current, services, env) {
         env: childEnv,
         stdio: 'pipe',
       }).trim();
-      const previous = previousVersionForPush(parent, env);
+      const previous = automatic
+        ? planRelease(source, (args) => versionGit(args, original)).previous
+        : previousVersionForPush(parent, env);
       assert.ok(
         compareVersions(receipt.version, previous) > 0,
         'Draft must originate at a version increase'
@@ -602,27 +624,59 @@ export async function runRelease(directory, env = process.env) {
       '',
       'Release checkout is dirty'
     );
+    let automaticPlan;
+    const versionGit = (args, root) => gitVersionCommand(args, root, env);
+    if (env.PI_AUTOMATIC_RELEASE === 'true' && operation !== 'profile') {
+      automaticPlan = planRelease(receipt.commit, versionGit, operation);
+      if (!automaticPlan.release) {
+        console.log('Newer released source supersedes this run; publication skipped.');
+        return 0;
+      }
+      assert.equal(
+        receipt.version,
+        automaticPlan.version,
+        'Artifact version differs from tag ledger'
+      );
+      stampReleaseVersion(receipt.version, process.cwd(), versionGit, automaticPlan.source);
+    }
     assert.deepEqual(
       inspectVsix(resolve(directory, receipt.file), process.cwd(), receipt.bundles, env),
       receipt,
       'VSIX receipt mismatch'
     );
     stage = 'version-validation';
-    let previous =
+    const pushPrevious =
       operation === 'push' ? previousVersionForPush(env.PI_PREVIOUS_SHA, env) : undefined;
+    if (automaticPlan && operation === 'push')
+      assert.ok(
+        changeScope(
+          'push',
+          { before: env.PI_PREVIOUS_SHA, after: receipt.commit },
+          receipt.commit,
+          versionGit
+        ).release,
+        'Push has no releasable changes'
+      );
+    let previous = automaticPlan?.previous ?? pushPrevious;
     if (operation === 'push') assert.ok(compareVersions(receipt.version, previous) >= 0);
     stage = 'marketplace-profile';
     if (!env.AZURE_CONFIG_DIR) throw new CredentialFailure(true);
     console.log(`Marketplace profile ID: ${marketplaceProfile(env)}`);
     if (operation === 'profile') return 0;
     let recovery;
-    if (operation === 'retry-pending-release') {
+    if (
+      operation === 'retry-pending-release' ||
+      (automaticPlan?.existing &&
+        (await productionServices(directory, receipt, env).githubRelease(`v${receipt.version}`))
+          ?.assets.length)
+    ) {
       stage = 'recovery-validation';
       recovery = await recoverPendingRelease(
         directory,
         receipt,
         productionServices(directory, receipt, env),
-        env
+        env,
+        !!automaticPlan
       );
       ({ directory, receipt, previous } = recovery);
     }
