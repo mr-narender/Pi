@@ -109,7 +109,52 @@ test('one Pi turn shares a single bubble across tools and the final reply', () =
   assert.match(turns[0]!.textContent!, /Created the diagram/);
   assert.equal(turns[0]!.querySelector<HTMLDetailsElement>('.work-phase')!.open, false);
   assert.equal(turns[0]!.querySelector('.mermaid-wrap')!.closest('.work-phase'), null);
+  const footer = turns[0]!.querySelector('.work-phase')!;
+  assert.equal(footer, turns[0]!.lastElementChild);
+  assert.equal(footer.querySelector('summary')!.textContent, 'View activity');
+  assert.equal(turns[0]!.querySelectorAll('.work-phase').length, 1);
+  assert.equal(turns[1]!.querySelector('.work-phase'), null);
   assert.equal(turns[1]!.querySelector('[data-mid]')!.getAttribute('data-mid'), 'reply2');
+});
+
+test('activity footer collects multiple work messages in order without hiding responses or images', () => {
+  const messages: WebviewSnapshot['messages'] = [
+    {
+      id: 'first',
+      role: 'assistant',
+      text: '',
+      attachments: [],
+      blocks: [
+        { kind: 'thinking', text: 'First thought' },
+        { kind: 'text', text: 'Progress update' },
+      ],
+    },
+    { id: 'result', role: 'toolResult', text: 'Standalone tool output', attachments: [] },
+    {
+      id: 'last',
+      role: 'assistant',
+      text: '',
+      attachments: [],
+      blocks: [
+        { kind: 'thinking', text: 'Second thought' },
+        { kind: 'image', dataUrl: 'data:image/png;base64,aGVsbG8=', mimeType: 'image/png' },
+        { kind: 'text', text: 'Final answer' },
+      ],
+    },
+  ];
+  const doc = new JSDOM(renderChatApp(snapshot({ messages }))).window.document;
+  const turn = doc.querySelector('.assistant-turn')!;
+  const footer = turn.querySelector<HTMLDetailsElement>('.work-phase')!;
+  assert.equal(turn.querySelectorAll('.work-phase').length, 1);
+  assert.equal(footer, turn.lastElementChild);
+  assert.match(
+    footer.textContent!,
+    /First thought[\s\S]*Standalone tool output[\s\S]*Second thought/
+  );
+  assert.equal(footer.open, false);
+  assert.doesNotMatch(footer.textContent!, /Progress update|Final answer/);
+  assert.equal(turn.querySelector('img')!.closest('.work-phase'), null);
+  assert.doesNotMatch(turn.textContent!, /show work/i);
 });
 
 test('successful Mermaid file writes show Preview outside collapsed work details', () => {

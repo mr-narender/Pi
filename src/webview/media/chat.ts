@@ -800,9 +800,9 @@ function setMermaidView(wrap: HTMLElement, mode: 'code' | 'preview'): void {
 }
 
 function mermaidKey(wrap: HTMLElement): string {
-  const message = wrap.closest<HTMLElement>('[data-mid]');
+  const message = wrap.closest<HTMLElement>('[data-mid], [data-activity-id]');
   const index = Array.from(message?.querySelectorAll('.mermaid-wrap') ?? []).indexOf(wrap);
-  return `${wrap.closest<HTMLElement>('.layout')?.dataset.mermaidSession ?? ''}:${message?.dataset.mid ?? ''}:${index}`;
+  return `${wrap.closest<HTMLElement>('.layout')?.dataset.mermaidSession ?? ''}:${message?.dataset.mid ?? message?.dataset.activityId ?? ''}:${index}`;
 }
 
 function bindCodeControls(container: HTMLElement): void {

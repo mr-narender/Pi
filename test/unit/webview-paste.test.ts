@@ -259,6 +259,43 @@ test('Mermaid preview toggles, expands, closes with Escape, and restores focus',
   assert.equal(dialog.hidden, true, 'another chat cannot inherit an identical diagram preview');
 });
 
+test('activity footer keeps independent Mermaid modes and disclosure state across snapshots', async () => {
+  const value = snapshot({
+    sequence: 10,
+    messages: ['first-work', 'second-work'].map((id) => ({
+      id,
+      role: 'assistant',
+      text: '',
+      attachments: [],
+      blocks: [
+        { kind: 'thinking', text: '```mermaid\nflowchart LR\nA --> B\n```' },
+        { kind: 'text', text: `Finished ${id}` },
+      ],
+    })),
+  });
+  const send = (sequence: number): void => {
+    dom.window.dispatchEvent(
+      new dom.window.MessageEvent('message', {
+        data: { type: 'snapshot', snapshot: { ...value, sequence } },
+      })
+    );
+  };
+  send(10);
+  await waitFor(
+    () => dom.window.document.querySelectorAll('.work-phase .mermaid-wrap').length === 2,
+    'activity diagrams'
+  );
+  const phase = dom.window.document.querySelector<HTMLDetailsElement>('.work-phase')!;
+  phase.open = true;
+  const diagrams = dom.window.document.querySelectorAll<HTMLElement>('.work-phase .mermaid-wrap');
+  diagrams[0]!.querySelector<HTMLButtonElement>('[data-mermaid-mode="code"]')!.click();
+  send(11);
+  const updated = dom.window.document.querySelectorAll<HTMLElement>('.work-phase .mermaid-wrap');
+  assert.equal(updated[0]!.dataset.mermaidView, 'code');
+  assert.equal(updated[1]!.dataset.mermaidView, 'preview');
+  assert.equal(dom.window.document.querySelector<HTMLDetailsElement>('.work-phase')!.open, true);
+});
+
 test('malformed Mermaid shows an inline error and cannot expand', async () => {
   dom.window.dispatchEvent(
     new dom.window.MessageEvent('message', {
