@@ -1677,7 +1677,7 @@ button.ghost:hover,
 }
 
 .work-phase {
-  margin: 0 0 14px;
+  margin: 8px 0 0;
   border: 0;
   border-radius: 0;
   padding: 0;
@@ -1686,6 +1686,7 @@ button.ghost:hover,
 
 .work-phase > summary.work-phase-head {
   display: flex;
+  justify-content: flex-start;
   align-items: center;
   gap: 7px;
   cursor: pointer;
@@ -1699,16 +1700,16 @@ button.ghost:hover,
   display: none;
 }
 
-.work-phase-hint {
-  margin-left: auto;
-  font-size: 0.78em;
-  opacity: 0.5;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+#messages .work-phase-head > .tl-caret {
+  margin-left: 0;
 }
 
-.work-phase[open] .work-phase-hint {
-  display: none;
+#messages .work-phase[open] > .work-phase-head > .tl-caret {
+  transform: rotate(90deg);
+}
+
+.work-phase-body {
+  margin-top: 6px;
 }
 
 .work-phase[open] > summary.work-phase-head {
@@ -3877,11 +3878,6 @@ body {
 
 .work-phase > summary.work-phase-head:hover {
   background: transparent;
-}
-
-.work-phase-hint {
-  text-transform: none;
-  letter-spacing: 0;
 }
 
 #messages .meta-block {

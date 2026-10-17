@@ -89,6 +89,12 @@ export function shouldClearSnapshotFocus(
 
 type MessageBlock = NonNullable<WebviewSnapshot['messages'][number]['blocks']>[number];
 
+interface TurnActivity {
+  content: string[];
+  hasError: boolean;
+  live: boolean;
+}
+
 /**
  * Render a message as an ordered stream: consecutive TEXT blocks become the
  * chat bubble (clear, solid, per-role), while thinking / tool / tool-result /
@@ -171,7 +177,8 @@ type TimelineNode =
 function renderAssistantBody(
   message: WebviewSnapshot['messages'][number],
   streamingAnswer = false,
-  modelName = ''
+  modelName = '',
+  activity?: TurnActivity
 ): string {
   const blocks: MessageBlock[] =
     message.blocks && message.blocks.length > 0
@@ -252,13 +259,8 @@ function renderAssistantBody(
     nodes.push(block);
   }
   flush();
-  // #5 (review round 2): CALM TIMELINE. Consecutive work nodes (thinking/tool
-  // runs) collapse into one "work phase" chip once the turn has settled —
-  // `N steps · M files` — so long agentic turns read as outcomes, not walls.
-  // The LIVE streaming turn stays expanded; phases containing a failed tool
-  // stay open with an error tint. Open/closed state survives re-renders via
-  // data-preserve-open (chat.ts).
-  const metaKinds = new Set(['thinking', 'tool', 'toolPair', 'toolResult', 'image']);
+  // Keep visible output in the reply and collect work in order for its footer.
+  const metaKinds = new Set(['thinking', 'tool', 'toolPair', 'toolResult']);
   const rendered: string[] = [];
   let run: TimelineNode[] = [];
   const flushRun = (): void => {
@@ -273,20 +275,8 @@ function renderAssistantBody(
       )
       .join('');
     const previews = runNodes.map(renderWrittenMermaid).join('');
-    // Say WHAT the agent did, not how many "steps": tool names with counts,
-    // plus how many files were touched. ("3 steps" was meaningless.)
-    const toolCounts = new Map<string, number>();
-    const files = new Set<string>();
     let hasError = false;
     for (const node of runNodes) {
-      if (node.kind === 'tool' || node.kind === 'toolPair') {
-        const call = node.kind === 'toolPair' ? node.call : node;
-        toolCounts.set(call.name, (toolCounts.get(call.name) ?? 0) + 1);
-        const path = editToolFilePath(call.name, call.args);
-        if (path) {
-          files.add(path);
-        }
-      }
       if (
         (node.kind === 'toolPair' && node.result.isError === true) ||
         (node.kind === 'toolResult' && node.isError === true)
@@ -294,21 +284,14 @@ function renderAssistantBody(
         hasError = true;
       }
     }
-    const names = [...toolCounts.entries()].map(([name, count]) =>
-      count > 1 ? `${name} ×${count}` : name
-    );
-    const shown = names.slice(0, 3).join(', ') + (names.length > 3 ? ` +${names.length - 3}` : '');
-    const label =
-      names.length > 0
-        ? `Worked: ${shown}${files.size > 0 ? ` · ${files.size} file${files.size === 1 ? '' : 's'} changed` : ''}`
-        : 'Thought it through';
-    // During streaming only the LATEST phase stays expanded (still working);
-    // earlier phases of the live turn fold as they finish. Tokens resolve in
-    // finalizeWorkPhases() at join time.
-    const open = hasError ? ' open' : streamingAnswer ? '__PHASE_OPEN__' : '';
-    rendered.push(
-      `<details class="work-phase${hasError ? ' is-error' : ''}" data-preserve-open id="wp-${escapeHtml(message.id)}-${rendered.length}"${open}><summary class="work-phase-head" title="Click to show the agent's work">${META_ICONS.tool}<span class="work-phase-label">${escapeHtml(label)}</span><span class="work-phase-hint">show work</span>${hasError ? '<span class="tl-flag-error">failed</span>' : ''}${CARET_ICON}</summary>${html}</details>${previews}`
-    );
+    if (activity) {
+      activity.content.push(
+        `<div data-activity-id="${escapeHtml(message.id)}:${rendered.length}">${html}</div>`
+      );
+      activity.hasError ||= hasError;
+      activity.live ||= streamingAnswer;
+    }
+    rendered.push(previews);
   };
   for (let index = 0; index < nodes.length; index += 1) {
     const node = nodes[index]!;
@@ -326,24 +309,7 @@ function renderAssistantBody(
     );
   }
   flushRun();
-  return `<div class="timeline">${finalizeWorkPhases(rendered.join(''))}</div>`;
-}
-
-/** Live turns fold finished phases: every __PHASE_OPEN__ token except the
- * last collapses; the final (still-active) phase keeps its details open. */
-function finalizeWorkPhases(html: string): string {
-  const token = '__PHASE_OPEN__';
-  const last = html.lastIndexOf(token);
-  if (last === -1) {
-    return html;
-  }
-  let out = '';
-  let cursor = 0;
-  for (let at = html.indexOf(token); at !== -1; at = html.indexOf(token, cursor)) {
-    out += html.slice(cursor, at) + (at === last ? ' open' : '');
-    cursor = at + token.length;
-  }
-  return out + html.slice(cursor);
+  return `<div class="timeline">${rendered.join('')}</div>`;
 }
 
 // Rich diff for `edit` tool cards: removed lines (−) then added lines (+),
@@ -1302,13 +1268,18 @@ function renderMessages(snapshot: WebviewSnapshot, revealMessageId?: string): st
   let turn: string[] = [];
   let turnId = '';
   let durationMs: number | undefined;
+  let activity: TurnActivity = { content: [], hasError: false, live: false };
   const flushTurn = (): void => {
     if (!turn.length) return;
+    const footer = activity.content.length
+      ? `<details class="work-phase${activity.hasError ? ' is-error' : ''}" data-preserve-open id="wp-${escapeHtml(turnId)}"${activity.hasError || activity.live ? ' open' : ''}><summary class="work-phase-head">${CARET_ICON}<span class="work-phase-label">View activity</span>${activity.hasError ? '<span class="tl-flag-error">failed</span>' : ''}</summary><div class="work-phase-body">${activity.content.join('')}</div></details>`
+      : '';
     rendered.push(
-      `<section class="assistant-turn" id="turn-${escapeHtml(turnId)}" aria-label="Pi reply"><div class="message-role">Pi${renderDuration(durationMs, 'Assistant generation time (recorded)')}</div>${turn.join('')}</section>`
+      `<section class="assistant-turn" id="turn-${escapeHtml(turnId)}" aria-label="Pi reply"><div class="message-role">Pi${renderDuration(durationMs, 'Assistant generation time (recorded)')}</div>${turn.join('')}${footer}</section>`
     );
     turn = [];
     durationMs = undefined;
+    activity = { content: [], hasError: false, live: false };
   };
   for (const [index, message] of snapshot.messages.entries()) {
     const inTurn = message.role === 'assistant' || (turn.length > 0 && isResultRole(message.role));
@@ -1323,7 +1294,8 @@ function renderMessages(snapshot: WebviewSnapshot, revealMessageId?: string): st
         message.role === 'assistant',
       modelName,
       !snapshot.isCompacting,
-      !inTurn
+      !inTurn,
+      inTurn ? activity : undefined
     );
     if (!html) continue;
     if (inTurn) {
@@ -1363,10 +1335,11 @@ function renderMessageArticle(
   streamingAnswer = false,
   modelName = '',
   allowEdit = true,
-  showRole = true
+  showRole = true,
+  activity?: TurnActivity
 ): string {
   const role = message.role;
-  const body = renderMessageBody(message, streamingAnswer, modelName);
+  const body = renderMessageBody(message, streamingAnswer, modelName, activity);
   if (role === 'assistant' && !body && message.attachments.length === 0) {
     return '';
   }
@@ -1383,7 +1356,7 @@ function renderMessageArticle(
         <article class="message-card message-${escapeHtml(role)}" data-mid="${escapeHtml(message.id)}"${roleLabel ? ` aria-label="${roleLabel} said"` : ''}>
           ${showRole && roleLabel ? `<div class="message-role">${roleLabel}${role === 'assistant' ? renderDuration(message.durationMs, 'Assistant generation time') : ''}</div>` : ''}
           ${body}${captured}
-          ${message.attachments.length > 0 ? `<div class="detail-stack">${message.attachments.map((attachment) => renderAttachment(attachment)).join('')}</div>` : ''}
+${message.attachments.length > 0 ? `          <div class="detail-stack">${message.attachments.map((attachment) => renderAttachment(attachment)).join('')}</div>` : ''}
           ${showCopy ? `<div class="msg-actions">${role === 'user' ? `<button type="button" class="msg-edit" title="Edit &amp; restart from here" aria-label="Edit and restart the chat from this message"${editDisabled}>${EDIT_ICON}</button>` : ''}<button type="button" class="msg-copy"${message.capturedContext ? ` data-copy-raw="${escapeHtml(message.text)}"` : ''} title="Copy message" aria-label="Copy message">${COPY_ICON}</button></div>` : ''}
         </article>`;
 }
@@ -1391,13 +1364,21 @@ function renderMessageArticle(
 function renderMessageBody(
   message: WebviewSnapshot['messages'][number],
   streamingAnswer = false,
-  modelName = ''
+  modelName = '',
+  activity?: TurnActivity
 ): string {
   if (message.role === 'assistant') {
-    return renderAssistantBody(message, streamingAnswer, modelName);
+    return renderAssistantBody(message, streamingAnswer, modelName, activity);
   }
   if (isResultRole(message.role)) {
-    return renderResultMessage(message);
+    const result = renderResultMessage(message);
+    if (activity) {
+      activity.content.push(
+        `<div data-activity-id="${escapeHtml(message.id)}:result">${result}</div>`
+      );
+      return '';
+    }
+    return result;
   }
   return renderMessageStream(message);
 }
