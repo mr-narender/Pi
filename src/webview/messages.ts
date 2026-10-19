@@ -9,9 +9,26 @@ export type WebviewInboundMessage =
   | { type: 'copyAcceptedSnapshot' }
   | { type: 'sendAcceptedSnapshotAgain' }
   | { type: 'abort' }
+  | { type: 'checkMcpStatus' }
+  | { type: 'modelToolsRequest'; originKey: string; requestId: string }
+  | {
+      type: 'modelToolsApply';
+      originKey: string;
+      requestId: string;
+      revision: string;
+      names: string[];
+    }
+  | {
+      type: 'outboxAction';
+      key: string;
+      id: string;
+      revision: number;
+      action: 'edit' | 'save' | 'cancel' | 'remove' | 'resume' | 'steer' | 'discard';
+      text?: string;
+    }
   | { type: 'toggleFollow' }
   | { type: 'screenOpenFile'; path: string; needle?: string }
-  | { type: 'screenRevert'; path: string; oldText?: string; newText?: string }
+  | { type: 'screenRevert'; callId: string }
   | { type: 'setDraft'; text: string; resetSeq?: number }
   | {
       type: 'setFocus';
@@ -38,6 +55,7 @@ export type WebviewInboundMessage =
   | { type: 'loadOlder' }
   | { type: 'openExternal'; url: string }
   | { type: 'openFile'; path: string }
+  | { type: 'openIdeLocation'; path: string; line: number; character: number }
   | { type: 'openDiff'; path: string }
   | { type: 'attachFile'; path: string }
   | { type: 'dropFile'; name: string; mimeType: string; sizeBytes: number; data: string }
@@ -45,7 +63,14 @@ export type WebviewInboundMessage =
   | { type: 'requestSlashCommands'; requestId?: string }
   | { type: 'pasteImage'; data: string; mimeType: string }
   | { type: 'diag'; scope: string; detail: string }
-  | { type: 'respondUi'; id: string; value?: string; confirmed?: boolean; cancelled?: boolean };
+  | {
+      type: 'respondUi';
+      id: string;
+      requestKey: string;
+      value?: string;
+      confirmed?: boolean;
+      cancelled?: boolean;
+    };
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -59,6 +84,70 @@ export function parseWebviewMessage(value: unknown): WebviewInboundMessage | und
     return undefined;
   }
   switch (record.type) {
+    case 'modelToolsRequest':
+    case 'modelToolsApply': {
+      if (
+        typeof record.originKey !== 'string' ||
+        !record.originKey ||
+        record.originKey.length > 16384 ||
+        typeof record.requestId !== 'string' ||
+        !record.requestId ||
+        record.requestId.length > 200
+      )
+        return undefined;
+      if (record.type === 'modelToolsRequest')
+        return { type: record.type, originKey: record.originKey, requestId: record.requestId };
+      if (
+        typeof record.revision !== 'string' ||
+        !record.revision ||
+        record.revision.length > 512 ||
+        !Array.isArray(record.names) ||
+        record.names.length > 512 ||
+        record.names.some(
+          (name) =>
+            typeof name !== 'string' ||
+            !name ||
+            name.length > 200 ||
+            /[\u0000-\u001f\u007f]/.test(name)
+        ) ||
+        new Set(record.names).size !== record.names.length
+      )
+        return undefined;
+      return {
+        type: record.type,
+        originKey: record.originKey,
+        requestId: record.requestId,
+        revision: record.revision,
+        names: [...record.names] as string[],
+      };
+    }
+    case 'outboxAction': {
+      const action = record.action;
+      if (
+        typeof record.key !== 'string' ||
+        !record.key ||
+        record.key.length > 16384 ||
+        typeof record.id !== 'string' ||
+        !record.id ||
+        record.id.length > 256 ||
+        !Number.isSafeInteger(record.revision) ||
+        Number(record.revision) < 0 ||
+        typeof action !== 'string' ||
+        !['edit', 'save', 'cancel', 'remove', 'resume', 'steer', 'discard'].includes(action) ||
+        (action === 'save'
+          ? typeof record.text !== 'string' || record.text.length > 160000
+          : record.text !== undefined)
+      )
+        return undefined;
+      return {
+        type: 'outboxAction',
+        key: record.key,
+        id: record.id,
+        revision: Number(record.revision),
+        action: action as 'edit' | 'save' | 'cancel' | 'remove' | 'resume' | 'steer' | 'discard',
+        ...(action === 'save' ? { text: record.text as string } : {}),
+      };
+    }
     case 'requestSend':
       if (
         record.command === 'prompt' ||
@@ -78,6 +167,7 @@ export function parseWebviewMessage(value: unknown): WebviewInboundMessage | und
     case 'sendAcceptedSnapshotAgain':
     case 'toggleFollow':
     case 'abort':
+    case 'checkMcpStatus':
     case 'pickImages':
     case 'clearAttachments':
     case 'appendActiveFile':
@@ -95,12 +185,10 @@ export function parseWebviewMessage(value: unknown): WebviewInboundMessage | und
           }
         : undefined;
     case 'screenRevert':
-      return typeof record.path === 'string'
+      return typeof record.callId === 'string' && record.callId.length > 0
         ? {
             type: 'screenRevert',
-            path: record.path,
-            oldText: typeof record.oldText === 'string' ? record.oldText : undefined,
-            newText: typeof record.newText === 'string' ? record.newText : undefined,
+            callId: record.callId,
           }
         : undefined;
     case 'setDraft':
@@ -152,6 +240,22 @@ export function parseWebviewMessage(value: unknown): WebviewInboundMessage | und
       return typeof record.url === 'string' ? { type: 'openExternal', url: record.url } : undefined;
     case 'openFile':
       return typeof record.path === 'string' ? { type: 'openFile', path: record.path } : undefined;
+    case 'openIdeLocation':
+      return typeof record.path === 'string' &&
+        record.path.length <= 4096 &&
+        Number.isSafeInteger(record.line) &&
+        Number(record.line) >= 1 &&
+        Number(record.line) <= 1000000 &&
+        Number.isSafeInteger(record.character) &&
+        Number(record.character) >= 1 &&
+        Number(record.character) <= 1000000
+        ? {
+            type: 'openIdeLocation',
+            path: record.path,
+            line: Number(record.line),
+            character: Number(record.character),
+          }
+        : undefined;
     case 'openDiff':
       return typeof record.path === 'string' ? { type: 'openDiff', path: record.path } : undefined;
     case 'attachFile':
@@ -195,18 +299,29 @@ export function parseWebviewMessage(value: unknown): WebviewInboundMessage | und
         ? { type: 'diag', scope: record.scope.slice(0, 64), detail: record.detail.slice(0, 2000) }
         : undefined;
     case 'respondUi': {
-      if (typeof record.id !== 'string') {
+      if (
+        typeof record.id !== 'string' ||
+        !record.id ||
+        record.id.length > 512 ||
+        typeof record.requestKey !== 'string' ||
+        !record.requestKey ||
+        record.requestKey.length > 512 ||
+        (record.value !== undefined &&
+          (typeof record.value !== 'string' || record.value.length > 160000))
+      ) {
         return undefined;
       }
       const response: {
         type: 'respondUi';
         id: string;
+        requestKey: string;
         value?: string;
         confirmed?: boolean;
         cancelled?: boolean;
       } = {
         type: 'respondUi',
         id: record.id,
+        requestKey: record.requestKey,
       };
       if (typeof record.value === 'string') {
         response.value = record.value;

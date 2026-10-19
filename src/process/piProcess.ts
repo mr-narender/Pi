@@ -1,4 +1,6 @@
 import { spawn } from 'node:child_process';
+// Let cross-spawn escape Windows .cmd shims; shell:true bypasses its escaping.
+export const spawnExternalPi = require('cross-spawn') as typeof spawn;
 import { once } from 'node:events';
 import { Worker } from 'node:worker_threads';
 import type { Readable, Writable } from 'node:stream';
@@ -27,9 +29,9 @@ export interface SubprocessOptions {
 }
 
 export function spawnSubprocessPi(opts: SubprocessOptions): PiProcessHandle {
-  const child = spawn(opts.command, opts.args, {
+  const child = (opts.useShell ? spawnExternalPi : spawn)(opts.command, opts.args, {
     cwd: opts.cwd,
-    shell: opts.useShell,
+    shell: false,
     windowsHide: true,
     env: opts.env,
     stdio: 'pipe',

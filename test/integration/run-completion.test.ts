@@ -2,6 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
 import { createRequire } from 'node:module';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createInitialControllerState } from '../../src/state/types';
 import { reduceEvent } from '../../src/state/reducer';
 
@@ -70,11 +73,14 @@ async function classes(notifications: unknown[] = []) {
   };
 }
 
-test('completed tabs stay quietly marked through snapshots until viewed, restarted or closed', async () => {
+test('completed tabs stay quietly marked through snapshots until viewed, restarted or closed', async (t) => {
+  const storage = await mkdtemp(join(tmpdir(), 'pi-run-completion-'));
+  t.after(() => rm(storage, { recursive: true, force: true }));
   const notices: unknown[] = [];
   const { ChatTabManager, focusWindow } = await classes(notices);
   const manager = new ChatTabManager(
     {
+      globalStorageUri: { fsPath: storage },
       globalState: {
         get: (_key: string, fallback: unknown) => fallback,
         update: async () => {},
@@ -210,6 +216,9 @@ test('only successfully settled runs trigger completion review without completio
       onTurnEnd() {
         reviews.push('complete');
       },
+      discard() {
+        reviews.push('discard');
+      },
     },
   });
   for (const outcome of ['aborted', 'failed', 'completed'] as const) {
@@ -235,6 +244,11 @@ test('only successfully settled runs trigger completion review without completio
     update({ type: 'compaction_end' });
   }
   assert.equal(reviews.filter((value) => value === 'complete').length, 1);
+  assert.equal(
+    reviews.filter((value) => value === 'discard').length,
+    2,
+    'only failed and aborted runs discard their pending Undo evidence'
+  );
   assert.equal(notices.length, 0);
 });
 
@@ -326,6 +340,7 @@ for (const disposition of ['handled', 'rejected', 'queued', 'started-before-hand
     const controller = Object.create(SessionController.prototype);
     const manager = Object.create(ChatTabManager.prototype);
     let reviews = 0;
+    let discards = 0;
     Object.assign(manager, {
       lastRunOutcome: new WeakMap(),
       busySince: new WeakMap(),
@@ -336,6 +351,9 @@ for (const disposition of ['handled', 'rejected', 'queued', 'started-before-hand
         onTurnStart() {},
         onTurnEnd() {
           reviews++;
+        },
+        discard() {
+          discards++;
         },
       },
     });
@@ -372,6 +390,7 @@ for (const disposition of ['handled', 'rejected', 'queued', 'started-before-hand
     );
     assert.equal(controller.state.draft, 'owned draft');
     assert.equal(reviews, 0);
+    assert.equal(discards, 0, 'a preflight outcome cannot discard another run’s evidence');
     assert.equal(notices.length, 0);
   });
 }

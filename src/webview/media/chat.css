@@ -356,6 +356,28 @@ pre {
   font: inherit;
   line-height: 1.45;
 }
+.approval-input {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  margin-top: 10px;
+  padding: 9px 10px;
+  border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
+  border-radius: 7px;
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  font: inherit;
+}
+.approval-proposal {
+  max-height: 180px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+  padding: 10px;
+  border-radius: 7px;
+  background: var(--vscode-textCodeBlock-background);
+}
 .approval-actions {
   display: flex;
   flex-wrap: wrap;
@@ -633,15 +655,6 @@ pre {
     transform: translateY(-4px) rotate(8deg);
   }
 }
-@media (prefers-reduced-motion: reduce) {
-  .working-logo,
-  .working[data-anim='dots'] .working-glyph::after,
-  .working[data-anim='bars'] .working-glyph,
-  .working[data-anim='dolphin'] .working-glyph {
-    animation: none;
-  }
-}
-
 body.vscode-reduce-motion .working-logo,
 body.vscode-reduce-motion .working[data-anim='dots'] .working-glyph::after,
 body.vscode-reduce-motion .working[data-anim='bars'] .working-glyph,
@@ -1022,13 +1035,26 @@ p {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
+  body:not(:is(.vscode-light, .vscode-dark, .vscode-high-contrast, .vscode-high-contrast-light)),
+  body:not(:is(.vscode-light, .vscode-dark, .vscode-high-contrast, .vscode-high-contrast-light)) *,
+  body:not(:is(.vscode-light, .vscode-dark, .vscode-high-contrast, .vscode-high-contrast-light))
+    *::before,
+  body:not(:is(.vscode-light, .vscode-dark, .vscode-high-contrast, .vscode-high-contrast-light))
+    *::after {
     animation: none !important;
     transition: none !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* VS Code has already resolved its on/off/auto preference for the webview. */
+body.vscode-reduce-motion,
+body.vscode-reduce-motion *,
+body.vscode-reduce-motion *::before,
+body.vscode-reduce-motion *::after {
+  animation: none !important;
+  transition: none !important;
+  scroll-behavior: auto !important;
 }
 
 /* ---- Native editor layout (LOCAL-004) ---- */
@@ -1712,6 +1738,73 @@ button.ghost:hover,
   margin-top: 6px;
 }
 
+.activity-summary {
+  color: var(--vscode-descriptionForeground);
+  font-size: 11px;
+  font-weight: 400;
+  margin-left: 4px;
+}
+
+.reported-agents,
+.reported-tasks {
+  margin: 10px 0 14px;
+  min-width: 0;
+}
+
+.reported-agents h3,
+.reported-tasks h3 {
+  margin: 0 0 8px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.reported-tasks > p,
+.reported-agent-body > p {
+  font-size: 11px;
+  margin: 6px 0;
+}
+
+.reported-agent > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  list-style: none;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.reported-agent > summary::-webkit-details-marker {
+  display: none;
+}
+
+.reported-agent-role {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  text-transform: capitalize;
+}
+
+.reported-agent > summary > .tl-caret {
+  margin-left: 0;
+}
+
+.reported-agent[open] > summary > .tl-caret {
+  transform: rotate(90deg);
+}
+
+.reported-agent-body {
+  padding: 0 0 8px 10px;
+  overflow-wrap: anywhere;
+}
+
+.reported-agent-body pre {
+  max-height: 180px;
+  overflow: auto;
+  white-space: pre-wrap;
+  font: 11px/1.5 var(--vscode-editor-font-family, monospace);
+}
+
 .work-phase[open] > summary.work-phase-head {
   opacity: 1;
   margin-bottom: 4px;
@@ -1820,11 +1913,13 @@ button.ghost:hover,
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .boot-pi {
+  body:not(:is(.vscode-light, .vscode-dark, .vscode-high-contrast, .vscode-high-contrast-light))
+    .boot-pi {
     animation: none;
     filter: drop-shadow(0 0 8px rgba(255, 140, 66, 0.6));
   }
-  .boot-squiggle {
+  body:not(:is(.vscode-light, .vscode-dark, .vscode-high-contrast, .vscode-high-contrast-light))
+    .boot-squiggle {
     animation: none;
     opacity: 0.45;
   }
@@ -1926,12 +2021,6 @@ button.ghost:hover,
 @keyframes pi-spin {
   to {
     transform: rotate(360deg);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .spinner {
-    animation: none;
   }
 }
 
@@ -2484,6 +2573,15 @@ button.ghost:hover,
   display: grid;
   min-height: 96px;
   place-items: center;
+}
+.mermaid-measurement {
+  position: absolute;
+  top: 0;
+  left: -100000px;
+  visibility: hidden;
+  pointer-events: none;
+  /* Relative diagram font sizes use the standalone SVG's default, not body. */
+  font-size: 16px;
 }
 #messages .mermaid-image {
   display: block;
@@ -3729,13 +3827,6 @@ button.composer-thinking svg {
   text-align: center;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .send-button,
-  .composer-dock {
-    transition: none;
-  }
-}
-
 /* ═══ Apple-inspired clean design layer ═══
    Quiet hierarchy, flat rows and one surface per related group. All colors
    remain VS Code theme-driven; high contrast keeps its native borders. */
@@ -3764,7 +3855,8 @@ body {
 
 .layout {
   gap: 10px;
-  padding: 12px 16px 0;
+  /* Keep the two top controls outside the transcript's scrolling viewport. */
+  padding: 42px 16px 0;
   padding-bottom: var(--composer-clearance, 150px);
 }
 
@@ -4131,6 +4223,151 @@ body {
   background: transparent;
 }
 
+.outbox {
+  padding: 4px 8px 12px;
+  color: var(--vscode-foreground);
+  max-height: min(38vh, 300px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.outbox-heading,
+.outbox-meta,
+.outbox-actions,
+.outbox-files {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.outbox-heading {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.outbox-heading span,
+.outbox-meta,
+.outbox-hint,
+.outbox-actions > span {
+  color: var(--vscode-descriptionForeground);
+  font-size: 11px;
+}
+
+.outbox-row {
+  padding: 12px 0 4px;
+}
+
+.outbox-text {
+  margin: 5px 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+
+.outbox-hint {
+  margin: 5px 0 0;
+  line-height: 1.5;
+}
+
+.outbox-files {
+  margin: 6px 0;
+  padding: 0;
+  list-style: none;
+  color: var(--vscode-descriptionForeground);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.outbox-actions button {
+  min-height: 26px;
+  padding: 3px 0;
+  border: 0;
+  background: transparent;
+  color: var(--vscode-textLink-foreground);
+  font-size: 11px;
+}
+
+.outbox [data-outbox-editor] {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  margin: 8px 0;
+  padding: 8px;
+  border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
+  border-radius: var(--pi-radius-control);
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  resize: vertical;
+}
+
+.outbox-notice {
+  margin: 7px 0 0;
+  font-size: 12px;
+}
+
+.outbox-received {
+  margin-top: 10px;
+  color: var(--vscode-descriptionForeground);
+  font-size: 11px;
+}
+
+.model-tools {
+  padding: 10px 0;
+  font-size: 12px;
+}
+
+.model-tools > summary,
+.model-tools-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.model-tools > summary {
+  cursor: pointer;
+}
+
+.model-tools > summary button {
+  margin-left: auto;
+}
+
+.model-tools fieldset {
+  max-height: 240px;
+  overflow-y: auto;
+  margin: 10px 0;
+  padding: 0;
+  border: 0;
+}
+
+.model-tool-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+  padding: 8px 0;
+}
+
+.model-tool-row > span > span {
+  display: block;
+  margin-top: 3px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.model-tool-row > span {
+  overflow-wrap: anywhere;
+}
+
+.model-tool-row input {
+  margin: 2px 0 0;
+}
+
 .composer-actions {
   gap: 6px;
 }
@@ -4425,25 +4662,21 @@ body.vscode-high-contrast .chat-list-row.active {
 .composer-card > .attachment-tray .chip-list {
   gap: 6px;
 }
-/* A pane-local inspector overlays the transcript without shrinking the composer. */
+/* Activity expands in document flow beneath its own reply. */
 .activity-panel {
-  position: absolute;
-  top: 8px;
-  right: 12px;
-  z-index: 12;
-  width: max-content;
-  max-width: calc(100% - 24px);
+  position: static;
+  width: auto;
+  max-width: 100%;
   font-size: 12px;
 }
 .activity-panel > summary {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: flex-start;
   gap: 7px;
   min-height: 30px;
-  padding: 0 9px;
-  border-radius: 6px;
-  background: var(--vscode-editor-background, #fff);
+  padding: 4px 0;
+  background: transparent;
   color: var(--vscode-descriptionForeground, #666);
   cursor: pointer;
   list-style: none;
@@ -4451,38 +4684,43 @@ body.vscode-high-contrast .chat-list-row.active {
 .activity-panel > summary::-webkit-details-marker {
   display: none;
 }
-.activity-panel[open] {
-  width: 340px;
-}
-.activity-panel[open] > summary {
-  border-radius: 8px 8px 0 0;
-}
 .activity-content {
-  max-height: max(0px, min(55dvh, 460px, calc(100dvh - var(--composer-clearance, 150px) - 48px)));
-  overflow: auto;
-  padding: 10px 12px 12px;
-  border: 1px solid var(--vscode-widget-border, #ddd);
-  border-radius: 8px 0 8px 8px;
-  background: var(--vscode-editor-background, #fff);
+  position: static;
+  max-width: 100%;
+  padding: 8px 0 4px;
+  border-top: 1px solid var(--vscode-panel-border);
+  background: transparent;
   color: var(--vscode-editor-foreground, #222);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
   overflow-wrap: anywhere;
+}
+.activity-shortcut {
+  position: absolute;
+  top: 8px;
+  left: 12px;
+  min-height: 30px;
+  padding: 5px 8px;
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+  background: var(--vscode-editor-background);
 }
 .activity-tabs {
   display: flex;
-  gap: 4px;
+  width: fit-content;
+  max-width: 100%;
+  gap: 16px;
   margin-bottom: 12px;
 }
 .activity-tabs button {
-  flex: 1;
+  flex: 0 0 auto;
   border: 0;
-  border-radius: 5px;
-  padding: 5px 7px;
+  border-radius: 0;
+  border-bottom: 2px solid transparent;
+  padding: 5px 0;
   background: transparent;
   color: var(--vscode-descriptionForeground, #666);
 }
 .activity-tabs button[aria-selected='true'] {
-  background: var(--vscode-list-inactiveSelectionBackground, #eee);
+  border-bottom-color: var(--vscode-focusBorder, #007acc);
   color: var(--vscode-editor-foreground, #222);
 }
 .activity-panel [hidden] {
@@ -4535,4 +4773,271 @@ body.vscode-high-contrast .chat-list-row.active {
 }
 .activity-count {
   font-variant-numeric: tabular-nums;
+}
+.mcp-connections {
+  padding: 10px 0 14px;
+  font-size: 12px;
+}
+.mcp-heading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.mcp-heading p {
+  margin: 5px 0 12px;
+}
+.mcp-heading button {
+  flex: none;
+}
+.mcp-rows {
+  margin: 4px 0 12px;
+  padding: 0;
+  list-style: none;
+}
+.mcp-rows li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 11px 0;
+}
+.mcp-rows li div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.mcp-rows li > span {
+  flex: none;
+}
+.mcp-connections details {
+  margin-top: 10px;
+}
+.mcp-connections pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 240px;
+  overflow: auto;
+}
+.mcp-history-note {
+  margin-top: 14px;
+}
+
+/* Answers stay primary; raw work is disclosed beneath the owning reply. */
+.turn-issue {
+  margin: 10px 0 0;
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.chat-settings {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  z-index: 13;
+  max-width: calc(100% - 24px);
+  font-size: 12px;
+}
+.chat-settings > summary {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 7px;
+  min-height: 30px;
+  padding: 0 9px;
+  list-style: none;
+  cursor: pointer;
+  border-radius: 6px;
+  background: var(--vscode-editor-background);
+  color: var(--vscode-descriptionForeground);
+}
+.chat-settings > summary::-webkit-details-marker {
+  display: none;
+}
+.chat-settings[open] {
+  width: 420px;
+}
+.chat-settings-content {
+  max-height: max(0px, min(65dvh, calc(100dvh - var(--composer-clearance, 150px) - 48px)));
+  overflow: auto;
+  padding: 14px;
+  border: 1px solid var(--vscode-widget-border);
+  border-radius: 8px 0 8px 8px;
+  background: var(--vscode-editor-background);
+  overflow-wrap: anywhere;
+}
+.chat-settings [hidden] {
+  display: none;
+}
+.activity-panel :focus-visible,
+#chat-settings :focus-visible,
+[data-show-latest-activity]:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 2px;
+}
+.activity-content .activity-turn + .activity-turn {
+  margin-top: 18px;
+  padding-top: 12px;
+  border-top: 1px solid var(--vscode-panel-border);
+}
+.activity-turn > h3,
+.activity-content .reported-agents h3 {
+  margin: 8px 0;
+  font-size: 12px;
+  font-weight: 500;
+}
+.activity-content .tl-node {
+  min-width: 0;
+  margin: 12px 0;
+}
+.activity-content .tl-card {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  box-shadow: none;
+}
+.activity-content .tl-head,
+.activity-content .reported-agent-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  align-items: baseline;
+}
+.activity-content .tool-name,
+.activity-content .tl-file-path {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+.activity-content .tl-head .muted,
+.activity-content .reported-agent-head .muted {
+  margin-left: auto;
+  font-size: 11px;
+}
+.activity-content .tl-file-actions,
+.activity-content .edit-approve {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 7px 0;
+}
+.activity-content .tl-file-btn {
+  padding: 3px 6px;
+  font-size: 11px;
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 4px;
+  color: var(--vscode-foreground);
+  background: transparent;
+}
+.activity-row-details > summary,
+.reported-agent-details > summary {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 0;
+  color: var(--vscode-editor-foreground);
+  cursor: pointer;
+  font-size: 12px;
+  list-style: none;
+}
+.activity-row-details > summary::-webkit-details-marker,
+.reported-agent-details > summary::-webkit-details-marker {
+  display: none;
+}
+.activity-row-copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 3px;
+}
+.activity-row-title {
+  overflow-wrap: anywhere;
+  line-height: 1.4;
+}
+.activity-row-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--vscode-descriptionForeground);
+  font-size: 11px;
+}
+.activity-content .activity-row-meta .muted {
+  margin-left: 0;
+}
+.activity-row-meta .tool-name {
+  font-size: 11px;
+}
+.activity-row-failed,
+.activity-attention {
+  color: var(--vscode-errorForeground, #c33);
+}
+.activity-attention {
+  font-size: 11px;
+}
+.activity-panel[open][data-selected-activity='output'] > summary .activity-attention,
+.activity-panel[open][data-selected-activity='agents'][data-agent-failures]
+  > summary
+  .activity-attention {
+  display: none;
+}
+#messages .activity-row-summary > .tl-caret {
+  margin-left: 0;
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+.activity-row-details[open] > summary > .tl-caret,
+.reported-agent-details[open] > summary > .tl-caret {
+  transform: rotate(90deg);
+}
+.activity-record {
+  margin: 2px 0 8px 21px;
+  min-width: 0;
+}
+.activity-record-label {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  margin: 10px 0 4px;
+}
+.activity-trace {
+  font-size: 10px;
+  color: var(--vscode-descriptionForeground);
+  margin: 4px 0;
+}
+.reasoning-note + .reasoning-note {
+  border-top: 1px solid var(--vscode-panel-border);
+  margin-top: 10px;
+  padding-top: 6px;
+}
+.activity-read-group > details > .activity-record {
+  margin-top: 0;
+}
+.activity-content pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-width: 100%;
+  font-size: 11px;
+}
+.activity-content .json-view,
+.activity-content .edit-diff {
+  max-width: 100%;
+  overflow: auto;
+}
+.activity-content .reported-agent {
+  margin: 0;
+}
+.activity-content .reported-agent > p {
+  margin: 3px 0;
+  font-size: 11px;
+}
+@media (max-width: 380px) {
+  .mcp-heading {
+    flex-wrap: wrap;
+  }
+  .mcp-rows li {
+    gap: 8px;
+  }
 }

@@ -5,12 +5,14 @@ declare function acquireVsCodeApi(): {
 };
 
 import morphdom from 'morphdom';
+import { isBlockingExtensionUi } from '../../rpc/protocol';
 import { optionalModule } from './optionalModules';
 import { isLiveWorking, workingLabel, WORKING_PHRASES } from '../working';
 import { isCoreMenuCommand, parseCoreSlash } from '../../commands/coreSlash';
 import { mergeLocalCommands } from '../../commands/coreCatalog';
 import { deriveScreenChanges } from '../editToolPath';
 import type { WebviewSnapshot } from '../../state/types';
+import type { ModelTool, ModelToolsSnapshot } from '../../modelTools/types';
 import { installCustomTooltips } from './customTooltip';
 import {
   COMPOSER_FIELD_ID,
@@ -23,7 +25,6 @@ import {
   focusTargetFromSnapshot,
   nextPreviewTrapTarget,
   planChipRemovalFocus,
-  renderActivityPanel,
   renderChatApp,
   renderRichText,
   shouldClearSnapshotFocus,
@@ -31,50 +32,286 @@ import {
 
 const vscode = acquireVsCodeApi();
 const root = document.getElementById('app');
-let activityTab: 'output' | 'sources' | 'agents' = 'output';
-function selectActivityTab(tab: typeof activityTab): void {
-  activityTab = tab;
-  for (const button of document.querySelectorAll<HTMLElement>('[data-activity-tab]')) {
-    const selected = button.dataset.activityTab === tab;
+root?.addEventListener(
+  'toggle',
+  (event) => {
+    const panel = event.target as HTMLDetailsElement;
+    if (panel.hasAttribute('data-inline-activity')) syncActivityShortcut();
+  },
+  true
+);
+type ActivityTab = 'output' | 'sources' | 'agents';
+const activityTabs = new Map<string, ActivityTab>();
+let activityReturnFocus: HTMLElement | undefined;
+function selectActivityTab(panel: HTMLElement, tab: ActivityTab): void {
+  const selectedTab = panel.querySelector(`[data-activity-tab="${tab}"]`) ? tab : 'output';
+  activityTabs.set(panel.id, selectedTab);
+  panel.dataset.selectedActivity = selectedTab;
+  for (const button of panel.querySelectorAll<HTMLElement>('[data-activity-tab]')) {
+    const selected = button.dataset.activityTab === selectedTab;
     button.setAttribute('aria-selected', String(selected));
     button.tabIndex = selected ? 0 : -1;
   }
-  for (const view of document.querySelectorAll<HTMLElement>('[data-activity-view]'))
-    view.hidden = view.dataset.activityView !== tab;
+  for (const view of panel.querySelectorAll<HTMLElement>('[data-activity-view]'))
+    view.hidden = view.dataset.activityView !== selectedTab;
+}
+function syncActivityShortcut(): void {
+  const latest = [...document.querySelectorAll<HTMLDetailsElement>('[data-inline-activity]')].at(
+    -1
+  );
+  const shortcut = document.querySelector<HTMLButtonElement>('[data-show-latest-activity]');
+  if (!shortcut) return;
+  shortcut.disabled = !latest;
+  shortcut.setAttribute('aria-expanded', String(latest?.open ?? false));
+  if (latest) shortcut.setAttribute('aria-controls', latest.id);
+  else shortcut.removeAttribute('aria-controls');
 }
 root?.addEventListener('click', (event) => {
   const target = event.target as HTMLElement;
-  const button = target.closest<HTMLButtonElement>('#activity-panel button');
+  const shortcut = target.closest<HTMLButtonElement>('[data-show-latest-activity]');
+  if (shortcut) {
+    activityReturnFocus = shortcut;
+    const panel = [...document.querySelectorAll<HTMLDetailsElement>('[data-inline-activity]')].at(
+      -1
+    );
+    if (panel) panel.open = true;
+    panel?.querySelector<HTMLElement>(':scope > summary')?.focus();
+    panel?.scrollIntoView({ block: 'nearest' });
+    syncActivityShortcut();
+    return;
+  }
+  const button = target.closest<HTMLElement>('[data-inline-activity] [data-activity-tab]');
   if (!button) return;
   const tab = button.dataset.activityTab;
-  if (tab === 'output' || tab === 'sources' || tab === 'agents') selectActivityTab(tab);
-  const path = button.dataset.fileOpen;
-  if (path) vscode.postMessage({ type: 'openFile', path });
+  const panel = button.closest<HTMLElement>('[data-inline-activity]')!;
+  if (tab === 'output' || tab === 'sources' || tab === 'agents') selectActivityTab(panel, tab);
 });
 root?.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') {
+    const panel = (event.target as HTMLElement).closest<HTMLDetailsElement>(
+      '[data-inline-activity], #chat-settings'
+    );
+    if (panel?.open) {
+      event.preventDefault();
+      event.stopPropagation();
+      panel.open = false;
+      const opener =
+        panel.hasAttribute('data-inline-activity') && activityReturnFocus?.isConnected
+          ? activityReturnFocus
+          : panel.querySelector<HTMLElement>(':scope > summary');
+      opener?.focus();
+      activityReturnFocus = undefined;
+      return;
+    }
+  }
   const button = (event.target as HTMLElement).closest<HTMLElement>('[data-activity-tab]');
   if (!button || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
   event.preventDefault();
-  const tabs = ['output', 'sources', 'agents'] as const;
-  const index = tabs.indexOf(activityTab);
+  const panel = button.closest<HTMLElement>('[data-inline-activity]')!;
+  const tabs = (['output', 'sources', 'agents'] as const).filter((tab) =>
+    panel.querySelector(`[data-activity-tab="${tab}"]`)
+  );
+  const index = tabs.findIndex((tab) => tab === button.dataset.activityTab);
   selectActivityTab(
+    panel,
     event.key === 'Home'
       ? 'output'
       : event.key === 'End'
-        ? 'agents'
-        : tabs[(index + (event.key === 'ArrowRight' ? 1 : 2)) % tabs.length]!
+        ? tabs.at(-1)!
+        : tabs[(index + (event.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length]!
   );
-  document.getElementById(`activity-tab-${activityTab}`)?.focus();
+  panel.querySelector<HTMLElement>('[data-activity-tab][aria-selected="true"]')?.focus();
 });
-function updateActivityPanel(snapshot: WebviewSnapshot): void {
-  const panel = document.getElementById('activity-panel') as HTMLDetailsElement | null;
-  if (!panel) return;
-  const open = panel.open;
-  morphdom(panel, renderActivityPanel(snapshot));
-  panel.open = open;
-  selectActivityTab(activityTab);
+
+function restoreInspectorFocus(focused: HTMLElement | undefined): void {
+  // Moving a keyed Details node can blur its summary even though the node survives.
+  if (
+    focused?.isConnected &&
+    document.activeElement === document.body &&
+    window.getSelection()?.isCollapsed !== false
+  )
+    focused.focus({ preventScroll: true });
 }
 let currentSnapshot: WebviewSnapshot | undefined;
+let modelToolsSequence = 0;
+let modelToolsFrame: string | undefined;
+let modelToolsRequestId: string | undefined;
+let modelToolsReported: ModelToolsSnapshot | undefined;
+let modelToolsEditor:
+  | {
+      frame: string;
+      originKey: string;
+      requestId: string;
+      revision?: string;
+      tools: ModelTool[];
+      names: Set<string>;
+      pending?: 'load' | 'apply';
+      message?: string;
+    }
+  | undefined;
+
+function modelToolsFrameKey(snapshot: WebviewSnapshot): string {
+  return JSON.stringify([commandSessionKey(snapshot), snapshot.catalogGeneration]);
+}
+function modelToolsIdle(snapshot: WebviewSnapshot): boolean {
+  return (
+    snapshot.connectionState === 'ready' &&
+    !snapshot.isStreaming &&
+    !snapshot.isCompacting &&
+    !snapshot.switchingSession &&
+    snapshot.bindingState !== 'cached' &&
+    snapshot.isTrusted
+  );
+}
+function prepareModelTools(snapshot: WebviewSnapshot): void {
+  const frame = modelToolsFrameKey(snapshot);
+  if (modelToolsFrame !== frame) {
+    modelToolsEditor = undefined;
+    modelToolsRequestId = undefined;
+    modelToolsReported = undefined;
+  }
+  modelToolsFrame = frame;
+  const report = snapshot.modelTools;
+  if (
+    !report ||
+    report.originKey !== commandSessionKey(snapshot) ||
+    (modelToolsRequestId && report.requestId !== modelToolsRequestId)
+  )
+    return;
+  modelToolsReported = report;
+  const editor = modelToolsEditor;
+  if (!editor || report.requestId !== editor.requestId) return;
+  if (report.status === 'ready' && editor.pending === 'load') {
+    editor.tools = report.tools;
+    editor.names = new Set(report.active);
+    editor.revision = report.revision;
+    editor.pending = undefined;
+    editor.message = report.message;
+  } else if (report.status === 'ready' && editor.pending === 'apply') {
+    modelToolsEditor = undefined;
+  } else if (['unknown', 'stale', 'unsupported'].includes(report.status)) {
+    editor.pending = undefined;
+    editor.revision = undefined;
+    editor.message = `${report.message ?? 'Tool selection could not be confirmed.'} Cancel and Edit to refresh.`;
+  }
+}
+function modelToolsView(snapshot: WebviewSnapshot): WebviewSnapshot {
+  const report =
+    modelToolsRequestId && snapshot.modelTools?.requestId !== modelToolsRequestId
+      ? modelToolsReported
+      : snapshot.modelTools;
+  const editor = modelToolsEditor;
+  return {
+    ...snapshot,
+    modelTools:
+      editor && report && editor.tools.length ? { ...report, tools: editor.tools } : report,
+  };
+}
+function syncModelToolsControls(): void {
+  const section = document.querySelector<HTMLElement>('[data-model-tools]');
+  if (!section || !currentSnapshot) return;
+  const editor = modelToolsEditor;
+  const editing = section.querySelector<HTMLElement>('[data-model-tools-editor]')!;
+  editing.hidden = !editor || editor.pending === 'load';
+  const edit = section.querySelector<HTMLButtonElement>('[data-model-tools-action="edit"]')!;
+  edit.hidden = !!editor;
+  const status = section.querySelector<HTMLElement>('[data-model-tools-status]')!;
+  if (editor) {
+    (section as HTMLDetailsElement).open = true;
+    status.textContent =
+      editor.pending === 'load'
+        ? 'Loading tools from Pi…'
+        : editor.pending === 'apply'
+          ? 'Applying to this chat…'
+          : (editor.message ?? 'Changes not applied');
+    const disabled =
+      !modelToolsIdle(currentSnapshot) ||
+      !!editor.pending ||
+      currentSnapshot.modelTools?.status === 'unsupported';
+    for (const checkbox of section.querySelectorAll<HTMLInputElement>('[data-model-tool-name]')) {
+      checkbox.checked = editor.names.has(checkbox.dataset.modelToolName!);
+      checkbox.disabled = disabled;
+    }
+    section.querySelector<HTMLButtonElement>('[data-model-tools-action="apply"]')!.disabled =
+      disabled || !editor.revision;
+    section.querySelector<HTMLButtonElement>('[data-model-tools-action="cancel"]')!.disabled =
+      editor.pending === 'apply';
+  }
+}
+root?.addEventListener('click', (event) => {
+  const button = (event.target as HTMLElement).closest<HTMLButtonElement>(
+    '[data-model-tools-action]'
+  );
+  if (!button || button.disabled || !currentSnapshot) return;
+  event.preventDefault();
+  const action = button.dataset.modelToolsAction;
+  if (action === 'cancel') {
+    if (modelToolsEditor?.pending === 'apply') return;
+    modelToolsEditor = undefined;
+    syncModelToolsControls();
+    document.querySelector<HTMLButtonElement>('[data-model-tools-action="edit"]')?.focus();
+    return;
+  }
+  if (!modelToolsIdle(currentSnapshot)) return;
+  if (action === 'edit') {
+    if (modelToolsEditor) return;
+    const requestId = `${webviewGeneration}:tools:${++modelToolsSequence}`;
+    modelToolsRequestId = requestId;
+    modelToolsEditor = {
+      frame: modelToolsFrameKey(currentSnapshot),
+      originKey: commandSessionKey(currentSnapshot),
+      requestId,
+      tools: [],
+      names: new Set(),
+      pending: 'load',
+    };
+    syncModelToolsControls();
+    vscode.postMessage({
+      type: 'modelToolsRequest',
+      originKey: modelToolsEditor.originKey,
+      requestId,
+    });
+  } else if (
+    action === 'apply' &&
+    modelToolsEditor &&
+    !modelToolsEditor.pending &&
+    modelToolsEditor.revision
+  ) {
+    const editor = modelToolsEditor;
+    const requestId = `${webviewGeneration}:tools:${++modelToolsSequence}`;
+    modelToolsRequestId = requestId;
+    editor.requestId = requestId;
+    editor.pending = 'apply';
+    syncModelToolsControls();
+    vscode.postMessage({
+      type: 'modelToolsApply',
+      originKey: editor.originKey,
+      requestId,
+      revision: editor.revision,
+      names: editor.tools.filter((tool) => editor.names.has(tool.name)).map((tool) => tool.name),
+    });
+  }
+});
+root?.addEventListener('change', (event) => {
+  const checkbox = (event.target as HTMLElement).closest<HTMLInputElement>(
+    '[data-model-tool-name]'
+  );
+  const editor = modelToolsEditor;
+  if (
+    !checkbox ||
+    !editor ||
+    editor.pending ||
+    !currentSnapshot ||
+    !modelToolsIdle(currentSnapshot)
+  )
+    return;
+  const name = checkbox.dataset.modelToolName!;
+  if (!editor.tools.some((tool) => tool.name === name)) return;
+  if (checkbox.checked) editor.names.add(name);
+  else editor.names.delete(name);
+  editor.message = undefined;
+  syncModelToolsControls();
+});
 let mermaidDialogSrc: string | undefined;
 let mermaidDialogKey: string | undefined;
 let mermaidReturnFocus: HTMLElement | undefined;
@@ -107,6 +344,84 @@ function bindOnce<K extends keyof HTMLElementEventMap>(
   }
   lastWiredPass.set(el, currentWirePass);
   el.addEventListener(event, handler as EventListener, options);
+}
+
+// Also used after an incremental inspector patch, without touching the composer.
+function bindActivityActions(container: HTMLElement): void {
+  for (const span of container.querySelectorAll<HTMLElement>('.edit-approve')) {
+    const callId = span.dataset.ecid ?? '';
+    bindOnce(span.querySelector('.ed-keep'), 'click', () => {
+      span.classList.add('is-decided');
+      span.innerHTML = '<span class="ed-done">✓ kept</span>';
+    });
+    bindOnce(span.querySelector<HTMLButtonElement>('.ed-undo'), 'click', () => {
+      const button = span.querySelector<HTMLButtonElement>('.ed-undo')!;
+      button.disabled = true;
+      button.textContent = 'Undoing…';
+      vscode.postMessage({ type: 'screenRevert', callId });
+    });
+    bindOnce(span.querySelector('.ed-edit'), 'click', () => {
+      const change = deriveScreenChanges((currentSnapshot?.messages ?? []) as never).find((item) =>
+        item.callId.startsWith(`${callId}-`)
+      );
+      if (change)
+        vscode.postMessage({
+          type: 'screenOpenFile',
+          path: change.path,
+          needle:
+            change.newText.split('\n').find((line) => line.trim().length > 4) ?? change.newText,
+        });
+    });
+  }
+  for (const button of container.querySelectorAll<HTMLButtonElement>('[data-ide-location]')) {
+    bindOnce(button, 'click', () =>
+      vscode.postMessage({
+        type: 'openIdeLocation',
+        path: button.dataset.ideLocation,
+        line: Number(button.dataset.ideLine),
+        character: Number(button.dataset.ideCharacter),
+      })
+    );
+  }
+  for (const button of container.querySelectorAll<HTMLButtonElement>(
+    '[data-file-open], [data-file-diff]'
+  )) {
+    bindOnce(button, 'click', () => {
+      const path = button.dataset.fileOpen ?? button.dataset.fileDiff;
+      if (path)
+        vscode.postMessage({
+          type: button.hasAttribute('data-file-open') ? 'openFile' : 'openDiff',
+          path,
+        });
+    });
+  }
+  for (const link of container.querySelectorAll<HTMLElement>('.md-link')) {
+    bindOnce(link, 'click', (event) => {
+      event.preventDefault();
+      if (link.dataset.href) vscode.postMessage({ type: 'openExternal', url: link.dataset.href });
+    });
+  }
+  for (const button of container.querySelectorAll<HTMLButtonElement>('.code-showmore')) {
+    bindOnce(button, 'click', () => {
+      const expanded = button.closest('.clampable')?.classList.toggle('expanded') ?? false;
+      button.textContent = expanded ? 'Show less' : 'Show more';
+    });
+  }
+  for (const button of container.querySelectorAll<HTMLButtonElement>('.json-toggle')) {
+    bindOnce(button, 'click', () => {
+      const block = button.closest('.json-block');
+      const view = block?.querySelector<HTMLElement>('.json-block-view');
+      const raw = block?.querySelector<HTMLElement>('.json-raw');
+      if (!view || !raw) return;
+      const showRaw = button.dataset.mode !== 'raw';
+      view.hidden = showRaw;
+      raw.hidden = !showRaw;
+      button.dataset.mode = showRaw ? 'raw' : 'table';
+      button.setAttribute('aria-pressed', String(showRaw));
+      button.textContent = showRaw ? 'Table' : 'Raw';
+    });
+  }
+  bindCodeControls(container);
 }
 
 // #6 — inline slash-command autocomplete state.
@@ -577,7 +892,234 @@ function commandSessionKey(snapshot: WebviewSnapshot | undefined): string {
   return JSON.stringify([snapshot?.sessionFile, snapshot?.sessionId]);
 }
 
+let outboxSubmission:
+  | {
+      id: string;
+      originKey: string;
+      frame: number;
+      revision: number;
+      text: string;
+      attachments: string;
+      pending: boolean;
+      key?: string;
+    }
+  | undefined;
+const outboxComposing = new WeakSet<Element>();
+const extensionUiComposing = new WeakSet<Element>();
+const extensionUiPending = new Set<string>();
+const extensionUiProposals = new Map<
+  string,
+  { originKey: string; frame: number; revision: number; attachments: string }
+>();
+let extensionUiDraftSubmission:
+  | {
+      requestKey: string;
+      originKey: string;
+      generation?: number;
+      frame: number;
+      revision: number;
+      text: string;
+      attachments: string;
+      pending: boolean;
+      acknowledgedReset?: number;
+    }
+  | undefined;
+let extensionUiDraftRebase:
+  | { originKey: string; generation?: number; resetSeq: number }
+  | undefined;
+function prepareExtensionUi(snapshot: WebviewSnapshot): void {
+  const keys = new Set((snapshot.approvals ?? []).map((item) => item.requestKey));
+  for (const key of extensionUiPending) if (!keys.has(key)) extensionUiPending.delete(key);
+  for (const key of extensionUiProposals.keys())
+    if (!keys.has(key)) extensionUiProposals.delete(key);
+  for (const request of snapshot.approvals ?? []) {
+    if (request.requestKey && request.responseError && !request.responseState)
+      extensionUiPending.delete(request.requestKey);
+    if (
+      !request.requestKey ||
+      request.method !== 'set_editor_text' ||
+      extensionUiProposals.has(request.requestKey) ||
+      typeof request.draftResetSeq !== 'number'
+    )
+      continue;
+    extensionUiProposals.set(request.requestKey, {
+      originKey: commandSessionKey(snapshot),
+      frame: request.draftResetSeq,
+      revision: editRevision,
+      attachments: attachmentKey(snapshot),
+    });
+  }
+}
+function preserveExtensionUiComposer(snapshot: WebviewSnapshot): WebviewSnapshot {
+  const submission = extensionUiDraftSubmission;
+  const ack = snapshot.extensionUiDraftAck;
+  if (
+    submission &&
+    ((!submission.pending && !ack) ||
+      submission.originKey !== commandSessionKey(snapshot) ||
+      submission.generation !== snapshot.catalogGeneration)
+  )
+    extensionUiDraftSubmission = undefined;
+  const lease = extensionUiDraftSubmission;
+  const field = composerField();
+  if (!lease)
+    return ack &&
+      ack.originKey === commandSessionKey(snapshot) &&
+      renderedComposerKey === commandSessionKey(snapshot) &&
+      field
+      ? {
+          ...snapshot,
+          draft: field.value,
+          composerResetSeq: lastComposerResetSeq,
+          pendingContextItems: currentSnapshot?.pendingContextItems ?? snapshot.pendingContextItems,
+          pendingImages: currentSnapshot?.pendingImages ?? snapshot.pendingImages,
+        }
+      : snapshot;
+  const matches =
+    ack?.requestKey === lease.requestKey &&
+    ack.originKey === lease.originKey &&
+    ack.frame === lease.frame;
+  const accepted =
+    matches &&
+    ack.accepted &&
+    snapshot.composerResetSeq === lease.frame + 1 &&
+    (lease.pending || lease.acknowledgedReset === snapshot.composerResetSeq);
+  const newlyAccepted = accepted && lease.pending;
+  if (newlyAccepted) lease.acknowledgedReset = snapshot.composerResetSeq;
+  if (matches) lease.pending = false;
+  const unchanged = editRevision === lease.revision && field?.value === lease.text;
+  if (newlyAccepted && !unchanged)
+    extensionUiDraftRebase = {
+      originKey: lease.originKey,
+      generation: lease.generation,
+      resetSeq: snapshot.composerResetSeq!,
+    };
+  return {
+    ...snapshot,
+    ...(!accepted || !unchanged
+      ? { draft: field?.value ?? currentSnapshot?.draft ?? snapshot.draft }
+      : {}),
+    ...(!accepted ? { composerResetSeq: lease.acknowledgedReset ?? lastComposerResetSeq } : {}),
+    ...(ack && (!accepted || attachmentKey(currentSnapshot) !== lease.attachments)
+      ? {
+          pendingContextItems: currentSnapshot?.pendingContextItems ?? snapshot.pendingContextItems,
+          pendingImages: currentSnapshot?.pendingImages ?? snapshot.pendingImages,
+        }
+      : {}),
+  };
+}
+function syncExtensionUiControls(): void {
+  if (!currentSnapshot) return;
+  for (const card of root?.querySelectorAll<HTMLElement>('[data-extension-request]') ?? []) {
+    const key = card.dataset.extensionRequest;
+    const request = currentSnapshot.approvals?.find((item) => item.requestKey === key);
+    if (!key || !request) continue;
+    const blocked =
+      extensionUiPending.has(key) ||
+      !!request.responseState ||
+      currentSnapshot.switchingSession ||
+      currentSnapshot.bindingState === 'cached' ||
+      !['starting', 'handshaking', 'ready', 'busy'].includes(currentSnapshot.connectionState);
+    for (const button of card.querySelectorAll<HTMLButtonElement>('.approval-btn')) {
+      button.disabled = blocked;
+      if (button.hasAttribute('data-ui-draft-use')) {
+        const proposal = extensionUiProposals.get(key);
+        button.disabled ||=
+          extensionUiDraftSubmission?.pending === true ||
+          !proposal ||
+          typeof request.draftRevision !== 'number' ||
+          proposal.frame !== currentSnapshot.composerResetSeq ||
+          proposal.originKey !== commandSessionKey(currentSnapshot) ||
+          proposal.revision !== editRevision ||
+          proposal.attachments !== attachmentKey(currentSnapshot) ||
+          extensionUiComposing.has(composerField()!);
+      }
+    }
+    const field = card.querySelector<HTMLInputElement | HTMLTextAreaElement>('[data-ui-field]');
+    if (field) {
+      field.disabled = false;
+      field.readOnly = blocked;
+    }
+  }
+}
+root?.addEventListener('input', (event) => {
+  if ((event.target as HTMLElement | null)?.id === COMPOSER_FIELD_ID) syncExtensionUiControls();
+});
+root?.addEventListener('compositionstart', (event) => {
+  if ((event.target as HTMLElement | null)?.id !== COMPOSER_FIELD_ID) return;
+  extensionUiComposing.add(event.target as Element);
+  syncExtensionUiControls();
+});
+root?.addEventListener('compositionend', (event) => {
+  if ((event.target as HTMLElement | null)?.id !== COMPOSER_FIELD_ID) return;
+  extensionUiComposing.delete(event.target as Element);
+  syncExtensionUiControls();
+});
+let outboxEditFocus: { key: string; id: string } | undefined;
+function attachmentKey(snapshot: WebviewSnapshot | undefined): string {
+  return JSON.stringify([
+    snapshot?.pendingContextItems.map((item) => item.itemId),
+    snapshot?.pendingImages.map((item) => item.itemId),
+  ]);
+}
+function preserveOutboxComposer(snapshot: WebviewSnapshot): WebviewSnapshot {
+  const submission = outboxSubmission;
+  if (submission && !submission.pending && !snapshot.outboxAck) {
+    outboxSubmission = undefined;
+    return snapshot;
+  }
+  if (submission?.key !== undefined && submission.key !== snapshot.outbox?.key) {
+    outboxSubmission = undefined;
+    return snapshot;
+  }
+  if (!submission || submission.originKey !== commandSessionKey(snapshot)) {
+    outboxSubmission = undefined;
+    return snapshot.outboxAck &&
+      composerField() &&
+      currentSnapshot?.outbox?.key === snapshot.outbox?.key &&
+      renderedComposerKey === commandSessionKey(snapshot)
+      ? {
+          ...snapshot,
+          draft: composerField()!.value,
+          composerResetSeq: lastComposerResetSeq,
+          pendingContextItems: currentSnapshot?.pendingContextItems ?? snapshot.pendingContextItems,
+          pendingImages: currentSnapshot?.pendingImages ?? snapshot.pendingImages,
+        }
+      : snapshot;
+  }
+  const field = composerField();
+  const ack = snapshot.outboxAck;
+  const matches =
+    ack?.submissionId === submission.id &&
+    ack.originKey === submission.originKey &&
+    ack.frame === submission.frame;
+  const newlyAcknowledged = matches && submission.pending;
+  if (newlyAcknowledged && (!ack.accepted || snapshot.composerResetSeq === submission.frame))
+    pendingSend = undefined;
+  if (matches) submission.pending = false;
+  const unchanged = editRevision === submission.revision && field?.value === submission.text;
+  const accepted = newlyAcknowledged && ack.accepted;
+  const preserve = !accepted || !unchanged;
+  return {
+    ...snapshot,
+    ...(preserve ? { draft: field?.value ?? currentSnapshot?.draft ?? snapshot.draft } : {}),
+    ...(!newlyAcknowledged || !ack.accepted ? { composerResetSeq: lastComposerResetSeq } : {}),
+    ...((!accepted && !!ack) ||
+    (accepted && attachmentKey(currentSnapshot) !== submission.attachments)
+      ? {
+          pendingContextItems: currentSnapshot?.pendingContextItems ?? snapshot.pendingContextItems,
+          pendingImages: currentSnapshot?.pendingImages ?? snapshot.pendingImages,
+        }
+      : {}),
+  };
+}
+
 function submitComposer(command: string): void {
+  if (
+    outboxSubmission?.pending &&
+    outboxSubmission.originKey === commandSessionKey(currentSnapshot)
+  )
+    return;
   if (pendingLocalCommand?.blocked && composerField()?.value === '') return;
   previewReturnFocusId = SEND_BUTTON_ID;
   exitHistory();
@@ -587,6 +1129,31 @@ function submitComposer(command: string): void {
   // Always clear optimistically — image/context sends included (they submit
   // immediately now, no preview popup).
   const textarea = document.getElementById(COMPOSER_FIELD_ID) as HTMLTextAreaElement | null;
+  if (
+    textarea &&
+    command === 'follow_up' &&
+    currentSnapshot?.connectionState === 'busy' &&
+    !parseCoreSlash(textarea.value)
+  ) {
+    outboxSubmission = {
+      id: `${webviewGeneration}:${++submissionSequence}`,
+      originKey: commandSessionKey(currentSnapshot),
+      frame: currentSnapshot.composerResetSeq ?? 0,
+      revision: editRevision,
+      text: textarea.value,
+      attachments: attachmentKey(currentSnapshot),
+      pending: true,
+      key: currentSnapshot.outbox?.key,
+    };
+    pendingSend = {
+      sessionKey: outboxSubmission.originKey,
+      frame: outboxSubmission.frame,
+      revision: editRevision,
+    };
+    vscode.postMessage({ type: 'requestSend', command, submissionId: outboxSubmission.id });
+    return;
+  }
+  outboxSubmission = undefined;
   if (textarea && parseCoreSlash(textarea.value)) {
     pendingSend = undefined;
     pendingLocalCommand = {
@@ -693,10 +1260,12 @@ function cssColor(name: string, fallback: string): string {
 }
 
 let mermaidReady: Promise<typeof import('mermaid').default> | undefined;
+let mermaidFontFamily = 'system-ui, sans-serif';
 function loadMermaid(): Promise<typeof import('mermaid').default> {
   return (mermaidReady ??= optionalModule('Mermaid')
     .then(({ default: mermaid }) => {
       const fontFamily = cssColor('--vscode-font-family', 'system-ui, sans-serif');
+      mermaidFontFamily = fontFamily;
       mermaid.initialize({
         startOnLoad: false,
         securityLevel: 'strict',
@@ -727,7 +1296,29 @@ function mermaidSvg(source: string): Promise<string> {
   const cached = mermaidSvgCache.get(source);
   if (cached) return cached;
   const rendered = loadMermaid()
-    .then((mermaid) => mermaid.render(`pi-mermaid-${(mermaidRenderId += 1)}`, source))
+    .then(async (mermaid) => {
+      const { config } = await mermaid.parse(source);
+      // CSP blocks Mermaid's temporary inline stylesheet, but that stylesheet
+      // applies inside the resulting SVG image. Measure using the same fonts,
+      // rather than inheriting the webview's smaller body text.
+      const host = document.createElement('div');
+      host.className = 'mermaid-measurement';
+      host.setAttribute('aria-hidden', 'true');
+      const container = document.createElement('div');
+      container.style.fontFamily = mermaidFontFamily;
+      container.style.fontSize = '16px';
+      const font = config.themeVariables;
+      if (typeof font?.fontFamily === 'string') container.style.fontFamily = font.fontFamily;
+      if (typeof font?.fontSize === 'string' || typeof font?.fontSize === 'number')
+        container.style.fontSize = String(font.fontSize);
+      host.append(container);
+      document.body.append(host);
+      try {
+        return await mermaid.render(`pi-mermaid-${(mermaidRenderId += 1)}`, source, container);
+      } finally {
+        host.remove();
+      }
+    })
     .then(({ svg }) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`)
     .catch((error) => {
       mermaidSvgCache.delete(source);
@@ -933,7 +1524,15 @@ function announceTurnState(snapshot: WebviewSnapshot): void {
   lastBusyAnnounced = busy;
 }
 function prefersReducedMotion(): boolean {
-  return workingMotion.matches || document.body.classList.contains('vscode-reduce-motion');
+  // VS Code resolves on/off/auto for its webviews. Raw OS media must not
+  // override an explicit workbench "off"; standalone previews still use it.
+  const vscodeBody = document.body.matches(
+    '.vscode-light, .vscode-dark, .vscode-high-contrast, .vscode-high-contrast-light'
+  );
+  return (
+    document.body.classList.contains('vscode-reduce-motion') ||
+    (!vscodeBody && workingMotion.matches)
+  );
 }
 
 // While an inline message editor is open, suspend transcript re-renders. Every
@@ -1005,6 +1604,10 @@ function preserveComposerForRejectedAck(snapshot: WebviewSnapshot): WebviewSnaps
 
 function render(snapshot: WebviewSnapshot): void {
   if (workingDisposed) return;
+  prepareModelTools(snapshot);
+  prepareExtensionUi(snapshot);
+  snapshot = preserveExtensionUiComposer(snapshot);
+  snapshot = preserveOutboxComposer(snapshot);
   snapshot = preserveComposerForRejectedAck(snapshot);
   prepareTypewriter(snapshot);
   currentSnapshot = snapshot;
@@ -1036,7 +1639,6 @@ function render(snapshot: WebviewSnapshot): void {
     const text = lastStreamText(snapshot);
     if (el && typeof text === 'string') {
       el.setAttribute('data-raw', text);
-      updateActivityPanel(snapshot);
       advanceTypewriter();
       keepPinnedToBottom();
       return;
@@ -1091,9 +1693,12 @@ function renderNow(snapshot: WebviewSnapshot): void {
     pendingLocalCommand !== undefined &&
     editRevision !== pendingLocalCommand.revision &&
     acceptsCommandReplacement(snapshot);
-  if (renderedComposerKey !== commandSessionKey(snapshot)) {
+  const sameChat = renderedComposerKey === commandSessionKey(snapshot);
+  if (!sameChat) {
     lastSubmittedText = undefined;
     scrubbedForSeq = undefined;
+    activityTabs.clear();
+    activityReturnFocus = undefined;
   }
   if (
     pendingLocalCommand &&
@@ -1167,6 +1772,20 @@ function renderNow(snapshot: WebviewSnapshot): void {
   const resetSeq = snapshot.composerResetSeq;
   let authoritativeReset = resetSeq !== undefined && resetSeq !== lastComposerResetSeq;
   let rebaseDraft = false;
+  if (extensionUiDraftRebase) {
+    const rebase = extensionUiDraftRebase;
+    extensionUiDraftRebase = undefined;
+    if (
+      previousComposer &&
+      sameComposer &&
+      rebase.originKey === composerKey &&
+      rebase.generation === snapshot.catalogGeneration &&
+      rebase.resetSeq === resetSeq
+    ) {
+      snapshot = { ...snapshot, draft: previousComposer.value };
+      rebaseDraft = true;
+    }
+  }
   if (pendingSend && (pendingSend.sessionKey !== composerKey || resetSeq !== pendingSend.frame)) {
     if (
       previousComposer &&
@@ -1229,15 +1848,13 @@ function renderNow(snapshot: WebviewSnapshot): void {
   // (streaming, status) don't close the More/Attach menu mid-interaction.
   const openMenus = new Set<string>();
   const closedMenus = new Set<string>();
-  // Keep opened details stable across passive snapshots. Only the fresh-session
-  // drawer preserves a user-closed state; failed/live work phases must be able
-  // to reopen when their new state requires attention.
+  // Disclosures are user controlled, including during errors and live updates.
   for (const el of Array.from(
     document.querySelectorAll<HTMLDetailsElement>('details[data-preserve-open]')
   )) {
-    if (el.id) {
+    if (el.id && sameChat) {
       if (el.open) openMenus.add(el.id);
-      else if (el.id === 'pi-session-details') closedMenus.add(el.id);
+      else closedMenus.add(el.id);
     }
   }
   for (const id of ['attach-menu']) {
@@ -1258,24 +1875,65 @@ function renderNow(snapshot: WebviewSnapshot): void {
   // flicker and reset the scroll position. morphdom reuses unchanged nodes, so
   // the transcript stays stable and the scroll position is preserved naturally.
   // A new wiring pass so bindOnce only wires freshly-added nodes.
+  const inspectorFocus =
+    sameChat &&
+    document.hasFocus() &&
+    document.activeElement?.closest('[data-inline-activity], #chat-settings')
+      ? (document.activeElement as HTMLElement)
+      : undefined;
   currentWirePass += 1;
   try {
-    morphdom(root, `<div id="app">${renderChatApp(snapshot, streamMessageId)}</div>`, {
-      onBeforeElUpdated(from, to) {
-        // Preserve CSS animation timelines and frame glyphs across remote snapshots.
-        return !(
-          from.id === 'pi-working' &&
-          from.getAttribute('data-anim') === to.getAttribute('data-anim')
-        );
-      },
-    });
+    morphdom(
+      root,
+      `<div id="app">${renderChatApp(modelToolsView(snapshot), streamMessageId)}</div>`,
+      {
+        onBeforeElUpdated(from, to) {
+          // Do not temporarily hide the selected inspector tab: that blurs its
+          // focused disclosure before selectActivityTab restores the selection.
+          if (sameChat && from.hasAttribute('data-activity-view')) to.hidden = from.hidden;
+          if (
+            sameChat &&
+            from.tagName === 'DETAILS' &&
+            from.hasAttribute('data-preserve-open') &&
+            from.id === to.id
+          )
+            (to as HTMLDetailsElement).open = (from as HTMLDetailsElement).open;
+          if (
+            from.hasAttribute('data-ui-field') &&
+            from.getAttribute('data-ui-field') === to.getAttribute('data-ui-field') &&
+            from.getAttribute('data-ui-origin') === to.getAttribute('data-ui-origin')
+          ) {
+            (from as HTMLInputElement).readOnly = (to as HTMLInputElement).readOnly;
+            return false;
+          }
+          if (
+            from.hasAttribute('data-outbox-editor') &&
+            from.getAttribute('data-outbox-editor-revision') ===
+              to.getAttribute('data-outbox-editor-revision') &&
+            from.getAttribute('data-outbox-editor-key') ===
+              to.getAttribute('data-outbox-editor-key')
+          ) {
+            (from as HTMLTextAreaElement).readOnly = (to as HTMLTextAreaElement).readOnly;
+            return false;
+          }
+          // Preserve CSS animation timelines and frame glyphs across remote snapshots.
+          return !(
+            from.id === 'pi-working' &&
+            from.getAttribute('data-anim') === to.getAttribute('data-anim')
+          );
+        },
+      }
+    );
   } catch {
     // Defensive: if a morph ever fails, fall back to a full rebuild so the chat
     // never gets stuck.
-    root.innerHTML = renderChatApp(snapshot, streamMessageId);
+    root.innerHTML = renderChatApp(modelToolsView(snapshot), streamMessageId);
   }
   renderedStructureSig = structureSignature(snapshot);
-  selectActivityTab(activityTab);
+  for (const panel of document.querySelectorAll<HTMLElement>('[data-inline-activity]'))
+    selectActivityTab(panel, activityTabs.get(panel.id) ?? 'output');
+  syncModelToolsControls();
+  syncExtensionUiControls();
 
   // Robust sent-text-reappears guard: after an optimistic submit-clear we hold
   // `lastSubmittedText`. If ANY re-render (including an authoritative composer
@@ -1299,11 +1957,8 @@ function renderNow(snapshot: WebviewSnapshot): void {
     const el = document.getElementById(id) as HTMLDetailsElement | null;
     if (el) el.open = false;
   }
-  for (const el of Array.from(
-    document.querySelectorAll<HTMLDetailsElement>('.work-phase.is-error')
-  )) {
-    el.open = true;
-  }
+  syncActivityShortcut();
+  restoreInspectorFocus(inspectorFocus);
   for (const wrap of Array.from(document.querySelectorAll<HTMLElement>('.mermaid-wrap'))) {
     setMermaidView(wrap, mermaidModes.get(mermaidKey(wrap)) ?? 'preview');
   }
@@ -1600,6 +2255,47 @@ function renderNow(snapshot: WebviewSnapshot): void {
     });
   }
 
+  for (const editor of root.querySelectorAll<HTMLTextAreaElement>('[data-outbox-editor]')) {
+    bindOnce(editor, 'compositionstart', () => outboxComposing.add(editor));
+    bindOnce(editor, 'compositionend', () => outboxComposing.delete(editor));
+    bindOnce(editor, 'keydown', (event) => {
+      if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) event.stopPropagation();
+    });
+    if (
+      outboxEditFocus?.id === editor.closest<HTMLElement>('[data-outbox-id]')?.dataset.outboxId &&
+      outboxEditFocus?.key === editor.dataset.outboxEditorKey &&
+      document.hasFocus()
+    ) {
+      outboxEditFocus = undefined;
+      editor.focus();
+    }
+  }
+  for (const button of root.querySelectorAll<HTMLButtonElement>('[data-outbox-action]')) {
+    bindOnce(button, 'click', () => {
+      const row = button.closest<HTMLElement>('[data-outbox-id]');
+      const section = row?.closest<HTMLElement>('[data-outbox-key]');
+      const action = button.dataset.outboxAction;
+      const editor = row?.querySelector<HTMLTextAreaElement>('[data-outbox-editor]');
+      if (
+        !row ||
+        !section ||
+        !action ||
+        (action === 'save' && (!editor || outboxComposing.has(editor)))
+      )
+        return;
+      if (action === 'edit')
+        outboxEditFocus = { key: section.dataset.outboxKey!, id: row.dataset.outboxId! };
+      vscode.postMessage({
+        type: 'outboxAction',
+        key: section.dataset.outboxKey,
+        id: row.dataset.outboxId,
+        revision: Number(row.dataset.outboxRevision),
+        action,
+        ...(action === 'save' ? { text: editor!.value } : {}),
+      });
+    });
+  }
+
   for (const button of Array.from(
     root.querySelectorAll<HTMLButtonElement>('button[data-command]')
   )) {
@@ -1644,11 +2340,32 @@ function renderNow(snapshot: WebviewSnapshot): void {
     });
   }
 
+  for (const field of Array.from(
+    root.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('[data-ui-field]')
+  )) {
+    bindOnce(field, 'compositionstart', () => extensionUiComposing.add(field));
+    bindOnce(field, 'compositionend', () => extensionUiComposing.delete(field));
+    if (field instanceof HTMLInputElement)
+      bindOnce(field, 'keydown', (event) => {
+        if (event.key !== 'Enter' || event.isComposing || extensionUiComposing.has(field)) return;
+        event.preventDefault();
+        if (event.repeat) return;
+        field
+          .closest('.approval-card')
+          ?.querySelector<HTMLButtonElement>('[data-ui-input-submit]')
+          ?.click();
+      });
+  }
   // Tool approval: Allow/Deny (or option) buttons respond to the pending request.
   for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>('.approval-btn'))) {
     bindOnce(button, 'click', () => {
       const id = button.getAttribute('data-ui-id');
-      if (!id) {
+      const requestKey = button.getAttribute('data-ui-key');
+      syncExtensionUiControls();
+      const request = currentSnapshot?.approvals?.find(
+        (item) => item.id === id && item.requestKey === requestKey
+      );
+      if (!id || !requestKey || !request || button.disabled) {
         return;
       }
       const confirmed = button.getAttribute('data-ui-confirmed');
@@ -1656,98 +2373,69 @@ function renderNow(snapshot: WebviewSnapshot): void {
       const message: {
         type: 'respondUi';
         id: string;
+        requestKey: string;
         value?: string;
         confirmed?: boolean;
         cancelled?: boolean;
       } = {
         type: 'respondUi',
         id,
+        requestKey,
       };
       if (confirmed !== null) {
         message.confirmed = confirmed === 'true';
       } else if (button.getAttribute('data-ui-cancelled') === 'true') {
         message.cancelled = true;
-      } else if (button.getAttribute('data-ui-editor-submit') === 'true') {
+      } else if (
+        button.getAttribute('data-ui-editor-submit') === 'true' ||
+        button.getAttribute('data-ui-input-submit') === 'true'
+      ) {
         const editor = button
           .closest('.approval-card')
-          ?.querySelector<HTMLTextAreaElement>('.approval-editor');
+          ?.querySelector<HTMLInputElement | HTMLTextAreaElement>('[data-ui-field]');
+        if (editor && extensionUiComposing.has(editor)) return;
         message.value = editor?.value ?? '';
       } else if (value !== null) {
         message.value = value;
       }
+      if (message.value !== undefined && message.value.length > 160000) {
+        const status = button
+          .closest('.approval-card')
+          ?.querySelector<HTMLElement>('[role="status"]');
+        if (status) status.textContent = 'Response must be 160,000 characters or fewer.';
+        return;
+      }
+      if (button.hasAttribute('data-ui-draft-use') && currentSnapshot) {
+        extensionUiDraftSubmission = {
+          requestKey,
+          originKey: commandSessionKey(currentSnapshot),
+          generation: currentSnapshot.catalogGeneration,
+          frame: request.draftResetSeq!,
+          revision: editRevision,
+          text: composerField()?.value ?? currentSnapshot.draft,
+          attachments: attachmentKey(currentSnapshot),
+          pending: true,
+        };
+      }
+      extensionUiPending.add(requestKey);
+      syncExtensionUiControls();
       vscode.postMessage(message);
     });
   }
 
   // #3 — open file / open changes for edit-tool cards.
-  for (const span of Array.from(root.querySelectorAll<HTMLElement>('.edit-approve'))) {
-    const callId = span.dataset.ecid ?? '';
-    const changesFor = () =>
-      deriveScreenChanges((currentSnapshot?.messages ?? []) as never).filter((change) =>
-        change.callId.startsWith(`${callId}-`)
-      );
-    bindOnce(span.querySelector<HTMLButtonElement>('.ed-keep')!, 'click', () => {
-      span.classList.add('is-decided');
-      span.innerHTML = '<span class="ed-done">✓ kept</span>';
-    });
-    bindOnce(span.querySelector<HTMLButtonElement>('.ed-undo')!, 'click', () => {
-      for (const change of changesFor()) {
-        vscode.postMessage({
-          type: 'screenRevert',
-          path: change.path,
-          oldText: change.oldText,
-          newText: change.newText,
-        });
-      }
-      span.classList.add('is-decided');
-      span.innerHTML = '<span class="ed-done">↩ undone</span>';
-    });
-    bindOnce(span.querySelector<HTMLButtonElement>('.ed-edit')!, 'click', () => {
-      const change = changesFor()[0];
-      if (change) {
-        vscode.postMessage({
-          type: 'screenOpenFile',
-          path: change.path,
-          needle:
-            change.newText.split('\n').find((line) => line.trim().length > 4) ?? change.newText,
-        });
-      }
-    });
-  }
-
-  for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>('[data-file-open]'))) {
-    if (button.closest('#activity-panel')) continue;
+  for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>('[data-mcp-check]'))) {
     bindOnce(button, 'click', () => {
-      const path = button.getAttribute('data-file-open');
-      if (path) {
-        vscode.postMessage({ type: 'openFile', path });
-      }
+      button.disabled = true;
+      button.textContent = 'Checking…';
+      vscode.postMessage({ type: 'checkMcpStatus' });
     });
   }
-  for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>('[data-file-diff]'))) {
-    bindOnce(button, 'click', () => {
-      const path = button.getAttribute('data-file-diff');
-      if (path) {
-        vscode.postMessage({ type: 'openDiff', path });
-      }
-    });
-  }
-  bindCodeControls(root);
+  bindActivityActions(root);
 
   bindOnce(document.getElementById(PREVIEW_DIALOG_ID), 'keydown', handlePreviewKeydown);
   bindOnce(document.getElementById(MERMAID_DIALOG_CLOSE_ID), 'click', closeMermaidDialog);
   bindOnce(document.getElementById(MERMAID_DIALOG_ID), 'keydown', handleMermaidDialogKeydown);
-
-  // #1 — Markdown links open externally (no in-webview navigation).
-  for (const link of Array.from(root.querySelectorAll<HTMLElement>('.md-link'))) {
-    bindOnce(link, 'click', (event) => {
-      event.preventDefault();
-      const url = link.getAttribute('data-href');
-      if (url) {
-        vscode.postMessage({ type: 'openExternal', url });
-      }
-    });
-  }
 
   // #4 — edit a user message INLINE (ChatGPT/Continue style): the bubble text
   // becomes an editable field in place; pressing Enter forks the session at that
@@ -1909,33 +2597,6 @@ function renderNow(snapshot: WebviewSnapshot): void {
           setTimeout(() => button.classList.remove('is-copied'), 1000);
         })
         .catch(() => undefined);
-    });
-  }
-
-  // #7 — clamp toggle for long tool/result output.
-  for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>('.code-showmore'))) {
-    bindOnce(button, 'click', () => {
-      const wrap = button.closest('.clampable');
-      const expanded = wrap?.classList.toggle('expanded') ?? false;
-      button.textContent = expanded ? 'Show less' : 'Show more';
-    });
-  }
-
-  // JSON block: toggle between the structured table and the raw JSON.
-  for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>('.json-toggle'))) {
-    bindOnce(button, 'click', () => {
-      const block = button.closest('.json-block');
-      const view = block?.querySelector('.json-block-view') as HTMLElement | null;
-      const raw = block?.querySelector('.json-raw') as HTMLElement | null;
-      if (!view || !raw) {
-        return;
-      }
-      const showRaw = button.getAttribute('data-mode') !== 'raw';
-      view.hidden = showRaw;
-      raw.hidden = !showRaw;
-      button.setAttribute('data-mode', showRaw ? 'raw' : 'table');
-      button.setAttribute('aria-pressed', showRaw ? 'true' : 'false');
-      button.textContent = showRaw ? 'Table' : 'Raw';
     });
   }
 
@@ -2339,20 +3000,32 @@ function structureSignature(s: WebviewSnapshot): string {
       const isLast = i === n - 1;
       const blocks = (m.blocks ?? [])
         .map((block) => {
-          const b = block as { kind: string; text?: string; name?: string; isError?: boolean };
+          const b = block as {
+            kind: string;
+            text?: string;
+            name?: string;
+            args?: string;
+            isError?: boolean;
+          };
           const isAnswer = b.kind === 'text';
           const textLen = isLast && isAnswer ? '' : String((b.text ?? '').length);
-          return `${b.kind}:${b.name ?? ''}:${textLen}:${b.isError ? 'E' : ''}`;
+          return `${b.kind}:${b.name ?? ''}:${textLen}:${b.args ?? ''}:${b.isError ? 'E' : ''}`;
         })
         .join(',');
       const textLen = isLast ? '' : String((m.text ?? '').length);
-      return `${m.role}:${m.id}:${textLen}:[${blocks}]`;
+      return `${m.role}:${m.id}:${textLen}:[${blocks}]:tasks${JSON.stringify(m.reportedTasks ?? null)}`;
     })
     .join('#');
   return (
     `${commandSessionKey(s)}|${msgs}|${s.connectionState}|${s.isCompacting ? 1 : 0}|${s.workingAnimation}` +
     `|q${(s.queue?.steering.length ?? 0) + (s.queue?.followUp.length ?? 0)}` +
-    `|a${s.approvals?.length ?? 0}|p${s.pendingContextItems.length}/${s.pendingImages.length}`
+    `|a${JSON.stringify(s.approvals?.map((item) => [item.requestKey, item.id, item.method, item.responseState, item.responseError, item.draftRevision, item.draftResetSeq]))}|p${s.pendingContextItems.length}/${s.pendingImages.length}` +
+    `|extensionDraftAck${JSON.stringify(s.extensionUiDraftAck ?? null)}` +
+    `|reported${JSON.stringify(s.activity?.agents ?? [])}` +
+    `|runtimeActivity${JSON.stringify([s.activity?.tools, s.activity?.output, s.activity?.statuses, s.activity?.files])}` +
+    `|modelTools${JSON.stringify([s.modelTools?.requestId, s.modelTools?.status, s.modelTools?.revision, s.modelTools?.message])}` +
+    `|mcpStatus${JSON.stringify(s.mcpStatus ?? null)}` +
+    `|outbox${JSON.stringify([s.outbox?.key, s.outbox?.notice, s.outbox?.readOnly, s.outbox?.items.map((item) => [item.id, item.revision, item.status])])}|outboxAck${JSON.stringify(s.outboxAck ?? null)}`
   );
 }
 
@@ -2547,7 +3220,11 @@ function updateWorkingPhrase(): void {
   }
   const text = workingLabel(snapshot, workingPhrase);
   if (label.textContent !== text) label.textContent = text;
-  if (prefersReducedMotion() || snapshot.isCompacting || snapshot.approvals?.length) {
+  if (
+    prefersReducedMotion() ||
+    snapshot.isCompacting ||
+    snapshot.approvals?.some(isBlockingExtensionUi)
+  ) {
     if (phraseTimer) clearInterval(phraseTimer);
     phraseTimer = undefined;
   } else if (!phraseTimer) {
@@ -2713,10 +3390,30 @@ function applyFocus(): void {
     return;
   }
   if (!currentSnapshot.preview && window.getSelection()?.isCollapsed === false) return;
+  if (!currentSnapshot.preview && document.activeElement?.closest('[data-outbox-id]')) return;
+  if (!currentSnapshot.preview && document.activeElement?.closest('[data-model-tools]')) return;
+  if (!currentSnapshot.preview && document.activeElement?.closest('.approval-card')) return;
   const targetId = focusTargetFromSnapshot(currentSnapshot);
   const request = targetId
     ? JSON.stringify([commandSessionKey(currentSnapshot), targetId])
     : undefined;
+  if (
+    !currentSnapshot.preview &&
+    document.activeElement?.closest('[data-inline-activity], #chat-settings') &&
+    (!targetId || request === appliedFocusRequest)
+  ) {
+    appliedFocusRequest = request;
+    return;
+  }
+  // Opening reported work is an explicit focus choice, including before the first passive focus ack.
+  if (
+    !currentSnapshot.preview &&
+    currentSnapshot.focus === 'composer' &&
+    document.activeElement?.closest('.reported-agent')
+  ) {
+    appliedFocusRequest = request;
+    return;
+  }
   if (request === appliedFocusRequest) return;
   appliedFocusRequest = request;
   if (focusElement(targetId)) {
@@ -2776,6 +3473,23 @@ window.addEventListener(
   (event: MessageEvent<{ type: string; snapshot: WebviewSnapshot }>) => {
     if (event.data?.type === 'find') {
       openFind();
+      return;
+    }
+    if (event.data?.type === 'screenRevertResult') {
+      const result = event.data as unknown as { callId: string; success: boolean };
+      for (const span of Array.from(root?.querySelectorAll<HTMLElement>('.edit-approve') ?? [])) {
+        if (span.dataset.ecid !== result.callId) continue;
+        if (result.success) {
+          span.classList.add('is-decided');
+          span.innerHTML = '<span class="ed-done">↩ undone</span>';
+        } else {
+          const button = span.querySelector<HTMLButtonElement>('.ed-undo');
+          if (button) {
+            button.disabled = false;
+            button.textContent = '↩ Undo';
+          }
+        }
+      }
       return;
     }
     if (event.data?.type === 'snapshot') {

@@ -507,6 +507,7 @@ function toItem(
           : undefined,
     text: messageText(message),
     blocks,
+    reportedTasks: derivePlan({ role: String(message.role), blocks }),
     attachments: normalizeAttachments(message.attachments, cwd),
     capturedContext,
     errorMessage:
@@ -572,7 +573,9 @@ export function createWebviewSnapshot(
   );
   return {
     sequence,
-    activity: projectActivity(state, foldedMessages),
+    mcpStatus: state.mcpStatus,
+    modelTools: state.modelTools,
+    activity: projectActivity(state, foldedMessages, state.messages.slice(windowOffset)),
     title: state.title,
     connectionState: state.connectionState,
     catalogGeneration: state.generation,
@@ -643,21 +646,33 @@ export function createWebviewSnapshot(
       prompts: state.commands.filter((command) => command.source === 'prompt').length,
       skills: state.commands.filter((command) => command.source === 'skill').length,
     },
-    plan: derivePlan(foldedMessages),
     usage: summarizeUsage(state.lastSessionStats),
     approvals: state.pendingUi
-      .filter(
-        (request) =>
-          request.method === 'select' || request.method === 'confirm' || request.method === 'editor'
+      .filter((request) =>
+        ['select', 'confirm', 'input', 'editor', 'set_editor_text', 'unsupported_ui'].includes(
+          request.method
+        )
       )
       .map((request) => ({
         id: request.id,
-        method: request.method as 'select' | 'confirm' | 'editor',
+        requestKey: typeof request.requestKey === 'string' ? request.requestKey : undefined,
+        method: request.method as NonNullable<WebviewSnapshot['approvals']>[number]['method'],
         title: request.title,
         message: request.message,
         options: request.options,
         placeholder: request.placeholder,
         prefill: request.prefill,
+        uiCapability: typeof request.uiCapability === 'string' ? request.uiCapability : undefined,
+        draftRevision:
+          typeof request.draftRevision === 'number' ? request.draftRevision : undefined,
+        draftResetSeq:
+          typeof request.draftResetSeq === 'number' ? request.draftResetSeq : undefined,
+        responseState:
+          request.responseState === 'sending' || request.responseState === 'unknown'
+            ? request.responseState
+            : undefined,
+        responseError:
+          typeof request.responseError === 'string' ? request.responseError : undefined,
       })),
     pendingContextItems: extra.composer.pendingContextItems,
     pendingImages: extra.composer.pendingImages.map(normalizePendingImage),
@@ -678,27 +693,22 @@ export function createWebviewSnapshot(
   };
 }
 
-/** Newest assistant markdown task list → plan strip ("- [ ] step" lines). */
+/** Report each response's own checklist without inferring task execution. */
 function derivePlan(
-  messages: Array<{ role: string; blocks?: WebviewMessageBlock[] }>
-): { items: Array<{ text: string; done: boolean }>; done: number } | undefined {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index]!;
-    if (message.role !== 'assistant') {
-      continue;
-    }
-    const text = (message.blocks ?? [])
-      .filter((block) => block.kind === 'text')
-      .map((block) => ('text' in block ? (block.text ?? '') : ''))
-      .join('\n');
-    const matches = Array.from(text.matchAll(/^[-*] \[([ xX])\] +(.+)$/gm));
-    if (matches.length >= 2) {
-      const items = matches.slice(0, 12).map((match) => ({
-        text: match[2]!.trim().slice(0, 120),
-        done: match[1] !== ' ',
-      }));
-      return { items, done: items.filter((item) => item.done).length };
-    }
+  message: Pick<WebviewMessageItem, 'role' | 'blocks'>
+): WebviewMessageItem['reportedTasks'] {
+  if (message.role !== 'assistant') return undefined;
+  const text = (message.blocks ?? [])
+    .filter((block) => block.kind === 'text')
+    .map((block) => ('text' in block ? (block.text ?? '') : ''))
+    .join('\n');
+  const matches = Array.from(text.matchAll(/^[-*] \[([ xX])\] +(.+)$/gm));
+  if (matches.length >= 2) {
+    const items = matches.slice(0, 12).map((match) => ({
+      text: match[2]!.trim().slice(0, 120),
+      done: match[1] !== ' ',
+    }));
+    return { items, done: items.filter((item) => item.done).length };
   }
   return undefined;
 }

@@ -107,13 +107,26 @@ test('one Pi turn shares a single bubble across tools and the final reply', () =
   );
   assert.ok(turns[0]!.querySelector('.mermaid-wrap'));
   assert.match(turns[0]!.textContent!, /Created the diagram/);
-  assert.equal(turns[0]!.querySelector<HTMLDetailsElement>('.work-phase')!.open, false);
+  assert.equal(doc.querySelector<HTMLDetailsElement>('[data-inline-activity]')!.open, false);
   assert.equal(turns[0]!.querySelector('.mermaid-wrap')!.closest('.work-phase'), null);
   const footer = turns[0]!.querySelector('.work-phase')!;
   assert.equal(footer, turns[0]!.lastElementChild);
-  assert.equal(footer.querySelector('summary')!.textContent, 'View activity');
+  assert.equal(footer.querySelector(':scope > summary')!.textContent, 'View activity');
+  assert.equal(footer.id, 'activity-work');
   assert.equal(turns[0]!.querySelectorAll('.work-phase').length, 1);
-  assert.equal(turns[1]!.querySelector('.work-phase'), null);
+  assert.equal(
+    turns[1]!.querySelector('.work-phase'),
+    null,
+    'no activity footer for a text-only reply'
+  );
+  assert.equal(doc.querySelectorAll('#chat-settings .mcp-connections').length, 1);
+  assert.equal(doc.querySelectorAll('#chat-settings [data-model-tools]').length, 1);
+  assert.equal(
+    doc.querySelector('#chat-settings [data-activity-id], #chat-settings .mermaid-wrap'),
+    null
+  );
+  assert.equal(turns[0]!.querySelector('.mcp-connections'), null);
+  assert.equal(turns[0]!.querySelector('[data-model-tools]'), null);
   assert.equal(turns[1]!.querySelector('[data-mid]')!.getAttribute('data-mid'), 'reply2');
 });
 
@@ -144,15 +157,25 @@ test('activity footer collects multiple work messages in order without hiding re
   ];
   const doc = new JSDOM(renderChatApp(snapshot({ messages }))).window.document;
   const turn = doc.querySelector('.assistant-turn')!;
-  const footer = turn.querySelector<HTMLDetailsElement>('.work-phase')!;
+  const footer = turn.querySelector<HTMLButtonElement>('.work-phase')!;
   assert.equal(turn.querySelectorAll('.work-phase').length, 1);
   assert.equal(footer, turn.lastElementChild);
+  const work = doc.querySelector('[data-turn-activity="first"]')!;
   assert.match(
-    footer.textContent!,
-    /First thought[\s\S]*Standalone tool output[\s\S]*Second thought/
+    work.querySelector('[data-work-group="reasoning"]')!.textContent!,
+    /First thought[\s\S]*Second thought/
   );
-  assert.equal(footer.open, false);
-  assert.doesNotMatch(footer.textContent!, /Progress update|Final answer/);
+  assert.match(
+    work.querySelector('.tl-result')!.textContent!,
+    /Activity item 2[\s\S]*Standalone tool output/
+  );
+  assert.match(work.querySelectorAll('.reasoning-note')[0]!.textContent!, /Activity item 1/);
+  assert.match(work.querySelectorAll('.reasoning-note')[1]!.textContent!, /Activity item 3/);
+  assert.equal(doc.querySelector<HTMLDetailsElement>('[data-inline-activity]')!.open, false);
+  assert.doesNotMatch(
+    doc.querySelector('[data-inline-activity]')!.textContent!,
+    /Progress update|Final answer/
+  );
   assert.equal(turn.querySelector('img')!.closest('.work-phase'), null);
   assert.doesNotMatch(turn.textContent!, /show work/i);
 });
@@ -682,11 +705,18 @@ test('renderChatApp renders thinking, tool, and code blocks distinctly', () => {
   // Call + result are FUSED into one card: the result nests inside tl-tool.
   assert.match(html, /class="tl-node tl-tool"/);
   assert.match(html, /class="tl-result-inline"/);
-  assert.match(html, /Result · 1 line/);
+  assert.match(html, /Result received/);
   assert.match(html, /class="tl-node tl-response"/);
-  assert.match(html, /class="tl-label">Thinking</);
-  assert.match(html, /class="tl-label">Tool</);
-  assert.match(html, /class="tl-label">Result · 1 line</);
+  const doc = new JSDOM(html).window.document;
+  assert.match(doc.querySelector('[data-inline-activity] .tl-thinking')!.textContent!, /Reasoning/);
+  assert.match(
+    doc.querySelector('[data-inline-activity] .tl-tool')!.textContent!,
+    /bash.*Result received/
+  );
+  assert.equal(
+    doc.querySelector('#messages .message-card .tl-thinking, #messages .message-card .tl-tool'),
+    null
+  );
   assert.match(html, /tool-name">bash/);
   assert.doesNotMatch(html, /class="tl-dot"/);
   assert.match(html, /class="meta-icon"/); // inline SVG icon, not an emoji
@@ -737,9 +767,16 @@ test('standalone toolResult / bashExecution messages render as a Result card (no
   );
   // It uses the timeline Result card, with an icon + "Result" label.
   assert.match(html, /class="tl-node tl-result"/);
-  assert.match(html, /class="tl-label">Result</);
+  assert.match(
+    new JSDOM(html).window.document.querySelector('.tl-result > details > summary')!.textContent!,
+    /Result received/
+  );
   assert.match(html, /class="meta-icon"/);
   assert.match(html, /npm:@gotgenes\/pi-anthropic-auth/);
+  assert.doesNotMatch(
+    new JSDOM(html).window.document.querySelector('#messages .message-card')!.textContent!,
+    /npm:@gotgenes/
+  );
   // The raw "toolResult" role label must NOT be shown as a heading.
   assert.doesNotMatch(html, /class="message-role">toolResult</);
 });

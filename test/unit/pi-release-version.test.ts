@@ -116,3 +116,33 @@ test('generated metadata is deterministic, preserves source and rejects unrelate
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('release stamping consumes Unreleased notes without rewriting historical releases', async () => {
+  const { stampReleaseVersion } = await module;
+  const root = mkdtempSync(join(tmpdir(), 'pi-version-notes-'));
+  const history = '## 0.2.40\n\n- Existing release entry.\n';
+  const notes = '- New inline prompts and durable Outbox fixes.\n\n';
+  const originals: Record<string, string> = {
+    'package.json': JSON.stringify({ version: '0.2.40' }) + '\n',
+    'package-lock.json':
+      JSON.stringify({ version: '0.2.40', packages: { '': { version: '0.2.40' } } }) + '\n',
+    'CHANGELOG.md': `# Changelog\n\n## Unreleased\n\n${notes}${history}`,
+  };
+  const git = (args: string[]) => {
+    if (args[0] === 'rev-parse') return head;
+    if (args[0] === 'show') return originals[args[1]!.slice('HEAD:'.length)];
+    if (args[0] === 'diff' || args[0] === 'ls-files') return '';
+    throw new Error(`Unexpected git command ${args[0]}`);
+  };
+  try {
+    for (const [name, content] of Object.entries(originals))
+      writeFileSync(join(root, name), content);
+    stampReleaseVersion('0.2.41', root, git);
+    const expected = `# Changelog\n\n## 0.2.41\n\n${notes}${history}`;
+    assert.equal(readFileSync(join(root, 'CHANGELOG.md'), 'utf8'), expected);
+    stampReleaseVersion('0.2.41', root, git);
+    assert.equal(readFileSync(join(root, 'CHANGELOG.md'), 'utf8'), expected);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

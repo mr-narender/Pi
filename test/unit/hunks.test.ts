@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { computeHunks, parseUnifiedZero } from '../../src/review/hunks';
+import { computeHunks, parseUnifiedZero, revertHunkText } from '../../src/review/hunks';
 
 test('parseUnifiedZero: modify, insert, delete', () => {
   const diff = [
@@ -17,6 +17,7 @@ test('parseUnifiedZero: modify, insert, delete', () => {
   const hunks = parseUnifiedZero(diff);
   assert.equal(hunks.length, 3);
   assert.deepEqual(hunks[0], {
+    beforeStart: 1,
     afterStart: 1,
     afterCount: 2,
     beforeText: 'old line',
@@ -28,6 +29,20 @@ test('parseUnifiedZero: modify, insert, delete', () => {
   assert.equal(hunks[2]?.afterCount, 0);
   assert.equal(hunks[2]?.beforeText, 'gone a\ngone b');
 });
+
+for (const [before, after] of [
+  ['a\nb\n', 'a\nX\nb\n'],
+  ['a\r\nb\r\n', 'a\r\nB\r\n'],
+  ['a', 'a\nX'],
+  ['a\n', 'a'],
+  ['a\nX\nb\n', 'a\nb\n'],
+]) {
+  test(`hunk Undo preserves exact line endings ${JSON.stringify([before, after])}`, async () => {
+    const hunks = await computeHunks(before!, after!);
+    assert.equal(hunks.length, 1);
+    assert.equal(revertHunkText(before!, after!, hunks[0]!), before);
+  });
+}
 
 test('computeHunks end-to-end via git', async () => {
   const before = 'a\nb\nc\nd\n';

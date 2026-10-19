@@ -103,10 +103,17 @@ export function stampReleaseVersion(
     generated['package.json'] = JSON.stringify(pkg, null, 2) + '\n';
     generated['package-lock.json'] = JSON.stringify(lock, null, 2) + '\n';
     assert.ok(originals['CHANGELOG.md'].startsWith('# Changelog\n\n'));
-    generated['CHANGELOG.md'] = originals['CHANGELOG.md'].replace(
-      '# Changelog\n\n',
-      `# Changelog\n\n## ${version}\n\n- Automatic release of code changes from \`${releaseSource ?? head}\`.\n\n`
-    );
+    generated['CHANGELOG.md'] = originals['CHANGELOG.md'].startsWith(
+      '# Changelog\n\n## Unreleased\n'
+    )
+      ? originals['CHANGELOG.md'].replace(
+          '# Changelog\n\n## Unreleased\n',
+          `# Changelog\n\n## ${version}\n`
+        )
+      : originals['CHANGELOG.md'].replace(
+          '# Changelog\n\n',
+          `# Changelog\n\n## ${version}\n\n- Automatic release of code changes from \`${releaseSource ?? head}\`.\n\n`
+        );
   }
   for (const [name, content] of Object.entries(generated)) {
     const actual = readFileSync(resolve(root, name), 'utf8');

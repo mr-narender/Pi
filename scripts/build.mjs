@@ -8,7 +8,7 @@ await mkdir('dist', { recursive: true });
 const pkg = JSON.parse(await readFile('package.json', 'utf8'));
 const define = { __PI_BUILD__: JSON.stringify(String(pkg.version)) };
 
-await build({
+const extensionBuild = await build({
   entryPoints: ['src/extension.ts'],
   outfile: 'dist/extension.js',
   bundle: true,
@@ -19,6 +19,7 @@ await build({
   define,
   sourcemap: false,
   legalComments: 'none',
+  metafile: true,
 });
 
 // Off-main-thread session index/search worker (worker_threads, no vscode dep).
@@ -94,7 +95,7 @@ optionalBuilds.push(
 );
 
 const packageRoots = new Set(
-  [chatBuild, ...optionalBuilds]
+  [extensionBuild, chatBuild, ...optionalBuilds]
     .flatMap((result) => Object.keys(result.metafile.inputs))
     .flatMap((input) => {
       if (!input.startsWith('node_modules/')) return [];

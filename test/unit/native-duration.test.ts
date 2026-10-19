@@ -77,6 +77,25 @@ test('persisted native timing wins over live timing and timestamp differences', 
   );
 });
 
+test('distinct call and result times retain one badge and both original values in the trace', () => {
+  const snapshot = project(transcript(12.5));
+  const call = snapshot.messages[0]?.blocks?.find((block) => block.kind === 'tool');
+  assert.ok(call);
+  call.durationMs = 7;
+  const document = new JSDOM(renderChatApp(snapshot)).window.document;
+  const tool = document.querySelector('.tl-tool')!;
+  assert.equal(tool.querySelectorAll('.native-duration').length, 1);
+  assert.equal(tool.querySelector('.native-duration')?.getAttribute('data-duration-ms'), '12.5');
+  assert.match(
+    tool.querySelector('.native-duration')?.getAttribute('aria-label') ?? '',
+    /Tool execution time/
+  );
+  assert.match(
+    tool.querySelector('.activity-record')!.textContent!,
+    /Call execution time: 7 ms · Result execution time: 12.5 ms/
+  );
+});
+
 test('invalid or missing duration never invents assistant or tool elapsed time', () => {
   for (const durationMs of [undefined, -1, Number.NaN, Number.POSITIVE_INFINITY, '42']) {
     const snapshot = project(

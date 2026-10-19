@@ -35,9 +35,104 @@ function outputText(result: JsonObject | undefined): string {
   return displayText(text, 4000);
 }
 
+function object(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function reportedAgents(
+  state: ControllerState,
+  messages: WebviewMessageItem[],
+  raws: readonly JsonObject[]
+): NonNullable<WebviewActivity['agents']> {
+  const calls = new Set(
+    messages.flatMap((message) =>
+      (message.blocks ?? []).flatMap((block) =>
+        block.kind === 'tool' && block.name === 'delegate_tasks' && block.callId
+          ? [block.callId]
+          : []
+      )
+    )
+  );
+  const reports = new Map<string, { details: Record<string, unknown>; live: boolean }>();
+  const report = (id: string, value: unknown, live: boolean) => {
+    const details = object(object(value)?.details);
+    if (calls.has(id) && details?.parentToolCallId === id && Array.isArray(details.children)) {
+      reports.set(id, { details, live });
+      return true;
+    }
+    return false;
+  };
+  // Native Pi retains these details in branch-aware JSONL history, even after live tools reset.
+  for (const raw of raws) {
+    if (
+      raw.role === 'toolResult' &&
+      raw.toolName === 'delegate_tasks' &&
+      typeof raw.toolCallId === 'string'
+    )
+      report(raw.toolCallId, raw, false);
+  }
+  for (const tool of state.tools) {
+    if (tool.name !== 'delegate_tasks') continue;
+    const live =
+      !state.switchingSession &&
+      tool.endedAt === undefined &&
+      (state.connectionState === 'busy' || state.state.isStreaming === true);
+    if (!report(tool.id, tool.result, false)) report(tool.id, tool.partialResult, live);
+  }
+  const agents: NonNullable<WebviewActivity['agents']> = [];
+  let outputBudget = 4000;
+  for (const [toolCallId, { details, live }] of [...reports].reverse()) {
+    const children = new Map<string, Record<string, unknown>>();
+    for (const raw of (details.children as unknown[]).slice(0, 32)) {
+      const child = object(raw);
+      if (
+        !child ||
+        child.parentToolCallId !== toolCallId ||
+        typeof child.id !== 'string' ||
+        !child.id ||
+        child.id.length > 160
+      )
+        continue;
+      children.set(child.id, child);
+    }
+    for (const [id, child] of children) {
+      if (agents.length >= 16) break;
+      const reported = child.status;
+      const status =
+        reported === 'queued' ||
+        reported === 'running' ||
+        reported === 'completed' ||
+        reported === 'failed' ||
+        reported === 'cancelled' ||
+        reported === 'timeout' ||
+        reported === 'output_limit'
+          ? reported
+          : 'unknown';
+      const output =
+        typeof child.output === 'string' && outputBudget > 0
+          ? displayText(child.output, Math.min(1000, outputBudget))
+          : undefined;
+      outputBudget -= output?.length ?? 0;
+      agents.push({
+        id: displayText(id, 160),
+        toolCallId,
+        role: typeof child.role === 'string' ? displayText(child.role, 80) : 'agent',
+        status,
+        live: live && (status === 'running' || status === 'queued'),
+        ...(output ? { output } : {}),
+        ...(typeof child.reason === 'string' ? { reason: displayText(child.reason, 240) } : {}),
+      });
+    }
+  }
+  return agents;
+}
+
 export function projectActivity(
   state: ControllerState,
-  messages: WebviewMessageItem[]
+  messages: WebviewMessageItem[],
+  raws: readonly JsonObject[] = state.messages
 ): WebviewActivity {
   const files = new Set<string>();
   const addFile = (path: string) => {
@@ -93,6 +188,7 @@ export function projectActivity(
     });
   }
   return {
+    agents: reportedAgents(state, messages, raws),
     tools,
     output: outputText(latest?.result ?? latest?.partialResult),
     files: [...files].map((path) => ({ path })),

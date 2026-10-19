@@ -259,7 +259,7 @@ test('Mermaid preview toggles, expands, closes with Escape, and restores focus',
   assert.equal(dialog.hidden, true, 'another chat cannot inherit an identical diagram preview');
 });
 
-test('activity footer keeps independent Mermaid modes and disclosure state across snapshots', async () => {
+test('shared activity keeps independent Mermaid modes and disclosure state across snapshots', async () => {
   const value = snapshot({
     sequence: 10,
     messages: ['first-work', 'second-work'].map((id) => ({
@@ -282,18 +282,27 @@ test('activity footer keeps independent Mermaid modes and disclosure state acros
   };
   send(10);
   await waitFor(
-    () => dom.window.document.querySelectorAll('.work-phase .mermaid-wrap').length === 2,
+    () => dom.window.document.querySelectorAll('[data-inline-activity] .mermaid-wrap').length === 2,
     'activity diagrams'
   );
-  const phase = dom.window.document.querySelector<HTMLDetailsElement>('.work-phase')!;
-  phase.open = true;
-  const diagrams = dom.window.document.querySelectorAll<HTMLElement>('.work-phase .mermaid-wrap');
+  dom.window.document.querySelector<HTMLButtonElement>('[data-inline-activity] > summary')!.click();
+  const phase = dom.window.document.querySelector<HTMLDetailsElement>('[data-inline-activity]')!;
+  const disclosure = dom.window.document.querySelector<HTMLDetailsElement>(
+    '[data-inline-activity] [data-raw-details]'
+  )!;
+  disclosure.open = true;
+  const diagrams = dom.window.document.querySelectorAll<HTMLElement>(
+    '[data-inline-activity] .mermaid-wrap'
+  );
   diagrams[0]!.querySelector<HTMLButtonElement>('[data-mermaid-mode="code"]')!.click();
   send(11);
-  const updated = dom.window.document.querySelectorAll<HTMLElement>('.work-phase .mermaid-wrap');
+  const updated = dom.window.document.querySelectorAll<HTMLElement>(
+    '[data-inline-activity] .mermaid-wrap'
+  );
   assert.equal(updated[0]!.dataset.mermaidView, 'code');
   assert.equal(updated[1]!.dataset.mermaidView, 'preview');
-  assert.equal(dom.window.document.querySelector<HTMLDetailsElement>('.work-phase')!.open, true);
+  assert.equal(phase.open, true);
+  assert.equal(disclosure.open, true);
 });
 
 test('malformed Mermaid shows an inline error and cannot expand', async () => {
@@ -452,7 +461,7 @@ test("fresh-session details drawer keeps the user's collapsed state across snaps
   );
 });
 
-test('a failed work phase reopens after the user collapsed its live state', async () => {
+test('a failed tool leaves the user-collapsed inspector closed and surfaces an error summary', async () => {
   const live = snapshot({
     sequence: 100,
     connectionState: 'busy',
@@ -478,7 +487,9 @@ test('a failed work phase reopens after the user collapsed its live state', asyn
     () => dom.window.document.querySelector('.work-phase') !== null,
     'live work phase render'
   );
-  const phase = dom.window.document.querySelector<HTMLDetailsElement>('.work-phase')!;
+  const phase = dom.window.document.querySelector<HTMLDetailsElement>('[data-inline-activity]')!;
+  assert.equal(phase.open, false);
+  dom.window.document.querySelector<HTMLButtonElement>('[data-inline-activity] > summary')!.click();
   assert.equal(phase.open, true);
   phase.open = false;
 
@@ -512,8 +523,137 @@ test('a failed work phase reopens after the user collapsed its live state', asyn
     })
   );
 
-  const failed = dom.window.document.querySelector<HTMLDetailsElement>('.work-phase.is-error')!;
-  assert.equal(failed.open, true);
+  const failed = dom.window.document.querySelector<HTMLDetailsElement>('[data-inline-activity]')!;
+  assert.equal(failed.open, false);
+  assert.match(failed.querySelector('.activity-attention')!.textContent!, /Failure reported/);
+  assert.ok(failed.querySelector('.tl-tool.is-error'));
+});
+
+test('reported agents update while streaming without stealing focus or reopening child details', async (t) => {
+  await import('../../src/webview/media/chat.js');
+  t.after(() =>
+    dom.window.dispatchEvent(
+      new dom.window.MessageEvent('message', {
+        data: { type: 'snapshot', snapshot: snapshot({ sequence: 4200 }) },
+      })
+    )
+  );
+  const value = snapshot({
+    sequence: 4100,
+    sessionId: 'agent-progress',
+    sessionFile: '/tmp/workspace/agent-progress.jsonl',
+    connectionState: 'busy',
+    isStreaming: true,
+    currentAssistantMessageId: 'agent-reply',
+    typewriterSpeed: 'off',
+    messages: [
+      {
+        id: 'agent-reply',
+        role: 'assistant',
+        text: 'Checking',
+        attachments: [],
+        blocks: [
+          { kind: 'tool', callId: 'delegate', name: 'delegate_tasks', args: '{}' },
+          { kind: 'text', text: 'Checking' },
+        ],
+      },
+    ],
+    activity: {
+      tools: [],
+      files: [],
+      statuses: [],
+      output: '',
+      agents: [
+        { id: 'batch/0', toolCallId: 'delegate', role: 'reviewer', status: 'running', live: true },
+      ],
+    },
+  });
+  const send = (snapshot: WebviewSnapshot) =>
+    dom.window.dispatchEvent(
+      new dom.window.MessageEvent('message', { data: { type: 'snapshot', snapshot } })
+    );
+  send(value);
+  await waitFor(
+    () => !!dom.window.document.querySelector('[data-inline-activity] .reported-agent'),
+    'reported agent'
+  );
+  dom.window.document.querySelector<HTMLButtonElement>('[data-inline-activity] > summary')!.click();
+  dom.window.document.querySelector<HTMLButtonElement>('[data-activity-tab="agents"]')!.click();
+  const footer = dom.window.document.querySelector<HTMLDetailsElement>('[data-inline-activity]')!;
+  const row = footer.querySelector<HTMLDetailsElement>('.reported-agent-details')!;
+  assert.equal(row.open, false);
+  const summary = row.querySelector('summary')!;
+  summary.focus();
+  summary.click();
+  assert.equal(row.open, true);
+  assert.equal(dom.window.document.activeElement, summary, 'child details starts focused');
+  const next = {
+    ...value,
+    sequence: 4101,
+    activity: {
+      ...value.activity!,
+      agents: [
+        {
+          ...value.activity!.agents![0]!,
+          status: 'completed' as const,
+          live: false,
+          output: 'Review received',
+        },
+      ],
+    },
+  };
+  send(next);
+  await waitFor(() => !!row.textContent?.includes('Review received'), 'streamed final result');
+  assert.equal(row.open, true);
+  assert.equal(dom.window.document.activeElement, summary);
+  const agentsTab = dom.window.document.querySelector<HTMLButtonElement>(
+    '[data-activity-tab="agents"]'
+  )!;
+  agentsTab.click();
+  agentsTab.focus();
+  agentsTab.dispatchEvent(
+    new dom.window.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true })
+  );
+  assert.equal(dom.window.document.activeElement?.getAttribute('data-activity-tab'), 'output');
+  send({
+    ...next,
+    sequence: 4102,
+    messages: [
+      {
+        ...value.messages[0]!,
+        text: 'Checking more',
+        blocks: [value.messages[0]!.blocks![0]!, { kind: 'text', text: 'Checking more' }],
+      },
+    ],
+  });
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  assert.equal(row.open, true, 'answer-only patch retains disclosure');
+  send({ ...next, sequence: 4103, activity: { ...next.activity, agents: [] } });
+  await waitFor(
+    () => !dom.window.document.querySelector('[data-activity-tab="agents"]'),
+    'agents tab removed'
+  );
+  const sources = dom.window.document.querySelector<HTMLButtonElement>(
+    '[data-activity-tab="sources"]'
+  )!;
+  sources.focus();
+  sources.dispatchEvent(
+    new dom.window.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true })
+  );
+  assert.equal(dom.window.document.activeElement?.getAttribute('data-activity-tab'), 'output');
+  send(
+    snapshot({
+      sequence: 4104,
+      sessionId: 'next-session',
+      sessionFile: '/tmp/workspace/next-session.jsonl',
+    })
+  );
+  assert.equal(dom.window.document.querySelector('[data-activity-tab="agents"]'), null);
+  assert.equal(
+    dom.window.document.querySelector('[data-inline-activity]'),
+    null,
+    'next empty chat has no inherited activity'
+  );
 });
 
 test('webview paste: pasted IMAGE posts pasteImage with base64 payload (the reported bug)', async () => {
@@ -774,4 +914,93 @@ test('webview core safety: Enter retains a local command; ordinary prompts still
     })
   );
   assert.equal(textarea.value, '', 'normal prompt atomic clear is unchanged');
+});
+
+test('edit-card Undo waits for the host result and keeps controls on a conflict', () => {
+  posted.length = 0;
+  dom.window.dispatchEvent(
+    new dom.window.MessageEvent('message', {
+      data: {
+        type: 'snapshot',
+        snapshot: snapshot({
+          messages: [
+            {
+              id: 'undo-card',
+              role: 'assistant',
+              text: '',
+              attachments: [],
+              blocks: [
+                {
+                  kind: 'tool',
+                  name: 'edit',
+                  callId: 'owned-undo',
+                  args: JSON.stringify({
+                    path: '/tmp/owned.txt',
+                    oldText: 'before',
+                    newText: 'after',
+                  }),
+                },
+                { kind: 'toolResult', callId: 'owned-undo', text: 'done', isError: false },
+              ],
+            },
+          ],
+        }),
+      },
+    })
+  );
+  const button = dom.window.document.querySelector<HTMLButtonElement>('.ed-undo');
+  assert.ok(button);
+  button.click();
+  assert.deepEqual(
+    posted.find((message) => message.type === 'screenRevert'),
+    { type: 'screenRevert', callId: 'owned-undo' }
+  );
+  assert.equal(button.disabled, true);
+  assert.doesNotMatch(button.closest('.edit-approve')!.textContent!, /undone/);
+  dom.window.dispatchEvent(
+    new dom.window.MessageEvent('message', {
+      data: { type: 'screenRevertResult', callId: 'owned-undo', success: false },
+    })
+  );
+  assert.equal(button.disabled, false);
+  assert.doesNotMatch(button.closest('.edit-approve')!.textContent!, /undone/);
+  button.click();
+  dom.window.dispatchEvent(
+    new dom.window.MessageEvent('message', {
+      data: { type: 'screenRevertResult', callId: 'owned-undo', success: true },
+    })
+  );
+  assert.match(dom.window.document.querySelector('.edit-approve')!.textContent!, /undone/);
+});
+
+test('MCP Check button sends one explicit local request and preserves the composer', () => {
+  posted.length = 0;
+  dom.window.dispatchEvent(
+    new dom.window.MessageEvent('message', {
+      data: {
+        type: 'snapshot',
+        snapshot: snapshot({
+          draft: 'my unsent draft',
+          mcpStatus: { status: 'unchecked', servers: [] },
+        }),
+      },
+    })
+  );
+  const composer = findComposer();
+  composer.value = 'my unsent draft';
+  const button = dom.window.document.querySelector<HTMLButtonElement>('[data-mcp-check]');
+  assert.ok(button);
+  assert.equal(
+    posted.some((message) => message.type === 'checkMcpStatus'),
+    false,
+    'rendering cannot poll the backend'
+  );
+  button.click();
+  button.click();
+  assert.equal(posted.filter((message) => message.type === 'checkMcpStatus').length, 1);
+  assert.equal(composer.value, 'my unsent draft');
+  assert.equal(
+    posted.some((message) => message.type === 'requestSend'),
+    false
+  );
 });

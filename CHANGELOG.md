@@ -1,5 +1,35 @@
 # Changelog
 
+## Unreleased
+
+- Honor VS Code's On/Off/Auto motion setting in remote webviews; the OS preference
+  no longer overrides an explicit Off and freezes the working indicator.
+- Measure Mermaid labels using their SVG font size under the webview's strict
+  content policy so wrapped text stays inside its nodes.
+- Support Pi 1.3 and keep extension select/confirm/input/editor prompts inline with
+  Cancel. Admit each request once and require Use/Keep for every draft suggestion,
+  preserving unsent text and attachments; identify terminal-only custom interfaces.
+  Keep startup prompts interactive before the session opens and ignore held IME Enter.
+- Keep answers, diagrams and images visible while View activity expands directly
+  beneath its reply for Pi-reported tasks, subagents and tools. The Activity header
+  opens the latest reply's same inline disclosure, without a sidebar or overlay.
+  Fold raw details by default; keep failures visible and place Connections and
+  Model tools once in Chat settings.
+- Group repeated file reads, fold reasoning and runtime statuses, and give work and
+  agents meaningful disclosure labels with nearby status and timing. Keep every
+  original request/result and action inspectable, with one contextual failure cue.
+- Add read-only IDE queries for diagnostics, symbols, definitions and references;
+  open result files only on an explicit click.
+- Check for newer edits before Undo restores a recorded Pi edit; leave conflicts intact.
+- Show an explicit, on-demand Connections snapshot with its last checked time,
+  rather than treating historical tool calls as live connection health.
+- Hold follow-ups in an editable extension Outbox until sending. Keep Pi-accepted
+  messages read-only, restore pending messages paused, and never automatically
+  resend a message whose delivery is unconfirmed. Preserve messages when multiple
+  windows open the same chat.
+- Edit Model tools declarations per chat. Existing runtime restrictions still
+  apply; declarations are not a permission boundary and deferred tools may remain callable.
+
 ## 0.2.40
 
 - Move completed turn details into a quiet, left-aligned "View activity" footer

@@ -415,12 +415,26 @@ test('activity updates on the answer fast path without resetting reveal, glyph, 
     files: [{ path: 'first.ts' }],
     statuses: [],
   };
-  send(initial, { sessionId: 'activity-live', activity });
+  const messages = (value: string, path: string) => [
+    {
+      id: 'work',
+      role: 'assistant' as const,
+      text: '',
+      attachments: [],
+      blocks: [
+        { kind: 'tool' as const, name: 'read', callId: 't1', args: JSON.stringify({ path }) },
+      ],
+    },
+    ...answer(value),
+  ];
+  send(initial, { sessionId: 'activity-live', activity, messages: messages(initial, 'first.ts') });
   await new Promise((resolve) => setTimeout(resolve, 180));
   tick();
-  const panel = dom.window.document.getElementById('activity-panel') as HTMLDetailsElement;
+  const panel = dom.window.document.querySelector('[data-inline-activity]') as HTMLDetailsElement;
   panel.open = true;
-  const sources = dom.window.document.getElementById('activity-tab-sources')!;
+  const sources = dom.window.document.querySelector<HTMLButtonElement>(
+    '[data-activity-tab="sources"]'
+  )!;
   sources.click();
   const glyph = dom.window.document.querySelector('.working-glyph')!;
   const frame = glyph.textContent;
@@ -430,12 +444,16 @@ test('activity updates on the answer fast path without resetting reveal, glyph, 
   field.dispatchEvent(new dom.window.Event('compositionstart', { bubbles: true }));
   send(initial + 'more text', {
     sessionId: 'activity-live',
+    messages: messages(initial + 'more text', 'new.ts'),
     activity: { ...activity, output: 'second output', files: [{ path: 'new.ts' }] },
   });
-  assert.equal(dom.window.document.getElementById('activity-panel'), panel);
+  await new Promise((resolve) => setTimeout(resolve, 180));
+  assert.equal(dom.window.document.querySelector('[data-inline-activity]'), panel);
   assert.equal(panel.open, true);
   assert.equal(
-    dom.window.document.getElementById('activity-tab-sources')?.getAttribute('aria-selected'),
+    dom.window.document
+      .querySelector('[data-activity-tab="sources"]')
+      ?.getAttribute('aria-selected'),
     'true'
   );
   assert.equal(dom.window.document.querySelector('.activity-output')?.textContent, 'second output');
@@ -444,7 +462,9 @@ test('activity updates on the answer fast path without resetting reveal, glyph, 
   assert.equal(text(), revealed);
   assert.equal(field.value, 'in-progress draft');
   const before = sentMessages.length;
-  dom.window.document.querySelector<HTMLButtonElement>('#activity-panel [data-file-open]')!.click();
+  dom.window.document
+    .querySelector<HTMLButtonElement>('[data-inline-activity] [data-file-open]')!
+    .click();
   assert.deepEqual(sentMessages.slice(before), [{ type: 'openFile', path: 'new.ts' }]);
   field.dispatchEvent(new dom.window.Event('compositionend', { bubbles: true }));
   tick();
@@ -453,39 +473,68 @@ test('activity updates on the answer fast path without resetting reveal, glyph, 
 });
 
 test('activity keyboard tabs and expanded state survive structural and settled snapshots', async () => {
-  const activity = { tools: [], output: '', files: [], statuses: [] };
-  send('answer', { sessionId: 'activity-keys', activity });
+  const activity = {
+    tools: [],
+    output: '',
+    files: [],
+    statuses: [],
+    agents: [
+      {
+        id: 'batch/0',
+        toolCallId: 'delegate',
+        role: 'worker',
+        status: 'running' as const,
+        live: true,
+      },
+    ],
+  };
+  const messages = (value: string) => [
+    {
+      id: 'delegate-work',
+      role: 'assistant' as const,
+      text: '',
+      attachments: [],
+      blocks: [{ kind: 'tool' as const, name: 'delegate_tasks', callId: 'delegate', args: '{}' }],
+    },
+    ...answer(value),
+  ];
+  send('answer', { sessionId: 'activity-keys', activity, messages: messages('answer') });
   await new Promise((resolve) => setTimeout(resolve, 180));
-  const panel = dom.window.document.getElementById('activity-panel') as HTMLDetailsElement;
+  const panel = dom.window.document.querySelector('[data-inline-activity]') as HTMLDetailsElement;
   panel.open = true;
-  const output = dom.window.document.getElementById('activity-tab-output')!;
+  const output = dom.window.document.querySelector<HTMLButtonElement>(
+    '[data-activity-tab="output"]'
+  )!;
   output.click();
   output.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'End', bubbles: true }));
-  assert.equal(dom.window.document.activeElement?.id, 'activity-tab-agents');
+  assert.equal(dom.window.document.activeElement?.getAttribute('data-activity-tab'), 'agents');
   dom.window.document.activeElement!.dispatchEvent(
     new dom.window.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })
   );
-  assert.equal(dom.window.document.activeElement?.id, 'activity-tab-output');
+  assert.equal(dom.window.document.activeElement?.getAttribute('data-activity-tab'), 'output');
   dom.window.document.activeElement!.dispatchEvent(
     new dom.window.KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true })
   );
-  assert.equal(dom.window.document.activeElement?.id, 'activity-tab-agents');
+  assert.equal(dom.window.document.activeElement?.getAttribute('data-activity-tab'), 'agents');
   send('complete', {
     sessionId: 'activity-keys',
+    messages: messages('complete'),
     activity,
     connectionState: 'ready',
     currentAssistantMessageId: undefined,
   });
   assert.equal(
-    (dom.window.document.getElementById('activity-panel') as HTMLDetailsElement).open,
+    (dom.window.document.querySelector('[data-inline-activity]') as HTMLDetailsElement).open,
     true
   );
   assert.equal(
-    dom.window.document.getElementById('activity-tab-agents')?.getAttribute('aria-selected'),
+    dom.window.document
+      .querySelector('[data-activity-tab="agents"]')
+      ?.getAttribute('aria-selected'),
     'true'
   );
   assert.equal(
-    dom.window.document.getElementById('activity-view-agents')?.hasAttribute('hidden'),
+    dom.window.document.querySelector('[data-activity-view="agents"]')?.hasAttribute('hidden'),
     false
   );
 });
@@ -657,7 +706,7 @@ test('a persistent composer focus echo does not steal focus from another control
   render(state);
   const field = dom.window.document.getElementById('composer-field') as HTMLTextAreaElement;
   assert.equal(dom.window.document.activeElement, field);
-  const button = dom.window.document.querySelector('button')!;
+  const button = dom.window.document.querySelector<HTMLButtonElement>('button[data-send-command]')!;
   button.focus();
   render({ ...state, statuses: { remote: 'updated' } });
   assert.equal(dom.window.document.activeElement, button);
@@ -794,8 +843,11 @@ test('Thinking starts compact and preserves user expansion across passive snapsh
     ],
   };
   render(state);
+  dom.window.document.querySelector<HTMLButtonElement>('[data-inline-activity] > summary')!.click();
   const detail = () =>
-    dom.window.document.querySelector<HTMLDetailsElement>('.tl-thinking > details')!;
+    dom.window.document.querySelector<HTMLDetailsElement>(
+      '[data-inline-activity] .tl-thinking details'
+    )!;
   assert.equal(detail().open, false);
   detail().open = true;
   render({ ...state, statuses: { task: 'updated' } });

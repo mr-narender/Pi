@@ -3,14 +3,18 @@
 // (Keep all / Revert all / Done); reverting applies a surgical WorkspaceEdit
 // restoring the snapshot text for just that range, then hunks recompute.
 import * as vscode from 'vscode';
-import { computeHunks, type Hunk } from './hunks';
+import { createHash } from 'node:crypto';
+import { computeHunks, revertHunkText, type Hunk } from './hunks';
 import type { TurnChange, TurnRecord, TurnReview } from './turnReview';
+import { captureUndoState, matchesUndoState, showUndoConflict, type UndoState } from './safeUndo';
 
 interface ActiveReview {
   record: TurnRecord;
   change: TurnChange;
   before: string;
   hunks: Hunk[];
+  expected: UndoState;
+  text: string;
 }
 
 export class InlineReview implements vscode.CodeLensProvider, vscode.Disposable {
@@ -50,12 +54,18 @@ export class InlineReview implements vscode.CodeLensProvider, vscode.Disposable 
     ).fsPath;
     const before = await this.review.fileBefore(record, change);
     const document = await vscode.workspace.openTextDocument(vscode.Uri.file(fsPath));
+    if (!(await matchesUndoState(document.uri, change.after))) {
+      await showUndoConflict(document.uri, Buffer.from(before));
+      return;
+    }
+    const text = document.getText();
     const hunks = await computeHunks(before, document.getText());
     if (hunks.length === 0) {
       void vscode.window.showInformationMessage('No line changes left to review in this file.');
       return;
     }
-    this.active.set(fsPath, { record, change, before, hunks });
+    if (document.getText() !== text || document.isDirty) return;
+    this.active.set(fsPath, { record, change, before, hunks, expected: change.after!, text });
     await vscode.window.showTextDocument(document, { preview: false });
     this.emitter.fire();
     this.paint();
@@ -68,6 +78,7 @@ export class InlineReview implements vscode.CodeLensProvider, vscode.Disposable 
     }
     try {
       const document = await vscode.workspace.openTextDocument(vscode.Uri.file(fsPath));
+      if (document.getText() !== entry.text) return;
       entry.hunks = await computeHunks(entry.before, document.getText());
       if (entry.hunks.length === 0) {
         this.active.delete(fsPath);
@@ -172,25 +183,31 @@ export class InlineReview implements vscode.CodeLensProvider, vscode.Disposable 
     }
     const uri = vscode.Uri.file(fsPath);
     const document = await vscode.workspace.openTextDocument(uri);
-    const edit = new vscode.WorkspaceEdit();
-    if (hunk.afterCount === 0) {
-      // Pure deletion by π — restore the before-text AFTER the anchor line.
-      const at = Math.min(hunk.afterStart, document.lineCount);
-      const position = new vscode.Position(at, 0);
-      const text = hunk.beforeText + '\n';
-      edit.insert(uri, position, text);
-    } else {
-      const endLine = hunk.afterStart + hunk.afterCount - 1;
-      const range = new vscode.Range(
-        hunk.afterStart,
-        0,
-        endLine,
-        document.lineAt(Math.min(endLine, document.lineCount - 1)).text.length
-      );
-      edit.replace(uri, range, hunk.beforeText);
+    const version = document.version;
+    if (
+      !(await matchesUndoState(uri, entry.expected)) ||
+      document.getText() !== entry.text ||
+      document.version !== version
+    ) {
+      await showUndoConflict(uri, Buffer.from(entry.before), Buffer.from(entry.text));
+      return;
     }
-    await vscode.workspace.applyEdit(edit);
-    await document.save();
+    const edit = new vscode.WorkspaceEdit();
+    edit.replace(
+      uri,
+      new vscode.Range(0, 0, document.lineCount, 0),
+      revertHunkText(entry.before, entry.text, hunk)
+    );
+    if (document.version !== version || document.getText() !== entry.text) return;
+    if (!(await vscode.workspace.applyEdit(edit))) throw new Error('VS Code could not apply Undo.');
+    const applied = document.getText();
+    if (!(await document.save()))
+      throw new Error('VS Code could not save Undo; the buffer is kept.');
+    if (document.isDirty || document.getText() !== applied) return;
+    const saved = await captureUndoState(uri);
+    if (saved.digest !== createHash('sha256').update(Buffer.from(applied)).digest('hex')) return;
+    entry.expected = saved;
+    entry.text = applied;
     await this.recompute(fsPath);
   }
 
@@ -205,14 +222,8 @@ export class InlineReview implements vscode.CodeLensProvider, vscode.Disposable 
     if (!entry) {
       return;
     }
-    // Restore the whole file to its before state (single edit, then done).
-    const uri = vscode.Uri.file(fsPath);
-    const document = await vscode.workspace.openTextDocument(uri);
-    const full = new vscode.Range(0, 0, document.lineCount, 0);
-    const edit = new vscode.WorkspaceEdit();
-    edit.replace(uri, full, entry.before);
-    await vscode.workspace.applyEdit(edit);
-    await document.save();
+    if (!(await this.review.revertFile(entry.record, { ...entry.change, after: entry.expected })))
+      return;
     this.active.delete(fsPath);
     this.emitter.fire();
     this.paint();

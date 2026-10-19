@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
-import { basename } from 'node:path';
+import { openIdeLocation } from '../ide/query';
+import { basename, join } from 'node:path';
 import { existsSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { getSettings, tabTitleSettings } from '../config/settings';
@@ -27,6 +28,7 @@ import {
   type AcceptedSendSnapshot,
   type PendingImageItem,
   acceptedSnapshotFromPreview,
+  buildSendPreview,
   beginSend,
   createEmptyComposerState,
   restoreEditableStateFromAcceptedSnapshot,
@@ -46,7 +48,14 @@ import {
 } from './attachmentCapture';
 import { conversationToMarkdown } from '../webview/conversationMarkdown';
 import { ChatUiState } from '../webview/composerState';
-import type { JsonObject } from '../rpc/protocol';
+import { OutboxStore } from '../outbox/store';
+import type { OutboxAction, OutboxComposerAck } from '../outbox/types';
+import {
+  isBlockingExtensionUi,
+  type JsonObject,
+  type ExtensionUiRequest,
+  type ExtensionUiDraftAck,
+} from '../rpc/protocol';
 import type { WebviewSnapshot } from '../state/types';
 import { renderChatWebviewHtml } from '../webview/html';
 import {
@@ -262,7 +271,38 @@ export interface ChatTabContext {
   target: ChatTabTarget;
 }
 
+interface OutboxBinding {
+  key: string;
+  resource: vscode.Uri;
+  valid: () => boolean;
+  completed: number;
+  running: boolean;
+  rerun: boolean;
+  release: boolean;
+  attempts: number;
+  lastOutcome?: string;
+  timer?: ReturnType<typeof setTimeout>;
+}
+
 export class ChatTabManager implements vscode.Disposable {
+  private readonly outbox: OutboxStore;
+  private readonly outboxAcks = new Map<string, OutboxComposerAck>();
+  private readonly extensionUiDraftAcks = new Map<string, ExtensionUiDraftAck>();
+  private readonly extensionUiDrafts = new Map<
+    string,
+    {
+      controller: SessionController;
+      target: ChatTabTarget;
+      resource?: vscode.Uri;
+      revision: number;
+      frame: number;
+      text: string;
+      valid: () => boolean;
+    }
+  >();
+  private readonly outboxNotices = new Map<string, string>();
+  private readonly outboxBindings = new Map<SessionController, OutboxBinding>();
+  private outboxDisposed = false;
   private readonly follow = new AgentFollowService();
 
   private readonly cache: ChatTabStateCache;
@@ -302,6 +342,7 @@ export class ChatTabManager implements vscode.Disposable {
     private readonly uiState: ChatUiState,
     private readonly logger: DiagnosticsLogger
   ) {
+    this.outbox = new OutboxStore(join(context.globalStorageUri.fsPath, 'outbox'));
     this.cache = new ChatTabStateCache(context);
     this.remoteSharing = new RemoteSharingService({
       hosts: () => this.hosts.values(),
@@ -377,7 +418,7 @@ export class ChatTabManager implements vscode.Disposable {
       if (snap.connectionState !== 'ready') {
         continue; // only reap settled sessions — never starting/busy/faulted
       }
-      if (snap.state.isStreaming === true || (snap.pendingUi?.length ?? 0) > 0) {
+      if (snap.state.isStreaming === true || snap.pendingUi.some(isBlockingExtensionUi)) {
         continue; // never touch generating chats or chats awaiting approval
       }
       const last = this.lastActivityAt.get(context.controller);
@@ -410,7 +451,14 @@ export class ChatTabManager implements vscode.Disposable {
   }
 
   private async disposeNow(): Promise<void> {
+    this.outboxDisposed = true;
+    for (const binding of this.outboxBindings.values())
+      if (binding.timer) clearTimeout(binding.timer);
+    await this.outbox
+      .dispose()
+      .catch(() => this.logger.warn('Outbox closed with saved messages paused for recovery.'));
     this.follow.dispose();
+    for (const controller of this.trackedControllers) this.turnReview?.discard(controller);
     for (const pending of this.pendingRender.values()) {
       clearTimeout(pending.timer);
       for (const done of pending.resolvers) done();
@@ -1048,6 +1096,7 @@ export class ChatTabManager implements vscode.Disposable {
   }
 
   public async onHostDisposed(host: ChatHost): Promise<void> {
+    const disposedController = this.contextForResource(host.resource)?.controller;
     // Controller key BEFORE dropping the binding (afterwards keyFor would
     // resolve back to the raw draft key and miss the registry entry).
     const controllerKey = this.keyFor(host.resource);
@@ -1065,7 +1114,21 @@ export class ChatTabManager implements vscode.Disposable {
       (other) => this.keyFor(other.resource) === controllerKey
     );
     if (!stillOpen) {
-      this.registry.remove(controllerKey);
+      const controller = disposedController;
+      const binding = controller && this.outboxBindings.get(controller);
+      try {
+        if (binding) {
+          if (binding.timer) clearTimeout(binding.timer);
+          this.outboxBindings.delete(controller!);
+          await this.outbox.suspend(binding.key);
+        }
+      } catch {
+        this.logger.warn(
+          'Outbox could not persist its paused state while closing. Pending messages remain paused on restart.'
+        );
+      } finally {
+        this.registry.remove(controllerKey);
+      }
     }
   }
 
@@ -1101,6 +1164,16 @@ export class ChatTabManager implements vscode.Disposable {
         return this.handleOpenExternal(parsed.url);
       case 'openFile':
         return this.openEditToolFile(context, parsed.path, false);
+      case 'openIdeLocation':
+        try {
+          await openIdeLocation(context.controller.folder.uri.fsPath, parsed);
+        } catch {
+          context.controller.log(
+            'warn',
+            'Editor location is no longer available in this chat folder.'
+          );
+        }
+        return;
       case 'openDiff':
         return this.openEditToolFile(context, parsed.path, true);
       case 'respondUi':
@@ -1109,7 +1182,8 @@ export class ChatTabManager implements vscode.Disposable {
           parsed.id,
           parsed.value,
           parsed.confirmed,
-          parsed.cancelled
+          parsed.cancelled,
+          parsed.requestKey
         );
       case 'attachFile':
         return this.attachFileByPath(context, parsed.path);
@@ -1128,6 +1202,8 @@ export class ChatTabManager implements vscode.Disposable {
         return this.handleRequestSlashCommands(host, context, parsed.requestId);
       case 'requestSend':
         return this.handleRequestSend(host.resource, parsed.command, parsed.submissionId);
+      case 'outboxAction':
+        return this.handleOutboxAction(context, host.resource, parsed);
       case 'acceptPreview':
         return this.acceptPreview(host.resource);
       case 'cancelPreview':
@@ -1139,11 +1215,34 @@ export class ChatTabManager implements vscode.Disposable {
       case 'screenOpenFile':
         return this.handleScreenOpenFile(parsed.path, parsed.needle);
       case 'screenRevert':
-        return this.handleScreenRevert(parsed.path, parsed.oldText, parsed.newText);
+        return this.handleScreenRevert(host, context, parsed.callId);
       case 'toggleFollow':
         return this.handleToggleFollow(host.resource);
       case 'abort':
         return this.handleAbort(host.resource);
+      case 'checkMcpStatus':
+        return context.controller.checkMcpStatus(
+          () => this.contextForResource(host.resource)?.controller === context.controller
+        );
+      case 'modelToolsRequest':
+      case 'modelToolsApply': {
+        const valid = () =>
+          this.hosts.get(host.resource.toString()) === host &&
+          this.contextForResource(host.resource)?.controller === context.controller &&
+          JSON.stringify([
+            context.controller.snapshot.state.sessionFile,
+            context.controller.snapshot.state.sessionId,
+          ]) === parsed.originKey;
+        if (!valid()) return;
+        return parsed.type === 'modelToolsRequest'
+          ? context.controller.requestModelTools(parsed.requestId, valid)
+          : context.controller.applyModelTools(
+              parsed.requestId,
+              parsed.revision,
+              parsed.names,
+              valid
+            );
+      }
       case 'setDraft':
         return this.handleSetDraft(context, parsed.resetSeq, parsed.text);
       case 'setFocus':
@@ -1204,8 +1303,24 @@ export class ChatTabManager implements vscode.Disposable {
     id: string,
     value: string | undefined,
     confirmed: boolean | undefined,
-    cancelled = false
+    cancelled = false,
+    requestKey?: string
   ): Promise<void> {
+    if (!requestKey) return;
+    const request = context.controller.extensionUiRequest(id, requestKey);
+    if (!request) return;
+    if (request.method === 'set_editor_text') {
+      if (confirmed === true) await this.commitDraftProposal(context.controller, request);
+      else {
+        this.extensionUiDrafts.delete(requestKey);
+        context.controller.completeExtensionUiRequest(id, requestKey);
+      }
+      return;
+    }
+    if (request.method === 'unsupported_ui' || request.responseState === 'unknown') {
+      if (cancelled) context.controller.completeExtensionUiRequest(id, requestKey);
+      return;
+    }
     const response: JsonObject = { id };
     if (typeof value === 'string') {
       response.value = value;
@@ -1216,8 +1331,112 @@ export class ChatTabManager implements vscode.Disposable {
     if (cancelled) {
       response.cancelled = true;
     }
-    await context.controller.respondExtensionUi(response);
-    context.controller.completeExtensionUiRequest(id);
+    await context.controller.respondExtensionUi(response, requestKey);
+  }
+
+  public async presentDraftProposal(
+    controller: SessionController,
+    request: ExtensionUiRequest
+  ): Promise<void> {
+    const key = request.requestKey;
+    if (!key || typeof request.text !== 'string') return;
+    for (const [previousKey, previous] of this.extensionUiDrafts)
+      if (!previous.valid()) this.extensionUiDrafts.delete(previousKey);
+    const resource = this.sessions.ownerOf(controller);
+    const context = resource ? this.contextForResource(resource) : undefined;
+    const target =
+      context?.controller === controller ? context.target : currentTargetForController(controller);
+    const valid = () =>
+      controller.isExtensionUiRequestValid(request.id, key) &&
+      (!resource ||
+        (this.contextForResource(resource)?.controller === controller &&
+          sameTarget(this.contextForResource(resource)!.target, target)));
+    const composer = await this.uiState
+      .getComposerStateForIdentity(controller, target)
+      .catch(() => undefined);
+    if (!composer) {
+      if (valid())
+        controller.updateExtensionUiRequest(request.id, key, {
+          responseError:
+            'The current draft could not be loaded. Keep your draft and try the extension command again.',
+        });
+      return;
+    }
+    if (!valid()) return;
+    const proposal = {
+      controller,
+      target,
+      resource,
+      revision: composer.commandRevision ?? 0,
+      frame: composer.composerResetSeq ?? 0,
+      text: request.text,
+      valid,
+    };
+    this.extensionUiDrafts.set(key, proposal);
+    controller.updateExtensionUiRequest(request.id, key, {
+      draftRevision: proposal.revision,
+      draftResetSeq: proposal.frame,
+    });
+    if (!resource) {
+      const choice = await vscode.window.showQuickPick(['Use extension text', 'Keep draft'], {
+        placeHolder: 'An extension suggested text for your chat draft.',
+      });
+      if (!valid()) return;
+      if (choice === 'Use extension text') await this.commitDraftProposal(controller, request);
+      else {
+        this.extensionUiDrafts.delete(key);
+        controller.completeExtensionUiRequest(request.id, key);
+      }
+    }
+  }
+
+  private async commitDraftProposal(
+    controller: SessionController,
+    request: ExtensionUiRequest
+  ): Promise<void> {
+    const key = request.requestKey;
+    if (!key) return;
+    const proposal = this.extensionUiDrafts.get(key);
+    if (!proposal || proposal.controller !== controller) return;
+    const ack: ExtensionUiDraftAck = {
+      requestKey: key,
+      originKey: JSON.stringify([
+        controller.snapshot.state.sessionFile,
+        controller.snapshot.state.sessionId,
+      ]),
+      frame: proposal.frame,
+      accepted: false,
+    };
+    try {
+      const composer = await this.uiState.getComposerStateForIdentity(controller, proposal.target);
+      if (
+        !proposal.valid() ||
+        (composer.commandRevision ?? 0) !== proposal.revision ||
+        (composer.composerResetSeq ?? 0) !== proposal.frame
+      )
+        return;
+      composer.draft = proposal.text;
+      composer.composerResetSeq = proposal.frame + 1;
+      await this.uiState.setComposerStateForIdentity(controller, proposal.target, composer, {
+        silent: true,
+        expectedCommandRevision: proposal.revision,
+      });
+      const saved = await this.uiState.getComposerStateForIdentity(controller, proposal.target);
+      ack.accepted =
+        proposal.valid() &&
+        saved.commandRevision === proposal.revision + 1 &&
+        saved.composerResetSeq === proposal.frame + 1 &&
+        saved.draft === proposal.text;
+    } catch {
+      // No native response is waiting on this fire-and-forget suggestion.
+    } finally {
+      this.extensionUiDrafts.delete(key);
+      if (proposal.valid()) {
+        if (proposal.resource) this.extensionUiDraftAcks.set(proposal.resource.toString(), ack);
+        controller.completeExtensionUiRequest(request.id, key);
+        if (proposal.resource) await this.renderResource(proposal.resource);
+      }
+    }
   }
 
   private async handleRequestFileMentions(
@@ -1330,35 +1549,25 @@ export class ChatTabManager implements vscode.Disposable {
   }
 
   private async handleScreenRevert(
-    path: string,
-    oldText: string | undefined,
-    newText: string | undefined
+    host: ChatHost,
+    context: ChatTabContext,
+    callId: string
   ): Promise<void> {
-    // Per-change undo: swap this edit's newString back to oldString.
+    let success = false;
+    const valid = captureLocalCommandOrigin(context.controller);
     try {
-      const uri = vscode.Uri.file(path);
-      const doc = await vscode.workspace.openTextDocument(uri);
-      const text = doc.getText();
-      const resolvedNewText = newText ?? '';
-      const at = resolvedNewText ? text.indexOf(resolvedNewText) : -1;
-      if (at < 0) {
-        void vscode.window.showWarningMessage(
-          'That change no longer matches the file (edited since?) — use the π Review panel for a full-file revert.'
-        );
-        return;
-      }
-      const edit = new vscode.WorkspaceEdit();
-      edit.replace(
-        uri,
-        new vscode.Range(doc.positionAt(at), doc.positionAt(at + resolvedNewText.length)),
-        oldText ?? ''
-      );
-      await vscode.workspace.applyEdit(edit);
-      await doc.save(); // the file itself shows the result — no toast
+      success =
+        (await this.turnReview?.undoEdit(
+          context.controller,
+          callId,
+          () => valid() && this.contextForResource(host.resource)?.controller === context.controller
+        )) ?? false;
     } catch (error) {
       void vscode.window.showWarningMessage(
         `Undo failed: ${error instanceof Error ? error.message : String(error)}`
       );
+    } finally {
+      host.post({ type: 'screenRevertResult', callId, success });
     }
   }
 
@@ -1701,6 +1910,7 @@ export class ChatTabManager implements vscode.Disposable {
     if (!context) {
       return;
     }
+    this.outboxAcks?.delete(resource.toString());
     const origin = { controller: context.controller, target: { ...context.target } };
     const originHost = this.hosts?.get(resource.toString());
     const controllerValid = captureLocalCommandOrigin(origin.controller);
@@ -1799,6 +2009,10 @@ export class ChatTabManager implements vscode.Disposable {
     )
       return;
     if (!originValid()) return;
+    if (command === 'follow_up' && this.outbox && context.target.kind !== 'workspaceDraft') {
+      await this.enqueueOutbox(context, state, submissionId, originValid);
+      return;
+    }
     let acceptedForRecovery: AcceptedSendSnapshot | undefined;
     try {
       // Images/context items send IMMEDIATELY with the message — no confirmation
@@ -1873,6 +2087,231 @@ export class ChatTabManager implements vscode.Disposable {
       };
       await this.uiState.setComposerStateForIdentity(context.controller, context.target, state);
       await this.renderResource(resource);
+    }
+  }
+
+  private bindOutbox(context: ChatTabContext): OutboxBinding {
+    const existing = this.outboxBindings.get(context.controller);
+    const key = chatTargetSessionKey(context.target);
+    if (existing?.key === key && existing.valid()) return existing;
+    if (existing) {
+      if (existing.timer) clearTimeout(existing.timer);
+      void this.outbox.suspend(existing.key).catch(() => {});
+    }
+    const binding: OutboxBinding = {
+      key,
+      resource: context.resource,
+      valid: context.controller.captureOutboxOrigin(),
+      completed: context.controller.outboxCompletionRevision ?? 0,
+      running: false,
+      rerun: false,
+      release: false,
+      attempts: 0,
+      lastOutcome: context.controller.snapshot.runOutcome,
+    };
+    this.outboxBindings.set(context.controller, binding);
+    return binding;
+  }
+
+  private async enqueueOutbox(
+    context: ChatTabContext,
+    submitted: Awaited<ReturnType<ChatUiState['getComposerStateForIdentity']>>,
+    submissionId: string | undefined,
+    valid: () => boolean
+  ): Promise<void> {
+    const { controller, target, resource } = context;
+    const frame = submitted.composerResetSeq ?? 0;
+    const ack = {
+      submissionId: submissionId ?? randomUUID(),
+      originKey: JSON.stringify([
+        controller.snapshot.state.sessionFile,
+        controller.snapshot.state.sessionId,
+      ]),
+      frame,
+      accepted: false,
+    };
+    const binding = this.bindOutbox(context);
+    try {
+      const preview = buildSendPreview('follow_up', submitted);
+      const frozen = acceptedSnapshotFromPreview(preview, submitted.pendingContextItems);
+      await this.outbox.enqueue(binding.key, frozen, ack.submissionId);
+      if (!valid()) {
+        await this.outbox.pause(binding.key);
+        return;
+      }
+      ack.accepted = true;
+      this.outboxAcks.set(resource.toString(), ack);
+      const current = await this.uiState.getComposerStateForIdentity(controller, target);
+      if (valid() && (current.commandRevision ?? 0) === (submitted.commandRevision ?? 0)) {
+        const cleared = {
+          ...current,
+          draft: '',
+          pendingContextItems: [],
+          pendingImages: [],
+          preview: undefined,
+          recovery: undefined,
+          composerResetSeq: frame + 1,
+        };
+        await this.uiState.setComposerStateForIdentity(controller, target, cleared, {
+          expectedCommandRevision: submitted.commandRevision ?? 0,
+        });
+      }
+      this.outboxNotices.delete(binding.key);
+      if (controller.snapshot.connectionState === 'ready') binding.release = true;
+    } catch (error) {
+      if (valid()) this.outboxAcks.set(resource.toString(), ack);
+      this.outboxNotices.set(
+        binding.key,
+        error instanceof Error
+          ? error.message
+          : 'Outbox could not save this message. Your draft was kept.'
+      );
+    }
+    await this.renderResource(resource);
+    void this.wakeOutbox(controller);
+  }
+
+  private async handleOutboxAction(
+    context: ChatTabContext,
+    resource: vscode.Uri,
+    message: { key: string; id: string; revision: number; action: OutboxAction; text?: string }
+  ): Promise<void> {
+    ensureTrustedForMutation();
+    if (!this.outbox || message.key !== chatTargetSessionKey(context.target)) return;
+    const binding = this.bindOutbox(context),
+      controller = context.controller;
+    const valid = () =>
+      binding.valid() &&
+      this.contextForResource(resource)?.controller === controller &&
+      chatTargetSessionKey(this.contextForResource(resource)!.target) === binding.key;
+    try {
+      if (!valid()) return;
+      if (message.action === 'steer') {
+        if (!(await controller.isOutboxReady(false)) || !valid())
+          throw new Error('Wait until this chat can accept steering. Nothing was sent.');
+        const origin = { ...controller.snapshot.state };
+        await this.outbox.dispatch(
+          binding.key,
+          message.id,
+          message.revision,
+          (payload) =>
+            controller.prompt(payload.rpcMessage, 'steer', payload.rpcImages, {
+              outbox: {
+                sessionId: String(origin.sessionId),
+                sessionFile: origin.sessionFile,
+                requireIdle: false,
+              },
+            }),
+          valid
+        );
+      } else {
+        await this.outbox.action(
+          binding.key,
+          message.id,
+          message.revision,
+          message.action,
+          message.text
+        );
+        if (message.action === 'resume') binding.release = true;
+        if (message.action === 'discard') binding.release = false;
+      }
+      this.outboxNotices.delete(binding.key);
+    } catch (error) {
+      this.outboxNotices.set(
+        binding.key,
+        error instanceof Error ? error.message : 'Outbox changed. Review the current message.'
+      );
+    }
+    await this.renderResource(resource);
+    void this.wakeOutbox(controller);
+  }
+
+  private observeOutbox(controller: SessionController): void {
+    const binding = this.outboxBindings?.get(controller);
+    if (!binding || !this.outbox || this.outboxDisposed) return;
+    const state = controller.snapshot;
+    if (!binding.valid() || !['busy', 'ready'].includes(state.connectionState)) {
+      if (binding.timer) clearTimeout(binding.timer);
+      this.outboxBindings.delete(controller);
+      void this.outbox.suspend(binding.key).catch(() => {});
+      return;
+    }
+    if (
+      ['aborted', 'failed'].includes(state.runOutcome ?? '') &&
+      binding.lastOutcome !== state.runOutcome
+    ) {
+      binding.release = false;
+      void this.outbox.pause(binding.key).catch(() => {});
+    }
+    binding.lastOutcome = state.runOutcome;
+    void this.wakeOutbox(controller);
+  }
+
+  private async wakeOutbox(controller: SessionController): Promise<void> {
+    const binding = this.outboxBindings?.get(controller);
+    if (!this.outbox || !binding || this.outboxDisposed || !binding.valid()) return;
+    if (binding.running) {
+      binding.rerun = true;
+      return;
+    }
+    const completion = controller.outboxCompletionRevision ?? 0;
+    if (
+      controller.snapshot.connectionState !== 'ready' ||
+      (!binding.release && completion <= binding.completed)
+    )
+      return;
+    binding.running = true;
+    let handedOff = false;
+    try {
+      const snapshot = await this.outbox.snapshot(binding.key);
+      const row = snapshot.items.find((item) => item.status !== 'accepted');
+      if (snapshot.readOnly || row?.status !== 'queued') return;
+      if (!(await controller.isOutboxReady(true))) {
+        if (binding.attempts++ < 20 && !binding.timer)
+          binding.timer = setTimeout(() => {
+            binding.timer = undefined;
+            void this.wakeOutbox(controller);
+          }, 100);
+        return;
+      }
+      if (!binding.valid() || this.outboxBindings.get(controller) !== binding) return;
+      const origin = { ...controller.snapshot.state };
+      await this.outbox.dispatch(
+        binding.key,
+        row.id,
+        row.revision,
+        (payload) =>
+          controller.prompt(payload.rpcMessage, 'prompt', payload.rpcImages, {
+            outbox: {
+              sessionId: String(origin.sessionId),
+              sessionFile: origin.sessionFile,
+              requireIdle: true,
+            },
+          }),
+        binding.valid
+      );
+      handedOff = true;
+      binding.completed = completion;
+      binding.release = false;
+      binding.attempts = 0;
+      this.outboxNotices.delete(binding.key);
+    } catch (error) {
+      binding.release = false;
+      await this.outbox.pause(binding.key).catch(() => {});
+      this.outboxNotices.set(
+        binding.key,
+        error instanceof Error ? error.message : 'Outbox is paused. Nothing was resent.'
+      );
+    } finally {
+      binding.running = false;
+      const rerun = binding.rerun;
+      binding.rerun = false;
+      await this.renderResource(binding.resource);
+      if (
+        (rerun || (handedOff && (controller.outboxCompletionRevision ?? 0) > binding.completed)) &&
+        binding.valid()
+      )
+        queueMicrotask(() => void this.wakeOutbox(controller));
     }
   }
 
@@ -2068,8 +2507,9 @@ export class ChatTabManager implements vscode.Disposable {
 
   private async onControllerChanged(controller: SessionController): Promise<void> {
     this.lastActivityAt.set(controller, Date.now());
-
+    void this.turnReview?.observeTools(controller);
     this.detectTurnCompletion(controller);
+    this.observeOutbox(controller);
     // Restore the draft under the OWNING TAB's identity — not the controller's
     // current-session identity, which drifts after forks/prewarm-adoption and
     // could resurrect stale text captured under the other identity.
@@ -2124,7 +2564,7 @@ export class ChatTabManager implements vscode.Disposable {
       (now === 'aborted' || now === 'failed' || now === undefined) &&
       controller.snapshot.connectionState === 'ready'
     ) {
-      this.busySince.delete(controller);
+      if (this.busySince.delete(controller)) this.turnReview?.discard(controller);
       return;
     }
     if (now === 'completed' && prev !== 'completed') {
@@ -2328,6 +2768,13 @@ export class ChatTabManager implements vscode.Disposable {
         snapshot.connectionState === 'busy' || snapshot.isStreaming === true
       );
       await host.postSnapshot(snapshot, title, this.unseenCompletions.has(resource.toString()));
+      if (snapshot.outboxAck && this.outboxAcks.get(resource.toString()) === snapshot.outboxAck)
+        this.outboxAcks.delete(resource.toString());
+      if (
+        snapshot.extensionUiDraftAck &&
+        this.extensionUiDraftAcks.get(resource.toString()) === snapshot.extensionUiDraftAck
+      )
+        this.extensionUiDraftAcks.delete(resource.toString());
       // Mirror the active chat to a remote session, if one is running.
       if (options?.active ?? false) {
         this.remoteSharing.pushSnapshot(snapshot);
@@ -2431,6 +2878,17 @@ export class ChatTabManager implements vscode.Disposable {
         },
       });
       snapshot.bindingState = context.target.kind === 'workspaceDraft' ? 'draft' : 'current';
+      snapshot.extensionUiDraftAck = this.extensionUiDraftAcks.get(context.resource.toString());
+      if (this.outbox && context.target.kind !== 'workspaceDraft') {
+        snapshot.outbox = await this.outbox.snapshot(chatTargetSessionKey(context.target));
+        snapshot.outbox.notice ??= this.outboxNotices.get(snapshot.outbox.key);
+        snapshot.outboxAck = this.outboxAcks.get(context.resource.toString());
+        if (
+          snapshot.outbox.items.some((item) => item.status !== 'accepted') &&
+          context.controller.piCommandsReady
+        )
+          this.bindOutbox(context);
+      }
       return snapshot;
     }
 

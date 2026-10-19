@@ -55,6 +55,7 @@
     "check:drift": "node scripts/check-host-drift.mjs"
   },
   "dependencies": {
+    "cross-spawn": "7.0.6",
     "highlight.js": "^11.11.1",
     "markdown-it": "14.3.0",
     "mermaid": "12.1.0",

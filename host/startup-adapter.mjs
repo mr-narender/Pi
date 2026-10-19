@@ -15,7 +15,7 @@ export function resolveSdkDependencyFile(sdkRoot, dependencyFile) {
 export function validateSdkMetadata(metadata) {
   if (
     metadata.name !== '@earendil-works/pi-coding-agent' ||
-    !['0.99.1', '0.99.2', '1.0.0', '1.0.4', '1.1.0', '1.2.0'].includes(metadata.version)
+    !['0.99.1', '0.99.2', '1.0.0', '1.0.4', '1.1.0', '1.2.0', '1.3.0'].includes(metadata.version)
   )
     throw new Error('SDK_HOST_VERSION_UNSUPPORTED');
 }
@@ -56,7 +56,7 @@ export function validateSdkApi(sdk) {
       throw new Error('SDK_HOST_API_UNSUPPORTED');
 }
 
-/** Startup contract re-assessed against SDK 1.2.0; original audit:
+/** Startup contract re-assessed against SDK 1.3.0; original audit:
  * SDK 0.99.1 main.js:353–434,565–694. Exact versions only.
  * Metadata/admin/interactive startup modes are rejected, never ignored.
  * Trust asks have no CLI UI here: unresolved project trust stays denied.
@@ -167,7 +167,12 @@ export function createStartupAdapter(sdk, internals) {
           cliThinking: parsed.thinking,
           modelRuntime,
         });
-        if (resolved.error) throw new Error('SDK_STARTUP_MODEL_UNAVAILABLE');
+        if (resolved.error)
+          throw new Error(
+            /is ambiguous across providers/.test(resolved.error)
+              ? 'SDK_STARTUP_MODEL_AMBIGUOUS'
+              : 'SDK_STARTUP_MODEL_UNAVAILABLE'
+          );
         options.model = resolved.model;
         options.thinkingLevel = resolved.thinkingLevel;
       }

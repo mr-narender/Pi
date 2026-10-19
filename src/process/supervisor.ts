@@ -1,6 +1,11 @@
 import { spawn } from 'node:child_process';
 import { piLaunchEnvironment, resolvePiLaunch, type PiLaunchPlan } from './piLauncher';
-import { spawnSubprocessPi, spawnWorkerPi, type PiProcessHandle } from './piProcess';
+import {
+  spawnExternalPi,
+  spawnSubprocessPi,
+  spawnWorkerPi,
+  type PiProcessHandle,
+} from './piProcess';
 import { getSharedPiHost } from './sharedPiHost';
 
 // On Windows the npm-installed `pi` is a `pi.cmd` shim, which Node's spawn cannot
@@ -15,6 +20,7 @@ import type { PiRpcSettings } from '../config/settings';
 import { RpcClient } from '../rpc/client';
 import { RpcTransport } from '../rpc/transport';
 import { checkPiVersion } from './version';
+import { getIdeExtensionPath } from '../ide/query';
 
 export interface SupervisorEvents {
   exit: [number | null, NodeJS.Signals | null];
@@ -41,6 +47,7 @@ export class PiProcessSupervisor extends TypedEmitter implements vscode.Disposab
   private transport: RpcTransport | undefined;
   private client: RpcClient | undefined;
   private generation = 0;
+  private startEpoch = 0;
 
   public constructor(
     private readonly folder: vscode.WorkspaceFolder,
@@ -68,11 +75,15 @@ export class PiProcessSupervisor extends TypedEmitter implements vscode.Disposab
 
   public async start(
     existingSessionPath?: string,
-    options?: { noExtensions?: boolean; offline?: boolean }
+    options?: { noExtensions?: boolean; offline?: boolean; onClient?: (client: RpcClient) => void }
   ): Promise<RpcClient> {
     if (this.client) {
+      options?.onClient?.(this.client);
       return this.client;
     }
+    const startEpoch = ++this.startEpoch;
+    const cancelled = () =>
+      Object.assign(new Error('Pi startup was cancelled'), { code: 'SDK_STARTUP_CANCELLED' });
     validateAdditionalArgs(this.settings.additionalArgs);
     const offline = options?.offline ?? this.settings.offline;
     const args = this.buildArgs(existingSessionPath, {
@@ -88,25 +99,47 @@ export class PiProcessSupervisor extends TypedEmitter implements vscode.Disposab
     // Select the correct SDK backend BEFORE creating the first session.
     const sharedHost = getSharedPiHost();
     if (sharedHost && launch.sdkRoot) {
+      let attached: RpcClient | undefined;
+      const backendLabel = this.settings.sharedRuntime
+        ? 'shared SDK host'
+        : 'dedicated SDK OS process';
       try {
         this.generation += 1;
-        const handle = await sharedHost.openSession({
-          cwd,
-          sdkRoot: launch.sdkRoot,
-          sessionFile: existingSessionPath,
-          args,
-          env,
-          dedicated: !this.settings.sharedRuntime,
-        });
-        const backendLabel = this.settings.sharedRuntime
-          ? 'shared SDK host'
-          : 'dedicated SDK OS process';
+        const handle = await sharedHost.openSession(
+          {
+            cwd,
+            sdkRoot: launch.sdkRoot,
+            sessionFile: existingSessionPath,
+            args,
+            env,
+            dedicated: !this.settings.sharedRuntime,
+          },
+          undefined,
+          (openingHandle) => {
+            if (startEpoch !== this.startEpoch) throw cancelled();
+            attached = this.attachClient(openingHandle, backendLabel);
+            options?.onClient?.(attached);
+          }
+        );
+        if (startEpoch !== this.startEpoch) throw cancelled();
         this.logger.info(
           `Starting Pi for ${this.folder.name} (generation=${this.generation}) via ${backendLabel} ` +
             `[cwd=${this.folder.uri.fsPath}, session=${existingSessionPath ?? '(new)'}]`
         );
-        return this.attachClient(handle, backendLabel);
+        if (!attached) {
+          attached = this.attachClient(handle, backendLabel);
+          options?.onClient?.(attached);
+        }
+        return attached;
       } catch (error) {
+        if (startEpoch !== this.startEpoch) throw cancelled();
+        if (attached && this.client === attached) await this.stopClient();
+        if (
+          error instanceof Error &&
+          'code' in error &&
+          error.code === 'SDK_STARTUP_MODEL_AMBIGUOUS'
+        )
+          throw error;
         this.logger.warn(
           `Shared Pi host unavailable (${error instanceof Error ? error.message : String(error)}); ` +
             `falling back to a per-chat process`
@@ -136,7 +169,13 @@ export class PiProcessSupervisor extends TypedEmitter implements vscode.Disposab
             useShell,
             sdkRoot: launch.sdkRoot,
           });
-    return this.attachClient(piProcess, launch.label);
+    if (startEpoch !== this.startEpoch) {
+      await piProcess.stop();
+      throw cancelled();
+    }
+    const client = this.attachClient(piProcess, launch.label);
+    options?.onClient?.(client);
+    return client;
   }
 
   // Wire a spawned process OR a shared-host session handle into transport+client.
@@ -162,6 +201,7 @@ export class PiProcessSupervisor extends TypedEmitter implements vscode.Disposab
       this.logger.warn(`Transport disconnected: ${error.message}`)
     );
     piProcess.onExit((code, signal) => {
+      if (this.piProcess !== piProcess) return;
       this.logger.warn(`Pi exited code=${String(code)} signal=${String(signal)}`);
       this.transport?.disconnect(
         new Error(`Pi exited code=${String(code)} signal=${String(signal)}`)
@@ -180,6 +220,11 @@ export class PiProcessSupervisor extends TypedEmitter implements vscode.Disposab
   }
 
   public async stop(): Promise<void> {
+    this.startEpoch++;
+    await this.stopClient();
+  }
+
+  private async stopClient(): Promise<void> {
     const piProcess = this.piProcess;
     this.transport = undefined;
     this.client = undefined;
@@ -213,9 +258,10 @@ export class PiProcessSupervisor extends TypedEmitter implements vscode.Disposab
     launch: PiLaunchPlan
   ): Promise<{ code: number | null; stdout: string; stderr: string }> {
     return new Promise((resolve, reject) => {
-      const child = spawn(launch.command, [...launch.prefixArgs, '--version'], {
+      const spawnVersion = launch.usingBundled || !SPAWN_WITH_SHELL ? spawn : spawnExternalPi;
+      const child = spawnVersion(launch.command, [...launch.prefixArgs, '--version'], {
         cwd: launch.cwd,
-        shell: launch.usingBundled ? false : SPAWN_WITH_SHELL,
+        shell: false,
         windowsHide: true,
         env: { ...launch.env, PI_OFFLINE: '1' },
         stdio: ['ignore', 'pipe', 'pipe'],
@@ -281,6 +327,18 @@ export class PiProcessSupervisor extends TypedEmitter implements vscode.Disposab
     if (options?.noExtensions) {
       // Recovery path: a crashing Pi extension can make session load exit code=1.
       args.push('--no-extensions');
+    }
+    const ideExtension = getIdeExtensionPath();
+    const excludesExtensions = this.settings.additionalArgs.some(
+      (arg) => arg === '--no-extensions' || arg === '-ne'
+    );
+    if (
+      vscode.workspace.isTrusted &&
+      !options?.noExtensions &&
+      !excludesExtensions &&
+      ideExtension
+    ) {
+      args.push('--extension', ideExtension);
     }
     if (existingSessionPath) {
       args.push('--session', existingSessionPath);

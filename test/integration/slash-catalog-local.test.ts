@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createRequire } from 'node:module';
+import { createRequire, isBuiltin } from 'node:module';
 import { build } from 'esbuild';
 import { JSDOM } from 'jsdom';
 
@@ -36,7 +36,7 @@ async function classes() {
             event() {}
           },
         };
-      if (name.startsWith('node:')) return createRequire(`${process.cwd()}/package.json`)(name);
+      if (isBuiltin(name)) return createRequire(`${process.cwd()}/package.json`)(name);
       throw Error(name);
     },
     m,

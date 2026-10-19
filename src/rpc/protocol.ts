@@ -54,6 +54,9 @@ export const COMMAND_TYPES = [
   'delivery_payload',
   'import_prepare',
   'import_session',
+  'mcp_status',
+  'read_model_tools',
+  'set_model_tools',
   'get_last_assistant_text',
   'set_session_name',
   'get_commands',
@@ -101,6 +104,8 @@ export interface RpcResponseFailure {
   command: string;
   success: false;
   error: string;
+  /** Only the SDK host's managed admission refusal before invoking native prompt. */
+  outboxNotDispatched?: true;
 }
 
 export type RpcResponse = RpcResponseSuccess | RpcResponseFailure;
@@ -117,7 +122,17 @@ export interface ExtensionUiRequest extends JsonObject {
     | 'setStatus'
     | 'setWidget'
     | 'setTitle'
-    | 'set_editor_text';
+    | 'set_editor_text'
+    | 'unsupported_ui'
+    | 'cancel';
+  requestKey?: string;
+  requestId?: string;
+  reason?: 'timeout' | 'aborted' | 'closed';
+  uiCapability?: string;
+  draftRevision?: number;
+  draftResetSeq?: number;
+  responseState?: 'sending' | 'unknown';
+  responseError?: string;
   title?: string;
   options?: string[];
   message?: string;
@@ -131,6 +146,17 @@ export interface ExtensionUiRequest extends JsonObject {
   widgetPlacement?: 'aboveEditor' | 'belowEditor';
   text?: string;
   timeout?: number;
+}
+
+export interface ExtensionUiDraftAck {
+  requestKey: string;
+  originKey: string;
+  frame: number;
+  accepted: boolean;
+}
+
+export function isBlockingExtensionUi(request: { method: string }): boolean {
+  return ['select', 'confirm', 'input', 'editor'].includes(request.method);
 }
 
 export interface RpcEvent extends JsonObject {
@@ -380,22 +406,50 @@ export function parseEnvelope(value: unknown): RpcResponse | ExtensionUiRequest 
       command: asString(record.command, 'response.command'),
       success: false,
       error: asString(record.error, 'response.error'),
+      ...(record.outboxNotDispatched === true ? { outboxNotDispatched: true } : {}),
     };
   }
   if (type === 'extension_ui_request') {
-    const method = asString(
-      record.method,
-      'extension_ui_request.method'
+    const rawMethod = asString(record.method, 'extension_ui_request.method');
+    const known = [
+      'select',
+      'confirm',
+      'input',
+      'editor',
+      'notify',
+      'setStatus',
+      'setWidget',
+      'setTitle',
+      'set_editor_text',
+      'unsupported_ui',
+      'cancel',
+    ];
+    const method = (
+      known.includes(rawMethod) ? rawMethod : 'unsupported_ui'
     ) as ExtensionUiRequest['method'];
     return {
       type: 'extension_ui_request',
       id: asString(record.id, 'extension_ui_request.id'),
       method,
+      requestId: method === 'cancel' ? asOptionalString(record.requestId) : undefined,
+      reason:
+        record.reason === 'timeout' || record.reason === 'aborted' || record.reason === 'closed'
+          ? record.reason
+          : undefined,
+      uiCapability:
+        method === 'unsupported_ui'
+          ? typeof record.uiCapability === 'string' &&
+            /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(record.uiCapability)
+            ? record.uiCapability
+            : 'custom'
+          : undefined,
       title: asOptionalString(record.title),
       options: Array.isArray(record.options)
         ? asStringArray(record.options, 'extension_ui_request.options')
         : undefined,
-      message: asOptionalString(record.message),
+      message: !known.includes(rawMethod)
+        ? 'This interface is not available in the chat. Use the extension in Pi’s terminal.'
+        : asOptionalString(record.message),
       placeholder: asOptionalString(record.placeholder),
       prefill: asOptionalString(record.prefill),
       notifyType:

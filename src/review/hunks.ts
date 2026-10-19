@@ -12,6 +12,7 @@ import { promisify } from 'node:util';
 const exec = promisify(execFile);
 
 export interface Hunk {
+  beforeStart: number;
   /** 0-based first line of this hunk in the CURRENT file. */
   afterStart: number;
   /** Line count in the current file (0 = pure deletion at this point). */
@@ -56,6 +57,7 @@ export function parseUnifiedZero(diff: string): Hunk[] {
       }
     }
     hunks.push({
+      beforeStart: beforeCount === 0 ? Number(header[1]) : Number(header[1]) - 1,
       // For pure deletions (afterCount 0) git reports the line BEFORE the gap.
       afterStart: afterCount === 0 ? afterLine : afterLine - 1,
       afterCount,
@@ -65,6 +67,18 @@ export function parseUnifiedZero(diff: string): Hunk[] {
     });
   }
   return hunks;
+}
+
+/** Preserve the original line endings and final newline when reverting one hunk. */
+export function revertHunkText(before: string, current: string, hunk: Hunk): string {
+  const lines = (text: string) => text.match(/[^\n]*\n|[^\n]+$/g) ?? [];
+  const original = lines(before);
+  const after = lines(current);
+  return [
+    ...after.slice(0, hunk.afterStart),
+    ...original.slice(hunk.beforeStart, hunk.beforeStart + hunk.removed),
+    ...after.slice(hunk.afterStart + hunk.afterCount),
+  ].join('');
 }
 
 /** Diff two contents at line granularity. */

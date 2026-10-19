@@ -199,6 +199,43 @@ test('playful phrases survive snapshots, rotate locally and yield to real states
   render({ bindingState: 'cached' });
   assert.equal(phraseTimers.size, 0);
 });
+test('VS Code resolved motion overrides OS media while standalone frames retain the OS preference', async () => {
+  await import('../../src/webview/media/chat.js');
+  try {
+    preference(true);
+    render({ workingAnimation: 'braille' });
+    await new Promise((resolve) => setTimeout(resolve, 180));
+    assert.equal(timers.size, 0, 'standalone frames honor the OS preference');
+    for (const theme of [
+      'vscode-light',
+      'vscode-dark',
+      'vscode-high-contrast',
+      'vscode-high-contrast-light',
+    ]) {
+      dom.window.document.body.className = theme;
+      await Promise.resolve();
+      assert.equal(timers.size, 1, `${theme}: explicit VS Code off must override OS reduce`);
+      const glyph = dom.window.document.querySelector('.working-glyph')!;
+      const before = glyph.textContent;
+      for (const tick of timers.values()) tick();
+      assert.notEqual(glyph.textContent, before);
+      dom.window.document.body.classList.add('vscode-reduce-motion');
+      await Promise.resolve();
+      assert.equal(timers.size, 0, 'VS Code on/auto resolved reduction stops the timer');
+      dom.window.document.body.classList.remove('vscode-reduce-motion');
+      await Promise.resolve();
+      assert.equal(timers.size, 1, 'live setting changes resume without reopening the webview');
+    }
+    dom.window.document.body.className = '';
+    await Promise.resolve();
+    assert.equal(timers.size, 0, 'removing the VS Code context restores OS fallback');
+  } finally {
+    dom.window.document.body.className = '';
+    preference(false);
+    render({ connectionState: 'ready' });
+  }
+});
+
 test('all six working choices honor timer ownership, reduced motion and idle/disposal on editor tabs', async () => {
   await import('../../src/webview/media/chat.js');
   for (const [workingAnimation, intervalCount, glyphPattern] of [
@@ -253,10 +290,22 @@ test('all six working choices honor timer ownership, reduced motion and idle/dis
   await new Promise((resolve) => setTimeout(resolve, 180));
   assert.equal(timers.size, 0);
 });
-test('reduced-motion CSS disables logo and existing CSS indicator animations', () => {
+test('reduced-motion CSS uses the native resolved state and an OS fallback only for standalone frames', () => {
   const css = readFileSync('src/webview/media/chat.css', 'utf8');
-  assert.match(
-    css,
-    /@media \(prefers-reduced-motion: reduce\) \{\s*\.working-logo,[\s\S]*?animation: none;/
-  );
+  const doc = new JSDOM(`<style>${css}</style>`).window.document;
+  for (const rule of doc.styleSheets[0]!.cssRules) {
+    if (!('conditionText' in rule) || rule.conditionText !== '(prefers-reduced-motion: reduce)')
+      continue;
+    for (const inner of (rule as CSSMediaRule).cssRules) {
+      if (!('selectorText' in inner)) continue;
+      const style = (inner as CSSStyleRule).style;
+      if (style.getPropertyValue('animation') || style.getPropertyValue('transition'))
+        assert.match(
+          (inner as CSSStyleRule).selectorText,
+          /body:not\(:is\(\.vscode-light,/,
+          'raw OS media must not disable motion in a native VS Code frame'
+        );
+    }
+  }
+  assert.match(css, /body\.vscode-reduce-motion,[\s\S]*?animation: none !important;/);
 });

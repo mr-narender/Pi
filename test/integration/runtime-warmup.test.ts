@@ -41,9 +41,15 @@ test('activation passes the workspace launch snapshot to runtime-only warmup', a
     offline: true,
   };
   let launch: any;
+  let ideExtension: string | undefined;
   let warmArgs: any[] | undefined;
   const sentinel = new Error('activation characterization boundary');
   const mocks: Record<string, any> = {
+    './ide/query': {
+      setIdeExtensionPath: (value: string) => {
+        ideExtension = value;
+      },
+    },
     './config/settings': { getSettings: () => settings },
     './process/piLauncher': {
       setBundledPiCliPath() {},
@@ -107,6 +113,7 @@ test('activation passes the workspace launch snapshot to runtime-only warmup', a
     (error) => error === sentinel
   );
   await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(ideExtension, join('/owned/extension', 'resources', 'pi-vscode-ide.mjs'));
   assert.ok(
     warmArgs && warmArgs[1] === launch,
     'activation must pass the exact resolved launch snapshot'

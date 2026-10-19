@@ -19,6 +19,8 @@ import * as crypto from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { createImportCommands } from './import-commands.mjs';
 import { createAuthCommands } from './auth-commands.mjs';
+import { nativeMcpCommand, readNativeMcpStatus } from './mcp-status.mjs';
+import { readModelTools, setModelTools, supportsModelTools } from './model-tools.mjs';
 import { discoverOpenRouterModels } from './model-discovery.mjs';
 import { createScopeOperations, modelDto, scopeCommandDispatcher } from './scoped-models.mjs';
 import { createPreferenceOperations, serializePreferenceDefaults } from './preferences.mjs';
@@ -48,6 +50,13 @@ const PI_ROOT =
   fileURLToPath(new URL('../vendor/pi', import.meta.url));
 const metadata = JSON.parse(readFileSync(path.join(PI_ROOT, 'package.json'), 'utf8'));
 validateSdkMetadata(metadata);
+const supportsModelDiscovery = ['1.2.0', '1.3.0'].includes(metadata.version);
+const modelToolsPersistence =
+  metadata.version === '1.3.0'
+    ? 'after-turn'
+    : metadata.version === '1.2.0'
+      ? 'runtime-only'
+      : undefined;
 const piImport = (rel) => import(pathToFileURL(path.join(PI_ROOT, rel)).href);
 const sdk = await piImport('dist/index.js');
 validateSdkApi(sdk);
@@ -87,11 +96,19 @@ const { attachJsonlLineReader, serializeJsonLine } = await piImport('dist/modes/
  * Run in RPC mode.
  * Listens for JSON commands on stdin, outputs events and responses on stdout.
  */
-async function createSessionRunner(sessionKey, runtimeHost, hostEmit) {
+function createSessionRunner(sessionKey, runtimeHost, hostEmit) {
   let session = runtimeHost.session;
   const dedicated = process.env.PI_HOST_DEDICATED === '1';
   let recoveryRequired = false;
   let enginePending = false;
+  const promptPending = new Set();
+  const outboxAdmissionRefusal = Symbol('outbox admission refusal');
+  const refuseOutbox = (code) => {
+    const failure = new Error(code);
+    failure[outboxAdmissionRefusal] = true;
+    throw failure;
+  };
+  let activityRevision = 0;
   const widgets = new Set();
   const assertEngineIdle = () => {
     if (recoveryRequired) throw new Error('ENGINE_RECOVERY_REQUIRED');
@@ -106,6 +123,7 @@ async function createSessionRunner(sessionKey, runtimeHost, hostEmit) {
       compactPending ||
       defaultsPending ||
       enginePending ||
+      promptPending.size ||
       lifecyclePending ||
       pendingExtensionRequests.size ||
       widgets.size ||
@@ -243,35 +261,59 @@ async function createSessionRunner(sessionKey, runtimeHost, hostEmit) {
   // Shutdown request flag
   let shutdownRequested = false;
   let shuttingDown = false;
+  let initializing = true;
   const signalCleanupHandlers = [];
+  const cancelPendingDialogs = (reason) => {
+    for (const pending of [...pendingExtensionRequests.values()]) pending.cancel(reason);
+  };
+  const unsupportedUi = (uiCapability) => {
+    output({
+      type: 'extension_ui_request',
+      id: crypto.randomUUID(),
+      method: 'unsupported_ui',
+      uiCapability,
+      message: 'This interface is not available in the chat. Use the extension in Pi’s terminal.',
+    });
+  };
   /** Helper for dialog methods with signal/timeout support */
   function createDialogPromise(opts, defaultValue, request, parseResponse) {
     if (opts?.signal?.aborted) return Promise.resolve(defaultValue);
     const id = crypto.randomUUID();
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       let timeoutId;
+      let settled = false;
       const cleanup = () => {
         if (timeoutId) clearTimeout(timeoutId);
         opts?.signal?.removeEventListener('abort', onAbort);
         pendingExtensionRequests.delete(id);
       };
-      const onAbort = () => {
+      const finish = (response, reason) => {
+        if (settled) return;
+        settled = true;
         cleanup();
-        resolve(defaultValue);
+        if (reason) {
+          output({
+            type: 'extension_ui_request',
+            id: crypto.randomUUID(),
+            method: 'cancel',
+            requestId: id,
+            reason,
+          });
+        }
+        resolve(reason ? defaultValue : parseResponse(response));
       };
+      const onAbort = () => finish(undefined, 'aborted');
       opts?.signal?.addEventListener('abort', onAbort, { once: true });
       if (opts?.timeout) {
         timeoutId = setTimeout(() => {
-          cleanup();
-          resolve(defaultValue);
+          finish(undefined, 'timeout');
         }, opts.timeout);
       }
       pendingExtensionRequests.set(id, {
         resolve: (response) => {
-          cleanup();
-          resolve(parseResponse(response));
+          finish(response);
         },
-        reject,
+        cancel: (reason) => finish(undefined, reason),
       });
       output({ type: 'extension_ui_request', id, ...request });
     });
@@ -338,10 +380,10 @@ async function createSessionRunner(sessionKey, runtimeHost, hostEmit) {
       // Hidden thinking label not supported in RPC mode - requires TUI message rendering access
     },
     setWidget(key, content, options) {
-      if (content === undefined) widgets.delete(key);
-      else widgets.add(key);
       // Only support string arrays in RPC mode - factory functions are ignored
       if (content === undefined || Array.isArray(content)) {
+        if (content === undefined) widgets.delete(key);
+        else widgets.add(key);
         output({
           type: 'extension_ui_request',
           id: crypto.randomUUID(),
@@ -350,14 +392,14 @@ async function createSessionRunner(sessionKey, runtimeHost, hostEmit) {
           widgetLines: content,
           widgetPlacement: options?.placement,
         });
-      }
+      } else unsupportedUi('widget');
       // Component factories are not supported in RPC mode - would need TUI access
     },
     setFooter(_factory) {
-      // Custom footer not supported in RPC mode - requires TUI access
+      unsupportedUi('footer');
     },
     setHeader(_factory) {
-      // Custom header not supported in RPC mode - requires TUI access
+      unsupportedUi('header');
     },
     setTitle(title) {
       // Fire and forget - host can implement terminal title control
@@ -369,7 +411,7 @@ async function createSessionRunner(sessionKey, runtimeHost, hostEmit) {
       });
     },
     async custom() {
-      // Custom UI not supported in RPC mode
+      unsupportedUi('custom');
       return undefined;
     },
     pasteToEditor(text) {
@@ -386,33 +428,22 @@ async function createSessionRunner(sessionKey, runtimeHost, hostEmit) {
       });
     },
     getEditorText() {
-      // Synchronous method can't wait for RPC response
-      // Host should track editor state locally if needed
+      // The native synchronous TUI getter cannot read a remote GUI composer.
       return '';
     },
     async editor(title, prefill) {
-      const id = crypto.randomUUID();
-      return new Promise((resolve, reject) => {
-        pendingExtensionRequests.set(id, {
-          resolve: (response) => {
-            if ('cancelled' in response && response.cancelled) {
-              resolve(undefined);
-            } else if ('value' in response) {
-              resolve(response.value);
-            } else {
-              resolve(undefined);
-            }
-          },
-          reject,
-        });
-        output({ type: 'extension_ui_request', id, method: 'editor', title, prefill });
-      });
+      return createDialogPromise(
+        undefined,
+        undefined,
+        { method: 'editor', title, prefill },
+        (response) => (response.cancelled ? undefined : response.value)
+      );
     },
     addAutocompleteProvider() {
       // Autocomplete provider composition is not supported in RPC mode
     },
     setEditorComponent() {
-      // Custom editor components not supported in RPC mode
+      unsupportedUi('editor');
     },
     getEditorComponent() {
       // Custom editor components not supported in RPC mode
@@ -443,6 +474,7 @@ async function createSessionRunner(sessionKey, runtimeHost, hostEmit) {
     await rebindSession();
   });
   const rebindSession = async () => {
+    activityRevision++;
     session = runtimeHost.session;
     await session.bindExtensions({
       uiContext: createExtensionUIContext(),
@@ -485,6 +517,7 @@ async function createSessionRunner(sessionKey, runtimeHost, hostEmit) {
     unsubscribe?.();
     unsubscribeBackpressure?.();
     unsubscribe = session.subscribe((event) => {
+      if (event.type === 'agent_start') activityRevision++;
       output(toJsonEvent(event));
       if (event.type === 'agent_settled') {
         void checkShutdownRequested();
@@ -508,7 +541,6 @@ async function createSessionRunner(sessionKey, runtimeHost, hostEmit) {
       signalCleanupHandlers.push(() => process.off(signal, handler));
     }
   };
-  await rebindSession();
   const authCommands = createAuthCommands(() => session);
   const importCommands = createImportCommands(() => runtimeHost);
   let thinkingEpoch = 0;
@@ -543,6 +575,66 @@ async function createSessionRunner(sessionKey, runtimeHost, hostEmit) {
   ];
   const handleCommand = async (command) => {
     if (shuttingDown) throw new Error('LIFECYCLE_CLOSED');
+    if (command.type === 'prompt' && command.outbox !== undefined) {
+      const admission = command.outbox;
+      if (
+        !admission ||
+        typeof admission !== 'object' ||
+        Array.isArray(admission) ||
+        typeof admission.sessionId !== 'string' ||
+        typeof admission.requireIdle !== 'boolean' ||
+        (admission.sessionFile !== undefined && typeof admission.sessionFile !== 'string')
+      )
+        refuseOutbox('OUTBOX_INVALID_ADMISSION');
+      if (
+        admission.sessionId !== session.sessionId ||
+        admission.sessionFile !== session.sessionFile
+      )
+        refuseOutbox('OUTBOX_STALE_ORIGIN');
+      if (
+        recoveryRequired ||
+        enginePending ||
+        promptPending.size ||
+        lifecyclePending ||
+        compactPending ||
+        defaultsPending ||
+        authCommands.busy ||
+        session.isCompacting ||
+        session.isRetrying ||
+        session.isBashRunning ||
+        session.hasPendingBashMessages ||
+        session.pendingMessageCount ||
+        pendingExtensionRequests.size ||
+        (admission.requireIdle && session.isIdle !== true)
+      )
+        refuseOutbox('OUTBOX_BUSY');
+    }
+    if (
+      promptPending.size &&
+      [
+        ...lifecycleCommands,
+        'set_model',
+        'cycle_model',
+        'set_thinking_level',
+        'cycle_thinking_level',
+        'set_scoped_models',
+        'save_scoped_models_default',
+        'save_preference',
+        'set_steering_mode',
+        'set_follow_up_mode',
+        'set_auto_compaction',
+        'set_auto_retry',
+        'compact',
+        'reload_session',
+        'auth_login',
+        'auth_logout',
+        'import_prepare',
+        'set_model_tools',
+      ].includes(command.type)
+    )
+      throw new Error(
+        command.type === 'set_model_tools' ? 'MODEL_TOOLS_BUSY' : 'PROMPT_PREFLIGHT_BUSY'
+      );
     if (
       (recoveryRequired || enginePending) &&
       !['get_state', 'get_capabilities'].includes(command.type) &&
@@ -566,6 +658,9 @@ async function createSessionRunner(sessionKey, runtimeHost, hostEmit) {
         'delivery_payload',
         'import_prepare',
         'import_session',
+        'mcp_status',
+        'read_model_tools',
+        'set_model_tools',
       ].includes(command.type) &&
       command.guiLifecycle !== true
     )
@@ -579,6 +674,7 @@ async function createSessionRunner(sessionKey, runtimeHost, hostEmit) {
         'auth_login',
         'import_prepare',
         'import_session',
+        'mcp_status',
       ].includes(command.type)
     )
       assertEngineIdle();
@@ -643,7 +739,12 @@ async function createSessionRunner(sessionKey, runtimeHost, hostEmit) {
     isStreaming: session.isStreaming,
     isCompacting: session.isCompacting || compactPending,
     isIdle:
-      session.isIdle && !defaultsPending && !compactPending && !enginePending && !recoveryRequired,
+      session.isIdle &&
+      !defaultsPending &&
+      !compactPending &&
+      !enginePending &&
+      !promptPending.size &&
+      !recoveryRequired,
     recoveryRequired,
     isBashRunning: session.isBashRunning,
     hasPendingBashMessages: session.hasPendingBashMessages,
@@ -680,6 +781,9 @@ async function createSessionRunner(sessionKey, runtimeHost, hostEmit) {
         // Start prompt handling immediately, but emit the authoritative response only after
         // prompt preflight succeeds. Queued and immediately handled prompts also count as success.
         let preflightSucceeded = false;
+        const reservation = {};
+        promptPending.add(reservation);
+        const release = () => promptPending.delete(reservation);
         void session
           .prompt(command.message, {
             images: command.images,
@@ -688,6 +792,7 @@ async function createSessionRunner(sessionKey, runtimeHost, hostEmit) {
             preflightResult: (disposition) => {
               if (disposition === true || ['handled', 'queued', 'started'].includes(disposition)) {
                 preflightSucceeded = true;
+                release();
                 output(
                   success(
                     id,
@@ -699,10 +804,12 @@ async function createSessionRunner(sessionKey, runtimeHost, hostEmit) {
             },
           })
           .catch((e) => {
+            release();
             if (!preflightSucceeded) {
               output(error(id, 'prompt', e.message));
             }
-          });
+          })
+          .finally(release);
         return undefined;
       }
       case 'steer': {
@@ -720,6 +827,7 @@ async function createSessionRunner(sessionKey, runtimeHost, hostEmit) {
         );
       }
       case 'abort': {
+        cancelPendingDialogs('aborted');
         await session.abort();
         return success(id, 'abort');
       }
@@ -759,7 +867,7 @@ async function createSessionRunner(sessionKey, runtimeHost, hostEmit) {
           lifecycleProjection: 1,
           protocol: 1,
           sdkVersion: metadata.version,
-          modelDiscovery: metadata.version === '1.2.0',
+          modelDiscovery: supportsModelDiscovery,
           closeChat: true,
           engineCommands: {
             contract: 1,
@@ -774,6 +882,10 @@ async function createSessionRunner(sessionKey, runtimeHost, hostEmit) {
             auth_response: true,
             delivery_payload: true,
             import_prepare: typeof runtimeHost.importFromJsonl === 'function',
+            mcp_status: !!nativeMcpCommand(session),
+            outbox_prompt: true,
+            read_model_tools: !!modelToolsPersistence && supportsModelTools(session),
+            set_model_tools: !!modelToolsPersistence && supportsModelTools(session),
           },
           scopedModels: { read: true, set: true, saveGlobal: true },
           thinking: { contract: 1, read: true, strictSet: true },
@@ -868,6 +980,72 @@ async function createSessionRunner(sessionKey, runtimeHost, hostEmit) {
         if (Buffer.byteLength(jsonl) > 8 * 1024 * 1024) throw new Error('DELIVERY_TOO_LARGE');
         return success(id, command.type, { jsonl });
       }
+      case 'read_model_tools':
+        if (!modelToolsPersistence) throw new Error('MODEL_TOOLS_UNSUPPORTED');
+        return success(id, command.type, {
+          ...readModelTools(session),
+          persistence: modelToolsPersistence,
+        });
+      case 'set_model_tools': {
+        if (!modelToolsPersistence) throw new Error('MODEL_TOOLS_UNSUPPORTED');
+        if (
+          recoveryRequired ||
+          enginePending ||
+          lifecyclePending ||
+          compactPending ||
+          defaultsPending ||
+          promptPending.size ||
+          authCommands.busy ||
+          pendingExtensionRequests.size ||
+          !session.isIdle ||
+          session.isStreaming ||
+          session.isCompacting ||
+          session.isRetrying ||
+          session.isBashRunning ||
+          session.hasPendingBashMessages ||
+          session.pendingMessageCount
+        )
+          throw new Error('MODEL_TOOLS_BUSY');
+        const captured = session,
+          revision = activityRevision,
+          manager = session.sessionManager;
+        const leaf = manager.getLeafId();
+        enginePending = true;
+        try {
+          const result = setModelTools(captured, command.revision, command.names);
+          if (
+            session !== captured ||
+            activityRevision !== revision ||
+            shuttingDown ||
+            captured.sessionId !== command.origin.sessionId ||
+            captured.sessionFile !== command.origin.sessionFile ||
+            manager.getLeafId() !== leaf
+          )
+            throw new Error('MODEL_TOOLS_STALE_ORIGIN');
+          return success(id, command.type, { ...result, persistence: modelToolsPersistence });
+        } finally {
+          enginePending = false;
+        }
+      }
+      case 'mcp_status': {
+        const captured = session;
+        const revision = activityRevision;
+        const manager = session.sessionManager;
+        const leaf = manager.getLeafId();
+        const valid = () =>
+          session === captured &&
+          activityRevision === revision &&
+          !shuttingDown &&
+          captured.isIdle &&
+          !captured.isStreaming &&
+          !captured.isCompacting &&
+          captured.sessionId === command.origin.sessionId &&
+          captured.sessionFile === command.origin.sessionFile &&
+          manager.getLeafId() === leaf;
+        const result = await readNativeMcpStatus(captured, valid);
+        if (!valid()) throw new Error('MCP_STATUS_STALE_ORIGIN');
+        return success(id, command.type, result);
+      }
       case 'auth_providers':
         return success(id, command.type, { providers: authCommands.providers() });
       case 'auth_login':
@@ -885,7 +1063,7 @@ async function createSessionRunner(sessionKey, runtimeHost, hostEmit) {
       case 'get_available_models': {
         const runtime = session.modelRuntime;
         const discoveryError =
-          command.refreshOpenRouter === true && metadata.version === '1.2.0'
+          command.refreshOpenRouter === true && supportsModelDiscovery
             ? await discoverOpenRouterModels(runtime, runtimeHost.modelDiscoveryOffline)
             : undefined;
         if (runtime !== session.modelRuntime) throw new Error('MODEL_DISCOVERY_STALE');
@@ -894,9 +1072,7 @@ async function createSessionRunner(sessionKey, runtimeHost, hostEmit) {
           models: models.map(modelDto),
           // An authenticated provider may have no cached models on its first use.
           discoveryProviders:
-            metadata.version === '1.2.0' && runtime.hasConfiguredAuth('openrouter')
-              ? ['openrouter']
-              : [],
+            supportsModelDiscovery && runtime.hasConfiguredAuth('openrouter') ? ['openrouter'] : [],
           discoveryError,
         });
       }
@@ -1193,6 +1369,7 @@ async function createSessionRunner(sessionKey, runtimeHost, hostEmit) {
   async function dispose() {
     if (shuttingDown) return;
     shuttingDown = true;
+    cancelPendingDialogs('closed');
     authCommands.dispose();
     await importCommands.discard();
     for (const cleanup of signalCleanupHandlers) {
@@ -1229,6 +1406,10 @@ async function createSessionRunner(sessionKey, runtimeHost, hostEmit) {
       return;
     }
     const command = parsed;
+    if (initializing && command.type !== 'abort') {
+      output(error(command.id, command.type, 'SDK_STARTUP_IN_PROGRESS'));
+      return;
+    }
     try {
       const response = await handleCommand(command);
       if (response) {
@@ -1237,11 +1418,19 @@ async function createSessionRunner(sessionKey, runtimeHost, hostEmit) {
       }
       await checkShutdownRequested();
     } catch (commandError) {
+      if (commandError?.[outboxAdmissionRefusal] === true) {
+        output({
+          ...error(command.id, command.type, commandError.message),
+          outboxNotDispatched: true,
+        });
+        await waitForRawStdoutBackpressure();
+        return;
+      }
       output(
         error(
           command.id,
           command.type,
-          /^(?:IMPORT_(?:REQUIRES_PERSISTED_SESSION|ENOENT|EACCES|EPERM|ERR_ACCESS_DENIED|TYPE_ERROR|OPERATION_FAILED)|AUTH_(?:BUSY|NOT_STORED|CHANGED_SYNC_FAILED|OPERATION_FAILED|INVALID_PROVIDER|STALE)|LIFECYCLE_STALE_ORIGIN|ENGINE_(?:RECOVERY_REQUIRED|RECOVERY_REQUIRED_AFTER_RELOAD|BUSY_NOTHING_DISCARDED|ORIGIN_REQUIRED)|RELOAD_REQUIRES_DEDICATED_OS_PROCESS|TREE_(?:SUMMARY_NOT_AUTHORIZED|TARGET_NOT_FOUND)|TRUST_INVALID_DECISION|SCOPES_[A-Z_]+|THINKING_STALE_REVISION|THINKING_UNSUPPORTED_LEVEL|PREFERENCES_(?:READ_FAILED|WRITE_FAILED|INVALID|INVALID_PAID_CONSENT|STALE_REVISION|BUSY|SAVED_SESSION_NOT_APPLIED))$/.test(
+          /^(?:IMPORT_(?:REQUIRES_PERSISTED_SESSION|ENOENT|EACCES|EPERM|ERR_ACCESS_DENIED|TYPE_ERROR|OPERATION_FAILED)|AUTH_(?:BUSY|NOT_STORED|CHANGED_SYNC_FAILED|OPERATION_FAILED|INVALID_PROVIDER|STALE)|LIFECYCLE_STALE_ORIGIN|MCP_STATUS_STALE_ORIGIN|MODEL_TOOLS_(?:UNSUPPORTED|INVALID_CATALOG|STALE_CATALOG|INVALID_SELECTION|BUSY|STALE_ORIGIN)|ENGINE_(?:RECOVERY_REQUIRED|RECOVERY_REQUIRED_AFTER_RELOAD|BUSY_NOTHING_DISCARDED|ORIGIN_REQUIRED)|RELOAD_REQUIRES_DEDICATED_OS_PROCESS|TREE_(?:SUMMARY_NOT_AUTHORIZED|TARGET_NOT_FOUND)|TRUST_INVALID_DECISION|SCOPES_[A-Z_]+|THINKING_STALE_REVISION|THINKING_UNSUPPORTED_LEVEL|PREFERENCES_(?:READ_FAILED|WRITE_FAILED|INVALID|INVALID_PAID_CONSENT|STALE_REVISION|BUSY|SAVED_SESSION_NOT_APPLIED))$/.test(
             commandError?.message ?? ''
           )
             ? commandError.message
@@ -1252,6 +1441,10 @@ async function createSessionRunner(sessionKey, runtimeHost, hostEmit) {
     }
   };
   return {
+    initialize: async () => {
+      await rebindSession();
+      initializing = false;
+    },
     handleParsed: scopeCommandDispatcher(handleParsed),
     dispose,
   };
@@ -1277,15 +1470,20 @@ const hostEmit = (k, obj) => {
 };
 
 const sessions = new Map();
+const openingSessions = new Map();
 let dedicatedSessionKey;
 let dedicatedOpening = false;
 
 async function openSession(k, info) {
+  if (openingSessions.has(k)) return;
   if (sessions.has(k)) {
     hostEmit(k, { type: 'response', command: 'open', success: true });
     return;
   }
   let dedicatedReservation = false;
+  const opening = {};
+  openingSessions.set(k, opening);
+  let runner;
   try {
     if (process.env.PI_HOST_DEDICATED === '1') {
       if (dedicatedOpening || (dedicatedSessionKey && dedicatedSessionKey !== k))
@@ -1295,11 +1493,21 @@ async function openSession(k, info) {
       dedicatedReservation = true;
     }
     const runtimeHost = await buildRuntimeHost(info);
-    const runner = await createSessionRunner(k, runtimeHost, hostEmit);
+    if (openingSessions.get(k) !== opening) {
+      await runtimeHost.dispose();
+      return;
+    }
+    runner = createSessionRunner(k, runtimeHost, hostEmit);
     sessions.set(k, runner);
+    await runner.initialize();
+    if (sessions.get(k) !== runner) return;
     dedicatedOpening = false;
     hostEmit(k, { type: 'response', command: 'open', success: true });
   } catch (e) {
+    if (runner && sessions.get(k) === runner) {
+      sessions.delete(k);
+      await runner.dispose();
+    }
     if (dedicatedReservation) dedicatedOpening = false;
     hostEmit(k, {
       type: 'response',
@@ -1311,10 +1519,14 @@ async function openSession(k, info) {
           ? `SDK_STARTUP_FAILED_${e.code}`
           : 'SDK_STARTUP_FAILED',
     });
+  } finally {
+    if (openingSessions.get(k) === opening) openingSessions.delete(k);
+    if (dedicatedReservation) dedicatedOpening = false;
   }
 }
 
 async function closeSession(k) {
+  openingSessions.delete(k);
   const runner = sessions.get(k);
   if (!runner) return;
   sessions.delete(k);
@@ -1364,7 +1576,7 @@ attachJsonlLineReader(process.stdin, (line) => {
 });
 
 async function shutdownHost(code) {
-  for (const k of [...sessions.keys()]) {
+  for (const k of new Set([...sessions.keys(), ...openingSessions.keys()])) {
     await closeSession(k);
   }
   try {

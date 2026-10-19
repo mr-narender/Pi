@@ -21,25 +21,34 @@ deletions and both sides of renames. An unavailable baseline conservatively runs
 the full gate with publication disabled. PRs check
 the exact PR head; main checks the exact pushed commit. Fork PR jobs have read-only
 permissions and receive no publishing secret. Actions are pinned to full official
-commit SHAs. Node **26.11.1**, Pi SDK **1.2.0** and VS Code **1.141.0** are pinned.
+commit SHAs. Node **26.11.1**, Pi SDKs **1.2.0 and 1.3.0** and VS Code **1.141.0** are pinned.
 The pinned checkout/setup/artifact actions use their native Node 24 runtimes
 (Actions Runner 2.327.1 or newer), separately from the project's Node version.
 Upload v6 and download v7 retain the immutable named artifact transfer used here.
 Azure login alone receives `AZURE_CORE_OUTPUT=json` because its private CLI
 version probe parses JSON. The release job and publishing children retain
 `AZURE_CORE_OUTPUT=none`; permissions and OIDC scope are unchanged.
-Both the extension and isolated SDK dependency trees use committed lockfiles.
-The isolated SDK lock uses npm's nested layout to keep the existing native test
+The extension and both isolated SDK dependency trees use committed lockfiles.
+The isolated SDK locks use npm's nested layout to keep the existing native test
 permission boundary limited to that SDK package; it does not grant parent-directory
 read access for hoisted dependencies.
 The SDK pin is only for testing; product configured-executable/PATH precedence
 and opt-in managed installation are unchanged.
 
+For local native qualification, install both test-only fixtures with
+`npm ci --prefix .github/pi-sdk --install-strategy=nested` and
+`npm ci --prefix .github/pi-sdk-13 --install-strategy=nested`, then run tests with
+`PATH="$PWD/.github/pi-sdk-13/node_modules/.bin:$PATH" npm run test:integration`.
+CI uses that same 1.3.0 PATH selection; backward-compatibility fixtures explicitly
+resolve the separate `.github/pi-sdk` 1.2.0 installation. Neither fixture installs
+or replaces the Pi executable used by the extension. The upstream drift check
+retains the 1.2.0 source pin; its audited RPC source is identical in 1.3.0.
+
 Stable Git tags and their GitHub release assets track released versions outside
 the source tree. Runtime main pushes automatically choose the next patch above
 the highest numeric stable tag, including tags reserved for pending drafts.
 An explicit higher source version remains a supported release floor. The reviewed
-0.2.40 manifest/changelog starts this transition; future code PRs need no manual
+0.2.40 manifest/changelog marked the initial transition; subsequent code PRs need no manual
 version bump. CI stamps only the manifest version, lockfile root versions and a
 deterministic CHANGELOG entry before tests and packaging. These generated changes
 stay in the runner; CI never commits to main or opens automatic version PRs.
@@ -48,8 +57,9 @@ The VSIX still contains the exact version required by VS Code and Marketplace.
 Runtime paths and production manifest/dependency changes publish automatically.
 Package scripts, development dependencies, development-only lock changes and
 JSON key reordering do not publish. Workflow, test, documentation and release
-automation changes alone do not publish; the 0.2.40 explicit bump releases the
-already merged Quiet Footer change with this CI correction.
+automation changes alone do not publish. The explicit 0.2.40 bump was the initial
+transition for the already merged Quiet Footer change; current runtime releases
+use the stable-tag ledger described above.
 A successful main run inspects one stable VSIX, stores its SHA256,
 source commit and bundle hashes, and passes that exact artifact to publication.
 The release job independently chooses the same version from the stable tag
