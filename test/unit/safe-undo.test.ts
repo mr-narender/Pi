@@ -194,7 +194,12 @@ async function turnFixture(nested = false) {
     try {
       return await originalGit(...args);
     } catch (error) {
-      warnings.push(`fixture git ${String(args[1])}: ${String(error)}`);
+      const failure = error as { code?: unknown; stderr?: string; stdout?: string };
+      warnings.push(
+        `fixture git ${String(args[1])}: exit=${String(failure.code)} ` +
+          `stderr=${failure.stderr ? 'present' : 'empty'} ` +
+          `stdout=${failure.stdout ? 'present' : 'empty'}`
+      );
       throw error;
     }
   };
@@ -322,7 +327,12 @@ test('non-git card Undo uses completion evidence and rejects the same snippet af
 test('private file permissions remain private after a normal turn Undo', async () => {
   const f = await turnFixture();
   try {
+    const index = await f.git('ls-files', '-s');
     await chmod(f.path, 0o600);
+    // chmod changes stat metadata, not Git's executable bit. Settle the fresh
+    // fixture index so stash create cannot race its initial stat refresh.
+    await f.git('update-index', '--refresh');
+    assert.equal(await f.git('ls-files', '-s'), index);
     await f.review.onTurnStart(f.controller);
     await piWrite(f, 'Pi result');
     await f.review.onTurnEnd(f.controller, { silent: true });
