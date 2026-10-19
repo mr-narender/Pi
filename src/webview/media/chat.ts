@@ -34,6 +34,8 @@ const vscode = acquireVsCodeApi();
 const root = document.getElementById('app');
 type ActivityTab = 'output' | 'sources' | 'agents';
 const activityTabs = new Map<string, ActivityTab>();
+const disclosureOpen = new Map<string, boolean>();
+let renderedDisclosureSession: string | undefined;
 function selectActivityTab(panel: HTMLElement, tab: ActivityTab): void {
   const selectedTab = panel.querySelector(`[data-activity-tab="${tab}"]`) ? tab : 'output';
   activityTabs.set(panel.id, selectedTab);
@@ -407,6 +409,15 @@ let slashMatches: Array<{ name: string; description: string }> = [];
 function composerField(): HTMLTextAreaElement | null {
   return document.getElementById(COMPOSER_FIELD_ID) as HTMLTextAreaElement | null;
 }
+function syncContextualSteer(): void {
+  const button = document.querySelector<HTMLButtonElement>('[data-contextual-steer]');
+  if (button)
+    button.hidden =
+      !currentSnapshot ||
+      !isLiveWorking(currentSnapshot) ||
+      currentSnapshot.isCompacting === true ||
+      !composerField()?.value.trim();
+}
 let editingComposer = false;
 function replaceComposerText(field: HTMLTextAreaElement, text: string): void {
   if (field.value === text) return;
@@ -419,6 +430,7 @@ function replaceComposerText(field: HTMLTextAreaElement, text: string): void {
     if (field.value !== text) field.value = text;
   } finally {
     editingComposer = false;
+    syncContextualSteer();
   }
 }
 
@@ -1574,6 +1586,7 @@ function render(snapshot: WebviewSnapshot): void {
   snapshot = preserveComposerForRejectedAck(snapshot);
   prepareTypewriter(snapshot);
   currentSnapshot = snapshot;
+  syncContextualSteer();
   if (!isLiveWorking(snapshot)) {
     if (flushTimer) {
       clearTimeout(flushTimer);
@@ -1657,11 +1670,19 @@ function renderNow(snapshot: WebviewSnapshot): void {
     editRevision !== pendingLocalCommand.revision &&
     acceptsCommandReplacement(snapshot);
   const sameChat = renderedComposerKey === commandSessionKey(snapshot);
+  const disclosureSession = JSON.stringify(
+    snapshot.sessionFile ? ['file', snapshot.sessionFile] : ['id', snapshot.sessionId]
+  );
+  const sameDisclosureSession = renderedDisclosureSession === disclosureSession;
   if (!sameChat) {
     lastSubmittedText = undefined;
     scrubbedForSeq = undefined;
-    activityTabs.clear();
   }
+  if (!sameDisclosureSession) {
+    activityTabs.clear();
+    disclosureOpen.clear();
+  }
+  renderedDisclosureSession = disclosureSession;
   if (
     pendingLocalCommand &&
     pendingLocalCommand.sessionKey !== commandSessionKey(snapshot) &&
@@ -1806,19 +1827,15 @@ function renderNow(snapshot: WebviewSnapshot): void {
   }
   renderedComposerKey = composerKey;
 
-  // Preserve open dropdown menus across re-render so passive snapshots
-  // (streaming, status) don't close the More/Attach menu mid-interaction.
-  const openMenus = new Set<string>();
-  const closedMenus = new Set<string>();
-  // Disclosures are user controlled, including during errors and live updates.
+  // Keep user choices even when a same-chat update temporarily omits a disclosure.
   for (const el of Array.from(
     document.querySelectorAll<HTMLDetailsElement>('details[data-preserve-open]')
   )) {
-    if (el.id && sameChat) {
-      if (el.open) openMenus.add(el.id);
-      else closedMenus.add(el.id);
+    if (el.id && sameDisclosureSession) {
+      disclosureOpen.set(el.id, el.open);
     }
   }
+  const openMenus = new Set<string>();
   for (const id of ['attach-menu']) {
     const el = document.getElementById(id) as HTMLDetailsElement | null;
     if (el?.open) {
@@ -1838,7 +1855,7 @@ function renderNow(snapshot: WebviewSnapshot): void {
   // the transcript stays stable and the scroll position is preserved naturally.
   // A new wiring pass so bindOnce only wires freshly-added nodes.
   const inspectorFocus =
-    sameChat &&
+    sameDisclosureSession &&
     document.hasFocus() &&
     document.activeElement?.closest('[data-inline-activity], #chat-settings')
       ? (document.activeElement as HTMLElement)
@@ -1852,9 +1869,10 @@ function renderNow(snapshot: WebviewSnapshot): void {
         onBeforeElUpdated(from, to) {
           // Do not temporarily hide the selected inspector tab: that blurs its
           // focused disclosure before selectActivityTab restores the selection.
-          if (sameChat && from.hasAttribute('data-activity-view')) to.hidden = from.hidden;
+          if (sameDisclosureSession && from.hasAttribute('data-activity-view'))
+            to.hidden = from.hidden;
           if (
-            sameChat &&
+            sameDisclosureSession &&
             from.tagName === 'DETAILS' &&
             from.hasAttribute('data-preserve-open') &&
             from.id === to.id
@@ -1909,15 +1927,13 @@ function renderNow(snapshot: WebviewSnapshot): void {
     }
   }
 
+  for (const [id, open] of disclosureOpen) {
+    const el = document.getElementById(id) as HTMLDetailsElement | null;
+    if (el) el.open = open;
+  }
   for (const id of openMenus) {
     const el = document.getElementById(id) as HTMLDetailsElement | null;
-    if (el) {
-      el.open = true;
-    }
-  }
-  for (const id of closedMenus) {
-    const el = document.getElementById(id) as HTMLDetailsElement | null;
-    if (el) el.open = false;
+    if (el) el.open = true;
   }
   restoreInspectorFocus(inspectorFocus);
   for (const wrap of Array.from(document.querySelectorAll<HTMLElement>('.mermaid-wrap'))) {
@@ -1960,12 +1976,14 @@ function renderNow(snapshot: WebviewSnapshot): void {
   // Size the composer to the (possibly restored) draft before wiring input.
   if (textarea) {
     autosizeComposer(textarea);
+    syncContextualSteer();
     bindOnce(textarea, 'input', () => {
       if (editingComposer) return;
       exitHistory(); // typing leaves history-navigation mode
       editRevision++;
       lastSubmittedText = undefined; // fresh text — stop guarding
       autosizeComposer(textarea);
+      syncContextualSteer();
       vscode.postMessage({
         type: 'setDraft',
         text: textarea.value,
@@ -2979,6 +2997,8 @@ function structureSignature(s: WebviewSnapshot): string {
     .join('#');
   return (
     `${commandSessionKey(s)}|${msgs}|${s.connectionState}|${s.isCompacting ? 1 : 0}|${s.workingAnimation}` +
+    `|manualMode${JSON.stringify([s.requireApprovalForEdits, s.approvalModeError])}` +
+    `|followMode${s.followMode}` +
     `|q${(s.queue?.steering.length ?? 0) + (s.queue?.followUp.length ?? 0)}` +
     `|a${JSON.stringify(s.approvals?.map((item) => [item.requestKey, item.id, item.method, item.responseState, item.responseError, item.draftRevision, item.draftResetSeq]))}|p${s.pendingContextItems.length}/${s.pendingImages.length}` +
     `|extensionDraftAck${JSON.stringify(s.extensionUiDraftAck ?? null)}` +

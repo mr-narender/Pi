@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { approvalGateSyncError } from '../review/approvalGate';
 import { openIdeLocation } from '../ide/query';
 import { basename, join } from 'node:path';
 import { existsSync } from 'node:fs';
@@ -2749,6 +2750,7 @@ export class ChatTabManager implements vscode.Disposable {
     snapshot.requireApprovalForEdits = vscode.workspace
       .getConfiguration('piRpc')
       .get<boolean>('requireApprovalForEdits', false);
+    snapshot.approvalModeError = approvalGateSyncError();
     snapshot.activeSessionCount = sharedPiHostActiveSessionCount();
     const title = this.titleForContext(context, snapshot);
     const host = this.hosts.get(resource.toString());

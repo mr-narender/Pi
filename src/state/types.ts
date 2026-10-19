@@ -263,6 +263,7 @@ export interface WebviewSnapshot {
   followMode?: 'open' | 'status' | 'off';
   /** True pre-apply approval mode. */
   requireApprovalForEdits?: boolean;
+  approvalModeError?: string;
   /** Chats still running on whatever approval-gate setting was active when
    * they started (passive tooltip detail only — never an interruption). */
   activeSessionCount?: number;

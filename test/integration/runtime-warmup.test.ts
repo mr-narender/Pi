@@ -43,6 +43,11 @@ test('activation passes the workspace launch snapshot to runtime-only warmup', a
   let launch: any;
   let ideExtension: string | undefined;
   let warmArgs: any[] | undefined;
+  const activationOrder: string[] = [];
+  let releaseGate!: () => void;
+  const gateReady = new Promise<void>((resolve) => {
+    releaseGate = resolve;
+  });
   const sentinel = new Error('activation characterization boundary');
   const mocks: Record<string, any> = {
     './ide/query': {
@@ -51,6 +56,15 @@ test('activation passes the workspace launch snapshot to runtime-only warmup', a
       },
     },
     './config/settings': { getSettings: () => settings },
+    './review/approvalGate': {
+      syncApprovalGateForWorkspace: async (uri: { fsPath: string }, enabled: boolean) => {
+        assert.equal(uri.fsPath, '/owned/extension');
+        assert.equal(enabled, false, 'Manual Mode defaults off');
+        activationOrder.push('gate-start');
+        await gateReady;
+        activationOrder.push('gate-ready');
+      },
+    },
     './process/piLauncher': {
       setBundledPiCliPath() {},
       setManagedPiCliPath() {},
@@ -73,11 +87,15 @@ test('activation passes the workspace launch snapshot to runtime-only warmup', a
       },
     },
     './process/sharedPiHost': {
-      initSharedPiHost: () => ({
-        warmPool: (...args: any[]) => {
-          warmArgs = args;
-        },
-      }),
+      initSharedPiHost: () => {
+        activationOrder.push('host-init');
+        return {
+          warmPool: (...args: any[]) => {
+            activationOrder.push('warm');
+            warmArgs = args;
+          },
+        };
+      },
     },
     './sessions/sessionIndexService': { SessionIndexService: class {} },
     './sessions/sessionRegistry': {
@@ -96,13 +114,16 @@ test('activation passes the workspace launch snapshot to runtime-only warmup', a
             Uri: {
               joinPath: (uri: any, ...parts: string[]) => ({ fsPath: join(uri.fsPath, ...parts) }),
             },
-            workspace: { workspaceFolders: [{ uri: { fsPath: '/owned/workspace' } }] },
+            workspace: {
+              workspaceFolders: [{ uri: { fsPath: '/owned/workspace' } }],
+              getConfiguration: () => ({ get: (_key: string, fallback: unknown) => fallback }),
+            },
           }
         : (mocks[id] ?? (id.startsWith('.') ? {} : require(id))),
     module,
     module.exports
   );
-  await assert.rejects(
+  const activating = assert.rejects(
     module.exports.activate({
       extensionUri: { fsPath: '/owned/extension' },
       extensionPath: '/owned/extension',
@@ -113,6 +134,16 @@ test('activation passes the workspace launch snapshot to runtime-only warmup', a
     (error) => error === sentinel
   );
   await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.deepEqual(
+    activationOrder,
+    ['gate-start'],
+    'runtime warmup waits for project policy setup'
+  );
+  assert.equal(warmArgs, undefined);
+  releaseGate();
+  await activating;
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.deepEqual(activationOrder, ['gate-start', 'gate-ready', 'host-init', 'warm']);
   assert.equal(ideExtension, join('/owned/extension', 'resources', 'pi-vscode-ide.mjs'));
   assert.ok(
     warmArgs && warmArgs[1] === launch,

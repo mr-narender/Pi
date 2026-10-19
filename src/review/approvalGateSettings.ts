@@ -2,33 +2,30 @@
 // Node — see src/review/approvalGate.ts for the vscode-touching filesystem I/O.
 export const GATE_DIR = 'extensions';
 export const GATE_FILENAME = 'pi-approval-gate.ts';
+export const MANUAL_MODE_FILENAME = 'pi-vscode-manual-mode.json';
 const SETTINGS_ENTRY = `./${GATE_DIR}/${GATE_FILENAME}`;
 
-/** Pure JSON merge — testable without touching the filesystem. Returns the
- * new file text, or `undefined` when the settings file should be deleted
- * entirely (we created it and nothing else uses it). */
-export function mergeApprovalGateSetting(
-  existingJson: string | undefined,
-  enabled: boolean
-): string | undefined {
+/** Preserve project settings and keep exactly one managed hook registration. */
+export function mergeApprovalGateSetting(existingJson: string | undefined): string {
   let settings: Record<string, unknown> = {};
-  if (existingJson) {
-    try {
-      const parsed: unknown = JSON.parse(existingJson);
-      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-        settings = parsed as Record<string, unknown>;
-      }
-    } catch {
-      settings = {};
+  if (existingJson !== undefined) {
+    const parsed: unknown = JSON.parse(existingJson);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error('Pi project settings must be a JSON object.');
     }
+    settings = parsed as Record<string, unknown>;
+  }
+  if ('extensions' in settings && !Array.isArray(settings.extensions)) {
+    throw new Error('Pi project extensions must be an array.');
   }
   const current = Array.isArray(settings.extensions) ? (settings.extensions as unknown[]) : [];
   const withoutOurs = current.filter((entry) => entry !== SETTINGS_ENTRY);
-  const next = enabled ? [...withoutOurs, SETTINGS_ENTRY] : withoutOurs;
+  // Keep the hook loaded so a running chat observes both toggle directions.
+  const next = [...withoutOurs, SETTINGS_ENTRY];
   if (next.length > 0) {
     settings = { ...settings, extensions: next };
   } else if ('extensions' in settings) {
     settings = Object.fromEntries(Object.entries(settings).filter(([key]) => key !== 'extensions'));
   }
-  return Object.keys(settings).length === 0 ? undefined : JSON.stringify(settings, null, 2) + '\n';
+  return JSON.stringify(settings, null, 2) + '\n';
 }
