@@ -4693,16 +4693,6 @@ body.vscode-high-contrast .chat-list-row.active {
   color: var(--vscode-editor-foreground, #222);
   overflow-wrap: anywhere;
 }
-.activity-shortcut {
-  position: absolute;
-  top: 8px;
-  left: 12px;
-  min-height: 30px;
-  padding: 5px 8px;
-  font-size: 12px;
-  color: var(--vscode-descriptionForeground);
-  background: var(--vscode-editor-background);
-}
 .activity-tabs {
   display: flex;
   width: fit-content;
@@ -4871,8 +4861,7 @@ body.vscode-high-contrast .chat-list-row.active {
   display: none;
 }
 .activity-panel :focus-visible,
-#chat-settings :focus-visible,
-[data-show-latest-activity]:focus-visible {
+#chat-settings :focus-visible {
   outline: 1px solid var(--vscode-focusBorder);
   outline-offset: 2px;
 }
