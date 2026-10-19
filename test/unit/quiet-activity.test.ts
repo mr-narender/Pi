@@ -149,7 +149,31 @@ async function frame() {
   return { dom, w, posted, send };
 }
 
-test('header opens the same inline disclosure; keyboard and passive updates preserve details and draft', async () => {
+test('activity has no header shortcut in empty, live, and historical snapshots', async () => {
+  const f = await frame();
+  try {
+    for (const extra of [
+      { messages: [] },
+      { connectionState: 'busy' as const, isStreaming: true },
+      { connectionState: 'ready' as const, isStreaming: false },
+    ]) {
+      await f.send(extra);
+      assert.equal(
+        f.w.document.querySelector('[data-show-latest-activity], .activity-shortcut'),
+        null
+      );
+      assert.equal(
+        f.w.document.querySelectorAll('[data-inline-activity]').length,
+        extra.messages ? 0 : 1
+      );
+      assert.ok(f.w.document.querySelector('#chat-settings > summary'));
+    }
+  } finally {
+    f.dom.window.close();
+  }
+});
+
+test('inline disclosure keyboard and passive updates preserve details, focus, and draft', async () => {
   const f = await frame();
   try {
     await f.send();
@@ -159,7 +183,8 @@ test('header opens the same inline disclosure; keyboard and passive updates pres
     field.value = 'Newer local typing';
     field.dispatchEvent(new f.w.Event('input', { bubbles: true }));
     const summary = doc.querySelector<HTMLElement>('[data-inline-activity] > summary')!;
-    doc.querySelector<HTMLButtonElement>('[data-show-latest-activity]')!.click();
+    summary.click();
+    summary.focus();
     assert.equal(panel().open, true);
     assert.equal(doc.activeElement, summary);
     const details = doc.querySelector<HTMLDetailsElement>(
@@ -186,13 +211,25 @@ test('header opens the same inline disclosure; keyboard and passive updates pres
       new f.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })
     );
     assert.equal(panel().open, false);
-    assert.equal(doc.activeElement, doc.querySelector('[data-show-latest-activity]'));
+    assert.equal(doc.activeElement, summary);
     assert.equal(field.value, 'Newer local typing');
     const settings = doc.querySelector<HTMLDetailsElement>('#chat-settings')!;
-    settings.open = true;
+    const settingsSummary = settings.querySelector<HTMLElement>(':scope > summary')!;
+    settingsSummary.click();
     await new Promise((resolve) => setTimeout(resolve, 10));
+    assert.equal(settings.open, true);
     assert.equal(panel().open, false);
-    await f.send({ sequence: 3, sessionId: 'other', sessionFile: '/tmp/work/other.jsonl' });
+    await f.send({ sequence: 3 });
+    assert.equal(settings.open, true);
+    const settingsControl = settings.querySelector<HTMLElement>('[data-model-tools] button')!;
+    settingsControl.focus();
+    settingsControl.dispatchEvent(
+      new f.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })
+    );
+    assert.equal(settings.open, false);
+    assert.equal(doc.activeElement, settingsSummary);
+    settingsSummary.click();
+    await f.send({ sequence: 4, sessionId: 'other', sessionFile: '/tmp/work/other.jsonl' });
     assert.equal(panel().open, false);
     assert.equal(doc.querySelector<HTMLDetailsElement>('#chat-settings')!.open, false);
     assert.equal(
@@ -289,22 +326,18 @@ test('header controls have reserved space outside the independently scrolling tr
     assert.equal(layout.flexDirection, 'column');
     assert.equal(layout.boxSizing, 'border-box');
     assert.equal(style('#messages').overflowY, 'auto');
-    for (const [control, face] of [
-      ['.activity-shortcut', '.activity-shortcut'],
-      ['#chat-settings', '#chat-settings > summary'],
-    ]) {
-      assert.equal(doc.querySelector(control!)!.closest('#messages'), null);
-      const controlBottom =
-        Number.parseFloat(style(control!).top) + Number.parseFloat(style(face!).minHeight);
-      assert.ok(
-        Number.parseFloat(layout.paddingTop) >= controlBottom,
-        `${control} must fit in reserved space above the transcript`
-      );
-    }
+    assert.equal(doc.querySelector('#chat-settings')!.closest('#messages'), null);
+    const controlBottom =
+      Number.parseFloat(style('#chat-settings').top) +
+      Number.parseFloat(style('#chat-settings > summary').minHeight);
+    assert.ok(
+      Number.parseFloat(layout.paddingTop) >= controlBottom,
+      'chat settings must fit in reserved space above the transcript'
+    );
   }
 });
 
-test('two replies keep independent inline disclosure and tabs; header opens the latest same body', async () => {
+test('two replies keep independent inline disclosure, tabs, and Escape focus across snapshots', async () => {
   const f = await frame();
   try {
     const messages = snapshot().messages;
@@ -331,14 +364,12 @@ test('two replies keep independent inline disclosure and tabs; header opens the 
     assert.equal(panels[0]!.open, true);
     assert.equal(panels[1]!.open, false);
     const latestBody = panels[1]!.querySelector('.activity-content');
-    const shortcut = doc.querySelector<HTMLButtonElement>('[data-show-latest-activity]')!;
-    shortcut.click();
+    const latestSummary = panels[1]!.querySelector<HTMLElement>(':scope > summary')!;
+    latestSummary.click();
     assert.equal(doc.querySelectorAll('[data-inline-activity]').length, 2);
     assert.equal(panels[1]!.querySelector('.activity-content'), latestBody);
     assert.equal(panels[1]!.open, true);
     assert.equal(panels[0]!.open, true);
-    assert.equal(shortcut.getAttribute('aria-controls'), panels[1]!.id);
-    assert.equal(doc.activeElement, panels[1]!.querySelector(':scope > summary'));
     assert.equal(
       panels[0]!.querySelector('[aria-selected="true"]')?.getAttribute('data-activity-tab'),
       'sources'
@@ -353,9 +384,22 @@ test('two replies keep independent inline disclosure and tabs; header opens the 
     assert.equal(panels[0]!.open, true);
     assert.equal(panels[1]!.open, true);
     assert.equal(
+      panels[1]!.querySelector('[aria-selected="true"]')?.getAttribute('data-activity-tab'),
+      'output'
+    );
+    assert.equal(
       panels[0]!.querySelector('[aria-selected="true"]')?.getAttribute('data-activity-tab'),
       'sources'
     );
+    for (const panel of panels) {
+      const selectedTab = panel.querySelector<HTMLElement>(
+        '[data-activity-tab][aria-selected="true"]'
+      )!;
+      selectedTab.focus();
+      selectedTab.dispatchEvent(new f.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      assert.equal(panel.open, false);
+      assert.equal(doc.activeElement, panel.querySelector(':scope > summary'));
+    }
     assert.equal(
       doc.querySelector<HTMLTextAreaElement>('#composer-field')!.value,
       'Separate unsent draft'

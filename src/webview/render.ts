@@ -2147,7 +2147,6 @@ export function renderChatApp(snapshot: WebviewSnapshot, revealMessageId?: strin
   return `
     <a class="skip-link" href="#composer-field">Skip to composer</a>
     <div class="layout" data-testid="chat-app" data-mermaid-session="${escapeHtml(snapshot.sessionFile || snapshot.sessionId || snapshot.workspaceFolderName || 'session')}"${chatFontStyle(snapshot)}>
-      <button type="button" class="activity-shortcut" data-show-latest-activity>Activity <span aria-hidden="true">⌄</span></button>
       <details id="chat-settings" class="chat-settings" data-preserve-open><summary aria-label="Chat settings">Chat settings <span aria-hidden="true">⋯</span></summary><div class="chat-settings-content">${renderModelTools(snapshot)}${renderMcpConnections(snapshot)}</div></details>
       <div class="header-summary visually-hidden" aria-label="Current chat summary">${escapeHtml(summaryLine)}</div>
       <div id="a11y-status" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></div>

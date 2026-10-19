@@ -32,17 +32,8 @@ import {
 
 const vscode = acquireVsCodeApi();
 const root = document.getElementById('app');
-root?.addEventListener(
-  'toggle',
-  (event) => {
-    const panel = event.target as HTMLDetailsElement;
-    if (panel.hasAttribute('data-inline-activity')) syncActivityShortcut();
-  },
-  true
-);
 type ActivityTab = 'output' | 'sources' | 'agents';
 const activityTabs = new Map<string, ActivityTab>();
-let activityReturnFocus: HTMLElement | undefined;
 function selectActivityTab(panel: HTMLElement, tab: ActivityTab): void {
   const selectedTab = panel.querySelector(`[data-activity-tab="${tab}"]`) ? tab : 'output';
   activityTabs.set(panel.id, selectedTab);
@@ -55,31 +46,8 @@ function selectActivityTab(panel: HTMLElement, tab: ActivityTab): void {
   for (const view of panel.querySelectorAll<HTMLElement>('[data-activity-view]'))
     view.hidden = view.dataset.activityView !== selectedTab;
 }
-function syncActivityShortcut(): void {
-  const latest = [...document.querySelectorAll<HTMLDetailsElement>('[data-inline-activity]')].at(
-    -1
-  );
-  const shortcut = document.querySelector<HTMLButtonElement>('[data-show-latest-activity]');
-  if (!shortcut) return;
-  shortcut.disabled = !latest;
-  shortcut.setAttribute('aria-expanded', String(latest?.open ?? false));
-  if (latest) shortcut.setAttribute('aria-controls', latest.id);
-  else shortcut.removeAttribute('aria-controls');
-}
 root?.addEventListener('click', (event) => {
   const target = event.target as HTMLElement;
-  const shortcut = target.closest<HTMLButtonElement>('[data-show-latest-activity]');
-  if (shortcut) {
-    activityReturnFocus = shortcut;
-    const panel = [...document.querySelectorAll<HTMLDetailsElement>('[data-inline-activity]')].at(
-      -1
-    );
-    if (panel) panel.open = true;
-    panel?.querySelector<HTMLElement>(':scope > summary')?.focus();
-    panel?.scrollIntoView({ block: 'nearest' });
-    syncActivityShortcut();
-    return;
-  }
   const button = target.closest<HTMLElement>('[data-inline-activity] [data-activity-tab]');
   if (!button) return;
   const tab = button.dataset.activityTab;
@@ -95,12 +63,7 @@ root?.addEventListener('keydown', (event) => {
       event.preventDefault();
       event.stopPropagation();
       panel.open = false;
-      const opener =
-        panel.hasAttribute('data-inline-activity') && activityReturnFocus?.isConnected
-          ? activityReturnFocus
-          : panel.querySelector<HTMLElement>(':scope > summary');
-      opener?.focus();
-      activityReturnFocus = undefined;
+      panel.querySelector<HTMLElement>(':scope > summary')?.focus();
       return;
     }
   }
@@ -1698,7 +1661,6 @@ function renderNow(snapshot: WebviewSnapshot): void {
     lastSubmittedText = undefined;
     scrubbedForSeq = undefined;
     activityTabs.clear();
-    activityReturnFocus = undefined;
   }
   if (
     pendingLocalCommand &&
@@ -1957,7 +1919,6 @@ function renderNow(snapshot: WebviewSnapshot): void {
     const el = document.getElementById(id) as HTMLDetailsElement | null;
     if (el) el.open = false;
   }
-  syncActivityShortcut();
   restoreInspectorFocus(inspectorFocus);
   for (const wrap of Array.from(document.querySelectorAll<HTMLElement>('.mermaid-wrap'))) {
     setMermaidView(wrap, mermaidModes.get(mermaidKey(wrap)) ?? 'preview');
