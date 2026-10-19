@@ -3600,16 +3600,6 @@ button.composer-thinking svg {
   opacity: 0.7;
 }
 
-.permission-toggle.is-auto {
-  border-radius: 6px;
-  color: var(--vscode-errorForeground, #f48771);
-  background: color-mix(in srgb, var(--vscode-errorForeground, #f48771) 12%, transparent);
-}
-
-.permission-toggle:hover {
-  color: var(--vscode-errorForeground, #f48771);
-}
-
 .api-error-card {
   display: grid;
   gap: 8px;
@@ -4452,7 +4442,8 @@ button.composer-thinking:hover {
   background: var(--pi-accent);
 }
 
-.follow-toggle.is-on {
+.follow-toggle.is-on,
+.permission-toggle.is-on {
   color: var(--pi-accent);
   background: var(--pi-surface-selected);
   box-shadow: none;

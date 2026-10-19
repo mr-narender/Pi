@@ -863,7 +863,7 @@
         "piRpc.requireApprovalForEdits": {
           "type": "boolean",
           "default": false,
-          "description": "True pre-apply approval: every file edit π makes must be Allowed before it touches disk (Allow / Allow rest of turn / Deny). Installs a PROJECT-scoped Pi extension (.pi/extensions/pi-approval-gate.ts) — applies everywhere π runs for this project, not just in VS Code. Takes effect immediately for new chats; chats already running pick it up when they next go idle (or restart π manually for instant effect on an active chat)."
+          "description": "Manual Mode: ask Allow / Deny before each Pi tool action, including reading, commands and edits. Off by default for automatic tool execution. The managed project hook reads this mode before every tool call, including in existing chats; switching does not restart workers. Applies to Pi running in this project in VS Code or a terminal. Model text and internal processing are not tool actions. Reload Window once after upgrading to install the current hook."
         },
         "piRpc.predictivePreload": {
           "type": "boolean",

@@ -29,6 +29,17 @@ sessions on a shared runtime in the background and gives you a native GUI on top
   waiting for your approval; background chats that need permission raise a notification.
 - **Turn review** — when a turn changes files, review a consolidated list: open
   before↔after diffs, revert one file, or revert everything the turn touched.
+- **Manual Mode** — off by default. Enable the composer shield to approve each
+  Pi tool action (reads, commands, edits and extension tools) individually. Follow
+  Agent controls file following separately. The project hook stays loaded and reads
+  the current mode before each tool call, without restarting warm workers. Already
+  running actions are not interrupted; an outstanding approval still needs Allow
+  or Deny. Model text and internal processing do not request approval. Reload Window
+  once after upgrading so existing sessions load the updated hook.
+  Manual Mode needs trusted, writable project settings and enabled Pi extensions;
+  if setup fails, its tools stay blocked and history remains readable. With Manual
+  Mode off, a read-only project remains usable in automatic mode. Selected nested
+  and other project folders get their own managed hook before the session starts.
 - **Edits fork, visibly** — editing a message re-runs the chat on a fork in the same
   tab; `Pi: Show Chat Versions` opens any earlier version.
 - **Quick switcher** (`Cmd/Ctrl+Alt+P`), aggregate usage/cost across open chats,

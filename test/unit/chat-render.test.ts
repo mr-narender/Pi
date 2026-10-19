@@ -389,10 +389,41 @@ test('compaction is truthful and indeterminate while safe reading and drafting r
   assert.doesNotMatch(html, /Steer next/);
 });
 
-test('busy composer offers explicit atomic Steer next without replacing Send next', () => {
+test('busy composer reserves a hidden contextual Steer now without replacing Send next', () => {
   const html = renderChatApp(snapshot({ isStreaming: true, connectionState: 'busy' }));
-  assert.match(html, /data-send-command="steer"[^>]*>Steer next/);
+  assert.match(html, /data-send-command="steer"[^>]*data-contextual-steer hidden[^>]*>Steer now/);
   assert.match(html, /id="composer-send-button"[^>]*data-send-command="follow_up"/);
+});
+
+test('Manual Mode defaults off, pressed means approve each tool, and Follow Agent is independent', () => {
+  for (const manual of [undefined, false, true]) {
+    const dom = new JSDOM(renderChatApp(snapshot({ requireApprovalForEdits: manual })));
+    const toggle = dom.window.document.querySelector('.permission-toggle')!;
+    assert.equal(toggle.getAttribute('aria-label'), 'Manual Mode');
+    assert.equal(toggle.getAttribute('aria-pressed'), manual === true ? 'true' : 'false');
+    assert.equal(
+      dom.window.document.querySelector('.follow-toggle')?.getAttribute('aria-pressed'),
+      'false'
+    );
+    assert.doesNotMatch(toggle.getAttribute('title')!, /Ask Before Edits|Auto Mode/);
+    dom.window.close();
+  }
+  const dom = new JSDOM(
+    renderChatApp(snapshot({ requireApprovalForEdits: true, approvalModeError: '<write failed>' }))
+  );
+  assert.equal(
+    dom.window.document.querySelector('.permission-toggle')?.getAttribute('aria-label'),
+    'Manual Mode unavailable'
+  );
+  assert.equal(
+    dom.window.document.querySelector('.permission-toggle')?.getAttribute('aria-pressed'),
+    'false'
+  );
+  assert.match(
+    dom.window.document.querySelector('.permission-toggle')!.getAttribute('title')!,
+    /could not be applied/
+  );
+  dom.window.close();
 });
 
 test('empty assistant start defers the shared reply row until the first streaming chunk', () => {
@@ -513,7 +544,14 @@ test('non-text activity and empty error/abort/retry replies remain actionable', 
       })
     );
     const dom = new JSDOM(html);
-    assert.ok(dom.window.document.querySelector('.message-assistant'));
+    if (
+      blocks.some((block) => block.kind === 'image' || (block.kind === 'text' && block.text.trim()))
+    ) {
+      assert.ok(dom.window.document.querySelector('.message-assistant'));
+    } else {
+      assert.equal(dom.window.document.querySelector('.message-assistant'), null);
+      assert.ok(dom.window.document.querySelector('[data-inline-activity]'));
+    }
     assert.equal(dom.window.document.querySelector('.tl-response'), null);
     dom.window.close();
   }
@@ -773,10 +811,7 @@ test('standalone toolResult / bashExecution messages render as a Result card (no
   );
   assert.match(html, /class="meta-icon"/);
   assert.match(html, /npm:@gotgenes\/pi-anthropic-auth/);
-  assert.doesNotMatch(
-    new JSDOM(html).window.document.querySelector('#messages .message-card')!.textContent!,
-    /npm:@gotgenes/
-  );
+  assert.equal(new JSDOM(html).window.document.querySelector('#messages .message-card'), null);
   // The raw "toolResult" role label must NOT be shown as a heading.
   assert.doesNotMatch(html, /class="message-role">toolResult</);
 });

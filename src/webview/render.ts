@@ -319,7 +319,8 @@ function renderAssistantBody(
     );
   }
   flushRun();
-  return `<div class="timeline">${rendered.join('')}</div>`;
+  const content = rendered.join('');
+  return content ? `<div class="timeline">${content}</div>` : '';
 }
 
 // Rich diff for `edit` tool cards: removed lines (−) then added lines (+),
@@ -1242,37 +1243,19 @@ function renderApprovals(snapshot: WebviewSnapshot): string {
 // Zed's crosshair: toggle "follow π" — the side editor tracks every file and
 // line the agent opens, reads, or edits, live.
 
-// One-click permission mode toggle (Claude-style mode switch — no settings.json
-// hunting, no menu, click flips it). Lock glows when every edit requires
-// your approval before it touches disk.
+// Manual Mode approves each tool call; Follow Agent remains independent.
 function renderPermissionModeToggle(snapshot: WebviewSnapshot): string {
   const on = snapshot.requireApprovalForEdits === true;
-  // Shield-check, not a padlock: a lock reads as "restricted" (the opposite —
-  // π can still edit, it just pauses for your OK). Shield-check is the
-  // standard "needs to pass a check" metaphor; labels match Claude Code's own
-  // now-familiar naming ("Auto Mode" / "Ask Before Edits") on purpose.
-  //
-  // The click itself is silent (icon flip = confirmation, no toast — a
-  // separate popup on top of the visual change was double confirmation).
-  // Any "still on the old setting" nuance is passive, in the tooltip, not
-  // pushed at you. Deliberately NOT promising "picks it up when idle" — a
-  // chat holds its worker open until closed, not just between turns, so
-  // that claim wouldn't reliably be true; restart is the one lever that is.
-  const busy = snapshot.activeSessionCount ?? 0;
-  const busyNote =
-    busy > 0 ? ` — ${busy} chat${busy === 1 ? '' : 's'} still on the previous setting` : '';
-  const title = on
-    ? `Ask Before Edits — every change needs your OK first (click for Auto Mode)${busyNote}`
-    : `Auto Mode — π edits freely, no pauses (click for Ask Before Edits)${busyNote}`;
-  // Orange = Auto Mode is active (π edits freely) — the more "live" of the
-  // two states, not the cautious one. Was backwards: the glow used to mean
-  // "Ask Before Edits is on", which reads as "orange = restricted", the
-  // opposite of how an accent color normally reads (active/energized).
-  return `<button type="button" class="icon-button permission-toggle${!on ? ' is-auto' : ''}" data-command="piRpc.togglePermissionMode" title="${title}" aria-label="Toggle approval mode: Auto Mode or Ask Before Edits" aria-pressed="${on ? 'true' : 'false'}"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3 L12 3 L12 8 C12 10.5 10 12.3 8 13.5 C6 12.3 4 10.5 4 8 Z"/><path d="M5.8 8 L7.2 9.6 L10.3 6.2"/></svg></button>`;
+  const title = snapshot.approvalModeError
+    ? `Manual Mode could not be applied: ${snapshot.approvalModeError}`
+    : on
+      ? 'Manual Mode on — approve each Pi tool action (click to turn off)'
+      : 'Manual Mode off — Pi runs tools automatically (click to approve each action)';
+  return `<button type="button" class="icon-button permission-toggle${on && !snapshot.approvalModeError ? ' is-on' : ''}" data-command="piRpc.togglePermissionMode" title="${escapeHtml(title)}" aria-label="${snapshot.approvalModeError ? 'Manual Mode unavailable' : 'Manual Mode'}" aria-pressed="${on && !snapshot.approvalModeError ? 'true' : 'false'}"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3 L12 3 L12 8 C12 10.5 10 12.3 8 13.5 C6 12.3 4 10.5 4 8 Z"/><path d="M5.8 8 L7.2 9.6 L10.3 6.2"/></svg></button>`;
 }
 
 function renderFollowToggle(snapshot: WebviewSnapshot): string {
-  const on = (snapshot.followMode ?? 'open') === 'open';
+  const on = snapshot.followMode === 'open';
   return `<button type="button" class="icon-button follow-toggle${on ? ' is-on' : ''}" data-action="toggleFollow" title="${on ? 'Following π — the side editor tracks every file and line the agent touches (click to stop)' : 'Follow π: open the file the agent is reading or editing, live (click to start)'}" aria-label="Toggle follow agent" aria-pressed="${on ? 'true' : 'false'}"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="8" cy="8" r="4.4"/><circle cx="8" cy="8" r="1" fill="currentColor" stroke="none"/><path d="M8 1v2.2M8 12.8V15M1 8h2.2M12.8 8H15"/></svg></button>`;
 }
 
@@ -1536,7 +1519,7 @@ function renderMessages(
     );
   let turnTasks: WebviewSnapshot['messages'][number]['reportedTasks'];
   const flushTurn = (): void => {
-    if (!turn.length) return;
+    if (!turnIds.size) return;
     const agents =
       snapshot.activity?.agents?.filter((agent) => turnCalls.has(agent.toolCallId)) ?? [];
     const plan = turnTasks;
@@ -1596,9 +1579,11 @@ function renderMessages(
             activity.entries.some((entry) => workFailed(entry.node, snapshot))
         )
       : '';
-    rendered.push(
-      `<section class="assistant-turn" id="turn-${escapeHtml(turnId)}" aria-label="Pi reply"><div class="message-role">Pi${renderDuration(durationMs, 'Assistant generation time (recorded)')}</div>${turn.join('')}${footer}</section>`
-    );
+    if (turn.length || footer) {
+      rendered.push(
+        `<section class="assistant-turn" id="turn-${escapeHtml(turnId)}" aria-label="Pi reply"><div class="message-role">Pi${renderDuration(durationMs, 'Assistant generation time (recorded)')}</div>${turn.join('')}${footer}</section>`
+      );
+    }
     turn = [];
     durationMs = undefined;
     activity = { entries: [], hasError: false, live: false };
@@ -1627,10 +1612,9 @@ function renderMessages(
       !inTurn,
       inTurn ? activity : undefined
     );
-    if (!html) continue;
     if (inTurn) {
-      if (!turn.length) turnId = message.id;
-      turn.push(html);
+      if (!turnIds.size) turnId = message.id;
+      if (html) turn.push(html);
       turnIds.add(message.id);
       if (message.reportedTasks) turnTasks = message.reportedTasks;
       for (const block of message.blocks ?? []) {
@@ -1648,7 +1632,7 @@ function renderMessages(
       ) {
         durationMs = (durationMs ?? 0) + message.durationMs;
       }
-    } else rendered.push(html);
+    } else if (html) rendered.push(html);
   }
   flushTurn();
   return rendered.join('');
@@ -1679,7 +1663,12 @@ function renderMessageArticle(
 ): string {
   const role = message.role;
   const body = renderMessageBody(message, streamingAnswer, modelName, activity);
-  if (role === 'assistant' && !body && message.attachments.length === 0) {
+  if (
+    (role === 'assistant' || isResultRole(role)) &&
+    !body &&
+    message.attachments.length === 0 &&
+    !message.capturedContext?.length
+  ) {
     return '';
   }
   const roleLabel = role === 'assistant' ? 'Pi' : role === 'user' ? 'You' : '';
@@ -2138,7 +2127,7 @@ export function renderChatApp(snapshot: WebviewSnapshot, revealMessageId?: strin
     ? `<button type="button" class="ghost" data-action="abort">Stop</button>${
         snapshot.isCompacting
           ? ''
-          : '<button type="button" class="ghost steer-next" data-send-command="steer" title="Steer the active turn without stopping it" aria-label="Steer next">Steer next</button>'
+          : '<button type="button" class="ghost steer-next" data-send-command="steer" data-contextual-steer hidden title="Send this text to steer the active turn" aria-label="Steer now">Steer now</button>'
       }`
     : '';
   const activityTurns: string[] = [];

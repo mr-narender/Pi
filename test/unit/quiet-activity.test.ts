@@ -90,10 +90,7 @@ test('orphan tool results never expand raw output into the transcript', () => {
       })
     )
   ).window.document;
-  assert.doesNotMatch(
-    doc.querySelector('#messages .message-card')!.textContent!,
-    /RAW_ORPHAN_OUTPUT/
-  );
+  assert.equal(doc.querySelector('#messages .message-card'), null, 'no blank result bubble');
   assert.match(doc.querySelector('[data-inline-activity]')!.textContent!, /RAW_ORPHAN_OUTPUT/);
   assert.ok(doc.querySelector('#messages [data-inline-activity] > summary'));
 });
@@ -404,6 +401,265 @@ test('two replies keep independent inline disclosure, tabs, and Escape focus acr
       doc.querySelector<HTMLTextAreaElement>('#composer-field')!.value,
       'Separate unsent draft'
     );
+  } finally {
+    f.dom.window.close();
+  }
+});
+
+test('streaming structural updates retain activity choices when its nodes temporarily disappear', async () => {
+  const f = await frame();
+  try {
+    const live = {
+      connectionState: 'busy' as const,
+      isStreaming: true,
+      currentAssistantMessageId: 'reply',
+    };
+    await f.send(live);
+    const doc = f.w.document;
+    const panel = () => doc.querySelector<HTMLDetailsElement>('[data-inline-activity]')!;
+    const detail = () => doc.querySelector<HTMLDetailsElement>('[data-raw-details]')!;
+    panel().querySelector<HTMLElement>(':scope > summary')!.click();
+    detail().open = true;
+    panel().querySelector<HTMLButtonElement>('[data-activity-tab="sources"]')!.click();
+    const answerOnly = snapshot().messages.map((message) => ({
+      ...message,
+      blocks: [{ kind: 'text' as const, text: 'The answer is growing.' }],
+    }));
+    await f.send({ ...live, sequence: 2, messages: answerOnly });
+    assert.equal(panel(), null);
+    await f.send({ ...live, sequence: 3 });
+    assert.equal(panel().open, true, 'same-chat activity reappears expanded');
+    assert.equal(detail().open, true, 'nested disclosure also retains its state');
+    assert.equal(panel().dataset.selectedActivity, 'sources');
+    panel().querySelector<HTMLElement>(':scope > summary')!.click();
+    detail().open = false;
+    await f.send({ ...live, sequence: 4, messages: answerOnly });
+    await f.send({ ...live, sequence: 5 });
+    assert.equal(panel().open, false, 'explicit close survives later updates');
+    assert.equal(detail().open, false);
+    panel().querySelector<HTMLElement>(':scope > summary')!.click();
+    await f.send({ ...live, sequence: 6, messages: answerOnly });
+    await f.send({
+      ...live,
+      sequence: 7,
+      sessionId: 'another-chat',
+      sessionFile: '/tmp/work/another-chat.jsonl',
+    });
+    assert.equal(panel().open, false, 'a different chat starts with closed activity');
+    assert.equal(panel().dataset.selectedActivity, 'output');
+  } finally {
+    f.dom.window.close();
+  }
+});
+
+test('activity remains open through new tool calls, assistant continuations, and session metadata', async () => {
+  const f = await frame();
+  try {
+    const live = {
+      connectionState: 'busy' as const,
+      isStreaming: true,
+      currentAssistantMessageId: 'reply',
+    };
+    await f.send({ ...live, sessionId: undefined });
+    const doc = f.w.document;
+    const panel = () => doc.querySelector<HTMLDetailsElement>('[data-inline-activity]')!;
+    const summary = panel().querySelector<HTMLElement>(':scope > summary')!;
+    summary.click();
+    panel().querySelector<HTMLButtonElement>('[data-activity-tab="sources"]')!.click();
+    const continuation = {
+      id: 'continued-reply',
+      role: 'assistant',
+      text: 'Still working.',
+      attachments: [],
+      blocks: [
+        { kind: 'tool' as const, name: 'read', callId: 'read-2', args: '{"path":"src/b.ts"}' },
+        { kind: 'text' as const, text: 'Still working.' },
+      ],
+    };
+    await f.send({
+      ...live,
+      sequence: 2,
+      messages: [...snapshot().messages, continuation],
+      currentAssistantMessageId: continuation.id,
+    });
+    assert.equal(panel().querySelector(':scope > summary'), summary);
+    assert.equal(panel().open, true, 'metadata enrichment is not a chat switch');
+    assert.equal(panel().dataset.selectedActivity, 'sources');
+    assert.match(panel().textContent!, /src\/b.ts/);
+    summary.click();
+    await f.send({ ...live, sequence: 3, messages: [...snapshot().messages, continuation] });
+    assert.equal(panel().open, false, 'native close wins before its queued toggle event');
+    assert.equal(panel().dataset.selectedActivity, 'sources');
+    await f.send({
+      ...live,
+      sequence: 4,
+      sessionFile: '/tmp/work/different.jsonl',
+      messages: [...snapshot().messages, continuation],
+    });
+    assert.equal(panel().open, false);
+    assert.equal(panel().dataset.selectedActivity, 'output');
+  } finally {
+    f.dom.window.close();
+  }
+});
+
+test('Steer now follows actual unsent text only while working and clears immediately on send', async () => {
+  const f = await frame();
+  try {
+    const live = { connectionState: 'busy' as const, isStreaming: true };
+    await f.send({ ...live, draft: '' });
+    const doc = f.w.document;
+    const field = doc.querySelector<HTMLTextAreaElement>('#composer-field')!;
+    const steer = () => doc.querySelector<HTMLButtonElement>('[data-contextual-steer]')!;
+    const type = (text: string) => {
+      field.value = text;
+      field.dispatchEvent(new f.w.Event('input', { bubbles: true }));
+    };
+    assert.equal(steer().hidden, true);
+    assert.ok(doc.querySelector('button[data-send-command="follow_up"]'));
+    type('   ');
+    assert.equal(steer().hidden, true);
+    type('Please focus on the tests.');
+    assert.equal(steer().hidden, false, 'typing requires no host round trip');
+    await f.send({ ...live, sequence: 2, draft: '', statuses: { remote: 'updated' } });
+    assert.equal(field.value, 'Please focus on the tests.');
+    assert.equal(steer().hidden, false, 'stale host drafts do not hide the action');
+    type('');
+    assert.equal(steer().hidden, true);
+    type('Keep the UI minimal.');
+    steer().click();
+    assert.equal(
+      f.posted.filter((message) => message.type === 'requestSend').at(-1)?.command,
+      'steer'
+    );
+    assert.equal(field.value, '');
+    assert.equal(steer().hidden, true, 'optimistic composer clear hides Steer immediately');
+    await f.send({ sequence: 3, draft: '', connectionState: 'ready', isStreaming: false });
+    type('A new prompt while idle.');
+    assert.equal(steer(), null);
+    await f.send({ ...live, sequence: 4, isCompacting: true });
+    assert.equal(steer(), null, 'compaction never exposes an unusable Steer action');
+  } finally {
+    f.dom.window.close();
+  }
+});
+
+test('Manual Mode changes remain truthful during answer-only streaming without disturbing local interaction', async () => {
+  const f = await frame();
+  try {
+    const live = {
+      connectionState: 'busy' as const,
+      isStreaming: true,
+      currentAssistantMessageId: 'reply',
+    };
+    await f.send({ ...live, requireApprovalForEdits: false });
+    const doc = f.w.document;
+    const field = doc.querySelector<HTMLTextAreaElement>('#composer-field')!;
+    field.value = 'My newer unsent draft';
+    field.dispatchEvent(new f.w.Event('input', { bubbles: true }));
+    field.setSelectionRange(3, 8);
+    const working = doc.querySelector('#pi-working');
+    const answer = doc.querySelector('.js-stream-text');
+    assert.ok(working);
+    assert.ok(answer);
+    const toggle = () =>
+      doc.querySelector<HTMLButtonElement>('[data-command="piRpc.togglePermissionMode"]')!;
+    assert.equal(toggle().getAttribute('aria-pressed'), 'false');
+    const modes = [
+      { enabled: true },
+      { enabled: false },
+      { enabled: true },
+      { enabled: true, error: 'Policy storage unavailable' },
+      { enabled: true },
+    ];
+    for (const [index, { enabled, error }] of modes.entries()) {
+      const text = `The answer is growing ${index}.`;
+      const messages = snapshot().messages.map((message) => ({
+        ...message,
+        blocks: [...message.blocks!.slice(0, -1), { kind: 'text' as const, text }],
+      }));
+      await f.send({
+        ...live,
+        sequence: index + 2,
+        messages,
+        requireApprovalForEdits: enabled,
+        approvalModeError: error,
+      });
+      assert.equal(toggle().getAttribute('aria-pressed'), String(enabled && !error));
+      assert.match(
+        toggle().title,
+        error ? /could not be applied.*Policy storage unavailable/ : enabled ? /on/ : /off/
+      );
+      assert.equal(
+        toggle().getAttribute('aria-label'),
+        error ? 'Manual Mode unavailable' : 'Manual Mode'
+      );
+      assert.equal(doc.querySelector('#composer-field'), field);
+      assert.equal(field.value, 'My newer unsent draft');
+      assert.equal(field.selectionStart, 3);
+      assert.equal(field.selectionEnd, 8);
+      assert.equal(doc.querySelector('#pi-working'), working, 'animation node is not restarted');
+      assert.equal(doc.querySelector('.js-stream-text'), answer, 'typewriter node remains stable');
+      assert.equal(answer.getAttribute('data-raw'), text);
+    }
+  } finally {
+    f.dom.window.close();
+  }
+});
+
+test('Follow Agent updates independently from Manual Mode during answer-only streaming', async () => {
+  const f = await frame();
+  try {
+    const live = {
+      connectionState: 'busy' as const,
+      isStreaming: true,
+      currentAssistantMessageId: 'reply',
+      requireApprovalForEdits: false,
+    };
+    await f.send({ ...live, followMode: 'off' });
+    const doc = f.w.document;
+    const field = doc.querySelector<HTMLTextAreaElement>('#composer-field')!;
+    field.value = 'My newer unsent draft';
+    field.dispatchEvent(new f.w.Event('input', { bubbles: true }));
+    field.setSelectionRange(3, 8);
+    const working = doc.querySelector('#pi-working');
+    const answer = doc.querySelector('.js-stream-text');
+    assert.ok(working);
+    assert.ok(answer);
+    const follow = () => doc.querySelector<HTMLButtonElement>('[data-action="toggleFollow"]')!;
+    const manual = () =>
+      doc.querySelector<HTMLButtonElement>('[data-command="piRpc.togglePermissionMode"]')!;
+    follow().click();
+    assert.equal(f.posted.at(-1)?.type, 'toggleFollow');
+    assert.equal(manual().getAttribute('aria-pressed'), 'false');
+    for (const [index, mode] of (['open', 'status', 'off', 'open'] as const).entries()) {
+      const text = `The answer keeps growing ${index}.`;
+      await f.send({
+        ...live,
+        sequence: index + 2,
+        followMode: mode,
+        messages: snapshot().messages.map((message) => ({
+          ...message,
+          blocks: [...message.blocks!.slice(0, -1), { kind: 'text' as const, text }],
+        })),
+      });
+      assert.equal(follow().getAttribute('aria-pressed'), String(mode === 'open'));
+      assert.equal(follow().classList.contains('is-on'), mode === 'open');
+      assert.match(follow().title, mode === 'open' ? /click to stop/ : /click to start/);
+      assert.equal(manual().getAttribute('aria-pressed'), 'false');
+      assert.equal(manual().getAttribute('aria-label'), 'Manual Mode');
+      assert.equal(doc.querySelector('#composer-field'), field);
+      assert.equal(field.value, 'My newer unsent draft');
+      assert.equal(field.selectionStart, 3);
+      assert.equal(field.selectionEnd, 8);
+      assert.equal(doc.querySelector('#pi-working'), working);
+      assert.equal(doc.querySelector('.js-stream-text'), answer);
+      assert.equal(answer.getAttribute('data-raw'), text);
+    }
+    manual().click();
+    assert.equal(f.posted.at(-1)?.type, 'executeCommand');
+    assert.equal(f.posted.at(-1)?.command, 'piRpc.togglePermissionMode');
+    assert.equal(follow().getAttribute('aria-pressed'), 'true');
   } finally {
     f.dom.window.close();
   }

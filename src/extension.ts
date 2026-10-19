@@ -18,13 +18,9 @@ import {
 } from './process/piLauncher';
 import { registerChatOps } from './commands/chatOps';
 import { promptChatName, trackSessionName } from './commands/nameCommand';
-import {
-  initSharedPiHost,
-  disposeSharedPiHost,
-  recycleIdleSharedPiHostWorkers,
-} from './process/sharedPiHost';
+import { initSharedPiHost, disposeSharedPiHost } from './process/sharedPiHost';
 import { TurnReview } from './review/turnReview';
-import { syncApprovalGateForWorkspace } from './review/approvalGate';
+import { syncApprovalGateForWorkspace, toggleApprovalGateMode } from './review/approvalGate';
 import { pickChatModel } from './commands/modelPicker';
 import { pickThinkingLevel } from './commands/thinkingPicker';
 import {
@@ -226,6 +222,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       'Pi is not installed: install it (npm install -g @earendil-works/pi-coding-agent) or enable piRpc.autoInstall'
     );
   };
+  // Install the dynamic gate before any warm worker can load project extensions.
+  await syncApprovalGateForWorkspace(
+    context.extensionUri,
+    vscode.workspace.getConfiguration('piRpc').get<boolean>('requireApprovalForEdits', false)
+  ).catch((error: unknown) => {
+    logger.error(`Manual Mode setup failed: ${String(error)}`);
+    if (vscode.workspace.getConfiguration('piRpc').get<boolean>('requireApprovalForEdits', false)) {
+      void vscode.window.showErrorMessage(
+        'Pi Manual Mode could not be applied. Tools stay blocked until setup succeeds; history remains available.'
+      );
+    }
+  });
   {
     // Both shared and dedicated SDK sessions use the same typed transport/host.
     const workers = getSettings().runtimeWorkers;
@@ -294,12 +302,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const turnReview = new TurnReview(logger, context.workspaceState);
   const inlineReview = new InlineReview(turnReview);
   context.subscriptions.push(inlineReview);
-  // True pre-apply approval gate (opt-in): sync on activation so a workspace
-  // opened with the setting already on gets it without waiting for a toggle.
-  void syncApprovalGateForWorkspace(
-    context.extensionUri,
-    vscode.workspace.getConfiguration('piRpc').get<boolean>('requireApprovalForEdits', false)
-  );
   // The sidebar always owns the Agentic chat list; conversations open in tabs.
   let agenticListHost: AgenticChatListHost | undefined;
   const attachSidebar = (view: vscode.WebviewView): void => {
@@ -937,14 +939,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   registrations.set('piRpcInternal.hunkRevertAll', async (fsPath?: unknown) => {
     await inlineReview.revertAll(String(fsPath));
   });
-  // Claude-style mode switch: one click flips Auto <-> Approve-every-edit.
-  // Reuses the existing onDidChangeConfiguration sync (writes .pi/settings.json
-  // + .pi/extensions/pi-approval-gate.ts, offers a runtime restart).
+  // Serialize clicks and persist the requested mode before changing project policy.
   registrations.set('piRpc.togglePermissionMode', async () => {
     chatTabs.assertNoManualCompactions();
     const config = vscode.workspace.getConfiguration('piRpc');
-    const next = !config.get<boolean>('requireApprovalForEdits', false);
-    await config.update('requireApprovalForEdits', next, vscode.ConfigurationTarget.Workspace);
+    await toggleApprovalGateMode(
+      context.extensionUri,
+      () =>
+        vscode.workspace.getConfiguration('piRpc').get<boolean>('requireApprovalForEdits', false),
+      (enabled) => {
+        if (enabled) {
+          for (const controller of registry.list()) controller.assertManualModeAvailable();
+        }
+        return config.update(
+          'requireApprovalForEdits',
+          enabled,
+          vscode.ConfigurationTarget.Workspace
+        );
+      }
+    );
   });
   // Zed-style follow mode: cycle open → status → off from the palette.
   registrations.set('piRpc.toggleFollowAgent', async () => {
@@ -1403,10 +1416,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   registrations.set('piRpcInternal.openSettings', async () => {
     await vscode.commands.executeCommand('workbench.action.openSettings', '@ext:mr-narender.pi');
   });
-  // Debounce for the approval-gate config-change reaction (worker recycling +
-  // notification) — rapid toggling must settle to ONE outcome, not one per
-  // click (VS Code has no API to dismiss an already-shown toast).
-  let approvalGateReactionTimer: ReturnType<typeof setTimeout> | undefined;
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((event) => {
       if (
@@ -1424,33 +1433,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         const enabled = vscode.workspace
           .getConfiguration('piRpc')
           .get<boolean>('requireApprovalForEdits', false);
-        // Instant visual feedback on EVERY click — this was the missing
-        // piece that made the toggle look "stuck": the setting always
-        // flipped correctly, but no webview was ever told to re-render, so
-        // the icon never reflected it. The icon flip itself IS the
-        // confirmation — no toast on top of it. A popup restating what you
-        // just saw happen, plus a decision button, was double confirmation
-        // for a single click. Any nuance (chats still on the old setting)
-        // lives in the icon's tooltip — checked when you're curious, not
-        // pushed at you.
-        void chatTabs.rerenderAll();
-        void syncApprovalGateForWorkspace(context.extensionUri, enabled).then(() => {
-          // Pi only re-reads .pi/settings.json (and a newly toggled project
-          // extension) at process boot — confirmed in Pi's own source,
-          // newSession() never touches the extension runtime. A full runtime
-          // restart would interrupt any chat mid-conversation just for a
-          // settings toggle, so instead: recycle only IDLE workers (zero
-          // disruption — nothing was running on them) and re-warm the pool so
-          // fresh capacity is ready. Debounced so rapid re-toggling settles
-          // to one recycle, not one per click.
-          clearTimeout(approvalGateReactionTimer);
-          approvalGateReactionTimer = setTimeout(() => {
-            const { recycled, stillBusy } = recycleIdleSharedPiHostWorkers();
-            logger.info(
-              `[approval-gate] settled: recycled ${recycled} idle worker(s), ${stillBusy} still busy`
+        void syncApprovalGateForWorkspace(context.extensionUri, enabled)
+          .catch((error: unknown) => {
+            logger.error(`Manual Mode sync failed: ${String(error)}`);
+            void vscode.window.showErrorMessage(
+              'Pi Manual Mode could not be applied. Check the Pi output before running tools.'
             );
-          }, 600);
-        });
+          })
+          .finally(() => void chatTabs.rerenderAll());
       }
     })
   );

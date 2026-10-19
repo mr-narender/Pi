@@ -37,6 +37,12 @@ import type { SessionIndexService } from './sessionIndexService';
 import { IDE_REQUEST_TITLE, runIdeQuery } from '../ide/query';
 import { parseMcpStatus } from '../mcp/status';
 import { modelToolsSnapshot } from '../modelTools/snapshot';
+import {
+  isManualModeRequested,
+  assertManualModeExtensionsEnabled,
+  prepareApprovalGateForFolder,
+  waitForApprovalGateSync,
+} from '../review/approvalGate';
 import { randomUUID } from 'node:crypto';
 
 export class SessionController implements vscode.Disposable {
@@ -51,6 +57,9 @@ export class SessionController implements vscode.Disposable {
   private state: ControllerState;
   private restartAttempts = 0;
   private startInProgress = false;
+  private startAdmission?: { epoch: number; navigation: number; promise: Promise<void> };
+  private startEpoch = 0;
+  private runtimeExtensionsDisabled = false;
   private stopping = false;
   private authDisposed = false;
   private lastLoggedConnectionState?: ControllerState['connectionState'];
@@ -61,6 +70,7 @@ export class SessionController implements vscode.Disposable {
   // writes so live-reload only reacts to EXTERNAL (terminal) changes.
   private selfWriteAt = Date.now();
   private runRevision = 0;
+  private nativeEventRevision = 0;
   private readonly ideRequests = new Map<AbortController, () => boolean>();
 
   public constructor(
@@ -1010,6 +1020,39 @@ export class SessionController implements vscode.Disposable {
   }
 
   public async start(sessionFile = this.state.state.sessionFile): Promise<void> {
+    if (this.authDisposed) return;
+    if (this.startAdmission) {
+      const pending = this.startAdmission;
+      if (pending.epoch === this.startEpoch && pending.navigation === this.navigationEpoch)
+        return pending.promise;
+      const epoch = this.startEpoch;
+      const navigation = this.navigationEpoch;
+      await pending.promise.catch(() => undefined);
+      if (this.startEpoch !== epoch || this.navigationEpoch !== navigation) return;
+      return this.start(sessionFile);
+    }
+    const epoch = this.startEpoch;
+    const navigation = this.navigationEpoch;
+    this.stopping = false;
+    this.startInProgress = true;
+    const valid = () =>
+      !this.authDisposed &&
+      !this.stopping &&
+      this.startEpoch === epoch &&
+      this.navigationEpoch === navigation;
+    const pending = { epoch, navigation, promise: this.startNow(sessionFile, valid) };
+    this.startAdmission = pending;
+    try {
+      await pending.promise;
+    } finally {
+      if (this.startAdmission === pending) {
+        this.startAdmission = undefined;
+        this.startInProgress = false;
+      }
+    }
+  }
+
+  private async startNow(sessionFile: string | undefined, valid: () => boolean): Promise<void> {
     this.assertNoManualCompaction();
     if (this.state.connectionState === 'ready' || this.state.connectionState === 'busy') {
       return;
@@ -1017,7 +1060,9 @@ export class SessionController implements vscode.Disposable {
     if (this.folder.uri.scheme !== 'file') {
       throw new Error('Virtual workspaces are unsupported for Pi');
     }
-    this.stopping = false;
+    await prepareApprovalGateForFolder(this.folder);
+    if (!valid()) return;
+    assertManualModeExtensionsEnabled(this.settings.additionalArgs ?? []);
     // While an explicit start (incl. the recovery ladder) is in flight, the crash
     // 'exit' handler must NOT also auto-restart — start() owns recovery.
     this.startInProgress = true;
@@ -1041,16 +1086,21 @@ export class SessionController implements vscode.Disposable {
                 },
               ]
             : []),
-          {
-            offline: false,
-            noExtensions: true,
-            note: 'loaded this chat with Pi extensions disabled (an extension failed to start even online). Restart Pi to re-enable them.',
-          },
+          ...(!isManualModeRequested()
+            ? [
+                {
+                  offline: false,
+                  noExtensions: true,
+                  note: 'loaded this chat with Pi extensions disabled (an extension failed to start even online). Restart Pi to re-enable them.',
+                },
+              ]
+            : []),
         ]
       : [{ offline: configuredOffline, noExtensions: false }];
 
     let lastError: unknown;
     for (let index = 0; index < ladder.length; index += 1) {
+      if (!valid()) return;
       const attempt = ladder[index]!;
       this.state = {
         ...this.state,
@@ -1058,8 +1108,12 @@ export class SessionController implements vscode.Disposable {
         connectionState: 'starting',
       };
       this.fire();
+      if (!valid()) return;
       try {
+        assertManualModeExtensionsEnabled(attempt.noExtensions ? ['--no-extensions'] : []);
+        this.runtimeExtensionsDisabled = attempt.noExtensions;
         await this.launchOnce(sessionFile, attempt);
+        if (!valid()) return;
         this.restartAttempts = 0;
         this.startInProgress = false;
         if (index > 0 && attempt.note) {
@@ -1068,7 +1122,7 @@ export class SessionController implements vscode.Disposable {
         }
         return;
       } catch (error) {
-        if (this.stopping || this.authDisposed) {
+        if (!valid()) {
           this.startInProgress = false;
           return;
         }
@@ -1147,6 +1201,7 @@ export class SessionController implements vscode.Disposable {
   }
 
   public async stop(): Promise<void> {
+    this.startEpoch = (this.startEpoch ?? 0) + 1;
     for (const request of this.ideRequests?.keys() ?? []) request.abort();
     cancelModelOperations(this);
     this.stopping = true;
@@ -1425,6 +1480,17 @@ export class SessionController implements vscode.Disposable {
   }
 
   private promptAdmissions: Promise<unknown> = Promise.resolve();
+  private promptAbortEpoch = 0;
+
+  public assertManualModeAvailable(): void {
+    assertManualModeExtensionsEnabled(this.settings?.additionalArgs ?? [], true);
+    if (this.runtimeExtensionsDisabled)
+      assertManualModeExtensionsEnabled(['--no-extensions'], true);
+  }
+
+  private assertManualModeRuntime(): void {
+    if (isManualModeRequested()) this.assertManualModeAvailable();
+  }
 
   public async prompt(
     message: string,
@@ -1435,7 +1501,15 @@ export class SessionController implements vscode.Disposable {
     this.assertNoManualCompaction();
     assertNotCoreSlashPrompt(message);
     const origin = this.captureOutboxOrigin();
-    const action = () => this.promptNow(message, mode, images, options, origin);
+    const abortEpoch = this.promptAbortEpoch;
+    const action = () =>
+      this.promptNow(
+        message,
+        mode,
+        images,
+        options,
+        () => abortEpoch === this.promptAbortEpoch && origin()
+      );
     // SDK hosts acknowledge preflight; stock RPC may wait for the whole run.
     if (!this.sdkRoot) return action();
     const pending = (this.promptAdmissions ?? Promise.resolve()).then(action);
@@ -1454,6 +1528,8 @@ export class SessionController implements vscode.Disposable {
   ): Promise<JsonObject | undefined> {
     const dispatch = { attempted: false, valid };
     try {
+      await waitForApprovalGateSync();
+      this.assertManualModeRuntime();
       if (!valid()) throw new Error('The originating chat changed.');
       if (options?.outbox) {
         if (
@@ -1491,6 +1567,10 @@ export class SessionController implements vscode.Disposable {
     const client = this.requireClient();
     this.runRevision = (this.runRevision ?? 0) + 1;
     const revision = this.runRevision;
+    const abortEpoch = this.promptAbortEpoch ?? 0;
+    const eventRevision = this.nativeEventRevision ?? 0;
+    const navigation = this.navigationEpoch;
+    let nativeDispatched = false;
     const originValid = this.captureLocalCommandOrigin();
     const previous = this.state;
     const restore = () => {
@@ -1513,8 +1593,13 @@ export class SessionController implements vscode.Disposable {
     };
     this.fire();
     try {
+      await waitForApprovalGateSync();
+      this.assertManualModeRuntime();
+      if (!dispatch.valid()) throw new Error('The originating chat changed.');
+      this.assertNoManualCompaction();
       // Native prompt() chooses idle/steer/queue atomically; handled prompts
       // have no agent run and therefore emit no agent_settled event.
+      nativeDispatched = true;
       const result = options?.outbox
         ? await client.prompt(
             message,
@@ -1530,12 +1615,32 @@ export class SessionController implements vscode.Disposable {
       }
       return result;
     } catch (error) {
-      restore();
+      const aborts = this.promptAbortEpoch - abortEpoch;
+      if (
+        !nativeDispatched &&
+        previous.connectionState === 'ready' &&
+        aborts > 0 &&
+        this.runRevision === revision + aborts &&
+        (this.nativeEventRevision ?? 0) === eventRevision &&
+        this.navigationEpoch === navigation &&
+        !this.authDisposed &&
+        originValid() &&
+        this.state.connectionState === 'busy' &&
+        this.state.runOutcome === 'aborted'
+      ) {
+        this.state = {
+          ...this.state,
+          connectionState: 'ready',
+          state: { ...this.state.state, isStreaming: false },
+        };
+        this.fire();
+      } else restore();
       throw error;
     }
   }
 
   public async abort(): Promise<void> {
+    this.promptAbortEpoch = (this.promptAbortEpoch ?? 0) + 1;
     const operation = this.manualCompactOperation;
     // Invalidate the reservation before native abort: preflight has no native work to cancel.
     if (operation) operation.cancelled = true;
@@ -2482,6 +2587,7 @@ export class SessionController implements vscode.Disposable {
   }
 
   private onEvent(event: RpcEvent): void {
+    this.nativeEventRevision = (this.nativeEventRevision ?? 0) + 1;
     if (event.type === 'agent_start') {
       this.runRevision = (this.runRevision ?? 0) + 1;
       this.modelToolsView = undefined;
