@@ -327,21 +327,33 @@ test('parseWebviewMessage accepts attachFile/requestFileMentions (#9)', () => {
 });
 
 test('parseWebviewMessage accepts respondUi', () => {
-  assert.deepEqual(parseWebviewMessage({ type: 'respondUi', id: 'a', confirmed: true }), {
-    type: 'respondUi',
-    id: 'a',
-    confirmed: true,
-  });
-  assert.deepEqual(parseWebviewMessage({ type: 'respondUi', id: 'b', value: 'Allow' }), {
-    type: 'respondUi',
-    id: 'b',
-    value: 'Allow',
-  });
-  assert.deepEqual(parseWebviewMessage({ type: 'respondUi', id: 'c', cancelled: true }), {
-    type: 'respondUi',
-    id: 'c',
-    cancelled: true,
-  });
+  assert.deepEqual(
+    parseWebviewMessage({ type: 'respondUi', id: 'a', requestKey: 'key-a', confirmed: true }),
+    {
+      type: 'respondUi',
+      id: 'a',
+      requestKey: 'key-a',
+      confirmed: true,
+    }
+  );
+  assert.deepEqual(
+    parseWebviewMessage({ type: 'respondUi', id: 'b', requestKey: 'key-b', value: 'Allow' }),
+    {
+      type: 'respondUi',
+      id: 'b',
+      requestKey: 'key-b',
+      value: 'Allow',
+    }
+  );
+  assert.deepEqual(
+    parseWebviewMessage({ type: 'respondUi', id: 'c', requestKey: 'key-c', cancelled: true }),
+    {
+      type: 'respondUi',
+      id: 'c',
+      requestKey: 'key-c',
+      cancelled: true,
+    }
+  );
   assert.equal(parseWebviewMessage({ type: 'respondUi' }), undefined);
 });
 

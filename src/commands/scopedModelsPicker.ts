@@ -33,6 +33,17 @@ export async function pickScopedModels(
   const missingActive = snapshot.scoped.filter(
     (r) => !snapshot.models.some((m) => m.provider === r.provider && m.id === r.id)
   );
+  const unavailable = snapshot.diagnostics.filter((diagnostic) => diagnostic.code !== 'ambiguous');
+  const unavailableGlobal = snapshot.globalDiagnostics.filter(
+    (diagnostic) => diagnostic.code !== 'ambiguous'
+  );
+  const ambiguous = [
+    ...new Set(
+      [...snapshot.diagnostics, ...snapshot.globalDiagnostics]
+        .filter((diagnostic) => diagnostic.code === 'ambiguous')
+        .map((diagnostic) => diagnostic.pattern)
+    ),
+  ];
   const provenance = [
     missingActive.length
       ? `Applying replaces unavailable session refs: ${missingActive.map((r) => `${r.provider}/${r.id}`).join(', ')}.`
@@ -44,8 +55,11 @@ export async function pickScopedModels(
     snapshot.globalPatterns?.length
       ? `Saved global patterns: ${snapshot.globalPatterns.join(', ')}`
       : '',
-    snapshot.diagnostics.length
-      ? `Unavailable effective patterns: ${snapshot.diagnostics.map((d) => d.pattern).join(', ')}`
+    unavailable.length
+      ? `Unavailable effective patterns: ${unavailable.map((d) => d.pattern).join(', ')}`
+      : '',
+    ambiguous.length
+      ? `Ambiguous model patterns: ${ambiguous.join(', ')}. Pi reports matches across providers; use provider/id to choose one.`
       : '',
   ]
     .filter(Boolean)
@@ -76,7 +90,7 @@ export async function pickScopedModels(
       {
         label: 'Apply and save GLOBAL enabledModels',
         save: true,
-        detail: `${provenance} Replaces global patterns${snapshot.globalDiagnostics.length ? ', including unavailable patterns' : ''}. Empty [] is unrestricted at startup. Native locked storage is not crash-atomic.`,
+        detail: `${provenance} Replaces global patterns${unavailableGlobal.length ? ', including unavailable patterns' : ''}. Empty [] is unrestricted at startup. Native locked storage is not crash-atomic.`,
       },
     ],
     {
@@ -86,5 +100,12 @@ export async function pickScopedModels(
     }
   );
   if (!decision || !valid()) return false;
-  return mutate(() => controller.applyScopedModels(refs, snapshot.revision, decision.save, true));
+  return mutate(() =>
+    controller.applyScopedModels(
+      refs,
+      snapshot.revision,
+      decision.save,
+      unavailableGlobal.length > 0
+    )
+  );
 }

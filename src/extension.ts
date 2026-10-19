@@ -1,4 +1,6 @@
 import * as vscode from 'vscode';
+import { isBlockingExtensionUi } from './rpc/protocol';
+import { setIdeExtensionPath } from './ide/query';
 import { showChatSession } from './commands/sessionCommand';
 import { exportCommand } from './commands/exportCommand';
 import { compactMenu } from './commands/compactCommand';
@@ -115,6 +117,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     'cli.js'
   ).fsPath;
   setBundledPiCliPath(bundledCli);
+  setIdeExtensionPath(
+    vscode.Uri.joinPath(context.extensionUri, 'resources', 'pi-vscode-ide.mjs').fsPath
+  );
   logger.info(
     `Bundled Pi CLI: ${existsSync(bundledCli) ? bundledCli : '(not bundled — managed bootstrap provides Pi)'}`
   );
@@ -357,7 +362,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     uiState,
     (controller) => chatTabs.hasOpenChatFor(controller),
     (controller) => chatTabs.isControllerVisible(controller),
-    (controller) => chatTabs.revealController(controller)
+    (controller) => chatTabs.revealController(controller),
+    (controller, request) => chatTabs.presentDraftProposal(controller, request)
   );
   context.subscriptions.push(
     logger,
@@ -397,7 +403,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     if (snap.connectionState === 'faulted') {
       return 'faulted';
     }
-    if ((snap.pendingUi?.length ?? 0) > 0) {
+    if (snap.pendingUi.some(isBlockingExtensionUi)) {
       return 'waiting';
     }
     if (snap.state.isStreaming === true || snap.connectionState === 'busy') {

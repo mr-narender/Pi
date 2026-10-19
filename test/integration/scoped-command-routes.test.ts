@@ -113,6 +113,27 @@ test('scopes: actual Agentic editor UI staging, cancellation, newer draft, two-c
     ]);
     assert.equal(state.draft, '');
     assert.equal(state.pendingImages.length, 1);
+    catalog.globalPatterns = ['one'];
+    catalog.globalDiagnostics = [{ code: 'ambiguous', pattern: 'one' }];
+    catalog.diagnostics = [{ code: 'ambiguous', pattern: 'one' }] as never[];
+    state.draft = '/scoped-models';
+    const warningOnly = send();
+    const warningSelection = await stage();
+    warningSelection.resolve([warningSelection.items[0]]);
+    const warningDecision = await stage();
+    assert.match(warningDecision.items[1].detail, /Ambiguous model patterns: one/);
+    assert.match(warningDecision.items[1].detail, /use provider\/id/);
+    assert.doesNotMatch(warningDecision.items[1].detail, /unavailable/i);
+    warningDecision.resolve(warningDecision.items[1]);
+    await warningOnly;
+    assert.equal(
+      applied.at(-1)[3],
+      false,
+      'ambiguity does not request unavailable-pattern consent'
+    );
+    catalog.globalPatterns = ['missing/*'];
+    catalog.globalDiagnostics = [{ code: 'no-match', pattern: 'missing/*' }];
+    catalog.diagnostics = [];
     fail = true;
     state.draft = '/scoped-models';
     const failing = send();
@@ -139,7 +160,7 @@ test('scopes: actual Agentic editor UI staging, cancellation, newer draft, two-c
     ld.resolve(ld.items[0]);
     await late;
     assert.equal(state.draft, 'new typed draft');
-    const expectedApplied = 1;
+    const expectedApplied = 2;
     assert.equal(
       applied.length,
       expectedApplied,

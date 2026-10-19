@@ -1039,16 +1039,20 @@ test('rpc.ui.setTitle', () => {
 });
 
 test('rpc.ui.setEditorText', () => {
-  const next = reduceExtensionUiRequest(
-    createInitialControllerState('workspace', '/tmp/workspace'),
-    {
-      type: 'extension_ui_request',
-      id: 'u9',
-      method: 'set_editor_text',
-      text: 'draft body',
-    }
-  );
-  assert.equal(next.draft, 'draft body');
+  for (const draft of ['', 'Unsent text']) {
+    const next = reduceExtensionUiRequest(
+      { ...createInitialControllerState('workspace', '/tmp/workspace'), draft },
+      {
+        type: 'extension_ui_request',
+        id: 'u9',
+        method: 'set_editor_text',
+        text: 'draft body',
+      }
+    );
+    assert.equal(next.draft, draft);
+    assert.equal(next.pendingUi.at(-1)?.method, 'set_editor_text');
+    assert.equal(next.pendingUi.at(-1)?.text, 'draft body');
+  }
 });
 
 test('rpc.shape.state', () => {

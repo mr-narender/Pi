@@ -8,6 +8,46 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SharedPiHost } from '../../src/process/sharedPiHost';
 
+test('shared session open preserves actionable native ambiguity and closes the failed channel', async () => {
+  const host: any = new SharedPiHost(
+    'unused',
+    {},
+    { info() {}, warn() {}, error() {} },
+    async () => 'unused',
+    1
+  );
+  const commands: any[] = [];
+  const conn = {
+    warm: true,
+    channels: new Map(),
+    writeEnvelope(key: string, command: any) {
+      commands.push(command);
+      if (command.type === 'open')
+        conn.channels.get(key).onOpen(false, 'SDK_STARTUP_MODEL_AMBIGUOUS');
+    },
+  };
+  host.pickConn = async () => conn;
+  await assert.rejects(
+    host.openSessionRaw({ cwd: '/owned', args: ['--model', 'duplicate'] }),
+    (error: any) => {
+      assert.equal(error.code, 'SDK_STARTUP_MODEL_AMBIGUOUS');
+      assert.match(error.message, /more than one provider/);
+      assert.match(error.message, /--provider or provider\/model/);
+      return true;
+    }
+  );
+  assert.equal(conn.channels.size, 0);
+  assert.deepEqual(
+    commands.map((command) => command.type),
+    ['open', 'close']
+  );
+  assert.deepEqual(
+    commands[0].args,
+    ['--model', 'duplicate'],
+    'configured model remains unchanged'
+  );
+});
+
 test('supervisor keeps probe and subprocess bound despite async PATH/settings drift; shared/dedicated use captured roots', async () => {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), 'pi-supervisor-metadata-')));
   const originalPath = process.env.PATH;

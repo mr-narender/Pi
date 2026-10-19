@@ -76,6 +76,14 @@ All command handlers add a correlation id, validate the matching response comman
 | E-016 | `auto_retry_end`: success/attempt/finalError?      | Retry card                              | SC, CHAT     | `rpc.event.retryEnd`        | Success/final failure represented; waits for settled.                                |
 | E-017 | `extension_error`: path/event/error                | Notification/Diagnostics                | DX, TV       | `rpc.event.extensionError`  | Error is visible and redacted; agent remains usable.                                 |
 
+### GUI-only MCP status
+
+`mcp_status` is an on-demand GUI SDK bridge, not a stock Pi RPC command. It calls only the native `builtin:mcp` empty-argument handler using a private RPC notification context, with correlated origin checks and a deadline. The GUI shows bounded, redacted snapshots reported by Pi; tool history never establishes current server health. Unsupported SDKs, stock RPC and explicit native extension exclusions remain unsupported. Audited Pi 1.3.0 uses the same bridge; the configured Pi installation remains authoritative and no other version is installed. The upstream RPC drift baseline remains unchanged because this command is a GUI-only addition.
+
+### GUI-only model tools
+
+`read_model_tools` and `set_model_tools` are GUI-only SDK capabilities, not stock Pi RPC commands. The Model tools editor fetches the public, filtered `getAllTools()` and `getActiveToolNames()` catalog only on demand. Apply requires the same originating chat, an idle native session and an unchanged catalog/active revision, then calls public `setActiveToolsByName()` once and reads back its actual result. Hidden/excluded tools stay unavailable; deferred tools may remain callable independently of model declarations. Pi 1.3.0 records the selection when a subsequent turn runs and restores that recorded loadout on resume; Pi 1.2.0 applies it to the current runtime and returns to its native startup defaults when reopened. The host reports this distinction explicitly; no extension restoration, global defaults or eager startup catalog are added. Older SDKs and stock RPC do not advertise these qualified capabilities. `model-tools-backend.test.ts` covers stale origins/catalogs, unsupported backends, native partial effects and draft preservation; `model-tools-native.test.ts` qualifies the installed SDK route. These additions do not change the upstream RPC drift baseline.
+
 ### Source-observed compatibility events
 
 `rpc-mode.js` forwards these installed `AgentSessionEvent` variants although `rpc.md` omits them. They are accepted and tested but are not required for authoritative UX (see [RECON.md](RECON.md#documentation-discrepancies-and-conservative-decisions)).
@@ -99,17 +107,28 @@ All command handlers add a correlation id, validate the matching response comman
 
 ## Extension UI requests
 
-| ID    | Method/fields                       | VS Code surface and action ID  | Component | Test                   | Acceptance criterion                                                                                                                                                   |
-| ----- | ----------------------------------- | ------------------------------ | --------- | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| U-001 | `select`: title/options/timeout?    | Quick Pick                     | XUI       | `rpc.ui.select`        | Exact selected string or cancelled; timeout/stale request auto-dismissed.                                                                                              |
-| U-002 | `confirm`: title/message/timeout?   | Modal warning                  | XUI       | `rpc.ui.confirm`       | confirmed boolean or cancelled; safe default false.                                                                                                                    |
-| U-003 | `input`: title/placeholder/timeout? | Input Box                      | XUI       | `rpc.ui.input`         | Empty string remains a value when submitted; cancel distinct; secrets use password mode only when explicitly signaled by trusted policy (protocol has no secret flag). |
-| U-004 | `editor`: title/prefill             | Untitled multiline editor flow | XUI       | `rpc.ui.editor`        | Explicit Submit/Cancel preserves newlines; no invented timeout.                                                                                                        |
-| U-005 | `notify`: message/type              | Native notification            | XUI       | `rpc.ui.notify`        | info/warning/error default info; no response emitted.                                                                                                                  |
-| U-006 | `setStatus`: key/text?              | Keyed status bar               | XUI       | `rpc.ui.setStatus`     | Upsert/clear by key, isolated per controller; no response.                                                                                                             |
-| U-007 | `setWidget`: key/lines?/placement?  | Accessible keyed chat widget   | XUI, CHAT | `rpc.ui.setWidget`     | Above/below composer placement, clear semantics, string arrays only; component factories are ignored locally with no extra wire traffic; no response.                  |
-| U-008 | `setTitle`: title                   | Chat panel title               | XUI, CHAT | `rpc.ui.setTitle`      | Sanitized bounded title; no response.                                                                                                                                  |
-| U-009 | `set_editor_text`: text             | Composer draft                 | XUI, CHAT | `rpc.ui.setEditorText` | Does not silently destroy non-empty user draft; no response.                                                                                                           |
+| ID    | Method/fields                       | VS Code surface and action ID             | Component | Test                   | Acceptance criterion                                                                                                                                                                 |
+| ----- | ----------------------------------- | ----------------------------------------- | --------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| U-001 | `select`: title/options/timeout?    | Inline chat; native Quick Pick fallback   | XUI, CHAT | `rpc.ui.select`        | Exact selected string or cancelled; timeout/stale request auto-dismissed.                                                                                                            |
+| U-002 | `confirm`: title/message/timeout?   | Inline chat; native warning fallback      | XUI, CHAT | `rpc.ui.confirm`       | confirmed boolean or cancelled; safe default false.                                                                                                                                  |
+| U-003 | `input`: title/placeholder/timeout? | Inline chat; native Input Box fallback    | XUI, CHAT | `rpc.ui.input`         | Empty string remains a value when submitted; Cancel distinct; protocol has no secret flag.                                                                                           |
+| U-004 | `editor`: title/prefill             | Inline multiline editor                   | XUI       | `rpc.ui.editor`        | Explicit Submit/Cancel preserves newlines; no invented timeout or temporary editor file.                                                                                             |
+| U-005 | `notify`: message/type              | Native notification                       | XUI       | `rpc.ui.notify`        | info/warning/error default info; no response emitted.                                                                                                                                |
+| U-006 | `setStatus`: key/text?              | Keyed status bar                          | XUI       | `rpc.ui.setStatus`     | Upsert/clear by key, isolated per controller; no response.                                                                                                                           |
+| U-007 | `setWidget`: key/lines?/placement?  | Keyed chat widget or terminal-only notice | XUI, CHAT | `rpc.ui.setWidget`     | String-array widgets replace/clear by key and placement; component factories are never invoked and produce a terminal-only unsupported notice without a phantom widget; no response. |
+| U-008 | `setTitle`: title                   | Chat panel title                          | XUI, CHAT | `rpc.ui.setTitle`      | Sanitized bounded title; no response.                                                                                                                                                |
+| U-009 | `set_editor_text`: text             | Composer draft suggestion                 | XUI, CHAT | `rpc.ui.setEditorText` | Every suggestion waits for Use/Keep; revision/origin/reset checks preserve newer text and attachments; no native callback response.                                                  |
+
+Dialog responses are bound to the admitted request and originating client/session;
+they are transport writes, without a native application acknowledgement. An uncertain
+write is never automatically retried. Passive draft suggestions do not indicate that
+Pi is waiting for input. The synchronous `getEditorText()` getter returns `''`, as in
+stock RPC; this bridge does not claim to mirror live GUI text into a synchronous call.
+
+The extension Outbox holds editable follow-ups until handoff; Pi-accepted entries
+are read-only, restored pending entries stay paused, and uncertain delivery never
+triggers automatic resend. IDE queries are read-only and open result files only on
+an explicit user click. These GUI contracts do not add stock RPC commands.
 
 ## Data-shape and state coverage
 

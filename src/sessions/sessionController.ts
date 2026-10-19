@@ -4,6 +4,7 @@ import {
   waitForModelOperations,
   cancelModelOperations,
   hasModelOperation,
+  beginModelOperation,
 } from '../commands/modelOperations';
 import { mergeLocalCommands } from '../commands/localCommand';
 import { projectSessionInfo } from './sessionInfo';
@@ -15,6 +16,7 @@ import { PiProcessSupervisor } from '../process/supervisor';
 import type { RpcClient } from '../rpc/client';
 import {
   isKnownEventType,
+  isBlockingExtensionUi,
   type ExtensionUiRequest,
   type JsonObject,
   type RpcEvent,
@@ -32,8 +34,16 @@ import { stat } from 'node:fs/promises';
 import { canonicalizeSessionPath } from './paths';
 import { readSessionHistory } from './sessionHistory';
 import type { SessionIndexService } from './sessionIndexService';
+import { IDE_REQUEST_TITLE, runIdeQuery } from '../ide/query';
+import { parseMcpStatus } from '../mcp/status';
+import { modelToolsSnapshot } from '../modelTools/snapshot';
+import { randomUUID } from 'node:crypto';
 
 export class SessionController implements vscode.Disposable {
+  private uiAdmissions = new Map<
+    string,
+    { key: string; client: RpcClient; valid: () => boolean; responseState?: 'sending' | 'unknown' }
+  >();
   private readonly changeEmitter = new vscode.EventEmitter<ControllerState>();
   private readonly extensionUiEmitter = new vscode.EventEmitter<ExtensionUiRequest>();
   private readonly supervisor: PiProcessSupervisor;
@@ -51,6 +61,7 @@ export class SessionController implements vscode.Disposable {
   // writes so live-reload only reacts to EXTERNAL (terminal) changes.
   private selfWriteAt = Date.now();
   private runRevision = 0;
+  private readonly ideRequests = new Map<AbortController, () => boolean>();
 
   public constructor(
     public readonly folder: vscode.WorkspaceFolder,
@@ -62,7 +73,12 @@ export class SessionController implements vscode.Disposable {
     this.state = createInitialControllerState(folder.name, folder.uri.fsPath);
     this.supervisor = new PiProcessSupervisor(folder, logger, settings);
     this.supervisor.on('exit', () => {
-      this.state = { ...this.state, connectionState: this.stopping ? 'stopped' : 'faulted' };
+      this.state = {
+        ...this.state,
+        connectionState: this.stopping ? 'stopped' : 'faulted',
+        mcpStatus: undefined,
+        modelTools: undefined,
+      };
       this.fire();
       if (
         !this.stopping &&
@@ -145,6 +161,320 @@ export class SessionController implements vscode.Disposable {
       this.generation === generation &&
       this.state.state.sessionId === sessionId &&
       this.state.state.sessionFile === sessionFile;
+  }
+
+  public captureFileUndoOrigin(): () => boolean {
+    const origin = this.captureLocalCommandOrigin();
+    const navigation = this.navigationEpoch;
+    const run = this.runRevision;
+    return () =>
+      !this.authDisposed &&
+      this.navigationEpoch === navigation &&
+      this.runRevision === run &&
+      origin();
+  }
+
+  public captureOutboxOrigin(): () => boolean {
+    const origin = this.captureLocalCommandOrigin();
+    const navigation = this.navigationEpoch;
+    return () => !this.authDisposed && this.navigationEpoch === navigation && origin();
+  }
+
+  public outboxCompletionRevision = 0;
+
+  public async isOutboxReady(requireIdle: boolean): Promise<boolean> {
+    const valid = this.captureOutboxOrigin();
+    const locallyBusy = () =>
+      this.lifecyclePending ||
+      this.manualCompactPending ||
+      this.autoCompactInFlight ||
+      this.bashPending ||
+      hasModelOperation(this) ||
+      this.state.switchingSession ||
+      this.state.state.isCompacting ||
+      !['ready', 'busy'].includes(this.state.connectionState);
+    if (locallyBusy()) return false;
+    const client = this.requireClient();
+    const capabilities = await client.getCapabilities().catch(() => {
+      throw Object.assign(
+        new Error(
+          'Outbox could not confirm safe delivery with this Pi backend. Nothing was sent. Send directly or use a supported SDK runtime.'
+        ),
+        { outboxNotDispatched: true }
+      );
+    });
+    if (!valid()) throw new Error('The originating chat changed.');
+    const engine = capabilities?.engineCommands;
+    if (
+      !engine ||
+      typeof engine !== 'object' ||
+      Array.isArray(engine) ||
+      engine.outbox_prompt !== true
+    )
+      throw Object.assign(
+        new Error(
+          'This Pi backend cannot safely release Outbox. Send directly or use a supported SDK runtime.'
+        ),
+        { outboxNotDispatched: true }
+      );
+    const native = await client.getState();
+    if (
+      !valid() ||
+      !native ||
+      native.sessionId !== this.state.state.sessionId ||
+      native.sessionFile !== this.state.state.sessionFile
+    )
+      throw new Error('The originating chat changed.');
+    if (
+      locallyBusy() ||
+      native.isCompacting ||
+      native.isRetrying ||
+      native.isBashRunning ||
+      native.hasPendingBashMessages ||
+      native.recoveryRequired ||
+      native.pendingMessageCount
+    )
+      return false;
+    return !requireIdle || native.isIdle === true;
+  }
+
+  private mcpCheck: { valid: () => boolean } | undefined;
+  private modelToolsCheck: { valid: () => boolean } | undefined;
+  private modelToolsView: { valid: () => boolean; revision: string } | undefined;
+
+  public requestModelTools(requestId: string, surfaceValid: () => boolean): Promise<void> {
+    return this.runModelTools(requestId, surfaceValid);
+  }
+
+  public applyModelTools(
+    requestId: string,
+    revision: string,
+    names: string[],
+    surfaceValid: () => boolean
+  ): Promise<void> {
+    return this.runModelTools(requestId, surfaceValid, { revision, names });
+  }
+
+  private async runModelTools(
+    requestId: string,
+    surfaceValid: () => boolean,
+    selection?: { revision: string; names: string[] }
+  ): Promise<void> {
+    if (!surfaceValid() || !vscode.workspace.isTrusted) return;
+    const originKey = JSON.stringify([this.state.state.sessionFile, this.state.state.sessionId]);
+    const empty = {
+      originKey,
+      requestId,
+      tools: [],
+      active: [],
+      persistence:
+        this.state.modelTools?.originKey === originKey
+          ? this.state.modelTools.persistence
+          : undefined,
+    };
+    const previous = this.modelToolsView;
+    if (selection && (!previous?.valid() || previous.revision !== selection.revision)) {
+      this.state = {
+        ...this.state,
+        modelTools: {
+          ...empty,
+          status: 'stale',
+          message: 'The tool selection changed. Refresh it before applying.',
+        },
+      };
+      this.fire();
+      return;
+    }
+    const client = this.supervisor.currentClient,
+      capturedOrigin = this.captureOutboxOrigin();
+    const originValid = () =>
+      capturedOrigin() && ['ready', 'busy'].includes(this.state.connectionState);
+    if (!client || !['ready', 'busy'].includes(this.state.connectionState)) {
+      this.state = {
+        ...this.state,
+        modelTools: {
+          ...empty,
+          status: 'unknown',
+          message: 'Connect this chat before checking its tools.',
+        },
+      };
+      this.fire();
+      return;
+    }
+    let active = true;
+    const token = { valid: () => active && originValid() && surfaceValid() };
+    this.modelToolsCheck = token;
+    const baseValid = () => token.valid() && this.modelToolsCheck === token;
+    let mutation: ReturnType<typeof beginModelOperation> | undefined;
+    const valid = () => baseValid() && (!mutation || mutation.valid());
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const pending = { ...empty, status: selection ? ('applying' as const) : ('loading' as const) };
+    try {
+      if (selection) {
+        if (this.state.connectionState !== 'ready' || this.autoCompactInFlight)
+          throw new Error('MODEL_TOOLS_BUSY');
+        this.assertCompactIdle();
+        mutation = beginModelOperation(this, baseValid);
+      }
+      this.state = { ...this.state, modelTools: pending };
+      this.fire();
+      const operation = async () => {
+        const native = await client.getState();
+        if (
+          !valid() ||
+          !native ||
+          native.sessionId !== this.state.state.sessionId ||
+          native.sessionFile !== this.state.state.sessionFile
+        )
+          throw new Error('MODEL_TOOLS_STALE_ORIGIN');
+        if (selection) {
+          if (this.autoCompactInFlight) throw new Error('MODEL_TOOLS_BUSY');
+          this.assertCompactIdle(native, false, true);
+        }
+        if (!valid()) throw new Error('MODEL_TOOLS_STALE_ORIGIN');
+        return client.engineCommand(
+          selection ? 'set_model_tools' : 'read_model_tools',
+          { sessionId: native.sessionId, sessionFile: native.sessionFile, leafId: native.leafId },
+          selection ? { revision: selection.revision, names: selection.names } : {},
+          valid
+        );
+      };
+      const serialized = async () => {
+        if (!mutation) return operation();
+        let result: JsonObject | undefined;
+        const applied = await mutation.mutate(async () => {
+          result = await operation();
+        });
+        if (!applied) throw new Error('MODEL_TOOLS_STALE_ORIGIN');
+        return result;
+      };
+      const result = await Promise.race([
+        serialized(),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(Error('MODEL_TOOLS_TIMEOUT')), 12000);
+        }),
+      ]);
+      if (!valid()) return;
+      const snapshot = modelToolsSnapshot(result, originKey, requestId, !selection);
+      this.modelToolsView =
+        snapshot.status === 'ready' && snapshot.revision
+          ? { valid: originValid, revision: snapshot.revision }
+          : undefined;
+      this.state = { ...this.state, modelTools: snapshot };
+      this.fire();
+    } catch (error) {
+      if (!valid()) return;
+      const message = error instanceof Error ? error.message : '';
+      const unsupported =
+        /does not support (?:read|set)_model_tools|MODEL_TOOLS_UNSUPPORTED|Unknown command[^\n]*get_capabilities/i.test(
+          message
+        );
+      const stale = /STALE/.test(message),
+        busy =
+          /BUSY|Compaction requires an idle|Compaction is in progress|lifecycle operation/.test(
+            message
+          );
+      this.modelToolsView = undefined;
+      this.state = {
+        ...this.state,
+        modelTools: {
+          ...empty,
+          status: unsupported ? 'unsupported' : stale ? 'stale' : 'unknown',
+          message: unsupported
+            ? 'This runtime does not expose model tool selection. Existing tools are unchanged.'
+            : stale
+              ? 'The tool selection changed. Refresh it before applying.'
+              : busy
+                ? 'Finish the current operation, then refresh the tools.'
+                : selection
+                  ? 'The result could not be confirmed. Refresh the tools before changing them again.'
+                  : 'Tools could not be checked. Try again when this chat is ready.',
+        },
+      };
+      this.fire();
+    } finally {
+      active = false;
+      mutation?.finish();
+      clearTimeout(timer);
+      if (this.modelToolsCheck === token) this.modelToolsCheck = undefined;
+      if (this.state.modelTools === pending) {
+        this.state = { ...this.state, modelTools: undefined };
+        this.fire();
+      }
+    }
+  }
+
+  public async checkMcpStatus(surfaceValid: () => boolean): Promise<void> {
+    if (this.mcpCheck && !this.mcpCheck.valid()) this.mcpCheck = undefined;
+    if (
+      this.mcpCheck ||
+      !surfaceValid() ||
+      !vscode.workspace.isTrusted ||
+      this.state.connectionState !== 'ready'
+    )
+      return;
+    const originValid = this.captureFileUndoOrigin();
+    const client = this.supervisor.currentClient;
+    const origin = {
+      sessionId: this.state.state.sessionId,
+      sessionFile: this.state.state.sessionFile,
+      leafId: this.state.leafId,
+    };
+    if (!client) return;
+    let active = true;
+    const token = { valid: () => active && originValid() && surfaceValid() };
+    this.mcpCheck = token;
+    const valid = () => active && this.mcpCheck === token && originValid() && surfaceValid();
+    const checking = { status: 'checking' as const, servers: [] };
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      this.assertCompactIdle();
+      this.state = { ...this.state, mcpStatus: checking };
+      this.fire();
+      const operation = async () => {
+        const native = await client.getState();
+        if (
+          !valid() ||
+          !native ||
+          native.sessionId !== origin.sessionId ||
+          native.sessionFile !== origin.sessionFile
+        )
+          throw new Error('MCP_STATUS_STALE_ORIGIN');
+        this.assertCompactIdle(native);
+        if (!valid()) throw new Error('MCP_STATUS_STALE_ORIGIN');
+        return client.engineCommand('mcp_status', origin, {}, valid);
+      };
+      const result = await Promise.race([
+        operation(),
+        new Promise<never>((_resolve, reject) => {
+          timer = setTimeout(() => reject(new Error('MCP_STATUS_TIMEOUT')), 12000);
+        }),
+      ]);
+      if (!valid()) return;
+      this.state = { ...this.state, mcpStatus: parseMcpStatus(result) };
+      this.fire();
+    } catch (error) {
+      if (!valid()) return;
+      const message = error instanceof Error ? error.message : '';
+      this.state = {
+        ...this.state,
+        mcpStatus: {
+          status: /does not support mcp_status|Unknown command[^\n]*get_capabilities/i.test(message)
+            ? 'unsupported'
+            : 'unknown',
+          servers: [],
+        },
+      };
+      this.fire();
+    } finally {
+      active = false;
+      clearTimeout(timer);
+      if (this.mcpCheck === token) this.mcpCheck = undefined;
+      if (this.state.mcpStatus === checking) {
+        this.state = { ...this.state, mcpStatus: undefined };
+        this.fire();
+      }
+    }
   }
 
   /** Typed lifecycle capability. Identity changes are admitted only by this result,
@@ -738,6 +1068,10 @@ export class SessionController implements vscode.Disposable {
         }
         return;
       } catch (error) {
+        if (this.stopping || this.authDisposed) {
+          this.startInProgress = false;
+          return;
+        }
         lastError = error;
         this.logger.warn(
           `Pi start attempt ${index + 1}/${ladder.length} failed ` +
@@ -745,6 +1079,12 @@ export class SessionController implements vscode.Disposable {
             `${error instanceof Error ? error.message : String(error)}`
         );
         await this.supervisor.stop().catch(() => undefined);
+        if (
+          error instanceof Error &&
+          'code' in error &&
+          error.code === 'SDK_STARTUP_MODEL_AMBIGUOUS'
+        )
+          break;
       }
     }
 
@@ -763,30 +1103,42 @@ export class SessionController implements vscode.Disposable {
     sessionFile: string | undefined,
     options: { offline: boolean; noExtensions: boolean }
   ): Promise<void> {
-    const client = await this.supervisor.start(sessionFile, options);
-    client.onEvent((event) => this.onEvent(event));
-    client.onExtensionUi((request) => this.onExtensionUi(request));
-    client.onResponseFailure((response) => {
-      this.addDiagnostic(
-        response.command === 'parse' ? 'error' : 'warning',
-        `RPC response failed: ${response.command}`,
-        response.success
-          ? ''
-          : response.command === 'compact'
-            ? 'Compaction failed or was cancelled.'
-            : response.error
+    let bound: RpcClient | undefined;
+    const bindClient = (client: RpcClient) => {
+      if (bound === client) return;
+      bound = client;
+      client.onEvent((event) => this.onEvent(event));
+      client.onExtensionUi((request) => this.onExtensionUi(request, client));
+      client.onResponseFailure((response) => {
+        this.addDiagnostic(
+          response.command === 'parse' ? 'error' : 'warning',
+          `RPC response failed: ${response.command}`,
+          response.success
+            ? ''
+            : response.command === 'compact'
+              ? 'Compaction failed or was cancelled.'
+              : response.error
+        );
+      });
+      client.onProtocolFault((error) =>
+        this.addDiagnostic('error', 'Protocol fault', error.message)
       );
-    });
-    client.onProtocolFault((error) => this.addDiagnostic('error', 'Protocol fault', error.message));
-    client.onDisconnected((error) => this.addDiagnostic('warning', 'Disconnected', error.message));
-    client.onStderr((text) => {
-      this.state = { ...this.state, stderrTail: [...this.state.stderrTail.slice(-49), text] };
-      this.fire();
-    });
+      client.onDisconnected((error) =>
+        this.addDiagnostic('warning', 'Disconnected', error.message)
+      );
+      client.onStderr((text) => {
+        this.state = { ...this.state, stderrTail: [...this.state.stderrTail.slice(-49), text] };
+        this.fire();
+      });
+    };
+    const client = await this.supervisor.start(sessionFile, { ...options, onClient: bindClient });
+    bindClient(client);
     this.state = {
       ...this.state,
       connectionState: 'handshaking',
       generation: this.supervisor.currentGeneration,
+      mcpStatus: undefined,
+      modelTools: undefined,
     };
     this.fire();
     this.logger.info(`Handshaking with Pi for '${this.folder.name}'…`);
@@ -795,6 +1147,7 @@ export class SessionController implements vscode.Disposable {
   }
 
   public async stop(): Promise<void> {
+    for (const request of this.ideRequests?.keys() ?? []) request.abort();
     cancelModelOperations(this);
     this.stopping = true;
     this.disarmSessionFileWatcher();
@@ -1071,14 +1424,66 @@ export class SessionController implements vscode.Disposable {
     await this.refreshMessages();
   }
 
+  private promptAdmissions: Promise<unknown> = Promise.resolve();
+
   public async prompt(
     message: string,
     mode: 'prompt' | 'steer' | 'followUp' = 'prompt',
-    images: JsonObject[] = []
-  ): Promise<void> {
+    images: JsonObject[] = [],
+    options?: { outbox?: { sessionId: string; sessionFile?: string; requireIdle: boolean } }
+  ): Promise<JsonObject | undefined> {
+    this.assertNoManualCompaction();
+    assertNotCoreSlashPrompt(message);
+    const origin = this.captureOutboxOrigin();
+    const action = () => this.promptNow(message, mode, images, options, origin);
+    // SDK hosts acknowledge preflight; stock RPC may wait for the whole run.
+    if (!this.sdkRoot) return action();
+    const pending = (this.promptAdmissions ?? Promise.resolve()).then(action);
+    this.promptAdmissions = pending.catch(() => undefined);
+    return pending;
+  }
+
+  private async promptNow(
+    message: string,
+    mode: 'prompt' | 'steer' | 'followUp',
+    images: JsonObject[],
+    options:
+      | { outbox?: { sessionId: string; sessionFile?: string; requireIdle: boolean } }
+      | undefined,
+    valid: () => boolean
+  ): Promise<JsonObject | undefined> {
+    const dispatch = { attempted: false, valid };
+    try {
+      if (!valid()) throw new Error('The originating chat changed.');
+      if (options?.outbox) {
+        if (
+          options.outbox.sessionId !== this.state.state.sessionId ||
+          options.outbox.sessionFile !== this.state.state.sessionFile ||
+          !(await this.isOutboxReady(options.outbox.requireIdle))
+        )
+          throw new Error('Outbox is paused until Pi is ready.');
+      }
+      return await this.promptAdmitted(message, mode, images, options, dispatch);
+    } catch (error) {
+      if (options?.outbox && !dispatch.attempted && error instanceof Error)
+        Object.assign(error, { outboxNotDispatched: true });
+      throw error;
+    }
+  }
+
+  private async promptAdmitted(
+    message: string,
+    mode: 'prompt' | 'steer' | 'followUp',
+    images: JsonObject[],
+    options:
+      | { outbox?: { sessionId: string; sessionFile?: string; requireIdle: boolean } }
+      | undefined,
+    dispatch: { attempted: boolean; valid: () => boolean }
+  ): Promise<JsonObject | undefined> {
     this.assertNoManualCompaction();
     assertNotCoreSlashPrompt(message);
     await waitForModelOperations(this);
+    if (!dispatch.valid()) throw new Error('The originating chat changed.');
     this.assertNoManualCompaction();
     if (this.state.connectionState === 'faulted')
       throw new Error('Native chat identity is unconfirmed. Restart/recover before sending.');
@@ -1110,8 +1515,20 @@ export class SessionController implements vscode.Disposable {
     try {
       // Native prompt() chooses idle/steer/queue atomically; handled prompts
       // have no agent run and therefore emit no agent_settled event.
-      const result = await client.prompt(message, images, mode === 'prompt' ? undefined : mode);
-      if (result?.disposition === 'handled') restore();
+      const result = options?.outbox
+        ? await client.prompt(
+            message,
+            images,
+            mode === 'prompt' ? undefined : mode,
+            options,
+            dispatch
+          )
+        : await client.prompt(message, images, mode === 'prompt' ? undefined : mode);
+      if (result?.disposition === 'handled' && dispatch.valid()) {
+        this.outboxCompletionRevision = (this.outboxCompletionRevision ?? 0) + 1;
+        restore();
+      }
+      return result;
     } catch (error) {
       restore();
       throw error;
@@ -1440,12 +1857,16 @@ export class SessionController implements vscode.Disposable {
       throw new Error('Compaction is in progress.');
   }
 
-  private assertCompactIdle(state = this.state.state, ownReservation = false): void {
+  private assertCompactIdle(
+    state = this.state.state,
+    ownReservation = false,
+    ownModelOperation = false
+  ): void {
     if (
       this.lifecyclePending ||
       (!ownReservation && this.manualCompactPending) ||
       this.bashPending ||
-      hasModelOperation(this) ||
+      (!ownModelOperation && hasModelOperation(this)) ||
       state.isStreaming ||
       state.isCompacting ||
       state.pendingMessageCount ||
@@ -1870,17 +2291,109 @@ export class SessionController implements vscode.Disposable {
     return commands;
   }
 
-  public async respondExtensionUi(response: JsonObject): Promise<void> {
-    await this.requireClient().respondExtensionUi(response);
+  public isExtensionUiRequestValid(id: string, requestKey: string | undefined): boolean {
+    const entry = this.uiAdmissions?.get(id);
+    return (
+      !!entry &&
+      entry.key === requestKey &&
+      entry.valid() &&
+      this.state.pendingUi.some((request) => request.id === id && request.requestKey === requestKey)
+    );
+  }
+
+  public extensionUiRequest(
+    id: string,
+    requestKey: string | undefined
+  ): ExtensionUiRequest | undefined {
+    return this.isExtensionUiRequestValid(id, requestKey)
+      ? this.state.pendingUi.find(
+          (request) => request.id === id && request.requestKey === requestKey
+        )
+      : undefined;
+  }
+
+  public updateExtensionUiRequest(
+    id: string,
+    requestKey: string | undefined,
+    patch: Pick<
+      ExtensionUiRequest,
+      'draftRevision' | 'draftResetSeq' | 'responseState' | 'responseError'
+    >
+  ): void {
+    if (!this.isExtensionUiRequestValid(id, requestKey)) return;
+    this.state = {
+      ...this.state,
+      pendingUi: this.state.pendingUi.map((request) =>
+        request.id === id ? { ...request, ...patch } : request
+      ),
+    };
+    this.fire();
+  }
+
+  public async respondExtensionUi(response: JsonObject, requestKey?: string): Promise<void> {
+    const id = typeof response.id === 'string' ? response.id : '';
+    const request = this.extensionUiRequest(id, requestKey),
+      entry = this.uiAdmissions?.get(id);
+    if (!request || !entry || !isBlockingExtensionUi(request) || entry.responseState) return;
+    entry.responseState = 'sending';
+    this.updateExtensionUiRequest(id, requestKey, {
+      responseState: 'sending',
+      responseError: undefined,
+    });
+    if (!this.isExtensionUiRequestValid(id, requestKey)) return;
+    try {
+      await entry.client.respondExtensionUi(response);
+    } catch {
+      entry.responseState = 'unknown';
+      this.updateExtensionUiRequest(id, requestKey, {
+        responseState: 'unknown',
+        responseError: 'The response could not be confirmed. Check the chat before continuing.',
+      });
+      return;
+    }
+    this.completeExtensionUiRequest(id, requestKey);
   }
 
   public applyExtensionUiRequest(request: ExtensionUiRequest): void {
+    this.uiAdmissions ??= new Map();
+    if (this.uiAdmissions.has(request.id)) return;
+    const client = this.supervisor.currentClient;
+    if (
+      ['select', 'confirm', 'input', 'editor', 'set_editor_text', 'unsupported_ui'].includes(
+        request.method
+      )
+    ) {
+      if (!client) return;
+      if (
+        isBlockingExtensionUi(request) &&
+        this.state.pendingUi.filter(isBlockingExtensionUi).length >= 32
+      ) {
+        void client.respondExtensionUi({ id: request.id, cancelled: true }).catch(() => {});
+        return;
+      }
+      const key = randomUUID(),
+        valid = this.captureOutboxOrigin();
+      this.uiAdmissions.set(request.id, { key, client, valid });
+      request = { ...request, requestKey: key };
+    }
     this.state = reduceExtensionUiRequest(this.state, request);
+    for (const id of this.uiAdmissions.keys())
+      if (!this.state.pendingUi.some((item) => item.id === id)) this.uiAdmissions.delete(id);
+    if (
+      ['select', 'confirm', 'input', 'editor', 'set_editor_text', 'unsupported_ui'].includes(
+        request.method
+      ) &&
+      !this.uiAdmissions.has(request.id)
+    )
+      return;
     this.extensionUiEmitter.fire(request);
     this.fire();
   }
 
-  public completeExtensionUiRequest(id: string): void {
+  public completeExtensionUiRequest(id: string, requestKey?: string): void {
+    const entry = this.uiAdmissions?.get(id);
+    if (requestKey !== undefined && entry?.key !== requestKey) return;
+    this.uiAdmissions?.delete(id);
     this.state = {
       ...this.state,
       pendingUi: this.state.pendingUi.filter((item) => item.id !== id),
@@ -1915,6 +2428,40 @@ export class SessionController implements vscode.Disposable {
   }
 
   private fire(): void {
+    for (const [id, entry] of this.uiAdmissions ?? []) {
+      if (
+        entry.valid() &&
+        this.state.pendingUi.some(
+          (request) => request.id === id && request.requestKey === entry.key
+        )
+      )
+        continue;
+      this.uiAdmissions.delete(id);
+      this.state = {
+        ...this.state,
+        pendingUi: this.state.pendingUi.filter(
+          (request) => request.id !== id || request.requestKey !== entry.key
+        ),
+      };
+    }
+    if (this.modelToolsView && !this.modelToolsView.valid()) {
+      this.modelToolsView = undefined;
+      this.state = { ...this.state, modelTools: undefined };
+    }
+    if (this.modelToolsCheck && !this.modelToolsCheck.valid()) {
+      this.modelToolsCheck = undefined;
+      if (
+        this.state.modelTools?.status === 'loading' ||
+        this.state.modelTools?.status === 'applying'
+      )
+        this.state = { ...this.state, modelTools: undefined };
+    }
+    if (this.mcpCheck && !this.mcpCheck.valid()) {
+      this.mcpCheck = undefined;
+      if (this.state.mcpStatus?.status === 'checking')
+        this.state = { ...this.state, mcpStatus: undefined };
+    }
+    for (const [request, valid] of this.ideRequests ?? []) if (!valid()) request.abort();
     // Durable audit trail of the connection lifecycle so "can't type / stuck
     // not-ready" issues (e.g. the Windows version-probe fault) are always
     // explainable from More → Show Logs.
@@ -1935,7 +2482,11 @@ export class SessionController implements vscode.Disposable {
   }
 
   private onEvent(event: RpcEvent): void {
-    if (event.type === 'agent_start') this.runRevision = (this.runRevision ?? 0) + 1;
+    if (event.type === 'agent_start') {
+      this.runRevision = (this.runRevision ?? 0) + 1;
+      this.modelToolsView = undefined;
+      this.state = { ...this.state, modelTools: undefined };
+    }
     if (event.type === 'compaction_end' && event.errorMessage)
       event = { ...event, errorMessage: 'Compaction failed or was cancelled.' };
     let next = this.state;
@@ -1951,6 +2502,8 @@ export class SessionController implements vscode.Disposable {
       );
     }
     this.state = reduceEvent(next, event);
+    if (event.type === 'agent_settled' && this.state.runOutcome === 'completed')
+      this.outboxCompletionRevision = (this.outboxCompletionRevision ?? 0) + 1;
     this.fire();
     // When a run settles, resync the transcript from the authoritative native
     // leaf and persisted branch. Streaming events are keyed heuristically (Pi
@@ -2053,8 +2606,64 @@ export class SessionController implements vscode.Disposable {
     return undefined;
   }
 
-  private onExtensionUi(request: ExtensionUiRequest): void {
+  private onExtensionUi(request: ExtensionUiRequest, client = this.supervisor.currentClient): void {
+    if (!client || client !== this.supervisor.currentClient) return;
+    if (request.method === 'cancel') {
+      const entry = request.requestId && this.uiAdmissions?.get(request.requestId);
+      if (entry && entry.client === client)
+        this.completeExtensionUiRequest(request.requestId!, entry.key);
+      return;
+    }
+    if (request.title?.startsWith('pi-vscode-ide-')) {
+      if (client) void this.answerIdeQuery(request, client);
+      return;
+    }
     this.applyExtensionUiRequest(request);
+  }
+
+  private async answerIdeQuery(request: ExtensionUiRequest, client: RpcClient): Promise<void> {
+    const controller = new AbortController();
+    const origin = this.captureLocalCommandOrigin();
+    const navigationEpoch = this.navigationEpoch;
+    const runRevision = this.runRevision;
+    const valid = (): boolean =>
+      !this.authDisposed &&
+      this.supervisor.currentClient === client &&
+      this.navigationEpoch === navigationEpoch &&
+      this.runRevision === runRevision &&
+      origin();
+    let input: unknown;
+    try {
+      if (
+        request.title !== IDE_REQUEST_TITLE ||
+        request.method !== 'input' ||
+        !request.placeholder ||
+        request.placeholder.length > 8192 ||
+        this.ideRequests.size >= 8
+      )
+        throw new Error('Invalid editor query');
+      input = JSON.parse(request.placeholder);
+    } catch {
+      input = undefined;
+    }
+    this.ideRequests.set(controller, valid);
+    try {
+      let value = await runIdeQuery(this.folder.uri.fsPath, input, controller.signal, valid);
+      if (!valid() || controller.signal.aborted) {
+        value = {
+          ...value,
+          status: 'cancelled',
+          message: 'Editor query cancelled because the chat changed.',
+          locations: [],
+        };
+      }
+      // Reply to the source connection, never to a newer chat's client.
+      await client.respondExtensionUi({ id: request.id, value: JSON.stringify(value) });
+    } catch {
+      /* Source connection may already have stopped. */
+    } finally {
+      this.ideRequests.delete(controller);
+    }
   }
 
   private addDiagnostic(

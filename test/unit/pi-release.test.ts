@@ -130,12 +130,36 @@ test('Pi CI has one exact required aggregate covering every quality gate with pi
   ])
     assert.ok(commands.includes(command), command);
   assert.ok(commands.includes('npm ci --prefix .github/pi-sdk'));
+  assert.ok(commands.includes('npm ci --prefix .github/pi-sdk-13 --install-strategy=nested'));
+  assert.ok(
+    commands.includes('"$GITHUB_WORKSPACE/.github/pi-sdk-13/node_modules/.bin" >> "$GITHUB_PATH"')
+  );
+  assert.ok(
+    !commands.includes('"$GITHUB_WORKSPACE/.github/pi-sdk/node_modules/.bin" >> "$GITHUB_PATH"'),
+    'selected PATH must exercise 1.3; backward tests select 1.2 explicitly'
+  );
   assert.equal(
     JSON.parse(readFileSync('.github/pi-sdk/package.json', 'utf8')).dependencies[
       '@earendil-works/pi-coding-agent'
     ],
     '1.2.0'
   );
+  assert.equal(
+    JSON.parse(readFileSync('.github/pi-sdk-13/package.json', 'utf8')).dependencies[
+      '@earendil-works/pi-coding-agent'
+    ],
+    '1.3.0'
+  );
+  const sdk13Lock = JSON.parse(readFileSync('.github/pi-sdk-13/package-lock.json', 'utf8'));
+  assert.equal(sdk13Lock.packages[''].dependencies['@earendil-works/pi-coding-agent'], '1.3.0');
+  assert.equal(sdk13Lock.packages['node_modules/@earendil-works/pi-coding-agent'].version, '1.3.0');
+  const setup = quality.steps.find((step: any) => step.uses?.startsWith('actions/setup-node@'));
+  for (const lock of [
+    'package-lock.json',
+    '.github/pi-sdk/package-lock.json',
+    '.github/pi-sdk-13/package-lock.json',
+  ])
+    assert.ok(setup.with['cache-dependency-path'].split('\n').includes(lock));
   for (const job of Object.values(workflow.jobs) as any[]) {
     for (const step of job.steps.filter((s: any) => s.uses))
       assert.match(step.uses, /^(?:actions|azure)\/[\w-]+@[a-f0-9]{40}$/);

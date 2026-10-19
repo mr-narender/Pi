@@ -1,5 +1,6 @@
 import type {
   ExtensionUiRequest,
+  ExtensionUiDraftAck,
   JsonObject,
   ModelInfo,
   QueueState,
@@ -12,6 +13,9 @@ import type {
   RecoveryState,
   SendPreviewState,
 } from '../webview/composer';
+import type { McpStatusSnapshot } from '../mcp/status';
+import type { OutboxComposerAck, OutboxSnapshot } from '../outbox/types';
+import type { ModelToolsSnapshot } from '../modelTools/types';
 
 export interface DiagnosticItem {
   id: string;
@@ -55,6 +59,8 @@ export interface ExtensionUiRecord {
 }
 
 export interface ControllerState {
+  mcpStatus?: McpStatusSnapshot;
+  modelTools?: ModelToolsSnapshot;
   generation: number;
   connectionState:
     | 'unconfigured'
@@ -198,6 +204,8 @@ export interface WebviewMessageItem {
   // results, images, and fenced code distinctly. Optional for backward-compat
   // with persisted snapshots; the webview falls back to `text`.
   blocks?: WebviewMessageBlock[];
+  /** Pi-authored checklist, distinct from independently observed execution state. */
+  reportedTasks?: { items: Array<{ text: string; done: boolean }>; done: number };
   attachments: WebviewAttachmentItem[];
   /** Derived presentation of a valid Pi VS Code context envelope. `text`
    * remains the exact RPC/history payload. */
@@ -219,6 +227,23 @@ export interface WebviewPendingImageItem {
 }
 
 export interface WebviewActivity {
+  agents?: Array<{
+    id: string;
+    toolCallId: string;
+    role: string;
+    status:
+      | 'queued'
+      | 'running'
+      | 'completed'
+      | 'failed'
+      | 'cancelled'
+      | 'timeout'
+      | 'output_limit'
+      | 'unknown';
+    live: boolean;
+    output?: string;
+    reason?: string;
+  }>;
   tools: Array<{
     id: string;
     name: string;
@@ -231,9 +256,9 @@ export interface WebviewActivity {
 }
 
 export interface WebviewSnapshot {
+  mcpStatus?: McpStatusSnapshot;
+  modelTools?: ModelToolsSnapshot;
   activity?: WebviewActivity;
-  /** Most recent task list π wrote — rendered as the plan strip. */
-  plan?: { items: Array<{ text: string; done: boolean }>; done: number };
   /** Zed-style follow toggle state (crosshair button). */
   followMode?: 'open' | 'status' | 'off';
   /** True pre-apply approval mode. */
@@ -269,6 +294,8 @@ export interface WebviewSnapshot {
   messageWindow?: { total: number; offset: number; hasOlder: boolean };
   queue: QueueState;
   draft: string;
+  outbox?: OutboxSnapshot;
+  outboxAck?: OutboxComposerAck;
   // Bumped whenever the extension authoritatively replaces the composer text
   // (send-clear, copy-to-composer, restore). The webview uses a change in this
   // value to overwrite the textarea; otherwise it preserves the live text and
@@ -300,13 +327,20 @@ export interface WebviewSnapshot {
   // Inline extension UI prompts.
   approvals?: Array<{
     id: string;
-    method: 'select' | 'confirm' | 'editor';
+    requestKey?: string;
+    method: 'select' | 'confirm' | 'input' | 'editor' | 'set_editor_text' | 'unsupported_ui';
     title?: string;
     message?: string;
     options?: string[];
     placeholder?: string;
     prefill?: string;
+    uiCapability?: string;
+    draftRevision?: number;
+    draftResetSeq?: number;
+    responseState?: 'sending' | 'unknown';
+    responseError?: string;
   }>;
+  extensionUiDraftAck?: ExtensionUiDraftAck;
   pendingContextItems: PendingContextItem[];
   pendingImages: WebviewPendingImageItem[];
   attachmentLimits?: { fileBytes: number; imageBytes: number };

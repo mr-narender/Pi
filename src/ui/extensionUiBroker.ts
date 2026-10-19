@@ -6,11 +6,20 @@ import type { ChatUiState } from '../webview/composerState';
 import { notifier } from './notifier';
 export class ExtensionUiBroker implements vscode.Disposable {
   private readonly subscriptions: vscode.Disposable[] = [];
+  private readonly tracked = new WeakSet<SessionController>();
+  private readonly inlineTimers = new Map<
+    string,
+    { controller: SessionController; id: string; key: string; timer: ReturnType<typeof setTimeout> }
+  >();
+  private readonly modalClosers = new Map<
+    string,
+    { controller: SessionController; id: string; key: string; close: () => void }
+  >();
   // Rate-limit "waiting for approval" toasts per controller.
   private readonly lastWaitingNotify = new Map<SessionController, number>();
   public constructor(
     private readonly registry: SessionRegistry,
-    private readonly uiState?: ChatUiState,
+    _uiState?: ChatUiState,
     // When a chat editor is open for the controller, select/confirm approvals
     // are rendered inline in the chat (the webview responds) instead of a native
     // modal. Returns true to route inline.
@@ -18,7 +27,11 @@ export class ExtensionUiBroker implements vscode.Disposable {
     // Mission Control: a BACKGROUND chat blocking on approval is invisible —
     // notify (rate-limited) with a jump-to-chat action.
     private readonly isChatVisible?: (controller: SessionController) => boolean,
-    private readonly revealChat?: (controller: SessionController) => void
+    private readonly revealChat?: (controller: SessionController) => void,
+    private readonly draftProposal?: (
+      controller: SessionController,
+      request: ExtensionUiRequest
+    ) => Promise<unknown>
   ) {
     for (const controller of registry.list()) {
       this.track(controller);
@@ -46,16 +59,43 @@ export class ExtensionUiBroker implements vscode.Disposable {
     });
   }
   public track(controller: SessionController): void {
+    if (this.tracked.has(controller)) return;
+    this.tracked.add(controller);
     this.subscriptions.push(
       controller.onDidReceiveExtensionUiRequest(
         (request) => void this.handleRequest(controller, request)
       )
+    );
+    this.subscriptions.push(
+      controller.onDidChangeState(() => {
+        for (const [key, entry] of this.inlineTimers)
+          if (
+            entry.controller === controller &&
+            !controller.isExtensionUiRequestValid(entry.id, entry.key)
+          ) {
+            clearTimeout(entry.timer);
+            this.inlineTimers.delete(key);
+          }
+        for (const [key, entry] of this.modalClosers)
+          if (
+            entry.controller === controller &&
+            !controller.isExtensionUiRequestValid(entry.id, entry.key)
+          ) {
+            this.modalClosers.delete(key);
+            entry.close();
+          }
+      })
     );
   }
   public dispose(): void {
     for (const subscription of this.subscriptions) {
       subscription.dispose();
     }
+    for (const entry of this.inlineTimers.values()) clearTimeout(entry.timer);
+    this.inlineTimers.clear();
+    const closers = [...this.modalClosers.values()];
+    this.modalClosers.clear();
+    for (const entry of closers) entry.close();
   }
   private async handleRequest(
     controller: SessionController,
@@ -65,12 +105,23 @@ export class ExtensionUiBroker implements vscode.Disposable {
     // always use the webview so they never create an untitled editor tab.
     if (
       request.method === 'editor' ||
-      ((request.method === 'select' || request.method === 'confirm') &&
+      ((request.method === 'select' ||
+        request.method === 'confirm' ||
+        request.method === 'input') &&
         this.isChatOpen?.(controller))
     ) {
-      controller.applyExtensionUiRequest(request);
-      if (typeof request.timeout === 'number' && request.timeout > 0) {
-        setTimeout(() => controller.completeExtensionUiRequest(request.id), request.timeout);
+      if (
+        request.requestKey &&
+        typeof request.timeout === 'number' &&
+        Number.isFinite(request.timeout) &&
+        request.timeout > 0
+      ) {
+        const key = request.requestKey;
+        const timer = setTimeout(() => {
+          this.inlineTimers.delete(key);
+          controller.completeExtensionUiRequest(request.id, key);
+        }, request.timeout);
+        this.inlineTimers.set(key, { controller, id: request.id, key, timer });
       }
       if (request.method === 'editor' && !this.isChatOpen?.(controller)) {
         this.revealChat?.(controller);
@@ -94,18 +145,20 @@ export class ExtensionUiBroker implements vscode.Disposable {
       }
       case 'select': {
         const picked = await this.runQuickPick(
+          controller,
           request,
           (request.options ?? []).map((label) => ({ label })),
           request.title
         );
         await controller.respondExtensionUi(
-          picked ? { id: request.id, value: picked.label } : { id: request.id, cancelled: true }
+          picked ? { id: request.id, value: picked.label } : { id: request.id, cancelled: true },
+          request.requestKey
         );
-        controller.completeExtensionUiRequest(request.id);
         return picked ? picked.label : { cancelled: true };
       }
       case 'confirm': {
         const picked = await this.runQuickPick(
+          controller,
           request,
           [{ label: 'Yes' }, { label: 'No' }],
           request.title,
@@ -114,43 +167,21 @@ export class ExtensionUiBroker implements vscode.Disposable {
         await controller.respondExtensionUi(
           picked
             ? { id: request.id, confirmed: picked.label === 'Yes' }
-            : { id: request.id, cancelled: true }
+            : { id: request.id, cancelled: true },
+          request.requestKey
         );
-        controller.completeExtensionUiRequest(request.id);
         return picked ? { confirmed: picked.label === 'Yes' } : { cancelled: true };
       }
       case 'input': {
-        const value = await this.runInputBox(request);
+        const value = await this.runInputBox(controller, request);
         await controller.respondExtensionUi(
-          value === undefined ? { id: request.id, cancelled: true } : { id: request.id, value }
+          value === undefined ? { id: request.id, cancelled: true } : { id: request.id, value },
+          request.requestKey
         );
-        controller.completeExtensionUiRequest(request.id);
         return value === undefined ? { cancelled: true } : { value };
       }
       case 'set_editor_text': {
-        const current = controller.snapshot.draft;
-        if (current && current !== request.text) {
-          const choice = await vscode.window.showQuickPick(
-            ['Replace draft', 'Append to draft', 'Cancel'],
-            {
-              title: 'Pi wants to modify the composer draft',
-            }
-          );
-          if (choice === 'Replace draft') {
-            controller.setDraft(request.text ?? '');
-            await this.uiState?.updateDraft(controller, request.text ?? '');
-            return { replaced: true };
-          }
-          if (choice === 'Append to draft') {
-            controller.setDraft(`${current}\n${request.text ?? ''}`.trim());
-            await this.uiState?.updateDraft(controller, `${current}\n${request.text ?? ''}`.trim());
-            return { appended: true };
-          }
-          return { cancelled: true };
-        }
-        controller.setDraft(request.text ?? '');
-        await this.uiState?.updateDraft(controller, request.text ?? '');
-        return { replaced: true };
+        return this.draftProposal?.(controller, request) ?? { inline: true };
       }
       case 'setStatus':
       case 'setWidget':
@@ -161,6 +192,7 @@ export class ExtensionUiBroker implements vscode.Disposable {
     }
   }
   private async runQuickPick(
+    controller: SessionController,
     request: ExtensionUiRequest,
     items: Array<{
       label: string;
@@ -193,6 +225,7 @@ export class ExtensionUiBroker implements vscode.Disposable {
           return;
         }
         done = true;
+        this.modalClosers.delete(request.requestKey ?? request.id);
         timer && clearTimeout(timer);
         quickPick.hide();
         quickPick.dispose();
@@ -200,6 +233,12 @@ export class ExtensionUiBroker implements vscode.Disposable {
       };
       quickPick.onDidAccept(() => finish(quickPick.selectedItems[0]));
       quickPick.onDidHide(() => finish(undefined));
+      this.modalClosers.set(request.requestKey ?? request.id, {
+        controller,
+        id: request.id,
+        key: request.requestKey ?? '',
+        close: () => finish(undefined),
+      });
       const timer =
         typeof request.timeout === 'number' && request.timeout > 0
           ? setTimeout(() => finish(undefined), request.timeout)
@@ -207,7 +246,10 @@ export class ExtensionUiBroker implements vscode.Disposable {
       quickPick.show();
     });
   }
-  private async runInputBox(request: ExtensionUiRequest): Promise<string | undefined> {
+  private async runInputBox(
+    controller: SessionController,
+    request: ExtensionUiRequest
+  ): Promise<string | undefined> {
     return new Promise((resolve) => {
       const input = vscode.window.createInputBox();
       input.title = request.title;
@@ -220,6 +262,7 @@ export class ExtensionUiBroker implements vscode.Disposable {
           return;
         }
         done = true;
+        this.modalClosers.delete(request.requestKey ?? request.id);
         timer && clearTimeout(timer);
         input.hide();
         input.dispose();
@@ -227,6 +270,12 @@ export class ExtensionUiBroker implements vscode.Disposable {
       };
       input.onDidAccept(() => finish(input.value));
       input.onDidHide(() => finish(undefined));
+      this.modalClosers.set(request.requestKey ?? request.id, {
+        controller,
+        id: request.id,
+        key: request.requestKey ?? '',
+        close: () => finish(undefined),
+      });
       const timer =
         typeof request.timeout === 'number' && request.timeout > 0
           ? setTimeout(() => finish(undefined), request.timeout)

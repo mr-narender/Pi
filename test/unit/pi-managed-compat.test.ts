@@ -103,7 +103,7 @@ test('auto-install off never applies an already staged managed update', async ()
   }
 });
 
-for (const version of ['1.1.0', '1.2.0']) {
+for (const version of ['1.1.0', '1.2.0', '1.3.0']) {
   test(`managed Pi ${version} is reused with auto-install off`, async () => {
     const storage = mkdtempSync(join(tmpdir(), 'pi-managed-supported-'));
     const live = writeManaged(storage, 'pi', version);

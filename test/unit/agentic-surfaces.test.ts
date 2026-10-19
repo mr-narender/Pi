@@ -137,6 +137,8 @@ test('tab disposal retains the tracked controller for the delete stop safeguard'
   const resource = { toString: () => 'pi-chat:/a.chat' };
   const host = { resource };
   manager.trackedControllers = new Set([controller]);
+  manager.contextForResource = () => ({ controller });
+  manager.outboxBindings = new Map();
   manager.sessions = { keyFor: () => 'chat:a', unbind() {} };
   manager.unseenCompletions = new Set();
   manager.hosts = new Map([[resource.toString(), host]]);
@@ -155,7 +157,7 @@ test('tab disposal retains the tracked controller for the delete stop safeguard'
 });
 
 function uiController() {
-  const pending = new Map<string, unknown>();
+  const pending = new Map<string, { id: string; requestKey: string }>();
   const replies: unknown[] = [];
   const completed: string[] = [];
   return {
@@ -163,11 +165,18 @@ function uiController() {
     replies,
     completed,
     snapshot: { state: {}, draft: '' },
-    applyExtensionUiRequest: (request: { id: string }) => {
+    applyExtensionUiRequest: (request: { id: string; requestKey: string }) => {
       pending.set(request.id, request);
     },
-    respondExtensionUi: async (response: unknown) => {
+    extensionUiRequest: (id: string, requestKey: string) => {
+      const request = pending.get(id);
+      return request?.requestKey === requestKey ? request : undefined;
+    },
+    respondExtensionUi: async (response: { id: string }, requestKey: string) => {
+      if (pending.get(response.id)?.requestKey !== requestKey) return;
       replies.push(response);
+      pending.delete(response.id);
+      completed.push(response.id);
     },
     completeExtensionUiRequest: (id: string) => {
       pending.delete(id);
@@ -191,12 +200,18 @@ test('native select/confirm approvals stay pending until the real chat response 
     ['confirm', undefined, false],
   ] as const) {
     const id = `native-${method}`;
-    assert.deepEqual(await broker.handleRequest(controller, { id, method, options: ['Allow'] }), {
+    const requestKey = `key-${id}`;
+    const request = { id, requestKey, method, options: ['Allow'] };
+    controller.applyExtensionUiRequest(request);
+    assert.deepEqual(await broker.handleRequest(controller, request), {
       inline: true,
     });
     assert.equal(controller.pending.has(id), true);
     assert.equal(controller.replies.length, method === 'select' ? 0 : 1);
-    await manager.handleRespondUi({ controller }, id, value, confirmed);
+    await manager.handleRespondUi({ controller }, id, value, confirmed, false, 'stale-key');
+    assert.equal(controller.replies.length, method === 'select' ? 0 : 1);
+    await manager.handleRespondUi({ controller }, id, value, confirmed, false, requestKey);
+    await manager.handleRespondUi({ controller }, id, value, confirmed, false, requestKey);
     assert.deepEqual(
       controller.replies.at(-1),
       method === 'select' ? { id, value } : { id, confirmed }
@@ -251,19 +266,28 @@ test('native input and inline multiline editor callbacks respond without opening
   const controller = uiController();
   const broker = new classes.ExtensionUiBroker({ list: () => [] });
   const manager = Object.create(classes.ChatTabManager.prototype);
-  assert.deepEqual(await broker.handleRequest(controller, { id: 'input', method: 'input' }), {
+  const input = { id: 'input', requestKey: 'key-input', method: 'input' };
+  const editor = {
+    id: 'editor',
+    requestKey: 'key-editor',
+    method: 'editor',
+    prefill: 'first\nsecond',
+  };
+  controller.applyExtensionUiRequest(input);
+  assert.deepEqual(await broker.handleRequest(controller, input), {
     value: 'native input',
   });
-  assert.deepEqual(
-    await broker.handleRequest(controller, {
-      id: 'editor',
-      method: 'editor',
-      prefill: 'first\nsecond',
-    }),
-    { inline: true }
-  );
+  controller.applyExtensionUiRequest(editor);
+  assert.deepEqual(await broker.handleRequest(controller, editor), { inline: true });
   assert.equal(controller.pending.has('editor'), true);
-  await manager.handleRespondUi({ controller }, 'editor', 'first\nsecond\nthird', undefined, false);
+  await manager.handleRespondUi(
+    { controller },
+    'editor',
+    'first\nsecond\nthird',
+    undefined,
+    false,
+    editor.requestKey
+  );
   assert.deepEqual(controller.replies, [
     { id: 'input', value: 'native input' },
     { id: 'editor', value: 'first\nsecond\nthird' },

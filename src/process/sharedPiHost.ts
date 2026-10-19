@@ -473,22 +473,28 @@ export class SharedPiHost {
    * streams the supervisor wires into RpcTransport exactly like a real process.
    * Resolves only once the host has created the AgentSession.
    */
-  public async openSession(info: SdkSessionOpen, openTimeoutMs = 20_000): Promise<PiProcessHandle> {
+  public async openSession(
+    info: SdkSessionOpen,
+    openTimeoutMs = 20_000,
+    onOpening?: (handle: PiProcessHandle) => void
+  ): Promise<PiProcessHandle> {
     if (!info.sessionFile && !info.args && !info.env && !info.dedicated && !info.sdkRoot) {
       const parked = this.parked.get(info.cwd);
       if (parked && !parked.conn.fault) {
         this.parked.delete(info.cwd);
         this.schedulePrewarm(info.cwd);
         this.logger.info(`Adopted prewarmed Pi session for ${info.cwd}`);
+        onOpening?.(parked.handle);
         return parked.handle;
       }
     }
-    return (await this.openSessionRaw(info, openTimeoutMs)).handle;
+    return (await this.openSessionRaw(info, openTimeoutMs, onOpening)).handle;
   }
 
   private async openSessionRaw(
     info: SdkSessionOpen,
-    openTimeoutMs = 20_000
+    openTimeoutMs = 20_000,
+    onOpening?: (handle: PiProcessHandle) => void
   ): Promise<{ handle: PiProcessHandle; conn: HostWorkerConn }> {
     const conn = await this.pickConn(info);
     if (conn.fault) {
@@ -521,6 +527,23 @@ export class SharedPiHost {
       },
     });
 
+    const handle: PiProcessHandle = {
+      sdkRoot: conn.piRoot,
+      stdin,
+      stdout,
+      stderr,
+      onError: () => {},
+      onExit: (cb) => {
+        channel.onExit = cb;
+      },
+      stop: async () => {
+        channel.onOpen?.(false, 'SDK_STARTUP_CANCELLED');
+        conn.writeEnvelope(key, { type: 'close' });
+        conn.channels.delete(key);
+        stdout.push(null);
+        if (info.dedicated) conn.terminate();
+      },
+    };
     const opened = new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => {
         reject(new Error('Timed out opening shared Pi session'));
@@ -530,16 +553,31 @@ export class SharedPiHost {
         if (ok) {
           resolve();
         } else {
-          reject(new Error(error ?? 'Shared Pi host failed to open session'));
+          reject(
+            error === 'SDK_STARTUP_MODEL_AMBIGUOUS'
+              ? Object.assign(
+                  new Error(
+                    'The configured Pi model matches more than one provider. Use --provider or provider/model in piRpc.args; no model was changed.'
+                  ),
+                  { code: error }
+                )
+              : new Error(error ?? 'Shared Pi host failed to open session')
+          );
         }
       };
-    });
-
-    conn.writeEnvelope(key, {
-      type: 'open',
-      cwd: info.cwd,
-      sessionFile: info.sessionFile,
-      args: info.args,
+      try {
+        // A native session_start callback can await UI before acknowledging open.
+        onOpening?.(handle);
+        conn.writeEnvelope(key, {
+          type: 'open',
+          cwd: info.cwd,
+          sessionFile: info.sessionFile,
+          args: info.args,
+        });
+      } catch (error) {
+        clearTimeout(timer);
+        reject(error);
+      }
     });
 
     try {
@@ -553,24 +591,6 @@ export class SharedPiHost {
       throw error;
     }
 
-    const handle: PiProcessHandle = {
-      sdkRoot: conn.piRoot,
-      stdin,
-      stdout,
-      stderr,
-      onError: () => {
-        /* worker-level errors surface via onExit */
-      },
-      onExit: (cb) => {
-        channel.onExit = cb;
-      },
-      stop: async () => {
-        conn.writeEnvelope(key, { type: 'close' });
-        conn.channels.delete(key);
-        stdout.push(null);
-        if (info.dedicated) conn.terminate();
-      },
-    };
     return { handle, conn };
   }
 

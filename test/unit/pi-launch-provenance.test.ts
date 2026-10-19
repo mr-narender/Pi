@@ -16,7 +16,7 @@ test('launch provenance: current PATH, async drift and explicit/managed/worker/w
   const dir = realpathSync(mkdtempSync(join(tmpdir(), 'pi-launch-metadata-')));
   const originalPath = process.env.PATH;
   const settings = { piSource: 'external', executable: 'pi' } as PiRpcSettings;
-  const sdk = (name: string) => {
+  const sdk = (name: string, version = '0.99.1') => {
     const root = join(dir, name);
     mkdirSync(join(root, 'dist'), { recursive: true });
     mkdirSync(join(root, 'bin'));
@@ -24,7 +24,7 @@ test('launch provenance: current PATH, async drift and explicit/managed/worker/w
       join(root, 'package.json'),
       JSON.stringify({
         name: '@earendil-works/pi-coding-agent',
-        version: '0.99.1',
+        version,
         bin: { pi: 'dist/cli.js' },
       }),
       { mode: 0o444 }
@@ -35,8 +35,8 @@ test('launch provenance: current PATH, async drift and explicit/managed/worker/w
     return realpathSync(root);
   };
   try {
-    const a = sdk('a');
-    const b = sdk('b');
+    const a = sdk('a', '1.2.0');
+    const b = sdk('b', '1.3.0');
     process.env.PATH = join(a, 'bin');
     assert.equal(detectPathPi()?.packageRoot, a);
     process.env.PATH = join(b, 'bin');
@@ -102,6 +102,15 @@ test('launch provenance: current PATH, async drift and explicit/managed/worker/w
     const rejected = resolvePiLaunch(settings, { PATH: '' }, dir);
     assert.equal(rejected.usingBundled, false, 'unsupported managed SDK must never launch');
     assert.equal(rejected.sdkRoot, undefined);
+    const future = sdk('future', '1.4.0');
+    settings.executable = join(future, 'bin/pi');
+    const futureSelected = resolvePiLaunch(settings, { PATH: join(b, 'bin') }, dir);
+    assert.equal(futureSelected.command, join(future, 'dist/cli.js'));
+    assert.equal(
+      futureSelected.sdkRoot,
+      undefined,
+      'unknown SDK keeps its explicitly selected CLI; no older SDK or PATH substitution'
+    );
   } finally {
     if (originalPath === undefined) delete process.env.PATH;
     else process.env.PATH = originalPath;

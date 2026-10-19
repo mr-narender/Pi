@@ -130,7 +130,7 @@ test('activity redacts text before truncation and bounds status/widget metadata'
   assert.equal(snapshot().activity?.statuses[0]?.label, 'extra');
 });
 
-test('activity renders escaped output, truthful empty agents and selected accessible tabs', () => {
+test('activity renders escaped output, hides unreported agents and selects accessible tabs', () => {
   const { state, snapshot } = fixture();
   state.tools = [
     {
@@ -144,9 +144,9 @@ test('activity renders escaped output, truthful empty agents and selected access
   const dom = new JSDOM(html);
   assert.equal(dom.window.document.querySelector('img,script'), null);
   assert.match(dom.window.document.querySelector('.activity-output')!.textContent!, /<img/);
-  assert.match(
+  assert.doesNotMatch(
     renderActivityContent(snapshot(), 'agents'),
-    /No subagent details have been reported/
+    /No subagent details|data-activity-tab="agents"/
   );
   const selected = new JSDOM(renderActivityContent(snapshot(), 'sources')).window.document;
   assert.equal(
@@ -176,21 +176,20 @@ test('cached activity does not advertise tools as currently running', () => {
   );
 });
 
-test('activity overlay is bounded to the pane without reserving composer width', () => {
+test('activity disclosure uses normal document flow rather than a pane overlay', () => {
   const css = readFileSync('src/webview/media/chat.css', 'utf8');
   const dom = new JSDOM(
     `<style>${css}</style><details class="activity-panel"><summary>Activity</summary><div class="activity-content"></div></details>`
   );
   const style = dom.window.getComputedStyle(dom.window.document.querySelector('.activity-panel')!);
-  assert.equal(style.position, 'absolute');
-  assert.equal(style.maxWidth, 'calc(100% - 24px)');
+  assert.equal(style.position, 'static');
+  assert.equal(style.maxWidth, '100%');
   assert.equal(
-    dom.window.getComputedStyle(dom.window.document.querySelector('.activity-content')!).overflow,
-    'auto'
+    dom.window.getComputedStyle(dom.window.document.querySelector('.activity-content')!).position,
+    'static'
   );
-  assert.match(
+  assert.equal(
     dom.window.getComputedStyle(dom.window.document.querySelector('.activity-content')!).maxHeight,
-    /var\(--composer-clearance,\s*150px\)/,
-    'the panel must reserve the measured composer height in short panes'
+    'none'
   );
 });

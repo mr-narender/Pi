@@ -62,9 +62,21 @@ export class RpcClient {
   public async prompt(
     message: string,
     images?: JsonObject[],
-    streamingBehavior?: 'steer' | 'followUp'
+    streamingBehavior?: 'steer' | 'followUp',
+    options?: { outbox?: { sessionId: string; sessionFile?: string; requireIdle: boolean } },
+    dispatch?: LifecycleDispatch
   ): Promise<JsonObject | undefined> {
-    return this.command('prompt', { message, images, streamingBehavior }, 'long');
+    return this.command(
+      'prompt',
+      {
+        message,
+        images,
+        streamingBehavior,
+        ...(options?.outbox ? { outbox: options.outbox } : {}),
+      },
+      'long',
+      dispatch
+    );
   }
 
   public async steer(message: string, images?: JsonObject[]): Promise<void> {
@@ -143,9 +155,13 @@ export class RpcClient {
       | 'auth_poll'
       | 'auth_response'
       | 'delivery_payload'
-      | 'import_prepare',
+      | 'import_prepare'
+      | 'mcp_status'
+      | 'read_model_tools'
+      | 'set_model_tools',
     origin: JsonObject,
-    payload: JsonObject = {}
+    payload: JsonObject = {},
+    valid?: () => boolean
   ): Promise<JsonObject | undefined> {
     const caps = await this.command('get_capabilities', {}, 'short');
     const engine = caps?.engineCommands as JsonObject | undefined;
@@ -156,6 +172,7 @@ export class RpcClient {
       engine[type] !== true
     )
       throw new Error(`This backend does not support ${type}; nothing was applied.`);
+    if (valid && !valid()) throw new Error('The originating chat changed.');
     return this.command(type, { ...payload, origin, guiLifecycle: true }, 'long');
   }
 
@@ -187,7 +204,11 @@ export class RpcClient {
       } catch {
         /* Stock RPC retains ordinary cached model selection. */
       }
-      if (caps?.protocol === 1 && caps.sdkVersion === '1.2.0' && caps.modelDiscovery === true)
+      if (
+        caps?.protocol === 1 &&
+        ['1.2.0', '1.3.0'].includes(String(caps.sdkVersion)) &&
+        caps.modelDiscovery === true
+      )
         return this.command('get_available_models', { refreshOpenRouter: true }, 'long');
     }
     return this.command('get_available_models', {}, 'short');
@@ -412,6 +433,10 @@ export class RpcClient {
     return this.command('get_commands', {}, timeout);
   }
 
+  public async getCapabilities(): Promise<JsonObject | undefined> {
+    return this.command('get_capabilities', {}, 'short');
+  }
+
   public async respondExtensionUi(response: JsonObject): Promise<void> {
     await this.transport.notify({ type: 'extension_ui_response', ...response });
   }
@@ -442,6 +467,7 @@ export class RpcClient {
       'set_scoped_models',
       'save_scoped_models_default',
       'set_thinking_level',
+      'set_model_tools',
     ]).has(type);
     if (type === 'compact' && this.hasCompactionConflict)
       throw new Error('Compaction requires an idle session.');
@@ -468,7 +494,15 @@ export class RpcClient {
         }),
       ]);
       if (!response.success) {
-        throw new Error(response.error);
+        const failure = new Error(response.error);
+        if (
+          type === 'prompt' &&
+          extra.outbox &&
+          response.outboxNotDispatched === true &&
+          /^OUTBOX_(BUSY|STALE_ORIGIN|INVALID_ADMISSION)$/.test(response.error)
+        )
+          Object.assign(failure, { outboxNotDispatched: true });
+        throw failure;
       }
       return response.data as T;
     } finally {

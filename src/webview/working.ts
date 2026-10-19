@@ -1,9 +1,10 @@
 import type { WebviewSnapshot } from '../state/types';
+import { isBlockingExtensionUi } from '../rpc/protocol';
 
 export const WORKING_PHRASES = ['Conjuring…', 'Untangling…', 'Brewing ideas…', 'Wrangling bits…'];
 
 export function workingLabel(snapshot: WebviewSnapshot, phrase = 0): string {
-  if (snapshot.approvals?.length) return 'Waiting for your approval';
+  if (snapshot.approvals?.some(isBlockingExtensionUi)) return 'Waiting for your approval';
   if (snapshot.isCompacting) return 'Compacting conversation…';
   return WORKING_PHRASES[phrase % WORKING_PHRASES.length]!;
 }

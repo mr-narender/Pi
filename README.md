@@ -51,7 +51,7 @@ storage. Auto-install is **off by default** — nothing is ever
 downloaded without your consent.
 
 The native host supports the audited Pi SDK versions **0.99.1, 0.99.2, 1.0.0,
-1.0.4, 1.1.0 and 1.2.0**. Other versions and custom wrappers use stock RPC; features
+1.0.4, 1.1.0, 1.2.0 and 1.3.0**. Other versions and custom wrappers use stock RPC; features
 requiring the native SDK report their unsupported capability.
 
 Resolution is deterministic: an explicit `piRpc.executable` wins, otherwise the
@@ -98,17 +98,28 @@ shared Pi runtime pool     configurable workers host sessions (per-session exten
 
 ## Features (Pi workflows in a GUI)
 
-| Area               | What you get                                                                                                     |
-| ------------------ | ---------------------------------------------------------------------------------------------------------------- |
-| **Chats**          | Editor-tab conversations, live streaming, one tab per session, reopen/resume, branch & duplicate                 |
-| **Sessions**       | Sidebar launcher, search, **pin**, rename, delete, warm-start                                                    |
-| **Models**         | Choose/cycle model, thinking level, retry last message (optionally with a different model)                       |
-| **Compose**        | `/` slash commands, `@file` mentions, local/remote file drag-drop, **pasted** images, file/selection/diagnostics |
-| **Ask Pi**         | Right-click a selection or use the inline **CodeLens** above functions to Explain / Fix / Refactor               |
-| **Navigate**       | Command palette (`Cmd/Ctrl+K`), find-in-chat (`Cmd/Ctrl+F`), jump-to-latest, conversation map                    |
-| **Flow**           | Queue/steer follow-ups, Continue, abort/stop, auto-retry, auto-compaction, usage & cost chip                     |
-| **Feel**           | Enter-to-send, typewriter streaming, working animation, chat-font controls, completion tab markers, a11y         |
-| **Remote (phone)** | **Connect a phone** to watch the live chat in a browser and take control to drive it                             |
+| Area               | What you get                                                                                                                     |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| **Chats**          | Editor-tab conversations, live streaming, one tab per session, reopen/resume, branch & duplicate                                 |
+| **Sessions**       | Sidebar launcher, search, **pin**, rename, delete, warm-start                                                                    |
+| **Models**         | Choose/cycle model, thinking level, retry last message (optionally with a different model)                                       |
+| **Compose**        | `/` slash commands, `@file` mentions, local/remote file drag-drop, **pasted** images, file/selection/diagnostics                 |
+| **Ask Pi**         | Right-click a selection or use the inline **CodeLens** above functions to Explain / Fix / Refactor                               |
+| **Navigate**       | Command palette (`Cmd/Ctrl+K`), find-in-chat (`Cmd/Ctrl+F`), jump-to-latest, conversation map                                    |
+| **Flow**           | Queue/steer follow-ups, Continue, abort/stop, auto-retry, auto-compaction, usage & cost chip                                     |
+| **Activity**       | **View activity** expands beneath its reply with grouped reads, folded reasoning and runtime details; raw calls stay inspectable |
+| **IDE**            | Read-only diagnostics, symbols, definitions and references; result files open only when you click                                |
+| **Changes**        | Undo recorded Pi edits after checking for newer edits; conflicts leave your changes intact                                       |
+| **Connections**    | One on-demand MCP check in **Chat settings**, showing Pi's last reported snapshot, not live health                               |
+| **Outbox**         | Edit/remove pending follow-ups before sending; restored messages stay paused; Pi-accepted entries are read-only                  |
+| **Model tools**    | Edit this chat's model tool declarations in **Chat settings**; not a permission boundary, deferred tools may remain callable     |
+| **Extensions**     | Pi 1.3 compatibility, inline select/confirm/input/editor prompts with Cancel, and draft suggestions with Use/Keep                |
+| **Feel**           | Enter-to-send, typewriter streaming, working animation, chat-font controls, completion tab markers, a11y                         |
+| **Remote (phone)** | **Connect a phone** to watch the live chat in a browser and take control to drive it                                             |
+
+The Outbox holds follow-ups in the extension until sending. If delivery cannot be
+confirmed, it pauses pending messages and never automatically resends the uncertain
+message. Terminal-only extension interfaces show an unsupported notice in chat.
 
 ### While Pi is working
 
@@ -174,7 +185,7 @@ one uses a native editor tab. The **editor-title Pi Chat Actions**
 menu additionally offers rename, retry (including with another model), find, copy as
 Markdown, thinking level, compaction, attachments, health, logs, and help.
 Model and thinking controls live in the composer status chip; there is no composer gear.
-With Pi 1.2.0, opening model selection refreshes OpenRouter's key-specific models
+With Pi 1.2.0 or 1.3.0, opening model selection refreshes OpenRouter's key-specific models
 in the background while cached choices remain usable. Discovery does not run during
 activation or warmup. Offline mode keeps cached models; a failed refresh shows a
 clear fallback message in the picker.
@@ -212,6 +223,11 @@ clear fallback message in the picker.
 - Respects **VS Code Workspace Trust**: in a restricted workspace, chat is read-only and
   mutating actions stay disabled until you trust the folder.
 - Diagnostics exports are redacted and never include transcript text, drafts, or secrets.
+- Pi extension prompts use inline selection, confirmation, input and multiline
+  editor controls with Cancel. Suggested composer text always waits for Use or
+  Keep, including an empty composer; later typing and attachments stay protected.
+  The synchronous native `getEditorText()` getter remains unavailable over RPC
+  and returns an empty string, matching Pi's terminal RPC contract.
 
 ## Notes
 

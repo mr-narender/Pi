@@ -20,7 +20,17 @@ test('production build keeps optional engines out of initial chat and packages l
     assert.ok(statSync(`dist/${asset}`).size > 0);
   }
   const notices = readFileSync('dist/THIRD_PARTY_NOTICES.txt', 'utf8');
-  for (const dependency of ['mermaid', 'highlight.js', 'qrcode']) {
+  for (const dependency of [
+    'mermaid',
+    'highlight.js',
+    'qrcode',
+    'cross-spawn',
+    'which',
+    'isexe',
+    'path-key',
+    'shebang-command',
+    'shebang-regex',
+  ]) {
     assert.match(notices, new RegExp(`\\n${dependency.replaceAll('.', '\\.')}@`));
   }
   for (const line of notices.split('\n').filter((line) => line.includes(' — '))) {

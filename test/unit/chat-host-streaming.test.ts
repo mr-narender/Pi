@@ -35,6 +35,8 @@ async function managerFixture() {
   const controller = { text: '' };
   const deliveries: Array<{ text: string; active: boolean }> = [];
   manager.pendingRender = new Map();
+  manager.outboxBindings = new Map();
+  manager.outbox = { dispose: async () => {} };
   manager.lastRenderAt = new Map();
   manager.lastActivityAt = new Map();
   manager.detectTurnCompletion = () => {};
@@ -47,6 +49,7 @@ async function managerFixture() {
   manager.logger = { warn() {} };
   manager.follow = { dispose() {} };
   manager.controllerSubscriptions = [];
+  manager.trackedControllers = new Set();
   manager.hosts = new Map();
   manager.unseenCompletions = new Set();
   manager.cache = { dispose() {} };

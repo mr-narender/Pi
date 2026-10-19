@@ -20,9 +20,11 @@ import { pathToFileURL } from 'node:url';
 import { isSupportedPiSdkVersion } from '../../src/process/piLauncher';
 
 // Public package metadata only: never execute a wrapper or read user config.
-export async function resolveNativeCli() {
+export async function resolveNativeCli(selection: 'supported-sdk' | 'path-cli' = 'supported-sdk') {
+  if (selection !== 'supported-sdk' && selection !== 'path-cli')
+    throw new Error('Unowned native runtime selection');
   const candidates = [
-    resolve('.github/pi-sdk/node_modules/.bin'),
+    ...(selection === 'supported-sdk' ? [resolve('.github/pi-sdk/node_modules/.bin')] : []),
     ...(process.env.PATH || '').split(sep === '/' ? ':' : ';'),
   ];
   for (const directory of candidates) {
@@ -32,7 +34,7 @@ export async function resolveNativeCli() {
       const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
       if (
         pkg.name !== '@earendil-works/pi-coding-agent' ||
-        !isSupportedPiSdkVersion(pkg.version) ||
+        (selection === 'supported-sdk' && !isSupportedPiSdkVersion(pkg.version)) ||
         pkg.bin?.pi !== 'dist/bundle/cli.js'
       )
         continue;
@@ -137,6 +139,98 @@ const ownedLifecycleVetoSource =
 const ownedStartupLifecycleSource =
   "import { appendFileSync, existsSync } from 'node:fs';\nimport { join } from 'node:path';\nexport default function ownedStartupLifecycle(pi) {\n  const trace = (data) =>\n    appendFileSync(join(process.cwd(), 'startup-trace.jsonl'), JSON.stringify(data) + '\\n');\n  pi.on('input', (event) => {\n    trace({ type: 'input', source: event.source, text: event.text });\n  });\n  pi.on('before_agent_start', async (event, ctx) => {\n    trace({\n      type: event.type,\n      messageType: event.messageType,\n      idle: ctx.isIdle(),\n      hasPrompt: 'prompt' in event,\n    });\n    if (event.messageType === 'user' && event.prompt.startsWith('owned start-block')) {\n      const deadline = Date.now() + 8000;\n      while (!existsSync(join(process.cwd(), 'startup-release'))) {\n        if (Date.now() > deadline) throw new Error('owned startup release timed out');\n        await new Promise((resolve) => setTimeout(resolve, 10));\n      }\n    }\n    return { message: { customType: 'owned-setup', content: 'OWNED RUN SETUP', display: false } };\n  });\n  pi.registerCommand('owned-custom', {\n    handler: async () => {\n      pi.sendMessage(\n        { customType: 'owned-pending', content: 'OWNED NEXT TURN', display: false },\n        { deliverAs: 'nextTurn' }\n      );\n      pi.sendMessage(\n        { customType: 'owned-custom', content: 'OWNED CUSTOM START', display: true },\n        { triggerTurn: true }\n      );\n    },\n  });\n}\n";
 
+const ownedIdeDriverSource = `import { appendFileSync } from 'node:fs';
+import { join } from 'node:path';
+export default function ownedIdeDriver(pi) {
+  const trace = (event) => appendFileSync(join(process.cwd(), 'ide-native-trace.jsonl'), JSON.stringify(event) + '\\n');
+  pi.on('input', (event) => trace({ type: 'input', source: event.source, text: event.text }));
+  pi.registerCommand('owned-ide-tools', { handler: async (_args, ctx) => {
+    ctx.ui.notify(JSON.stringify({ tools: pi.getAllTools().map((tool) => tool.name), active: pi.getActiveTools() }));
+  } });
+  pi.registerCommand('owned-ide-widget', { handler: async (_args, ctx) => {
+    ctx.ui.setWidget('owned-passive-status', ['Owned passive status']);
+  } });
+  pi.registerCommand('owned-ide-question', { handler: async (_args, ctx) => {
+    const answer = await ctx.ui.input('Owned ordinary question', 'ordinary placeholder');
+    trace({ type: 'ordinary', answer });
+  } });
+}
+`;
+
+const ownedModelToolsDriverSource = `import { appendFileSync } from 'node:fs';
+import { join } from 'node:path';
+export default function ownedModelTools(pi) {
+  pi.on('input', event => appendFileSync(join(process.cwd(), 'model-tools-trace.jsonl'), JSON.stringify({ source: event.source, text: event.text }) + '\\n'));
+  for (const exposure of ['direct', 'model-only', 'deferred', 'codemode', 'hidden']) {
+    pi.registerTool({
+      name: 'owned_' + exposure.replace('-', '_'), label: 'Owned ' + exposure,
+      description: 'Owned fixed ' + exposure + ' tool', exposure,
+      parameters: { type: 'object', properties: {} },
+      execute: async () => ({ content: [{ type: 'text', text: 'Owned fixed tool result' }], details: {} }),
+    });
+  }
+  pi.registerTool({ name: 'owned_excluded', label: 'Owned excluded', description: 'Excluded by the fixed CLI profile', parameters: { type: 'object', properties: {} }, execute: async () => ({ content: [{ type: 'text', text: 'Owned excluded result' }], details: {} }) });
+  pi.registerCommand('owned-clear-model-tools', { handler: async () => { pi.setActiveTools([]); } });
+  pi.registerCommand('owned-model-tools-widget', { handler: async (_args, ctx) => { ctx.ui.setWidget('owned-model-tools-status', ['Owned passive status']); } });
+}
+`;
+
+const ownedExtensionUiDriverSource = `import { appendFileSync } from 'node:fs';
+import { join } from 'node:path';
+export default function ownedExtensionUi(pi) {
+  const trace = data => appendFileSync(join(process.cwd(), 'extension-ui-trace.jsonl'), JSON.stringify(data) + '\\n');
+  pi.on('input', event => trace({ kind: 'input', source: event.source, text: event.text }));
+  pi.registerCommand('owned-ui-input', { handler: async (_args, ctx) => { trace({ kind: 'input-result', value: await ctx.ui.input('Owned input', 'Owned placeholder') ?? null }); } });
+  pi.registerCommand('owned-ui-input-timeout', { handler: async (_args, ctx) => { trace({ kind: 'input-result', value: await ctx.ui.input('Owned timeout input', 'Owned placeholder', { timeout: 100 }) ?? null }); } });
+  pi.registerCommand('owned-ui-input-abort', { handler: async (_args, ctx) => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 30);
+    try { trace({ kind: 'abort-result', value: await ctx.ui.input('Owned abort input', 'Owned placeholder', { signal: controller.signal }) ?? null }); }
+    finally { clearTimeout(timer); }
+  } });
+  pi.registerCommand('owned-ui-input-pre-aborted', { handler: async (_args, ctx) => {
+    const controller = new AbortController();
+    controller.abort();
+    trace({ kind: 'pre-aborted-result', value: await ctx.ui.input('Owned pre-aborted input', 'Owned placeholder', { signal: controller.signal }) ?? null });
+  } });
+  pi.registerCommand('owned-ui-select', { handler: async (_args, ctx) => { trace({ kind: 'select-result', value: await ctx.ui.select('Owned select', ['Owned A', 'Owned B']) ?? null }); } });
+  pi.registerCommand('owned-ui-select-timeout', { handler: async (_args, ctx) => { trace({ kind: 'select-result', value: await ctx.ui.select('Owned timeout select', ['Owned A', 'Owned B'], { timeout: 100 }) ?? null }); } });
+  pi.registerCommand('owned-ui-editor', { handler: async (_args, ctx) => { trace({ kind: 'editor-result', value: await ctx.ui.editor('Owned editor', 'Owned prefill') ?? null }); } });
+  pi.registerCommand('owned-ui-write', { handler: async (_args, ctx) => {
+    const before = ctx.ui.getEditorText();
+    ctx.ui.setEditorText('Owned proposed text');
+    trace({ kind: 'editor-write', before, after: ctx.ui.getEditorText() });
+  } });
+  pi.registerCommand('owned-ui-read', { handler: async (_args, ctx) => { trace({ kind: 'editor-read', text: ctx.ui.getEditorText() }); } });
+  pi.registerCommand('owned-ui-custom', { handler: async (_args, ctx) => {
+    const value = await ctx.ui.custom(() => { trace({ kind: 'custom-factory-executed' }); throw new Error('Owned terminal factory must not execute'); });
+    trace({ kind: 'custom-result', value: value ?? null });
+  } });
+  pi.registerCommand('owned-ui-status', { handler: async (_args, ctx) => {
+    ctx.ui.setStatus('owned-status', 'Owned status');
+    ctx.ui.setWidget('owned-widget', ['Owned widget']);
+    ctx.ui.setTitle('Owned title');
+  } });
+  pi.registerCommand('owned-ui-widget-factory', { handler: async (_args, ctx) => {
+    ctx.ui.setWidget('owned-widget', () => { trace({ kind: 'widget-factory-executed' }); throw new Error('Owned widget factory must not execute'); });
+  } });
+}
+`;
+
+const ownedStartupUiDriverSource = `import { appendFileSync } from 'node:fs';
+import { join } from 'node:path';
+export default function ownedStartupUi(pi) {
+  pi.on('session_start', async (_event, ctx) => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 500);
+    try {
+      const value = await ctx.ui.input('Owned startup input', 'Owned startup placeholder', { signal: controller.signal });
+      appendFileSync(join(process.cwd(), 'startup-ui-trace.jsonl'), JSON.stringify({ value: value ?? null }) + '\\n');
+    } finally { clearTimeout(timer); }
+  });
+}
+`;
+
 type NativeProfile =
   | 'default'
   | 'scopes'
@@ -145,10 +239,20 @@ type NativeProfile =
   | 'image-effects'
   | 'lifecycle-veto'
   | 'startup'
-  | 'openrouter';
+  | 'openrouter'
+  | 'ide-tools'
+  | 'model-tools'
+  | 'extension-ui'
+  | 'startup-ui'
+  | 'mcp-status'
+  | 'mcp-status-empty';
 interface OwnedState {
   readonly profile: NativeProfile;
+  readonly selectedSdk: boolean;
   readonly vetoAsset?: string;
+  readonly ideAssets?: readonly string[];
+  readonly modelToolsAsset?: string;
+  readonly extensionUiAsset?: string;
   root: string;
   cwd: string;
   dev: number;
@@ -199,7 +303,8 @@ async function validateOwned(state: OwnedState) {
 }
 
 export async function createNativeFixture(
-  profile: NativeProfile = 'default'
+  profile: NativeProfile = 'default',
+  runtime: 'supported-sdk' | 'path-cli' | 'selected-sdk' = 'supported-sdk'
 ): Promise<NativeFixture> {
   if (
     ![
@@ -211,12 +316,43 @@ export async function createNativeFixture(
       'lifecycle-veto',
       'startup',
       'openrouter',
+      'ide-tools',
+      'model-tools',
+      'extension-ui',
+      'startup-ui',
+      'mcp-status',
+      'mcp-status-empty',
     ].includes(profile)
   )
     throw new Error('Unowned fixture profile');
+  if (
+    runtime !== 'supported-sdk' &&
+    runtime !== 'selected-sdk' &&
+    (runtime !== 'path-cli' || !['ide-tools', 'mcp-status'].includes(profile))
+  )
+    throw new Error('Unowned fixture runtime selection');
   if (Number(process.versions.node.split('.')[0]) < 26)
     throw new Error('Native fixture requires Node 26 permission network controls');
-  const sdk = await resolveNativeCli();
+  if (
+    runtime === 'selected-sdk' &&
+    ![
+      'scopes',
+      'startup',
+      'openrouter',
+      'ide-tools',
+      'mcp-status',
+      'model-tools',
+      'extension-ui',
+      'startup-ui',
+    ].includes(profile)
+  )
+    throw new Error('Unowned selected SDK profile');
+  const sdk = await resolveNativeCli(runtime === 'selected-sdk' ? 'path-cli' : runtime);
+  if (
+    runtime === 'selected-sdk' &&
+    (sdk.version !== '1.3.0' || !isSupportedPiSdkVersion(sdk.version))
+  )
+    throw new Error('Selected SDK fixture requires the audited Pi 1.3.0 candidate');
   const selectedIdentity = await sdkIdentity(sdk);
   const root = await realpath(await mkdtemp(join(tmpdir(), 'pi-native-isolated-')));
   await chmod(root, 0o700);
@@ -250,6 +386,44 @@ export async function createNativeFixture(
   let summaryOutcome: 'success' | 'failure' | 'hold' | 'tool' = 'success';
   const server = createServer((req, res) => {
     requests++;
+    if (profile === 'mcp-status') {
+      if (req.method !== 'POST' || req.url !== '/mcp') {
+        req.resume();
+        res.writeHead(req.url === '/mcp-failed' ? 503 : 405).end();
+        return;
+      }
+      let body = '';
+      req.on('data', (chunk) => (body += chunk));
+      req.on('end', () => {
+        const request = JSON.parse(body);
+        if (request.id === undefined) {
+          res.writeHead(202).end();
+          return;
+        }
+        const result =
+          request.method === 'initialize'
+            ? {
+                protocolVersion: request.params.protocolVersion,
+                capabilities: { tools: {} },
+                serverInfo: { name: 'owned-mcp-fixture', version: '1' },
+              }
+            : request.method === 'tools/list'
+              ? {
+                  tools: [
+                    {
+                      name: 'owned_read',
+                      description: 'Owned fixture read-only tool; never executed',
+                      inputSchema: { type: 'object', properties: {} },
+                    },
+                  ],
+                }
+              : {};
+        res
+          .writeHead(200, { 'Content-Type': 'application/json' })
+          .end(JSON.stringify({ jsonrpc: '2.0', id: request.id, result }));
+      });
+      return;
+    }
     if (profile === 'openrouter') {
       req.resume();
       const endpoint = req.url?.split('?')[0];
@@ -281,7 +455,7 @@ export async function createNativeFixture(
       } else res.writeHead(400).end();
       return;
     }
-    if (profile === 'compact' || profile === 'image-effects' || profile === 'startup') {
+    if (['compact', 'image-effects', 'startup', 'ide-tools', 'model-tools'].includes(profile)) {
       let body = '';
       req.on('data', (chunk) => {
         body += chunk;
@@ -306,6 +480,28 @@ export async function createNativeFixture(
           model: 'ping',
           choices: [{ index: 0, delta, finish_reason }],
         });
+        if (
+          profile === 'ide-tools' &&
+          !payload.messages.some((message: any) => message.role === 'tool')
+        ) {
+          const operations = ['diagnostics', 'document_symbols', 'definitions', 'references'];
+          const tool_calls = operations.map((operation, index) => ({
+            index,
+            id: `owned_ide_${operation}`,
+            type: 'function',
+            function: {
+              name: `vscode_${operation}`,
+              arguments: JSON.stringify({
+                path: 'owned.ts',
+                ...(index > 1 ? { line: 1, character: 1 } : {}),
+              }),
+            },
+          }));
+          res.write(`data: ${JSON.stringify(chunk({ role: 'assistant', tool_calls }))}\n\n`);
+          res.write(`data: ${JSON.stringify(chunk({}, 'tool_calls'))}\n\n`);
+          res.end('data: [DONE]\n\n');
+          return;
+        }
         if (
           summaryOutcome === 'tool' &&
           !payload.messages.some((message: any) => message.role === 'tool')
@@ -450,6 +646,69 @@ export async function createNativeFixture(
             : undefined;
     const vetoAsset = vetoName ? join(root, vetoName) : undefined;
     const ownedAssets = new Map<string, Buffer>();
+    if (profile === 'mcp-status') {
+      const config = join(agentDir, 'mcp.json');
+      const bytes = Buffer.from(
+        JSON.stringify({
+          autoEnableCodemode: false,
+          mcpServers: {
+            'owned-connected': { url: `http://127.0.0.1:${port}/mcp`, exposure: 'hidden' },
+            'owned-failed': { url: `http://127.0.0.1:${port}/mcp-failed`, exposure: 'hidden' },
+            'owned-disabled': {
+              url: `http://127.0.0.1:${port}/mcp-disabled`,
+              enabled: false,
+              exposure: 'hidden',
+            },
+            'owned-invalid': 'invalid fixed fixture configuration',
+          },
+        })
+      );
+      await writeFile(config, bytes, { mode: 0o600 });
+      ownedAssets.set(config, bytes);
+      const projectConfig = join(cwd, '.pi', 'mcp.json');
+      const projectBytes = Buffer.from(
+        JSON.stringify({
+          mcpServers: {
+            'owned-project-only': {
+              url: `http://127.0.0.1:${port}/mcp`,
+              enabled: false,
+              exposure: 'hidden',
+            },
+          },
+        })
+      );
+      await writeFile(projectConfig, projectBytes, { mode: 0o600 });
+      ownedAssets.set(projectConfig, projectBytes);
+    }
+    const ideAssets =
+      profile === 'ide-tools'
+        ? [join(root, 'pi-vscode-ide.mjs'), join(root, 'ide-native-driver.mjs')]
+        : [];
+    if (ideAssets.length) {
+      const resource = await readFile(resolve('resources/pi-vscode-ide.mjs'));
+      for (const [index, target] of ideAssets.entries()) {
+        const bytes = index === 0 ? resource : Buffer.from(ownedIdeDriverSource);
+        await writeFile(target, bytes, { mode: 0o600 });
+        ownedAssets.set(target, bytes);
+      }
+    }
+    const modelToolsAsset =
+      profile === 'model-tools' ? join(root, 'model-tools-driver.mjs') : undefined;
+    if (modelToolsAsset) {
+      const bytes = Buffer.from(ownedModelToolsDriverSource);
+      await writeFile(modelToolsAsset, bytes, { mode: 0o600 });
+      ownedAssets.set(modelToolsAsset, bytes);
+    }
+    const extensionUiAsset = ['extension-ui', 'startup-ui'].includes(profile)
+      ? join(root, 'extension-ui-driver.mjs')
+      : undefined;
+    if (extensionUiAsset) {
+      const bytes = Buffer.from(
+        profile === 'startup-ui' ? ownedStartupUiDriverSource : ownedExtensionUiDriverSource
+      );
+      await writeFile(extensionUiAsset, bytes, { mode: 0o600 });
+      ownedAssets.set(extensionUiAsset, bytes);
+    }
     if (vetoAsset) {
       const bytes = await readFile(resolve('test/helpers', vetoName!));
       if (
@@ -470,7 +729,11 @@ export async function createNativeFixture(
     const rootStat = await lstat(root);
     const state: OwnedState = {
       profile,
+      selectedSdk: runtime === 'selected-sdk',
       vetoAsset,
+      ideAssets,
+      modelToolsAsset,
+      extensionUiAsset,
       hostAssets: ownedAssets,
       root,
       cwd,
@@ -513,7 +776,12 @@ export async function createNativeFixture(
         return Object.freeze([...summaryRequests]);
       },
       setSummaryOutcome(outcome) {
-        if (profile !== 'compact' || !['success', 'failure', 'hold', 'tool'].includes(outcome))
+        if (
+          !(
+            (profile === 'compact' && ['success', 'failure', 'hold', 'tool'].includes(outcome)) ||
+            (profile === 'model-tools' && ['success', 'hold'].includes(outcome))
+          )
+        )
           throw new Error('Unowned summary outcome');
         summaryOutcome = outcome;
       },
@@ -564,7 +832,15 @@ export async function nativeSdkHostPlan(
     | 'parity'
     | 'engine'
     | 'tool-modifiers'
-    | 'openrouter-offline' = 'default'
+    | 'openrouter-offline'
+    | 'loadout-default'
+    | 'loadout-modifiers'
+    | 'loadout-explicit'
+    | 'loadout-none'
+    | 'loadout-no-builtin'
+    | 'loadout-excluded'
+    | 'model-ambiguous'
+    | 'model-tools-filtered' = 'default'
 ) {
   const state = ownedFixtures.get(fixture);
   if (
@@ -578,8 +854,19 @@ export async function nativeSdkHostPlan(
       'engine',
       'tool-modifiers',
       'openrouter-offline',
+      'loadout-default',
+      'loadout-modifiers',
+      'loadout-explicit',
+      'loadout-none',
+      'loadout-no-builtin',
+      'loadout-excluded',
+      'model-ambiguous',
+      'model-tools-filtered',
     ].includes(scenario) ||
-    (scenario === 'openrouter-offline' && state.profile !== 'openrouter')
+    (scenario === 'openrouter-offline' && state.profile !== 'openrouter') ||
+    (scenario.startsWith('loadout-') && (!state.selectedSdk || state.profile !== 'ide-tools')) ||
+    (scenario === 'model-ambiguous' && (!state.selectedSdk || state.profile !== 'scopes')) ||
+    (scenario === 'model-tools-filtered' && state.profile !== 'model-tools')
   )
     throw new Error('Unowned SDK host fixture');
   await validateOwned(state);
@@ -594,6 +881,8 @@ export async function nativeSdkHostPlan(
       'model-discovery.mjs',
       'import-commands.mjs',
       'import-validation.mjs',
+      'mcp-status.mjs',
+      'model-tools.mjs',
     ]) {
       const source = resolve('host', name);
       const target = join(state.root, name);
@@ -602,7 +891,18 @@ export async function nativeSdkHostPlan(
       // probes sibling package roots outside this read-only SDK authority.
       // Fixed veto profile only: no filesystem permission widening.
       const bytes =
-        ['compact-veto', 'lifecycle-veto', 'startup'].includes(state.profile) &&
+        (state.selectedSdk ||
+          [
+            'compact-veto',
+            'lifecycle-veto',
+            'startup',
+            'ide-tools',
+            'model-tools',
+            'extension-ui',
+            'startup-ui',
+            'mcp-status',
+            'mcp-status-empty',
+          ].includes(state.profile)) &&
         name === 'pi-multi-host.mjs'
           ? Buffer.from(
               original
@@ -628,21 +928,48 @@ export async function nativeSdkHostPlan(
     state.hostAssets = assets;
   }
   await validateOwned(state);
+  const loadoutSelections: Record<string, string[]> = {
+    'loadout-default': [],
+    'loadout-modifiers': ['--tools', '+ls,-read'],
+    'loadout-explicit': ['--tools', 'read'],
+    'loadout-none': ['--no-tools'],
+    'loadout-no-builtin': ['--no-builtin-tools'],
+    'loadout-excluded': ['--exclude-tools', 'vscode_diagnostics'],
+  };
   const openArgs = [
     '--mode',
     'rpc',
     ...(state.profile !== 'openrouter' || scenario === 'openrouter-offline' ? ['--offline'] : []),
     scenario === 'project' ? '--approve' : '--no-approve',
     '--no-session',
-    '--no-extensions',
+    ...(['mcp-status', 'mcp-status-empty'].includes(state.profile) ? [] : ['--no-extensions']),
     '--no-skills',
     '--no-prompt-templates',
     '--no-context-files',
-    '--no-tools',
+    ...(loadoutSelections[scenario] ??
+      (state.profile === 'model-tools'
+        ? scenario === 'model-tools-filtered'
+          ? [
+              '--tools',
+              'owned_direct,owned_model_only,owned_deferred,owned_codemode,owned_hidden,owned_excluded',
+              '--exclude-tools',
+              'owned_excluded',
+            ]
+          : ['--exclude-tools', 'owned_excluded']
+        : state.profile === 'ide-tools'
+          ? [
+              '--tools',
+              'vscode_diagnostics,vscode_document_symbols,vscode_definitions,vscode_references',
+            ]
+          : ['--no-tools'])),
   ];
   if (state.vetoAsset) openArgs.push('--extension', state.vetoAsset);
+  for (const asset of state.ideAssets ?? []) openArgs.push('--extension', asset);
+  if (state.modelToolsAsset) openArgs.push('--extension', state.modelToolsAsset);
+  if (state.extensionUiAsset) openArgs.push('--extension', state.extensionUiAsset);
   // Fixed read-only selection; tests inspect the tools without executing them.
   if (scenario === 'tool-modifiers') openArgs.push('--tools', '+ls,-read');
+  if (scenario === 'model-ambiguous') openArgs.push('--model', 'ping');
   if (scenario === 'patterns')
     openArgs.push(
       '--models',
@@ -668,7 +995,15 @@ export async function nativeSdkHostPlan(
     env: Object.freeze({
       ...state.env,
       PI_HOST_PI_ROOT: state.sdk.root,
-      PI_HOST_DEDICATED: scenario === 'engine' && mode === 'dedicated' ? '1' : '0',
+      PI_HOST_DEDICATED:
+        mode === 'dedicated' &&
+        (scenario === 'engine' ||
+          state.selectedSdk ||
+          state.profile === 'model-tools' ||
+          state.profile === 'extension-ui' ||
+          state.profile === 'startup-ui')
+          ? '1'
+          : '0',
     }),
     open: Object.freeze({ type: 'open', cwd: state.cwd, args: Object.freeze(openArgs) }),
     mode,
@@ -717,7 +1052,15 @@ export async function spawnNativeSdkHost(
     | 'parity'
     | 'engine'
     | 'tool-modifiers'
-    | 'openrouter-offline' = 'default'
+    | 'openrouter-offline'
+    | 'loadout-default'
+    | 'loadout-modifiers'
+    | 'loadout-explicit'
+    | 'loadout-none'
+    | 'loadout-no-builtin'
+    | 'loadout-excluded'
+    | 'model-ambiguous'
+    | 'model-tools-filtered' = 'default'
 ) {
   const plan = await nativeSdkHostPlan(fixture, mode, scenario);
   return {
@@ -750,12 +1093,18 @@ export async function nativeSpawnPlan(fixture: NativeFixture, extraArgs: string[
       '--offline',
       '--no-approve',
       '--no-session',
-      '--no-extensions',
+      ...(['mcp-status', 'mcp-status-empty'].includes(state.profile) ? [] : ['--no-extensions']),
       '--no-skills',
       '--no-prompt-templates',
       '--no-context-files',
-      '--no-tools',
+      ...(state.profile === 'ide-tools'
+        ? [
+            '--tools',
+            'vscode_diagnostics,vscode_document_symbols,vscode_definitions,vscode_references',
+          ]
+        : ['--no-tools']),
       ...(state.vetoAsset ? ['--extension', state.vetoAsset] : []),
+      ...(state.ideAssets ?? []).flatMap((asset) => ['--extension', asset]),
     ],
     cwd: state.cwd,
     env: { ...state.env },

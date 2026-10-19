@@ -9,6 +9,7 @@ test('scopes SDK capability gate rejects mismatched package/version and missing 
     pathToFileURL(resolve('host/startup-adapter.mjs')).href
   );
   assert.equal(isSupportedPiSdkVersion('1.2.0'), true);
+  assert.equal(isSupportedPiSdkVersion('1.3.0'), true);
   validateSdkMetadata({ name: '@earendil-works/pi-coding-agent', version: '1.2.0' });
   assert.ok(SUPPORTED_PI_SDK_VERSIONS.includes('1.1.0'));
   for (const version of SUPPORTED_PI_SDK_VERSIONS) {
@@ -20,6 +21,9 @@ test('scopes SDK capability gate rejects mismatched package/version and missing 
     { name: '@earendil-works/pi-coding-agent', version: '0.99.3' },
     { name: '@earendil-works/pi-coding-agent', version: '1.1.1' },
     { name: '@earendil-works/pi-coding-agent', version: '1.2.1' },
+    { name: '@earendil-works/pi-coding-agent', version: '1.3.1' },
+    { name: '@earendil-works/pi-coding-agent', version: '1.4.0' },
+    { name: '@earendil-works/pi-coding-agent', version: '1.3.0-next' },
     { name: '@earendil-works/pi-coding-agent', version: '1.2.0-next' },
     { name: '@earendil-works/pi-coding-agent', version: '1.1.0-next' },
     { name: 'unknown', version: '1.1.0' },
@@ -134,4 +138,74 @@ test('scopes backend: copy both directions, stable revision, catalog drift, malf
     expectedRevision: operations.read().revision,
   });
   assert.deepEqual(unrestricted.scoped, []);
+});
+
+test('native ambiguous model patterns stay warnings; only unavailable defaults require replacement consent', async () => {
+  const { createScopeOperations } = await import(
+    pathToFileURL(resolve('host/scoped-models.mjs')).href
+  );
+  const models = [
+    { provider: 'a', id: 'one' },
+    { provider: 'b', id: 'two' },
+  ];
+  let scoped: any[] = [];
+  let enabled = ['one'];
+  let diagnostic = 'ambiguous';
+  let writes = 0;
+  const session = {
+    modelRuntime: { getAvailableSnapshot: () => models },
+    get scopedModels() {
+      return scoped;
+    },
+    setScopedModels(value: any[]) {
+      scoped = value;
+    },
+  };
+  const operations = createScopeOperations(
+    () => session,
+    () => ({
+      drainErrors: () => [],
+      getGlobalSettings: () => ({ enabledModels: enabled }),
+      getProjectSettings: () => ({}),
+      getEnabledModels: () => enabled,
+      setEnabledModels(value: string[]) {
+        writes++;
+        enabled = value;
+      },
+      flush: async () => {},
+    }),
+    (patterns: string[]) => ({
+      scopedModels: patterns
+        .map((pattern) => ({
+          model: models.find((model) => `${model.provider}/${model.id}` === pattern),
+        }))
+        .filter((entry) => entry.model),
+      diagnostics: patterns.includes('one') ? [{ code: diagnostic, pattern: 'one' }] : [],
+    })
+  );
+  const refs = [{ provider: 'a', id: 'one' }];
+  await operations.save({
+    refs,
+    expectedRevision: operations.read().revision,
+    replaceUnavailable: false,
+  });
+  assert.equal(writes, 1);
+  assert.equal(scoped[0].model, models[0]);
+  enabled = ['one'];
+  diagnostic = 'no-match';
+  await assert.rejects(
+    operations.save({
+      refs,
+      expectedRevision: operations.read().revision,
+      replaceUnavailable: false,
+    }),
+    /UNAVAILABLE_PATTERNS_REQUIRE_CONFIRMATION/
+  );
+  assert.equal(writes, 1, 'unavailable global patterns are retained without consent');
+  await operations.save({
+    refs,
+    expectedRevision: operations.read().revision,
+    replaceUnavailable: true,
+  });
+  assert.equal(writes, 2);
 });

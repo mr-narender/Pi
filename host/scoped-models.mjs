@@ -166,7 +166,10 @@ export function createScopeOperations(
         )
           failure('SCOPES_PATTERN_AMBIGUOUS');
         // Keep unavailable global patterns unless user explicitly acknowledges replacement.
-        if (data.globalDiagnostics.length && command.replaceUnavailable !== true)
+        if (
+          data.globalDiagnostics.some((diagnostic) => diagnostic.code !== 'ambiguous') &&
+          command.replaceUnavailable !== true
+        )
           failure('SCOPES_UNAVAILABLE_PATTERNS_REQUIRE_CONFIRMATION');
         settings.setEnabledModels(patterns);
         await settings.flush();

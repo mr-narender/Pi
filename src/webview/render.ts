@@ -5,6 +5,7 @@ import { highlightCode } from './highlight';
 import { chipPrivacyLabel, summarizeChip, type PendingContextItem } from './composer';
 import { formatUsageChip } from './usageSummary';
 import { editReplacements, editToolFilePath, type EditReplacement } from './editToolPath';
+import { toolActivity } from '../live/toolActivity';
 
 export const COMPOSER_FIELD_ID = 'composer-field';
 export const ATTACH_TRIGGER_ID = 'attach-trigger';
@@ -90,7 +91,7 @@ export function shouldClearSnapshotFocus(
 type MessageBlock = NonNullable<WebviewSnapshot['messages'][number]['blocks']>[number];
 
 interface TurnActivity {
-  content: string[];
+  entries: Array<{ node: TimelineNode; id: string }>;
   hasError: boolean;
   live: boolean;
 }
@@ -174,6 +175,19 @@ type TimelineNode =
  * the final answer — is a node with a colored dot on a connecting line. Simple
  * text-only replies skip the timeline and render as plain text.
  */
+function assistantHasContent(message: WebviewSnapshot['messages'][number]): boolean {
+  const blocks = message.blocks?.length
+    ? message.blocks
+    : message.text
+      ? [{ kind: 'text', text: message.text }]
+      : [];
+  return blocks.some((block) =>
+    block.kind === 'text' || block.kind === 'thinking'
+      ? Boolean(('text' in block ? block.text : '').trim())
+      : true
+  );
+}
+
 function renderAssistantBody(
   message: WebviewSnapshot['messages'][number],
   streamingAnswer = false,
@@ -189,9 +203,7 @@ function renderAssistantBody(
   // A settled assistant turn with NO content means the model returned nothing
   // (commonly a provider error / rate limit that Pi couldn't surface as an
   // event). Show a clear hint instead of a silent blank bubble.
-  const hasAnyContent = blocks.some((block) =>
-    block.kind === 'text' || block.kind === 'thinking' ? Boolean((block.text ?? '').trim()) : true
-  );
+  const hasAnyContent = assistantHasContent(message);
   if (!hasAnyContent) {
     if (message.errorMessage) {
       // Show the provider's REAL error (same text the TUI shows) — parsed into
@@ -269,11 +281,6 @@ function renderAssistantBody(
     }
     const runNodes = run;
     run = [];
-    const html = runNodes
-      .map((node, index) =>
-        renderTimelineNode(node, false, `${message.id}:${rendered.length}:${index}`)
-      )
-      .join('');
     const previews = runNodes.map(renderWrittenMermaid).join('');
     let hasError = false;
     for (const node of runNodes) {
@@ -285,8 +292,11 @@ function renderAssistantBody(
       }
     }
     if (activity) {
-      activity.content.push(
-        `<div data-activity-id="${escapeHtml(message.id)}:${rendered.length}">${html}</div>`
+      activity.entries.push(
+        ...runNodes.map((node, index) => ({
+          node,
+          id: `${message.id}:${rendered.length}:${index}`,
+        }))
       );
       activity.hasError ||= hasError;
       activity.live ||= streamingAnswer;
@@ -462,6 +472,42 @@ function renderJsonBlock(value: unknown, raw: string): string {
 // JSON, otherwise as the plain preformatted block. Long output stays clamped.
 function renderToolContent(text: string): string {
   const parsed = tryParseJson(text);
+  if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+    const ide = parsed as Record<string, unknown>;
+    if (
+      ide.vscodeIde === 1 &&
+      ['diagnostics', 'document_symbols', 'definitions', 'references'].includes(
+        String(ide.operation)
+      ) &&
+      Array.isArray(ide.locations)
+    ) {
+      const rows = ide.locations
+        .slice(0, 100)
+        .flatMap((value: unknown) => {
+          if (!value || typeof value !== 'object') return [];
+          const item = value as Record<string, unknown>;
+          const file = item.path;
+          if (
+            typeof file !== 'string' ||
+            !file ||
+            file.length > 4096 ||
+            /^(?:[\\/]|[a-z][a-z0-9+.-]*:)/i.test(file) ||
+            file.split(/[\\/]/).includes('..') ||
+            !Number.isSafeInteger(item.line) ||
+            Number(item.line) < 1 ||
+            !Number.isSafeInteger(item.character) ||
+            Number(item.character) < 1
+          )
+            return [];
+          const label = `${file}:${item.line}:${item.character}`;
+          return [
+            `<li><button type="button" class="file-link" data-ide-location="${escapeHtml(file)}" data-ide-line="${item.line}" data-ide-character="${item.character}" title="Open editor location">${escapeHtml(label)}</button>${typeof item.name === 'string' ? ` · ${escapeHtml(item.name.slice(0, 200))}` : ''}${typeof item.message === 'string' ? `<span> — ${escapeHtml(item.message.slice(0, 1000))}</span>` : ''}</li>`,
+          ];
+        })
+        .join('');
+      return `<div class="ide-results"><p>${escapeHtml(typeof ide.message === 'string' ? ide.message.slice(0, 1000) : 'Editor query')}</p>${rows ? `<ul>${rows}</ul>` : ''}${ide.truncated ? '<p>Showing a limited set of editor results.</p>' : ''}</div>`;
+    }
+  }
   const inner =
     parsed !== undefined
       ? `<div class="json-view">${renderJsonValue(parsed)}</div>`
@@ -491,54 +537,197 @@ function renderDuration(durationMs: unknown, label: string): string {
   return `<span class="native-duration muted" data-duration-ms="${durationMs}" aria-label="${escapeHtml(label)}: ${durationMs} milliseconds" title="${durationMs} ms reported by Pi">${text}</span>`;
 }
 
+function renderActivityDetails(
+  content: string,
+  nodeId: string,
+  title = 'Recorded output',
+  metadata = '',
+  group = ''
+): string {
+  return `<details class="activity-row-details" data-raw-details data-preserve-open${group ? ` data-work-group="${group}"` : ''} id="activity-details-${escapeHtml(nodeId)}"><summary class="activity-row-summary">${CARET_ICON}<span class="activity-row-copy"><span class="activity-row-title">${escapeHtml(title)}</span>${metadata ? `<span class="activity-row-meta">${metadata}</span>` : ''}</span></summary><div class="activity-record">${content}</div></details>`;
+}
+
+type WorkEntry = TurnActivity['entries'][number];
+function workCall(node: TimelineNode): Extract<MessageBlock, { kind: 'tool' }> | undefined {
+  return node.kind === 'toolPair' ? node.call : node.kind === 'tool' ? node : undefined;
+}
+function workResult(node: TimelineNode): Extract<MessageBlock, { kind: 'toolResult' }> | undefined {
+  return node.kind === 'toolPair' ? node.result : node.kind === 'toolResult' ? node : undefined;
+}
+function workFailed(node: TimelineNode, snapshot?: WebviewSnapshot): boolean {
+  const call = workCall(node);
+  return (
+    workResult(node)?.isError === true ||
+    !!snapshot?.activity?.tools.some(
+      (tool) => tool.id === call?.callId && tool.status === 'error'
+    ) ||
+    !!snapshot?.activity?.agents?.some(
+      (agent) =>
+        agent.toolCallId === call?.callId &&
+        ['failed', 'timeout', 'output_limit'].includes(agent.status)
+    )
+  );
+}
+function workState(node: TimelineNode, snapshot?: WebviewSnapshot): string {
+  if (workFailed(node, snapshot)) return 'Failed';
+  if (workResult(node)) return 'Result received';
+  const call = workCall(node);
+  const native = snapshot?.activity?.tools.find((tool) => tool.id === call?.callId);
+  const live =
+    snapshot?.bindingState !== 'cached' &&
+    snapshot?.bindingState !== 'draft' &&
+    !snapshot?.switchingSession &&
+    (snapshot?.isStreaming || snapshot?.connectionState === 'busy');
+  return native?.status === 'running'
+    ? live
+      ? 'Working'
+      : 'Last reported: Running'
+    : native?.status === 'completed'
+      ? 'Completion reported; result unavailable'
+      : 'Requested';
+}
+function workTitle(node: TimelineNode): string {
+  const call = workCall(node);
+  if (!call) return workResult(node)?.name ?? 'Tool result';
+  const file = toolActivity(call.name, call.args);
+  if (file) return file.kind === 'reading' ? file.path : `${call.name} ${file.path}`;
+  if (call.name === 'delegate_tasks' && call.args) {
+    try {
+      const args: unknown = JSON.parse(call.args);
+      if (args && typeof args === 'object' && 'tasks' in args && Array.isArray(args.tasks)) {
+        const tasks: unknown[] = args.tasks;
+        if (
+          tasks.length === 1 &&
+          tasks[0] &&
+          typeof tasks[0] === 'object' &&
+          'task' in tasks[0] &&
+          typeof tasks[0].task === 'string'
+        ) {
+          const title = tasks[0].task.split('\n')[0]!.trim();
+          if (title) return title.length > 160 ? `${title.slice(0, 160)}…` : title;
+        }
+        if (tasks.length) return `Delegate ${tasks.length} tasks`;
+      }
+    } catch {
+      /* A partial/unknown native payload keeps its literal tool name. */
+    }
+  }
+  return call.name;
+}
+function renderWorkRow(entry: WorkEntry, order: number, snapshot?: WebviewSnapshot): string {
+  const { node, id } = entry,
+    call = workCall(node),
+    result = workResult(node);
+  const failed = workFailed(node, snapshot);
+  const state = workState(node, snapshot);
+  const duration = result?.durationMs ?? call?.durationMs;
+  const editPath = call ? editToolFilePath(call.name, call.args) : undefined;
+  const replacements = call ? editReplacements(call.name, call.args) : [];
+  const actions = editPath
+    ? `<div class="tl-file-actions"><span class="tl-file-path">${escapeHtml(editPath)}</span><button type="button" class="tl-file-btn" data-file-open="${escapeHtml(editPath)}">Open file</button><button type="button" class="tl-file-btn" data-file-diff="${escapeHtml(editPath)}">Open changes</button>${call?.callId ? renderEditApprove(call.callId) : ''}</div>`
+    : '';
+  const request = call?.args
+    ? `<p class="activity-record-label">Request</p>${renderToolContent(call.args)}`
+    : '';
+  const diff = replacements.length ? renderEditDiff(replacements) : '';
+  const response = result
+    ? `<p class="activity-record-label">Result received</p><div class="tl-result-inline${failed ? ' is-error' : ''}">${renderToolContent(result.text)}</div>`
+    : '';
+  const callTime = call?.durationMs;
+  const resultTime = result?.durationMs;
+  const timingTrace =
+    typeof callTime === 'number' &&
+    Number.isFinite(callTime) &&
+    callTime >= 0 &&
+    typeof resultTime === 'number' &&
+    Number.isFinite(resultTime) &&
+    resultTime >= 0 &&
+    callTime !== resultTime
+      ? `<p class="activity-trace">Call execution time: ${callTime} ms · Result execution time: ${resultTime} ms</p>`
+      : '';
+  const trace = `<p class="activity-trace">Activity item ${order}${call?.callId || result?.callId ? ` · Call: ${escapeHtml(call?.callId ?? result?.callId ?? '')}` : ''}</p>${timingTrace}`;
+  return `<div class="tl-node ${call ? 'tl-tool' : 'tl-result'}${failed ? ' is-error' : ''}" data-activity-id="${escapeHtml(id)}"><details class="activity-row-details tl-card" data-raw-details data-preserve-open${call?.callId ? ` data-work-call="${escapeHtml(call.callId)}"` : ''} id="activity-details-${escapeHtml(id)}"><summary class="activity-row-summary tl-head">${CARET_ICON}<span class="activity-row-copy"><span class="activity-row-title">${escapeHtml(workTitle(node))}</span><span class="activity-row-meta">${call ? `<code class="tool-name">${escapeHtml(call.name)}</code>` : ''}<span class="${failed ? 'activity-row-failed' : 'muted'}">${failed ? META_ICONS.error : result ? META_ICONS.result : ''}${state}</span>${renderDuration(duration, 'Tool execution time')}</span></span></summary><div class="activity-record">${trace}${actions}${diff}${request}${response}</div></details></div>`;
+}
+function renderReadableWork(
+  rawEntries: WorkEntry[],
+  scope: string,
+  snapshot: WebviewSnapshot
+): string {
+  // Pair only an explicit matching native call ID; otherwise preserve the result separately.
+  const consumed = new Set<number>();
+  const entries = rawEntries.flatMap((entry, index) => {
+    if (consumed.has(index)) return [];
+    if (entry.node.kind !== 'tool' || !entry.node.callId) return [{ ...entry, order: index + 1 }];
+    const call = entry.node;
+    const resultIndex = rawEntries.findIndex(
+      (candidate, ahead) =>
+        ahead > index &&
+        !consumed.has(ahead) &&
+        candidate.node.kind === 'toolResult' &&
+        candidate.node.callId === call.callId
+    );
+    const result = rawEntries[resultIndex]?.node;
+    if (result?.kind === 'toolResult') {
+      consumed.add(resultIndex);
+      return [
+        { id: entry.id, order: index + 1, node: { kind: 'toolPair' as const, call, result } },
+      ];
+    }
+    return [{ ...entry, order: index + 1 }];
+  });
+  const reads = entries.filter((entry) => {
+    const call = workCall(entry.node);
+    return call && toolActivity(call.name, call.args)?.kind === 'reading';
+  });
+  const reasoning = entries.filter((entry) => entry.node.kind === 'thinking');
+  const out: string[] = [];
+  for (const entry of entries) {
+    if (entry.node.kind === 'thinking') {
+      if (entry !== reasoning[0]) continue;
+      const notes = reasoning
+        .map(
+          (note, index) =>
+            `<div class="reasoning-note" data-activity-id="${escapeHtml(note.id)}"><p class="activity-trace">Note ${index + 1} · Activity item ${note.order}</p>${note.node.kind === 'thinking' ? renderRichText(note.node.text) : ''}</div>`
+        )
+        .join('');
+      out.push(
+        `<div class="tl-node tl-thinking">${renderActivityDetails(notes, `${scope}-reasoning`, 'Reasoning', `${reasoning.length} ${reasoning.length === 1 ? 'note' : 'notes'}`, 'reasoning')}</div>`
+      );
+    } else if (reads.length > 1 && reads.includes(entry)) {
+      if (entry !== reads[0]) continue;
+      const files = new Set(
+        reads.map((read) => {
+          const call = workCall(read.node)!;
+          return toolActivity(call.name, call.args)!.path;
+        })
+      );
+      const states = new Map<string, number>();
+      for (const read of reads) {
+        const state = workState(read.node, snapshot);
+        states.set(state, (states.get(state) ?? 0) + 1);
+      }
+      const status = [...states]
+        .map(
+          ([state, count]) =>
+            `<span${state === 'Failed' ? ' class="activity-row-failed"' : ''}>${count} ${state === 'Result received' ? 'results received' : state.toLowerCase()}</span>`
+        )
+        .join(' · ');
+      out.push(
+        `<div class="activity-read-group${states.has('Failed') ? ' is-error' : ''}">${renderActivityDetails(reads.map((read) => renderWorkRow(read, read.order, snapshot)).join(''), `${scope}-reads`, `Read ${files.size} ${files.size === 1 ? 'file' : 'files'}`, `${reads.length} calls · ${status}`, 'reads')}</div>`
+      );
+    } else out.push(renderWorkRow(entry, entry.order, snapshot));
+  }
+  return out.join('');
+}
+
 function renderTimelineNode(node: TimelineNode, streamingAnswer: boolean, nodeId: string): string {
   switch (node.kind) {
     case 'thinking':
-      return `<div class="tl-node tl-thinking"><details class="tl-card" data-preserve-open id="thinking-${escapeHtml(nodeId)}"><summary class="tl-head">${META_ICONS.thinking}<span class="tl-label">Thinking</span>${CARET_ICON}</summary><div class="tl-body tl-think">${renderRichText(node.text)}</div></details></div>`;
-    case 'tool': {
-      const editPath = editToolFilePath(node.name, node.args);
-      const replacements = editReplacements(node.name, node.args);
-      const body =
-        replacements.length > 0
-          ? renderEditDiff(replacements)
-          : node.args
-            ? renderToolContent(node.args)
-            : '';
-      const approve = editPath && node.callId ? renderEditApprove(node.callId) : '';
-      const fileActions = editPath
-        ? `<div class="tl-file-actions"><span class="tl-file-path">${escapeHtml(editPath)}</span><button type="button" class="tl-file-btn" data-file-open="${escapeHtml(editPath)}">Open file</button><button type="button" class="tl-file-btn" data-file-diff="${escapeHtml(editPath)}">Open changes</button>${approve}</div>`
-        : '';
-      return `<div class="tl-node tl-tool"><div class="tl-card"><div class="tl-head">${META_ICONS.tool}<span class="tl-label">Tool</span><code class="tool-name">${escapeHtml(node.name)}</code>${renderDuration(node.durationMs, 'Tool execution time')}</div>${body}${fileActions}</div></div>`;
-    }
-    case 'toolResult': {
-      const err = node.isError === true;
-      // Results collapse by default (they're often long/noisy); errors stay open.
-      return `<div class="tl-node tl-result${err ? ' is-error' : ''}"><details class="tl-card"${err ? ' open' : ''}><summary class="tl-head">${err ? META_ICONS.error : META_ICONS.result}<span class="tl-label">${err ? 'Error' : 'Result'}</span>${node.name ? `<code class="tool-name">${escapeHtml(node.name)}</code>` : ''}${renderDuration(node.durationMs, 'Tool execution time')}${CARET_ICON}</summary>${renderToolContent(node.text)}</details></div>`;
-    }
-    case 'toolPair': {
-      const call = node.call;
-      const result = node.result;
-      const err = result.isError === true;
-      const editPath = editToolFilePath(call.name, call.args);
-      const replacements = editReplacements(call.name, call.args);
-      const callBody =
-        replacements.length > 0
-          ? renderEditDiff(replacements)
-          : call.args
-            ? renderToolContent(call.args)
-            : '';
-      const approve = editPath && call.callId ? renderEditApprove(call.callId) : '';
-      const fileActions = editPath
-        ? `<div class="tl-file-actions"><span class="tl-file-path">${escapeHtml(editPath)}</span><button type="button" class="tl-file-btn" data-file-open="${escapeHtml(editPath)}">Open file</button><button type="button" class="tl-file-btn" data-file-diff="${escapeHtml(editPath)}">Open changes</button>${approve}</div>`
-        : '';
-      const lineCount = result.text ? result.text.split('\n').length : 0;
-      const shortResult = !err && lineCount <= 12 && (result.text?.length ?? 0) <= 1400;
-      const open = err || shortResult ? ' open' : '';
-      const summaryLabel = err
-        ? 'Error'
-        : `Result · ${lineCount} line${lineCount === 1 ? '' : 's'}`;
-      return `<div class="tl-node tl-tool${err ? ' is-error' : ''}"><div class="tl-card"><div class="tl-head">${META_ICONS.tool}<span class="tl-label">Tool</span><code class="tool-name">${escapeHtml(call.name)}</code>${renderDuration(result.durationMs ?? call.durationMs, 'Tool execution time')}${err ? '<span class="tl-flag-error">failed</span>' : ''}</div>${callBody}${fileActions}<details class="tl-result-inline${err ? ' is-error' : ''}"${open}><summary class="tl-result-head">${err ? META_ICONS.error : META_ICONS.result}<span class="tl-label">${summaryLabel}</span>${CARET_ICON}</summary>${renderToolContent(result.text)}</details></div></div>`;
-    }
+      return `<div class="tl-node tl-thinking">${renderActivityDetails(renderRichText(node.text), nodeId, 'Reasoning')}</div>`;
+    case 'tool':
+    case 'toolResult':
+    case 'toolPair':
+      return renderWorkRow({ node, id: nodeId }, 1);
     case 'image':
       return `<div class="tl-node tl-tool"><div class="tl-card"><div class="tl-head">${META_ICONS.image}<span class="tl-label">Image</span><span class="tool-name">${escapeHtml(node.mimeType)}</span></div>${renderMessageImage(node)}</div></div>`;
     case 'response': {
@@ -997,20 +1186,50 @@ function renderApprovals(snapshot: WebviewSnapshot): string {
       const body = approval.message
         ? `<p class="approval-msg">${escapeHtml(approval.message)}</p>`
         : '';
+      const fieldOrigin = escapeHtml(
+        JSON.stringify([snapshot.sessionFile, snapshot.sessionId, snapshot.catalogGeneration])
+      );
+      const key = escapeHtml(approval.requestKey ?? '');
+      const blocked =
+        !approval.requestKey ||
+        !!approval.responseState ||
+        snapshot.switchingSession ||
+        snapshot.bindingState === 'cached' ||
+        !['starting', 'handshaking', 'ready', 'busy'].includes(snapshot.connectionState);
+      const attrs = `data-ui-id="${escapeHtml(approval.id)}" data-ui-key="${key}"${blocked ? ' disabled' : ''}`;
+      const status =
+        approval.responseState === 'sending'
+          ? 'Sending response…'
+          : approval.responseState === 'unknown'
+            ? 'Response delivery could not be confirmed. It will not be sent again automatically. Check Pi’s output log before continuing.'
+            : (approval.responseError ?? '');
+      const notice = `<p class="approval-msg" role="status">${escapeHtml(status)}</p>`;
+      if (approval.method === 'unsupported_ui') {
+        return `<div class="approval-card" data-extension-request="${key}" role="status"><div class="approval-head">This extension needs a terminal-only view</div><p class="approval-msg">Pi cannot display this custom terminal interface in the chat. Use the extension in Pi’s terminal.</p>${body}<div class="approval-actions"><button type="button" class="approval-btn" ${attrs} data-ui-cancelled="true">Dismiss</button></div>${notice}</div>`;
+      }
+      if (approval.method === 'set_editor_text') {
+        const prepared =
+          typeof approval.draftRevision === 'number' && typeof approval.draftResetSeq === 'number';
+        return `<div class="approval-card" data-extension-request="${key}" role="dialog" aria-label="Draft update"><div class="approval-head">Pi would like to update your draft</div><p class="approval-msg">Your current text remains in the composer until you choose.</p><pre class="approval-proposal">${escapeHtml(approval.prefill ?? '')}</pre><div class="approval-actions"><button type="button" class="approval-btn" ${attrs} data-ui-confirmed="false">Keep my draft</button><button type="button" class="approval-btn approval-allow" ${attrs} data-ui-confirmed="true" data-ui-draft-use${!prepared ? ' disabled' : ''}>Use extension text</button></div>${notice}</div>`;
+      }
+      if (approval.method === 'input') {
+        return `<div class="approval-card" data-extension-request="${key}" role="dialog" aria-label="${heading}"><div class="approval-head">${heading}</div>${body}<input class="approval-input" maxlength="160000" data-ui-field="${key}" data-ui-origin="${fieldOrigin}" aria-label="${heading}" placeholder="${escapeHtml(approval.placeholder ?? '')}" value="${escapeHtml(approval.prefill ?? '')}"${blocked ? ' disabled' : ''}><div class="approval-actions"><button type="button" class="approval-btn" ${attrs} data-ui-cancelled="true">Cancel</button><button type="button" class="approval-btn approval-allow" ${attrs} data-ui-input-submit="true">Submit</button></div>${notice}</div>`;
+      }
       if (approval.method === 'editor') {
         const id = escapeHtml(approval.id);
-        return `<div class="approval-card" role="dialog" aria-label="${heading}"><div class="approval-head">${heading}</div>${body}<textarea class="approval-editor" data-ui-editor="${id}" rows="8" placeholder="${escapeHtml(approval.placeholder ?? '')}">${escapeHtml(approval.prefill ?? '')}</textarea><div class="approval-actions"><button type="button" class="approval-btn approval-allow" data-ui-id="${id}" data-ui-editor-submit="true">Submit</button><button type="button" class="approval-btn" data-ui-id="${id}" data-ui-cancelled="true">Cancel</button></div></div>`;
+        return `<div class="approval-card" data-extension-request="${key}" role="dialog" aria-label="${heading}"><div class="approval-head">${heading}</div>${body}<textarea class="approval-editor" maxlength="160000" data-ui-editor="${id}" data-ui-field="${key}" data-ui-origin="${fieldOrigin}" aria-label="${heading}" rows="8" placeholder="${escapeHtml(approval.placeholder ?? '')}"${blocked ? ' disabled' : ''}>${escapeHtml(approval.prefill ?? '')}</textarea><div class="approval-actions"><button type="button" class="approval-btn approval-allow" ${attrs} data-ui-editor-submit="true">Submit</button><button type="button" class="approval-btn" ${attrs} data-ui-cancelled="true">Cancel</button></div>${notice}</div>`;
       }
       const buttons =
         approval.method === 'confirm'
-          ? `<button type="button" class="approval-btn approval-allow" data-ui-id="${escapeHtml(approval.id)}" data-ui-confirmed="true">Allow</button><button type="button" class="approval-btn approval-deny" data-ui-id="${escapeHtml(approval.id)}" data-ui-confirmed="false">Deny</button>`
+          ? `<button type="button" class="approval-btn approval-allow" ${attrs} data-ui-confirmed="true">Allow</button><button type="button" class="approval-btn approval-deny" ${attrs} data-ui-confirmed="false">Deny</button>`
           : (approval.options ?? [])
               .map(
                 (option) =>
-                  `<button type="button" class="approval-btn" data-ui-id="${escapeHtml(approval.id)}" data-ui-value="${escapeHtml(option)}">${escapeHtml(option)}</button>`
+                  `<button type="button" class="approval-btn" ${attrs} data-ui-value="${escapeHtml(option)}">${escapeHtml(option)}</button>`
               )
-              .join('');
-      return `<div class="approval-card" role="alertdialog" aria-label="${heading}"><div class="approval-head">${heading}</div>${body}<div class="approval-actions">${buttons}</div></div>`;
+              .join('') +
+            `<button type="button" class="approval-btn" ${attrs} data-ui-cancelled="true">Cancel</button>`;
+      return `<div class="approval-card" data-extension-request="${key}" role="alertdialog" aria-label="${heading}"><div class="approval-head">${heading}</div>${body}<div class="approval-actions">${buttons}</div>${notice}</div>`;
     })
     .join('');
 }
@@ -1057,22 +1276,55 @@ function renderFollowToggle(snapshot: WebviewSnapshot): string {
   return `<button type="button" class="icon-button follow-toggle${on ? ' is-on' : ''}" data-action="toggleFollow" title="${on ? 'Following π — the side editor tracks every file and line the agent touches (click to stop)' : 'Follow π: open the file the agent is reading or editing, live (click to start)'}" aria-label="Toggle follow agent" aria-pressed="${on ? 'true' : 'false'}"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="8" cy="8" r="4.4"/><circle cx="8" cy="8" r="1" fill="currentColor" stroke="none"/><path d="M8 1v2.2M8 12.8V15M1 8h2.2M12.8 8H15"/></svg></button>`;
 }
 
-// Plan strip: π's own task list, pinned above the chat as live progress.
-
-function renderPlanStrip(snapshot: WebviewSnapshot): string {
-  const plan = snapshot.plan;
+function renderReportedTasks(plan: WebviewSnapshot['messages'][number]['reportedTasks']): string {
   if (!plan || plan.items.length === 0) {
     return '';
   }
-  const total = plan.items.length;
-  const pct = Math.round((plan.done / total) * 100);
   const rows = plan.items
     .map(
       (item) =>
         `<li class="plan-item${item.done ? ' is-done' : ''}">${item.done ? '<span class="plan-check">✓</span>' : '<span class="plan-dot"></span>'}${escapeHtml(item.text)}</li>`
     )
     .join('');
-  return `<details class="plan-strip" id="plan-strip" data-preserve-open><summary title="π's current plan"><span class="plan-badge">Plan</span><span class="plan-progress"><span class="plan-progress-fill" style="width:${pct}%"></span></span><span class="plan-count">${plan.done}/${total}</span>${CARET_ICON}</summary><ul class="plan-list">${rows}</ul></details>`;
+  return `<section class="reported-tasks" aria-label="Reported tasks"><h3>Reported tasks</h3><p class="muted">Checklist reported by Pi; completion is not independently verified.</p><ul class="plan-list">${rows}</ul></section>`;
+}
+
+function renderReportedAgents(
+  agents: NonNullable<WebviewSnapshot['activity']>['agents'],
+  snapshot: WebviewSnapshot,
+  scope = 'panel'
+): string {
+  if (!agents?.length) return '';
+  const current =
+    snapshot.bindingState !== 'cached' &&
+    snapshot.bindingState !== 'draft' &&
+    !snapshot.switchingSession &&
+    (snapshot.isStreaming || snapshot.connectionState === 'busy');
+  const labels = {
+    queued: 'Queued',
+    running: 'Running',
+    completed: 'Result received',
+    failed: 'Failed',
+    cancelled: 'Cancelled',
+    timeout: 'Timed out',
+    output_limit: 'Output limit reached',
+    unknown: 'Unknown state',
+  };
+  return `<section class="reported-agents" aria-label="Reported agents"><h3>Agents <span class="muted">· reported by Pi</span></h3>${agents
+    .map((agent, index) => {
+      const status =
+        agent.live && current
+          ? agent.status === 'running'
+            ? 'Working'
+            : 'Queued'
+          : agent.status === 'running' || agent.status === 'queued'
+            ? `Last reported: ${labels[agent.status]}`
+            : labels[agent.status];
+      const label = /^(?:worker|agent)$/i.test(agent.role) ? `Agent ${index + 1}` : agent.role;
+      const failed = ['failed', 'timeout', 'output_limit'].includes(agent.status);
+      return `<div class="reported-agent${failed ? ' is-error' : ''}" data-agent-call="${escapeHtml(agent.toolCallId)}"><details class="reported-agent-details" data-raw-details data-preserve-open id="agent-${escapeHtml(scope)}-${encodeURIComponent(JSON.stringify([agent.toolCallId, agent.id]))}"><summary class="activity-row-summary reported-agent-head">${CARET_ICON}<span class="activity-row-copy"><span class="activity-row-title reported-agent-role">${escapeHtml(label)}</span><span class="activity-row-meta${failed ? ' activity-row-failed' : ''}">${failed ? META_ICONS.error : ''}${status}</span></span></summary><div class="reported-agent-body activity-record"><p class="muted">${agent.status === 'completed' ? 'Result received; not independently verified.' : 'Status reported by Pi.'}</p><p class="muted">${escapeHtml(agent.role)} · ${escapeHtml(agent.id)}</p>${agent.reason ? `<p>${escapeHtml(agent.reason)}</p>` : ''}${agent.output ? `<pre>${escapeHtml(agent.output)}</pre>` : ''}</div></details></div>`;
+    })
+    .join('')}</section>`;
 }
 
 // Compact inline version for the slim retry banner — badge + clean message,
@@ -1241,7 +1493,11 @@ function renderFreshSessionDetails(snapshot: WebviewSnapshot): string {
   ].join('')}</div></div></details>`;
 }
 
-function renderMessages(snapshot: WebviewSnapshot, revealMessageId?: string): string {
+function renderMessages(
+  snapshot: WebviewSnapshot,
+  revealMessageId?: string,
+  activityTurns?: string[]
+): string {
   if (snapshot.messages.length === 0) {
     return `
       <div class="empty-state" data-testid="empty-state">
@@ -1268,22 +1524,96 @@ function renderMessages(snapshot: WebviewSnapshot, revealMessageId?: string): st
   let turn: string[] = [];
   let turnId = '';
   let durationMs: number | undefined;
-  let activity: TurnActivity = { content: [], hasError: false, live: false };
+  let activity: TurnActivity = { entries: [], hasError: false, live: false };
+  const turnCalls = new Set<string>();
+  const turnIds = new Set<string>();
+  const turnPaths = new Set<string>();
+  const latestReply = [...snapshot.messages]
+    .reverse()
+    .find(
+      (message) =>
+        message.role === 'assistant' && (assistantHasContent(message) || message.errorMessage)
+    );
+  let turnTasks: WebviewSnapshot['messages'][number]['reportedTasks'];
   const flushTurn = (): void => {
     if (!turn.length) return;
-    const footer = activity.content.length
-      ? `<details class="work-phase${activity.hasError ? ' is-error' : ''}" data-preserve-open id="wp-${escapeHtml(turnId)}"${activity.hasError || activity.live ? ' open' : ''}><summary class="work-phase-head">${CARET_ICON}<span class="work-phase-label">View activity</span>${activity.hasError ? '<span class="tl-flag-error">failed</span>' : ''}</summary><div class="work-phase-body">${activity.content.join('')}</div></details>`
+    const agents =
+      snapshot.activity?.agents?.filter((agent) => turnCalls.has(agent.toolCallId)) ?? [];
+    const plan = turnTasks;
+    const failedAgents = agents.filter((agent) =>
+      ['failed', 'timeout', 'output_limit'].includes(agent.status)
+    ).length;
+    const progress = [
+      plan ? `${plan.done}/${plan.items.length} tasks` : '',
+      agents.length ? `${agents.length} agent${agents.length === 1 ? '' : 's'}` : '',
+    ]
+      .filter(Boolean)
+      .join(' · ');
+    const reported = renderReportedTasks(plan);
+    const current = !!latestReply && turnIds.has(latestReply.id);
+    const scopedTools = snapshot.activity?.tools.filter((tool) => turnCalls.has(tool.id)) ?? [];
+    const files = [...turnPaths]
+      .filter((path) => path.length <= 1000 && !/[\u0000-\u001f\u007f]/.test(path))
+      .slice(0, 30)
+      .map((path) => ({ path }));
+    const lastTool = snapshot.activity?.tools.at(-1);
+    const partial =
+      lastTool?.status === 'running' && turnCalls.has(lastTool.id) && snapshot.activity?.output
+        ? renderActivityDetails(
+            `<pre class="activity-output">${escapeHtml(snapshot.activity.output)}</pre>`,
+            `${turnId}-partial`,
+            'Current tool output'
+          )
+        : '';
+    const turnContent = `<section class="activity-turn" data-turn-activity="${escapeHtml(turnId)}">${reported}${renderReadableWork(activity.entries, turnId, snapshot)}${partial}</section>`;
+    const scoped = {
+      ...snapshot,
+      activity: {
+        agents,
+        tools: scopedTools,
+        output: lastTool && turnCalls.has(lastTool.id) ? (snapshot.activity?.output ?? '') : '',
+        files,
+        statuses: current ? (snapshot.activity?.statuses ?? []) : [],
+      },
+    };
+    const hasActivity =
+      activity.entries.length ||
+      reported ||
+      agents.length ||
+      files.length ||
+      scoped.activity.tools.length ||
+      scoped.activity.statuses.length;
+    if (hasActivity) activityTurns?.push(turnContent);
+    const footer = hasActivity
+      ? renderActivityPanel(
+          scoped,
+          undefined,
+          activity.entries.length || reported ? [turnContent] : [],
+          `activity-${encodeURIComponent(turnId)}`,
+          progress,
+          activity.hasError ||
+            failedAgents > 0 ||
+            activity.entries.some((entry) => workFailed(entry.node, snapshot))
+        )
       : '';
     rendered.push(
       `<section class="assistant-turn" id="turn-${escapeHtml(turnId)}" aria-label="Pi reply"><div class="message-role">Pi${renderDuration(durationMs, 'Assistant generation time (recorded)')}</div>${turn.join('')}${footer}</section>`
     );
     turn = [];
     durationMs = undefined;
-    activity = { content: [], hasError: false, live: false };
+    activity = { entries: [], hasError: false, live: false };
+    turnCalls.clear();
+    turnIds.clear();
+    turnPaths.clear();
+    turnTasks = undefined;
   };
   for (const [index, message] of snapshot.messages.entries()) {
-    const inTurn = message.role === 'assistant' || (turn.length > 0 && isResultRole(message.role));
+    const inTurn = message.role === 'assistant' || isResultRole(message.role);
     if (!inTurn) flushTurn();
+    if (message.role === 'user') {
+      for (const item of [...(message.capturedContext ?? []), ...message.attachments])
+        if (item.fileRef) turnPaths.add(item.fileRef.path);
+    }
     const html = renderMessageArticle(
       message,
       index === snapshot.messages.length - 1,
@@ -1301,6 +1631,15 @@ function renderMessages(snapshot: WebviewSnapshot, revealMessageId?: string): st
     if (inTurn) {
       if (!turn.length) turnId = message.id;
       turn.push(html);
+      turnIds.add(message.id);
+      if (message.reportedTasks) turnTasks = message.reportedTasks;
+      for (const block of message.blocks ?? []) {
+        if (block.kind === 'tool') {
+          if (block.callId) turnCalls.add(block.callId);
+          const file = toolActivity(block.name, block.args);
+          if (file) turnPaths.add(file.path);
+        }
+      }
       if (
         message.role === 'assistant' &&
         typeof message.durationMs === 'number' &&
@@ -1354,7 +1693,7 @@ function renderMessageArticle(
   void isLast;
   return `
         <article class="message-card message-${escapeHtml(role)}" data-mid="${escapeHtml(message.id)}"${roleLabel ? ` aria-label="${roleLabel} said"` : ''}>
-          ${showRole && roleLabel ? `<div class="message-role">${roleLabel}${role === 'assistant' ? renderDuration(message.durationMs, 'Assistant generation time') : ''}</div>` : ''}
+${showRole && roleLabel ? `<div class="message-role">${roleLabel}${role === 'assistant' ? renderDuration(message.durationMs, 'Assistant generation time') : ''}</div>` : ''}
           ${body}${captured}
 ${message.attachments.length > 0 ? `          <div class="detail-stack">${message.attachments.map((attachment) => renderAttachment(attachment)).join('')}</div>` : ''}
           ${showCopy ? `<div class="msg-actions">${role === 'user' ? `<button type="button" class="msg-edit" title="Edit &amp; restart from here" aria-label="Edit and restart the chat from this message"${editDisabled}>${EDIT_ICON}</button>` : ''}<button type="button" class="msg-copy"${message.capturedContext ? ` data-copy-raw="${escapeHtml(message.text)}"` : ''} title="Copy message" aria-label="Copy message">${COPY_ICON}</button></div>` : ''}
@@ -1371,14 +1710,27 @@ function renderMessageBody(
     return renderAssistantBody(message, streamingAnswer, modelName, activity);
   }
   if (isResultRole(message.role)) {
-    const result = renderResultMessage(message);
     if (activity) {
-      activity.content.push(
-        `<div data-activity-id="${escapeHtml(message.id)}:result">${result}</div>`
+      const results = message.blocks?.filter((block) => block.kind === 'toolResult');
+      activity.entries.push(
+        ...(results?.length
+          ? results
+          : [
+              {
+                kind: 'toolResult' as const,
+                text: message.text ?? '',
+                isError: !!message.errorMessage,
+                durationMs: message.durationMs,
+              },
+            ]
+        ).map((node, index) => ({ node, id: `${message.id}:result:${index}` }))
       );
+      activity.hasError ||=
+        !!message.errorMessage ||
+        !!message.blocks?.some((block) => block.kind === 'toolResult' && block.isError);
       return '';
     }
-    return result;
+    return renderResultMessage(message);
   }
   return renderMessageStream(message);
 }
@@ -1386,7 +1738,7 @@ function renderMessageBody(
 /** A standalone tool-result / bash-execution message rendered as a Result card. */
 function renderResultMessage(message: WebviewSnapshot['messages'][number]): string {
   const text = message.text ?? '';
-  return `<div class="timeline timeline-standalone"><div class="tl-node tl-result"><details class="tl-card"><summary class="tl-head">${META_ICONS.result}<span class="tl-label">Result</span>${renderDuration(message.durationMs, 'Tool execution time')}${CARET_ICON}</summary>${renderClampedOutput(text)}</details></div></div>`;
+  return `<div class="timeline timeline-standalone"><div class="tl-node tl-result"><div class="tl-card"><div class="tl-head">${META_ICONS.result}<span>Result received</span>${renderDuration(message.durationMs, 'Tool execution time')}</div>${renderActivityDetails(renderClampedOutput(text), `${message.id}:result`)}</div></div></div>`;
 }
 
 function renderContextChip(item: PendingContextItem): string {
@@ -1557,40 +1909,192 @@ function renderQueueTray(snapshot: WebviewSnapshot): string {
         `<div class="queue-item"><span class="queue-kind">${item.kind}</span><span class="queue-text">${escapeHtml(item.text)}</span></div>`
     )
     .join('');
-  return `<div class="queue-tray"><div class="section-label">Queued for π</div>${rows}</div>`;
+  return `<div class="queue-tray"><div class="section-label">Queued with Pi · read-only</div>${rows}</div>`;
+}
+
+function renderOutbox(snapshot: WebviewSnapshot): string {
+  const outbox = snapshot.outbox;
+  if (!outbox || (!outbox.items.length && !outbox.notice)) return '';
+  const editing = outbox.items.some((item) => item.status === 'editing');
+  const sending = outbox.items.some((item) => item.status === 'sending');
+  const canSend =
+    snapshot.isTrusted &&
+    !snapshot.isCompacting &&
+    (snapshot.connectionState === 'ready' || snapshot.connectionState === 'busy');
+  const button = (action: string, label: string) =>
+    `<button type="button" data-outbox-action="${action}"${outbox.readOnly ? ' disabled' : ''}>${label}</button>`;
+  const renderRow = (item: (typeof outbox.items)[number]) => {
+    const locked = ['sending', 'unknown', 'accepted'].includes(item.status);
+    const state = {
+      queued: 'After this reply',
+      held: 'Saved · paused',
+      editing: 'Held while editing',
+      paused: 'Paused · review before sending',
+      sending: 'Sending',
+      unknown: 'Delivery unconfirmed',
+      accepted: 'Received by Pi',
+    }[item.status];
+    const files = item.files.length
+      ? `<ul class="outbox-files" aria-label="Attached files">${item.files.map((file) => `<li>${escapeHtml(file.name)}</li>`).join('')}</ul>`
+      : '';
+    return `<div class="outbox-row" data-outbox-id="${escapeHtml(item.id)}" data-outbox-revision="${item.revision}" data-outbox-status="${item.status}">
+      <div class="outbox-meta"><span>${locked ? 'Message' : 'Follow-up'}</span><span>${state}</span></div>
+      ${
+        item.status === 'editing'
+          ? `<textarea id="outbox-editor-${escapeHtml(item.id)}" data-outbox-editor data-outbox-editor-key="${escapeHtml(outbox.key)}" data-outbox-editor-revision="${item.revision}" maxlength="160000" rows="3" aria-label="Edit outbox message"${outbox.readOnly ? ' readonly' : ''}>${escapeHtml(item.text)}</textarea>${files}<div class="outbox-actions">${button('save', 'Save')}${button('cancel', 'Cancel')}<span>Attachments unchanged</span></div><p class="outbox-hint">Save keeps it paused. Your new message draft below stays unchanged.</p>`
+          : `<p class="outbox-text">${escapeHtml(item.text)}</p>${files}${locked || editing || sending ? '' : `<div class="outbox-actions">${button('edit', 'Edit')}${button('remove', 'Remove')}${canSend && item.status !== 'queued' ? button('resume', 'Send') : ''}${canSend && snapshot.connectionState === 'busy' ? button('steer', 'Steer now') : ''}</div>`}`
+      }
+      ${item.status === 'unknown' ? `<p class="outbox-hint">Check the chat before sending this message again. It will not be resent automatically.</p><div class="outbox-actions"><button type="button" data-outbox-action="discard" title="Does not cancel or resend anything Pi may have received"${outbox.readOnly ? ' disabled' : ''}>Discard copy</button></div>` : item.status === 'accepted' ? '<p class="outbox-hint">Handoff confirmed; Pi may still be waiting to use it.</p>' : ''}
+    </div>`;
+  };
+  const pending = outbox.items.filter((item) => item.status !== 'accepted');
+  const accepted = outbox.items.filter((item) => item.status === 'accepted');
+  const caption = pending.some((item) => item.status === 'unknown')
+    ? 'Delivery is unconfirmed. Unsent messages remain paused.'
+    : pending.some((item) => ['held', 'editing', 'paused'].includes(item.status))
+      ? 'Paused. Choose Send to continue; Save does not send.'
+      : 'Held by the extension. Sent in order after each reply; editable until sending.';
+  return `<section class="outbox" data-outbox-key="${escapeHtml(outbox.key)}" aria-label="Outbox"><div class="outbox-heading">Outbox <span>${pending.length}</span></div><p class="outbox-hint">${caption}</p>${outbox.notice ? `<p class="outbox-notice" role="status">${escapeHtml(outbox.notice)}</p>` : ''}${pending.map(renderRow).join('')}${accepted.length ? `<details class="outbox-received" id="outbox-received" data-preserve-open><summary>Received by Pi · ${accepted.length}</summary>${accepted.map(renderRow).join('')}</details>` : ''}</section>`;
 }
 
 export function renderActivityContent(
   snapshot: WebviewSnapshot,
-  selected: 'output' | 'sources' | 'agents' = 'output'
+  selected: 'output' | 'sources' | 'agents' = 'output',
+  revealMessageId?: string,
+  activityTurns?: string[],
+  scope = 'activity'
 ): string {
+  if (!activityTurns) {
+    activityTurns = [];
+    renderMessages(snapshot, revealMessageId, activityTurns);
+  }
   const activity = snapshot.activity;
   const tools = activity?.tools ?? [];
-  const tabs = (['output', 'sources', 'agents'] as const)
+  const availableTabs: Array<typeof selected> = ['output', 'sources'];
+  if (activity?.agents?.length) availableTabs.push('agents');
+  if (!availableTabs.includes(selected)) selected = 'output';
+  const tabs = availableTabs
     .map(
       (tab) =>
-        `<button type="button" role="tab" id="activity-tab-${tab}" data-activity-tab="${tab}" aria-controls="activity-view-${tab}" aria-selected="${selected === tab}" tabindex="${selected === tab ? 0 : -1}">${tab === 'sources' ? 'Sources' : tab === 'agents' ? 'Agents' : 'Output'}</button>`
+        `<button type="button" role="tab" id="${escapeHtml(scope)}-tab-${tab}" data-activity-tab="${tab}" aria-controls="${escapeHtml(scope)}-view-${tab}" aria-selected="${selected === tab}" tabindex="${selected === tab ? 0 : -1}">${tab === 'sources' ? 'Sources' : tab === 'agents' ? 'Agents' : 'Output'}</button>`
     )
     .join('');
   const view = (name: typeof selected, content: string) =>
-    `<section role="tabpanel" id="activity-view-${name}" data-activity-view="${name}" aria-labelledby="activity-tab-${name}" tabindex="0"${selected === name ? '' : ' hidden'}>${content}</section>`;
-  const output = tools.length
-    ? `<ol class="activity-tools">${tools.map((tool) => `<li><span>${escapeHtml(tool.name)}</span><span class="muted">${escapeHtml(tool.status)}${tool.durationMs === undefined ? '' : ` · ${escapeHtml(String(tool.durationMs))} ms`}</span></li>`).join('')}</ol>${activity?.output ? `<pre class="activity-output">${escapeHtml(activity.output)}</pre>` : '<p class="muted">Waiting for tool output.</p>'}`
-    : '<p class="muted">Tool activity will appear here as Pi works.</p>';
-  const statuses = (activity?.statuses ?? [])
+    `<section role="tabpanel" id="${escapeHtml(scope)}-view-${name}" data-activity-view="${name}" aria-labelledby="${escapeHtml(scope)}-tab-${name}" tabindex="0"${selected === name ? '' : ' hidden'}>${content}</section>`;
+  const output = activityTurns.length
+    ? activityTurns.join('')
+    : tools.length
+      ? `<p class="muted">Current chat runtime activity</p><ol class="activity-tools">${tools.map((tool) => `<li><span>${escapeHtml(tool.name)}</span><span class="muted">${escapeHtml(tool.status)}${tool.durationMs === undefined ? '' : ` · ${escapeHtml(String(tool.durationMs))} ms`}</span></li>`).join('')}</ol>${activity?.output ? renderActivityDetails(`<pre class="activity-output">${escapeHtml(activity.output)}</pre>`, `${scope}-output`) : '<p class="muted">Waiting for tool output.</p>'}`
+      : '<p class="muted">Tool activity will appear here as Pi works.</p>';
+  const statusRows = (activity?.statuses ?? [])
     .map(
       (status) =>
         `<div class="activity-status"><strong>${escapeHtml(status.label)}</strong><span>${escapeHtml(status.text)}</span></div>`
     )
     .join('');
+  const statuses = statusRows
+    ? renderActivityDetails(
+        statusRows,
+        `${scope}-runtime`,
+        'Runtime details',
+        `${activity!.statuses.length} status updates`,
+        'runtime'
+      )
+    : '';
   const files = activity?.files ?? [];
   const sources = files.length
-    ? `<p class="muted">Files read, edited or attached in this chat.</p><ul class="activity-files">${files.map((file) => `<li><button type="button" data-file-open="${escapeHtml(file.path)}">${escapeHtml(file.path)}</button></li>`).join('')}</ul>`
-    : '<p class="muted">No files reported in this chat yet.</p>';
-  return `<div class="activity-tabs" role="tablist" aria-label="Activity views">${tabs}</div>${view('output', output + statuses)}${view('sources', sources)}${view('agents', '<p class="muted">No subagent details have been reported to this view. Reported tool activity is available in Output.</p>')}`;
+    ? `<p class="muted">Files reported by tools or attached for this reply.</p><ul class="activity-files">${files.map((file) => `<li><button type="button" data-file-open="${escapeHtml(file.path)}">${escapeHtml(file.path)}</button></li>`).join('')}</ul>`
+    : '<p class="muted">No source files reported for this reply.</p>';
+  return `<div class="activity-tabs" role="tablist" aria-label="Activity views">${tabs}</div>${view('output', output + statuses)}${view('sources', sources)}${activity?.agents?.length ? view('agents', renderReportedAgents(activity.agents, snapshot, scope)) : ''}`;
 }
 
-export function renderActivityPanel(snapshot: WebviewSnapshot): string {
+export function renderModelTools(snapshot: WebviewSnapshot): string {
+  const originKey = JSON.stringify([snapshot.sessionFile, snapshot.sessionId]);
+  const tools = snapshot.modelTools?.originKey === originKey ? snapshot.modelTools : undefined;
+  const idle =
+    snapshot.connectionState === 'ready' &&
+    !snapshot.isStreaming &&
+    !snapshot.isCompacting &&
+    !snapshot.switchingSession &&
+    snapshot.bindingState !== 'cached';
+  const disabled = !idle || !snapshot.isTrusted || tools?.status === 'unsupported';
+  const summary =
+    tools?.status === 'ready'
+      ? `${tools.active.length} selected · last checked`
+      : tools?.status === 'unsupported'
+        ? 'Not reported by this runtime'
+        : tools?.status === 'unknown' || tools?.status === 'stale'
+          ? 'Current selection unknown'
+          : 'Not checked';
+  const reason = !snapshot.isTrusted
+    ? 'Trust this VS Code workspace before changing model tools.'
+    : !idle
+      ? 'Wait until this chat is idle and connected before changing model tools.'
+      : tools?.status === 'unsupported'
+        ? 'This runtime does not expose model tool selection. Existing tools are unchanged.'
+        : 'Choose which registered tools Pi sees for its next message in this chat.';
+  const persistence =
+    tools?.persistence === 'after-turn'
+      ? 'Applies to this chat’s next message. Pi saves it when a turn runs.'
+      : tools?.persistence === 'runtime-only'
+        ? 'Applies to the current Pi runtime only; selection resets when this chat is reopened.'
+        : 'Applies to this chat’s next message in the current Pi runtime.';
+  return `<details id="model-tools" class="model-tools" data-model-tools data-preserve-open><summary><strong>Model tools</strong><span class="muted" data-model-tools-count>${summary}</span><button type="button" class="tl-file-btn" data-model-tools-action="edit"${disabled ? ' disabled' : ''}>Edit</button></summary><p class="muted" data-model-tools-reason>${reason}</p><div data-model-tools-editor hidden><fieldset aria-label="Tools listed to the model">${(tools?.tools ?? []).map((tool) => `<label class="model-tool-row"><input type="checkbox" data-model-tool-name="${escapeHtml(tool.name)}"${tools?.active.includes(tool.name) ? ' checked' : ''}${disabled ? ' disabled' : ''}><span><strong>${escapeHtml(tool.name)}</strong><span>${escapeHtml(tool.description)}</span></span><span class="muted">${escapeHtml(tool.exposure)}</span></label>`).join('')}</fieldset><p class="muted">Controls tools listed to the model; deferred tools may remain callable. Your runtime’s existing tool restrictions stay in place.</p><p class="muted">${persistence}</p><div class="model-tools-actions"><button type="button" class="tl-file-btn" data-model-tools-action="cancel">Cancel</button><button type="button" class="tl-file-btn" data-model-tools-action="apply" disabled>Apply to this chat</button></div></div><p class="muted" data-model-tools-status role="status">${escapeHtml(tools?.message ?? '')}</p></details>`;
+}
+
+export function renderMcpConnections(snapshot: WebviewSnapshot): string {
+  const status = snapshot.mcpStatus ?? { status: 'unchecked', servers: [] };
+  const busy =
+    snapshot.isStreaming ||
+    snapshot.isCompacting ||
+    snapshot.switchingSession ||
+    snapshot.connectionState === 'busy';
+  const live =
+    snapshot.connectionState === 'ready' &&
+    snapshot.bindingState !== 'cached' &&
+    snapshot.bindingState !== 'draft';
+  const disabled =
+    busy ||
+    !live ||
+    !snapshot.isTrusted ||
+    status.status === 'checking' ||
+    status.status === 'unsupported';
+  const checked = status.checkedAt
+    ? `Reported by Pi · checked ${new Date(status.checkedAt).toLocaleTimeString()}`
+    : 'Connection status has not been checked';
+  const labels: Record<string, string> = {
+    connected: 'Connected',
+    disabled: 'Disabled',
+    starting: 'Starting',
+    connecting: 'Connecting',
+    failed: 'Failed',
+    closed: 'Closed',
+    disconnected: 'Disconnected',
+    'needs-auth': 'Needs sign-in',
+  };
+  let content: string;
+  if (busy)
+    content = '<p class="muted">Pi is working. Check connection status when this chat is idle.</p>';
+  else if (!snapshot.isTrusted)
+    content =
+      '<p class="muted">Connection status is unavailable in an untrusted VS Code workspace.</p>';
+  else if (!live)
+    content = '<p class="muted">Open the live chat when Pi is ready to check its connections.</p>';
+  else if (status.status === 'checked')
+    content = `<ul class="mcp-rows">${status.servers.map((server) => `<li><div><strong>${escapeHtml(server.name)}</strong><span class="muted">${server.tools === undefined ? '' : `${server.tools} tools · `}${escapeHtml(server.exposure)}</span></div><span>${labels[server.state] ?? 'Unknown'}</span></li>`).join('')}</ul>`;
+  else
+    content = `<p class="muted">${status.status === 'checking' ? 'Asking Pi for a connection snapshot…' : status.status === 'none' ? 'Pi reported no configured MCP servers for this chat.' : status.status === 'unsupported' ? 'This runtime does not expose native MCP status to the GUI. Connection state is unknown.' : status.status === 'unknown' ? 'Pi did not return a usable connection snapshot. Connection state is unknown; you can check again.' : 'Check status to ask this chat’s Pi runtime for its MCP connection snapshot.'}</p>`;
+  return `<section class="mcp-connections" aria-label="Current chat MCP connections"><div class="mcp-heading"><div><strong>MCP connections <span class="muted">· current chat</span></strong><p class="muted">${escapeHtml(checked)}</p></div><button type="button" class="tl-file-btn" data-mcp-check${disabled ? ' disabled' : ''}>${status.status === 'checking' ? 'Checking…' : 'Check status'}</button></div><div role="status" aria-live="polite">${content}</div>${status.details ? `<details data-preserve-open id="mcp-native-details"><summary>Native status details</summary><pre>${escapeHtml(status.details)}</pre></details>` : ''}<p class="mcp-history-note muted">Tool calls in View activity are historical; they do not establish current connection state.</p><details data-preserve-open id="mcp-configuration"><summary>Configuration and setup</summary><p>Pi owns MCP configuration: mcp.json in its configured agent directory and .pi/mcp.json in trusted projects. Over SSH, Pi uses the remote machine’s configuration.</p><p>Use Pi’s native /mcp command for setup and connection details. This view does not edit servers, sign in, reconnect or change tool access.</p></details></section>`;
+}
+
+export function renderActivityPanel(
+  snapshot: WebviewSnapshot,
+  revealMessageId?: string,
+  activityTurns?: string[],
+  scope = 'activity-panel',
+  progress = '',
+  hasFailures = false
+): string {
   const live =
     snapshot.bindingState !== 'cached' &&
     snapshot.bindingState !== 'draft' &&
@@ -1599,7 +2103,11 @@ export function renderActivityPanel(snapshot: WebviewSnapshot): string {
   const running = live
     ? (snapshot.activity?.tools.filter((tool) => tool.status === 'running').length ?? 0)
     : 0;
-  return `<details id="activity-panel" class="activity-panel" data-preserve-open><summary aria-label="Show activity">Activity${running ? `<span class="activity-count">${running}</span>` : ''}<span aria-hidden="true">⌄</span></summary><div id="activity-content" class="activity-content">${renderActivityContent(snapshot)}</div></details>`;
+  const agentFailures =
+    snapshot.activity?.agents?.some((agent) =>
+      ['failed', 'timeout', 'output_limit'].includes(agent.status)
+    ) ?? false;
+  return `<details id="${escapeHtml(scope)}" class="work-phase activity-panel" data-inline-activity data-selected-activity="output"${hasFailures ? ' data-has-failures' : ''}${agentFailures ? ' data-agent-failures' : ''} data-preserve-open><summary class="work-phase-head">${CARET_ICON}<span>View activity</span>${progress ? `<span class="activity-summary">· ${progress}</span>` : ''}${hasFailures ? '<span class="activity-attention">Failure reported</span>' : ''}${running ? `<span class="activity-count">${running}</span>` : ''}</summary><div class="activity-content">${renderActivityContent(snapshot, 'output', revealMessageId, activityTurns, scope)}</div></details>`;
 }
 
 export function renderChatApp(snapshot: WebviewSnapshot, revealMessageId?: string): string {
@@ -1633,19 +2141,22 @@ export function renderChatApp(snapshot: WebviewSnapshot, revealMessageId?: strin
           : '<button type="button" class="ghost steer-next" data-send-command="steer" title="Steer the active turn without stopping it" aria-label="Steer next">Steer next</button>'
       }`
     : '';
+  const activityTurns: string[] = [];
+  const messages = renderMessages(snapshot, revealMessageId, activityTurns);
 
   return `
     <a class="skip-link" href="#composer-field">Skip to composer</a>
     <div class="layout" data-testid="chat-app" data-mermaid-session="${escapeHtml(snapshot.sessionFile || snapshot.sessionId || snapshot.workspaceFolderName || 'session')}"${chatFontStyle(snapshot)}>
-      ${renderActivityPanel(snapshot)}
+      <button type="button" class="activity-shortcut" data-show-latest-activity>Activity <span aria-hidden="true">⌄</span></button>
+      <details id="chat-settings" class="chat-settings" data-preserve-open><summary aria-label="Chat settings">Chat settings <span aria-hidden="true">⋯</span></summary><div class="chat-settings-content">${renderModelTools(snapshot)}${renderMcpConnections(snapshot)}</div></details>
       <div class="header-summary visually-hidden" aria-label="Current chat summary">${escapeHtml(summaryLine)}</div>
       <div id="a11y-status" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></div>
 
-      ${restrictedBanner}
-      ${renderShareBar(snapshot)}
-      ${renderRecovery(snapshot)}
+${restrictedBanner}
+${renderShareBar(snapshot)}
+${renderRecovery(snapshot)}
 
-      ${renderPlanStrip(snapshot)}${renderCompactionBanner(snapshot)}
+${renderCompactionBanner(snapshot)}
       <main class="conversation" id="messages" role="log" aria-live="off" aria-relevant="additions text">${
         connecting && snapshot.messages.length === 0
           ? `<div class="connecting-state" role="status" aria-live="polite"><div class="boot-loader" aria-hidden="true"><svg class="boot-squiggle" viewBox="0 0 104 104" role="img"><path d="M 96.0 52.0 L 97.3 54.0 L 98.2 56.0 L 98.7 58.2 L 98.7 60.2 L 98.0 62.2 L 96.8 64.0 L 95.2 65.6 L 93.3 67.0 L 91.4 68.3 L 89.7 69.6 L 88.2 70.9 L 87.2 72.3 L 86.5 74.0 L 86.1 75.9 L 85.9 78.0 L 85.7 80.3 L 85.4 82.6 L 84.8 84.8 L 83.8 86.8 L 82.5 88.3 L 80.7 89.4 L 78.6 90.0 L 76.3 90.2 L 74.0 90.1 L 71.7 89.9 L 69.6 89.7 L 67.6 89.7 L 65.9 90.2 L 64.3 91.0 L 62.8 92.2 L 61.2 93.7 L 59.6 95.3 L 57.9 96.9 L 56.0 98.2 L 54.1 99.1 L 52.0 99.4 L 49.9 99.1 L 48.0 98.2 L 46.1 96.9 L 44.4 95.3 L 42.8 93.7 L 41.2 92.2 L 39.7 91.0 L 38.1 90.2 L 36.4 89.7 L 34.4 89.7 L 32.3 89.9 L 30.0 90.1 L 27.7 90.2 L 25.4 90.0 L 23.3 89.4 L 21.5 88.3 L 20.2 86.8 L 19.2 84.8 L 18.6 82.6 L 18.3 80.3 L 18.1 78.0 L 17.9 75.9 L 17.5 74.0 L 16.8 72.3 L 15.8 70.9 L 14.3 69.6 L 12.6 68.3 L 10.7 67.0 L 8.8 65.6 L 7.2 64.0 L 6.0 62.2 L 5.3 60.2 L 5.3 58.2 L 5.8 56.0 L 6.7 54.0 L 8.0 52.0 L 9.3 50.1 L 10.6 48.4 L 11.5 46.7 L 12.0 44.9 L 12.1 43.2 L 11.8 41.2 L 11.3 39.2 L 10.7 37.0 L 10.1 34.7 L 9.9 32.4 L 10.2 30.2 L 11.0 28.3 L 12.2 26.7 L 14.0 25.4 L 16.1 24.4 L 18.3 23.7 L 20.5 23.2 L 22.6 22.6 L 24.4 21.9 L 25.9 20.9 L 27.1 19.6 L 28.1 17.9 L 29.1 16.0 L 30.0 13.9 L 31.1 11.8 L 32.4 9.9 L 34.0 8.4 L 35.8 7.5 L 37.8 7.0 L 40.0 7.2 L 42.2 7.8 L 44.4 8.7 L 46.4 9.7 L 48.4 10.6 L 50.2 11.2 L 52.0 11.4 L 53.8 11.2 L 55.6 10.6 L 57.6 9.7 L 59.6 8.7 L 61.8 7.8 L 64.0 7.2 L 66.2 7.0 L 68.2 7.5 L 70.0 8.4 L 71.6 9.9 L 72.9 11.8 L 74.0 13.9 L 74.9 16.0 L 75.9 17.9 L 76.9 19.6 L 78.1 20.9 L 79.6 21.9 L 81.4 22.6 L 83.5 23.2 L 85.7 23.7 L 87.9 24.4 L 90.0 25.4 L 91.8 26.7 L 93.0 28.3 L 93.8 30.2 L 94.1 32.4 L 93.9 34.7 L 93.3 37.0 L 92.7 39.2 L 92.2 41.2 L 91.9 43.2 L 92.0 44.9 L 92.5 46.7 L 93.4 48.4 L 94.7 50.1 L 96.0 52.0 Z" fill="none" stroke="#ff8c42" stroke-width="2.5" stroke-linecap="round"/></svg><svg class="boot-pi" viewBox="0 0 24 24" role="img"><g fill="#ff8c42"><path d="M3.2 5.4 L20 5.4 L18.4 8 L4.8 8 Z"/><rect x="6.1" y="8" width="2.7" height="10.6" rx="1.1"/><path d="M14.4 8 h2.7 v8.4 l-2.7 2.2 Z"/><path d="M9.8 19.2 l2.1 -1.6 l-2.1 -1.6 v3.2 Z" opacity="0.9"/></g></svg></div><p class="connecting-copy">${
@@ -1657,7 +2168,7 @@ export function renderChatApp(snapshot: WebviewSnapshot, revealMessageId?: strin
             }<span class="loading-dots" aria-hidden="true"></span></p><p class="connecting-hint">Warming up the runtime…</p></div>`
           : faulted && snapshot.messages.length === 0
             ? `<div class="empty-state"><p class="empty-copy">Couldn’t start Pi for this workspace.</p><div class="button-row compact"><button type="button" data-command="piRpcInternal.restart">Try again</button><button type="button" data-command="piRpcInternal.showLogs">Show logs</button></div></div>`
-            : renderMessages(snapshot, revealMessageId)
+            : messages
       }<button type="button" id="jump-latest" class="jump-latest" title="Scroll to latest" aria-label="Scroll to latest message" hidden><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9.5l6 6 6-6"/></svg></button></main>
 
       ${renderApprovals(snapshot)}
@@ -1677,7 +2188,7 @@ export function renderChatApp(snapshot: WebviewSnapshot, revealMessageId?: strin
       <section class="composer-dock" aria-labelledby="composer-heading">
         <h2 id="composer-heading" class="visually-hidden">Message Pi</h2>
         <label class="visually-hidden" for="${COMPOSER_FIELD_ID}">Message π</label>
-        ${renderQueueTray(snapshot)}
+        ${renderOutbox(snapshot)}${renderQueueTray(snapshot)}
         ${isLiveWorking(snapshot) ? renderWorkingBanner(snapshot) : ''}
         <div class="composer-card${connecting ? ' is-connecting' : ''}" aria-busy="${connecting ? 'true' : 'false'}">${
           attachmentsVisible

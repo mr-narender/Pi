@@ -146,6 +146,61 @@ test('scopes controller and supervisor: shared/dedicated startup carry argv/env 
   await liveSupervisor.start();
   assert.equal(opens.at(-1).sdkRoot, '/configured/pi-1.0.4');
   await liveSupervisor.stop();
+  const normalOpen = host.openSession;
+  const ambiguity = Object.assign(new Error('Use provider/model to disambiguate.'), {
+    code: 'SDK_STARTUP_MODEL_AMBIGUOUS',
+  });
+  host.openSession = async () => {
+    throw ambiguity;
+  };
+  let versionProbes = 0;
+  const blockedSupervisor = new mod.exports.PiProcessSupervisor(
+    { name: 'Owned', uri: { fsPath: '/owned/workspace' } },
+    logger
+  );
+  blockedSupervisor.assertVersion = async () => {
+    versionProbes++;
+    throw new Error('must not enter stock fallback');
+  };
+  await assert.rejects(blockedSupervisor.start(), (error) => error === ambiguity);
+  assert.equal(
+    versionProbes,
+    0,
+    'semantic model ambiguity must not fall back to a different backend'
+  );
+  host.openSession = normalOpen;
+  const blockedController = Object.create(mod.exports.SessionController.prototype);
+  let attempts = 0;
+  let stopped = 0;
+  blockedController.folder = { name: 'Owned', uri: { scheme: 'file' } };
+  blockedController.state = {
+    state: { sessionFile: '/owned/existing.jsonl' },
+    connectionState: 'init',
+  };
+  blockedController.settings = { offline: true };
+  blockedController.logger = logger;
+  blockedController.assertNoManualCompaction =
+    blockedController.fire =
+    blockedController.addDiagnostic =
+      () => {};
+  blockedController.supervisor = {
+    stop: async () => {
+      stopped++;
+    },
+  };
+  blockedController.launchOnce = async (_session: string, options: any) => {
+    attempts++;
+    assert.equal(options.noExtensions, false);
+    throw ambiguity;
+  };
+  await assert.rejects(blockedController.start(), (error) => error === ambiguity);
+  assert.equal(
+    attempts,
+    1,
+    'resumed ambiguous model cannot be repaired by disabling extensions or changing loadout'
+  );
+  assert.equal(stopped, 1);
+  assert.equal(blockedController.state.connectionState, 'faulted');
   const controller = Object.create(mod.exports.SessionController.prototype);
   const calls: any[] = [];
   let release: (() => void) | undefined;

@@ -5,6 +5,7 @@ import type {
   RpcEvent,
   SessionState,
 } from '../rpc/protocol';
+import { isBlockingExtensionUi } from '../rpc/protocol';
 import type {
   ControllerState,
   DiagnosticItem,
@@ -580,9 +581,6 @@ export function reduceExtensionUiRequest(
   if (request.method === 'setTitle' && request.title) {
     return { ...next, title: request.title.slice(0, 120) };
   }
-  if (request.method === 'set_editor_text' && typeof request.text === 'string') {
-    return { ...next, draft: request.text };
-  }
   if (request.method === 'notify') {
     return pushDiagnostic(next, {
       id: `notify-${Date.now()}`,
@@ -596,9 +594,26 @@ export function reduceExtensionUiRequest(
       timestamp: Date.now(),
     });
   }
-  const pendingUi = [...next.pendingUi.filter((item) => item.id !== request.id), request].slice(
-    -32
-  );
+  const candidates = [
+    ...next.pendingUi.filter(
+      (item) =>
+        item.id !== request.id &&
+        !(request.method === 'set_editor_text' && item.method === 'set_editor_text') &&
+        !(
+          request.method === 'unsupported_ui' &&
+          item.method === 'unsupported_ui' &&
+          item.uiCapability === request.uiCapability
+        )
+    ),
+    request,
+  ];
+  const callbacks = candidates.filter(isBlockingExtensionUi);
+  const passive = candidates.filter((item) => !isBlockingExtensionUi(item));
+  const pendingUi = [
+    ...callbacks.slice(0, 32),
+    ...passive.slice(-Math.max(0, 32 - callbacks.length)),
+  ];
+  if (callbacks.length >= 32) pendingUi.splice(32);
   return { ...next, pendingUi };
 }
 
@@ -608,6 +623,8 @@ export function resetControllerProjection(state: ControllerState): ControllerSta
     ...resetUi(state),
     currentAssistant: undefined,
     runOutcome: undefined,
+    mcpStatus: undefined,
+    modelTools: undefined,
     messages: [],
     entries: [],
     tree: [],
