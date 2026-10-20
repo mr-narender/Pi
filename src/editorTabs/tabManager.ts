@@ -1620,34 +1620,7 @@ export class ChatTabManager implements vscode.Disposable {
     resetSeq: number | undefined,
     text: string
   ): Promise<void> {
-    const state = await this.uiState.getComposerStateForIdentity(
-      context.controller,
-      context.target
-    );
-    // Drop STALE updates: each update carries the composerResetSeq it was
-    // typed under. A send bumps the seq while clearing the draft — a trailing
-    // debounced update from before the send would otherwise re-persist the
-    // just-sent text, which then popped back into the input on re-render.
-    if (typeof resetSeq === 'number' && resetSeq !== (state.composerResetSeq ?? 0)) {
-      return;
-    }
-    state.draft = text;
-    // FINAL gate in the same microtask as the memory write: the async read
-    // above can be overtaken by a send's clear+seq-bump when the draft is
-    // LARGE (slow restore/validate) — writing the stale snapshot would
-    // resurrect the just-sent text AND roll the seq back. peek() reads the
-    // live map synchronously, so nothing can interleave before the write.
-    if (
-      typeof resetSeq === 'number' &&
-      this.uiState.peekComposerResetSeq(context.target) !== resetSeq
-    ) {
-      return;
-    }
-    // Persist the draft SILENTLY: no controller fire, no UI-state fire, so a
-    // keystroke never re-renders the tab (which flickered the scrollbar).
-    await this.uiState.setComposerStateForIdentity(context.controller, context.target, state, {
-      silent: true,
-    });
+    await this.uiState.updateDraftForIdentity(context.controller, context.target, text, resetSeq);
   }
 
   // Batch 1 of the onMessage de-bloat (A4): attachment/context-item handlers,
@@ -1929,7 +1902,9 @@ export class ChatTabManager implements vscode.Disposable {
         current.target.draftId === origin.target.draftId
       );
     };
-    let state = await this.uiState.getComposerStateForIdentity(origin.controller, origin.target);
+    let state = await this.uiState.getComposerStateForIdentity(origin.controller, origin.target, {
+      capture: true,
+    });
     if (!originValid()) return;
     state.recovery = undefined;
     state.preview = undefined;
@@ -2016,6 +1991,8 @@ export class ChatTabManager implements vscode.Disposable {
     }
     let acceptedForRecovery: AcceptedSendSnapshot | undefined;
     try {
+      if (this.uiState.peekComposerResetSeq(origin.target) !== (state.composerResetSeq ?? 0))
+        return;
       // Images/context items send IMMEDIATELY with the message — no confirmation
       // popup. beginSend captures the outgoing message and clears the WHOLE
       // composer (draft + context chips + image chips) in one step, BEFORE the
@@ -2024,7 +2001,9 @@ export class ChatTabManager implements vscode.Disposable {
       const { preview, accepted } = beginSend(command, state);
       acceptedForRecovery = accepted;
       context.controller.setDraft('');
-      await this.uiState.setComposerStateForIdentity(context.controller, context.target, state);
+      await this.uiState.setComposerStateForIdentity(context.controller, context.target, state, {
+        acceptedSend: accepted,
+      });
       await this.renderResource(resource);
       context = await this.preparePromptContext(resource);
       if (!context) {
@@ -2080,6 +2059,9 @@ export class ChatTabManager implements vscode.Disposable {
           origin.controller.setDraft(current.draft);
         }
         state = current;
+      } else {
+        state = await this.uiState.getComposerStateForIdentity(origin.controller, origin.target);
+        if (!originValid()) return;
       }
       state.recovery = {
         kind: 'preflightError',
@@ -2362,17 +2344,19 @@ export class ChatTabManager implements vscode.Disposable {
     // from state here would lose them — use the one captured at begin time.
     const accepted =
       acceptedFromBegin ?? acceptedSnapshotFromPreview(preview, state.pendingContextItems);
-    state.acceptedSendSnapshot = accepted;
-    state.preview = undefined;
-    state.pendingContextItems = [];
-    state.pendingImages = [];
-    state.draft = '';
-    state.composerResetSeq = (state.composerResetSeq ?? 0) + 1;
-    state.focus = 'composer';
-    state.recovery = undefined;
-    controller.setDraft('');
-    await this.uiState.setComposerStateForIdentity(controller, target, state);
-    await this.renderResource(resource);
+    if (!acceptedFromBegin) {
+      state.acceptedSendSnapshot = accepted;
+      state.preview = undefined;
+      state.pendingContextItems = [];
+      state.pendingImages = [];
+      state.draft = '';
+      state.composerResetSeq = (state.composerResetSeq ?? 0) + 1;
+      state.focus = 'composer';
+      state.recovery = undefined;
+      controller.setDraft('');
+      await this.uiState.setComposerStateForIdentity(controller, target, state);
+      await this.renderResource(resource);
+    }
     try {
       if (preview.command === 'prompt') {
         await controller.prompt(preview.rpcMessage, 'prompt', this.asRpcImages(preview.rpcImages));

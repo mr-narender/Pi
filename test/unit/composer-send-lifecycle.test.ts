@@ -119,6 +119,7 @@ test('send clears the visible attachment state before slow session preparation',
   manager.hosts = new Map([[resource.toString(), {}]]);
   manager.uiState = {
     getComposerStateForIdentity: async () => structuredClone(stored),
+    peekComposerResetSeq: () => stored.composerResetSeq ?? 0,
     setComposerStateForIdentity: async (
       _controller: unknown,
       _target: unknown,
@@ -160,6 +161,7 @@ test('session preparation failure restores submitted content without overwriting
   manager.hosts = new Map([[resource.toString(), {}]]);
   manager.uiState = {
     getComposerStateForIdentity: async () => structuredClone(stored),
+    peekComposerResetSeq: () => stored.composerResetSeq ?? 0,
     setComposerStateForIdentity: async (
       _controller: unknown,
       _target: unknown,
@@ -223,7 +225,8 @@ test('failed transport restores the submitted draft and usable image chip when n
   assert.equal(stored.pendingImages[0]?.inMemoryBase64, 'YWJj');
   assert.equal(controller.draft, 'summarize these');
   assert.equal(stored.recovery?.kind, 'sendFailure');
-  assert.equal(renders, 2);
+  assert.equal(stored.composerResetSeq, 2, 'one send reset followed by one recovery reset');
+  assert.equal(renders, 1, 'the already accepted send only renders its failure recovery');
 });
 
 test('failed transport never overwrites a newer unsent draft', async () => {
