@@ -599,9 +599,9 @@ export async function runRelease(directory, env = process.env) {
     );
     const operation = env.GITHUB_EVENT_NAME === 'push' ? 'push' : env.PI_RELEASE_OPERATION;
     if (operation === 'push') assert.ok(!env.PI_RELEASE_OPERATION);
-    assert.ok(['push', 'profile', 'retry-pending-release'].includes(operation));
+    assert.ok(['push', 'profile', 'retry-pending-release', 'release-current'].includes(operation));
     assert.equal(env.GITHUB_REF, 'refs/heads/main');
-    assert.equal(env.GITHUB_REPOSITORY, repository);
+    assert.equal(env.GITHUB_REPOSITORY?.toLowerCase(), repository.toLowerCase());
     directory = resolve(directory);
     stage = 'artifact-validation';
     let receipt = JSON.parse(readFileSync(resolve(directory, 'receipt.json')));
@@ -645,6 +645,21 @@ export async function runRelease(directory, env = process.env) {
       'VSIX receipt mismatch'
     );
     stage = 'version-validation';
+    if (operation === 'release-current') {
+      assert.ok(automaticPlan, 'Current main release requires the stable tag ledger');
+      const baseline = versionGit(['rev-parse', `v${automaticPlan.previous}^{commit}`]);
+      if (
+        !changeScope(
+          'push',
+          { before: baseline, after: receipt.commit },
+          receipt.commit,
+          versionGit
+        ).release
+      ) {
+        console.log('No unreleased extension changes; publication skipped.');
+        return 0;
+      }
+    }
     const pushPrevious =
       operation === 'push' ? previousVersionForPush(env.PI_PREVIOUS_SHA, env) : undefined;
     if (automaticPlan && operation === 'push')

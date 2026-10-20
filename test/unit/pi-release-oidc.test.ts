@@ -18,7 +18,7 @@ const runtime = {
 const digest = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
 const releaseModule = import(pathToFileURL(resolve('scripts/release.mjs')).href);
 
-async function runFixture(scenario: string) {
+async function runFixture(scenario: string, repository = 'mr-narender/Pi') {
   const { runRelease } = await releaseModule;
   const originalRead = fs.readFileSync;
   const originalReaddir = fs.readdirSync;
@@ -71,7 +71,7 @@ async function runFixture(scenario: string) {
     ...runtime,
     GITHUB_EVENT_NAME: 'push',
     GITHUB_REF: 'refs/heads/main',
-    GITHUB_REPOSITORY: 'mr-narender/Pi',
+    GITHUB_REPOSITORY: repository,
     GITHUB_SHA: receipt.commit,
     PI_PREVIOUS_SHA: 'b'.repeat(40),
     GH_TOKEN: secret,
@@ -80,12 +80,18 @@ async function runFixture(scenario: string) {
     ACTIONS_ID_TOKEN_REQUEST_TOKEN: secret,
     VSCE_PAT: secret,
   };
-  const automatic = scenario === 'automatic-unchanged';
+  const automatic =
+    scenario === 'automatic-unchanged' ||
+    ['dispatch-current', 'dispatch-current-infra'].includes(scenario);
   if (automatic) env.PI_AUTOMATIC_RELEASE = 'true';
   if (scenario === 'source') env.GITHUB_REF = secret;
   if (scenario === 'missing-session') delete env.AZURE_CONFIG_DIR;
   if (scenario === 'pull-request') env.GITHUB_EVENT_NAME = 'pull_request';
   if (scenario === 'foreign-repo') env.GITHUB_REPOSITORY = secret;
+  if (scenario === 'foreign-owner') env.GITHUB_REPOSITORY = 'other-owner/pi';
+  if (scenario === 'different-repo') env.GITHUB_REPOSITORY = 'mr-narender/pi-other';
+  if (scenario === 'missing-repo') delete env.GITHUB_REPOSITORY;
+  if (scenario === 'empty-repo') env.GITHUB_REPOSITORY = '';
   if (scenario === 'push-operation') env.PI_RELEASE_OPERATION = 'profile';
   if (scenario === 'invalid-before') env.PI_PREVIOUS_SHA = secret;
   if (scenario.startsWith('dispatch-')) {
@@ -95,7 +101,9 @@ async function runFixture(scenario: string) {
         ? 'profile'
         : scenario === 'dispatch-retry'
           ? 'retry-pending-release'
-          : secret;
+          : scenario.startsWith('dispatch-current')
+            ? 'release-current'
+            : secret;
     delete env.PI_PREVIOUS_SHA;
   }
   const errors: string[] = [];
@@ -137,7 +145,15 @@ async function runFixture(scenario: string) {
     if (command === 'git') {
       inspections.push(options.env);
       if (automatic && args[0] === 'tag') return 'v0.0.0';
-      if (automatic && args[0] === 'diff') return args.includes('-z') ? 'src/extension.ts\0' : '';
+      if (automatic && args[0] === 'diff') {
+        if (args.includes('-z')) {
+          if (scenario.startsWith('dispatch-current'))
+            assert.deepEqual(args.slice(-2), ['b'.repeat(40), receipt.commit]);
+          return scenario === 'dispatch-current-infra'
+            ? 'scripts/release.mjs\0'
+            : 'src/webview/media/chat.ts\0scripts/release.mjs\0';
+        } else return '';
+      }
       if (automatic && args[0] === 'show')
         return args[1]!.startsWith('HEAD:')
           ? originalRead(resolve(args[1]!.slice(5)), 'utf8')
@@ -301,8 +317,13 @@ for (const [scenario, expected] of [
   ['version', 'version-validation: validation-failed'],
   ['pull-request', 'source-validation: validation-failed'],
   ['foreign-repo', 'source-validation: validation-failed'],
+  ['foreign-owner', 'source-validation: validation-failed'],
+  ['different-repo', 'source-validation: validation-failed'],
+  ['missing-repo', 'source-validation: validation-failed'],
+  ['empty-repo', 'source-validation: validation-failed'],
   ['push-operation', 'source-validation: validation-failed'],
   ['dispatch-invalid', 'source-validation: validation-failed'],
+  ['dispatch-current-unplanned', 'version-validation: validation-failed'],
   ['invalid-before', 'version-validation: validation-failed'],
   ['missing-session', 'marketplace-profile: missing-azure-session'],
   ['profile-invalid', 'marketplace-profile: validation-failed'],
@@ -327,8 +348,13 @@ for (const [scenario, expected] of [
         'artifact',
         'pull-request',
         'foreign-repo',
+        'foreign-owner',
+        'different-repo',
+        'missing-repo',
+        'empty-repo',
         'push-operation',
         'dispatch-invalid',
+        'dispatch-current-unplanned',
         'invalid-before',
         'version',
         'missing-session',
@@ -360,12 +386,47 @@ test('unchanged push and explicit profile dispatch perform only readonly profile
   assert.deepEqual(profile.errors, []);
 });
 
+for (const repository of ['mr-narender/pi', 'MR-NARENDER/PI'])
+  test(`release accepts the same GitHub repository as ${repository}`, async () => {
+    const result = await runFixture('unchanged', repository);
+    assert.equal(result.status, 0, result.errors.join('\n'));
+    assert.deepEqual(result.errors, []);
+    assert.equal(result.children.length, 1);
+    assert.equal(result.children[0]!.args[0], 'rest');
+    assert.ok(result.logs.includes('Version unchanged; publication skipped.'));
+  });
+
 test('automatic main publication validates tag ledger and metadata even when source version did not change', async () => {
   const result = await runFixture('automatic-unchanged');
   assert.equal(result.status, 0, result.errors.join('\n'));
   assert.equal(result.children.length, 2);
   assert.equal(result.stamped.length, 3);
   assert.ok(result.logs.at(-1)!.startsWith('Released stable mr-narender.pi '));
+});
+
+test('manual current-main release publishes unreserved current source instead of recovering an older draft', async () => {
+  const result = await runFixture('dispatch-current', 'mr-narender/pi');
+  assert.equal(result.status, 0, result.errors.join('\n'));
+  assert.deepEqual(result.errors, []);
+  assert.equal(result.stamped.length, 3);
+  assert.equal(result.children.length, 2);
+  assert.ok(!result.children[1]!.args[3]!.includes('/pi-recovery-'));
+  assert.ok(result.logs.at(-1)!.startsWith('Released stable mr-narender.pi '));
+});
+
+test('manual current-main release skips infrastructure-only differences from the latest stable tag', async () => {
+  const result = await runFixture('dispatch-current-infra', 'mr-narender/pi');
+  assert.equal(result.status, 0, result.errors.join('\n'));
+  assert.deepEqual(result.errors, []);
+  assert.deepEqual(result.children, []);
+  assert.deepEqual(result.logs, ['No unreleased extension changes; publication skipped.']);
+});
+
+test('manual current-main release still refuses a different repository before external calls', async () => {
+  const result = await runFixture('dispatch-current', 'other-owner/pi');
+  assert.equal(result.status, 1);
+  assert.ok(result.errors[0]!.includes('source-validation: validation-failed'));
+  assert.deepEqual(result.children, []);
 });
 
 test('main retry dispatch publishes the original verified draft artifact, not the new quality package', async () => {

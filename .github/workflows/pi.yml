@@ -8,9 +8,9 @@ on:
   workflow_dispatch:
     inputs:
       operation:
-        description: Read profile ID or retry the verified current-version draft after its Contributor grant
+        description: Read profile ID, retry a reserved release, or release current main with unpublished extension changes
         type: choice
-        options: [profile, retry-pending-release]
+        options: [profile, retry-pending-release, release-current]
         default: profile
 
 permissions:

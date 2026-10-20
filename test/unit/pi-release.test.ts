@@ -186,6 +186,7 @@ test('Pi CI has one exact required aggregate covering every quality gate with pi
   assert.deepEqual(workflow.on.workflow_dispatch.inputs.operation.options, [
     'profile',
     'retry-pending-release',
+    'release-current',
   ]);
   assert.equal(workflow.on.workflow_dispatch.inputs.operation.default, 'profile');
   const login = publisher.steps.find((step: any) => step.uses?.startsWith('azure/login@'));

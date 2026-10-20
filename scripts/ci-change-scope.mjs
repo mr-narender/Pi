@@ -59,7 +59,7 @@ export function changeScope(eventName, event, head, git = gitCommand) {
   assert.match(head, sha, 'Invalid checked-out source');
   if (eventName === 'workflow_dispatch') {
     assert.ok(
-      ['profile', 'retry-pending-release'].includes(event.inputs?.operation),
+      ['profile', 'retry-pending-release', 'release-current'].includes(event.inputs?.operation),
       'Unknown manual operation'
     );
     return { build: true, release: true, paths: [], fallback: false };
