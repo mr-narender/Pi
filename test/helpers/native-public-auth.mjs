@@ -2,6 +2,7 @@
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { readFile } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { createAuthCommands } from './auth-commands.mjs';
 const { ModelRuntime } = await import(
@@ -176,7 +177,8 @@ if (process.argv.includes('--owned-callback-barrier')) {
         data = {};
         break;
       case 'inspect': {
-        const stored = JSON.parse(await readFile(authPath, 'utf8'));
+        // The SDK rewrites this file synchronously in this process; snapshot it without yielding.
+        const stored = JSON.parse(readFileSync(authPath, 'utf8'));
         data = {
           aborted: callbackSignal?.aborted,
           stored: !!stored['owned-callback-oauth'],

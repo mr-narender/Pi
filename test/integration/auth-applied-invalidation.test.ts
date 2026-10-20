@@ -87,7 +87,8 @@ for (const mode of ['prompt', 'steer', 'follow_up'])
         child.once('error', () => {
           void stop();
         });
-        child.once('exit', () => {
+        child.once('exit', (code, signal) => {
+          stage += ` (native exit code=${code}, signal=${signal ?? 'none'})`;
           void stop();
         });
         child.stdin!.on('error', () => {
