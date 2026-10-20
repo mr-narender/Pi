@@ -8,6 +8,7 @@ import {
   createEmptyComposerState,
   fingerprint,
   type ComposerSessionState,
+  type AcceptedSendSnapshot,
   type PendingContextItem,
   type PendingImageItem,
   type PersistedComposerSessionState,
@@ -82,7 +83,8 @@ export class ChatUiState implements vscode.Disposable {
 
   public async getComposerStateForIdentity(
     controller: SessionController,
-    identity: ChatTabTarget
+    identity: ChatTabTarget,
+    options?: { capture?: boolean }
   ): Promise<ComposerSessionState> {
     const key = sessionStateKeyForIdentity(identity);
     if (!this.loadedKeys.has(key)) {
@@ -101,6 +103,7 @@ export class ChatUiState implements vscode.Disposable {
       this.composerStates.set(key, validated);
       return cloneComposerState(validated);
     }
+    if (options?.capture) return cloneComposerState(validated);
     return cloneComposerState(this.composerStates.get(key) ?? createEmptyComposerState());
   }
 
@@ -126,15 +129,36 @@ export class ChatUiState implements vscode.Disposable {
     controller: SessionController,
     identity: ChatTabTarget,
     state: ComposerSessionState,
-    options?: { silent?: boolean; expectedCommandRevision?: number }
+    options?: {
+      silent?: boolean;
+      expectedCommandRevision?: number;
+      acceptedSend?: AcceptedSendSnapshot;
+    }
   ): Promise<void> {
     const key = sessionStateKeyForIdentity(identity);
-    const revision = this.composerStates.get(key)?.commandRevision ?? 0;
+    const current = this.composerStates.get(key);
+    const revision = current?.commandRevision ?? 0;
     if (
       options?.expectedCommandRevision !== undefined &&
       options.expectedCommandRevision !== revision
     )
       return;
+    if (options?.acceptedSend && current && revision !== (state.commandRevision ?? 0)) {
+      const sentContext = new Set(options.acceptedSend.contextItems.map((item) => item.itemId));
+      const sentImages = new Set(options.acceptedSend.imageItems.map((item) => item.itemId));
+      state = {
+        ...current,
+        acceptedSendSnapshot: state.acceptedSendSnapshot,
+        composerResetSeq: state.composerResetSeq,
+        preview: undefined,
+        recovery: undefined,
+        draft: current.draft === options.acceptedSend.draft ? '' : current.draft,
+        pendingContextItems: current.pendingContextItems.filter(
+          (item) => !sentContext.has(item.itemId)
+        ),
+        pendingImages: current.pendingImages.filter((item) => !sentImages.has(item.itemId)),
+      };
+    }
     state.commandRevision = revision + 1;
     this.composerStates.set(key, cloneComposerState(state));
     this.loadedKeys.add(key);
@@ -176,9 +200,21 @@ export class ChatUiState implements vscode.Disposable {
   public async updateDraftForIdentity(
     controller: SessionController,
     identity: ChatTabTarget,
-    draft: string
+    draft: string,
+    resetSeq?: number
   ): Promise<void> {
-    const state = await this.getComposerStateForIdentity(controller, identity);
+    const key = sessionStateKeyForIdentity(identity);
+    // Publish typed text before the next bridge message can read the composer.
+    const state = this.loadedKeys.has(key)
+      ? cloneComposerState(this.composerStates.get(key) ?? createEmptyComposerState())
+      : await this.getComposerStateForIdentity(controller, identity);
+    if (
+      typeof resetSeq === 'number' &&
+      (resetSeq !== (state.composerResetSeq ?? 0) ||
+        resetSeq !== this.peekComposerResetSeq(identity))
+    ) {
+      return;
+    }
     state.draft = draft;
     // Draft typing must never trigger a re-render (silent).
     await this.setComposerStateForIdentity(controller, identity, state, { silent: true });
