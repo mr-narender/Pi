@@ -138,7 +138,7 @@ export function stampReleaseVersion(
 
 if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) {
   const operation = process.env.PI_RELEASE_OPERATION || 'push';
-  assert.ok(['push', 'profile', 'retry-pending-release'].includes(operation));
+  assert.ok(['push', 'profile', 'retry-pending-release', 'release-current'].includes(operation));
   const plan =
     operation === 'profile'
       ? { release: true }

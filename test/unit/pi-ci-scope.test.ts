@@ -168,7 +168,7 @@ test('missing baselines build conservatively without publishing; explicit manual
     }),
     { build: true, release: false, paths: [], fallback: true }
   );
-  for (const operation of ['profile', 'retry-pending-release'])
+  for (const operation of ['profile', 'retry-pending-release', 'release-current'])
     assert.deepEqual(changeScope('workflow_dispatch', { inputs: { operation } }, head), {
       build: true,
       release: true,

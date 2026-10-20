@@ -54,6 +54,19 @@ test('superseded queued runs skip and manual retry selects reserved ancestor rat
   assert.throws(() => planRelease(head, unrelated), /unrelated/);
 });
 
+test('manual current-main release allocates the next version for unreserved source', async () => {
+  const { planRelease } = await module;
+  const git = ledger({ 'v0.2.42': previous, 'v0.2.43': later });
+  assert.deepEqual(planRelease(head, git, 'release-current'), {
+    release: true,
+    version: '0.2.44',
+    previous: '0.2.43',
+    existing: false,
+    source: head,
+  });
+  assert.equal(planRelease(head, git, 'retry-pending-release').source, later);
+});
+
 test('generated metadata is deterministic, preserves source and rejects unrelated or tampered edits', async () => {
   const { stampReleaseVersion } = await module;
   const root = mkdtempSync(join(tmpdir(), 'pi-version-stamp-'));
