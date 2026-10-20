@@ -3,7 +3,10 @@ import { createRequire } from 'node:module';
 import test from 'node:test';
 import { build } from 'esbuild';
 
-async function fixture(update?: (key: string, value: unknown) => Promise<void>) {
+async function fixture(
+  update?: (key: string, value: unknown) => Promise<void>,
+  saved: Record<string, unknown> = {}
+) {
   const built = await build({
     entryPoints: ['src/editorTabs/sessionCache.ts'],
     bundle: true,
@@ -22,7 +25,7 @@ async function fixture(update?: (key: string, value: unknown) => Promise<void>) 
   const writes: Array<{ key: string; value: any }> = [];
   const cache = new module.exports.ChatTabStateCache({
     workspaceState: {
-      get: (_key: string, fallback: unknown) => fallback,
+      get: (key: string, fallback: unknown) => (key.includes('tabState') ? saved : fallback),
       update: async (key: string, value: unknown) => {
         writes.push({ key, value: structuredClone(value) });
         await update?.(key, value);
@@ -41,6 +44,26 @@ async function fixture(update?: (key: string, value: unknown) => Promise<void>) 
 const drain = async () => {
   for (let i = 0; i < 12; i++) await Promise.resolve();
 };
+
+test('legacy cached notices are not restored and real approvals and composer data are preserved', async () => {
+  const approval = { id: 'allow', method: 'confirm', requestKey: 'real' };
+  const lastSnapshot = {
+    approvals: [{ id: 'old', method: 'unsupported_ui', uiCapability: 'footer' }, approval],
+    draft: 'legacy draft',
+    pendingImages: [{ itemId: 'image', requiresReselect: true }],
+    preview: { draft: 'preview' },
+  };
+  const { cache } = await fixture(undefined, {
+    chat: { resource: 'chat', lastSnapshot, target: { kind: 'workspaceDraft' } },
+  });
+  const restored = cache.get('chat').lastSnapshot;
+  assert.deepEqual(restored.approvals, [approval]);
+  assert.equal(restored.draft, lastSnapshot.draft);
+  assert.deepEqual(restored.pendingImages, lastSnapshot.pendingImages);
+  assert.deepEqual(restored.preview, lastSnapshot.preview);
+  assert.equal(lastSnapshot.approvals.length, 2, 'stored input object is not mutated');
+  await cache.dispose();
+});
 
 test('continuous streaming updates stay immediate in memory and persist at a fixed bounded rate', async (t) => {
   const { cache, writes, state } = await fixture();

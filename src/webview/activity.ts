@@ -1,18 +1,8 @@
 import { isAbsolute, relative, resolve, sep } from 'node:path';
-import { redactText } from '../diagnostics/redaction';
+import { displayText } from './displayText';
 import { toolActivity } from '../live/toolActivity';
 import type { ControllerState, WebviewActivity, WebviewMessageItem } from '../state/types';
 import type { JsonObject } from '../rpc/protocol';
-
-function displayText(value: string, limit: number): string {
-  const plain = value
-    .replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, '')
-    .replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, '');
-  const redacted = redactText(
-    plain.replace(/data:[^\s]+|[A-Za-z0-9+/]{128,}={0,2}/g, '[encoded data omitted]')
-  );
-  return redacted.length > limit ? `${redacted.slice(0, limit)}…` : redacted;
-}
 
 function outputText(result: JsonObject | undefined): string {
   const content = result?.content;

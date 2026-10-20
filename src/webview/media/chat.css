@@ -4744,13 +4744,40 @@ body.vscode-high-contrast .chat-list-row.active {
   overflow-wrap: anywhere;
   padding: 6px 0;
 }
-.activity-status {
+.addon-details {
+  padding: 0 7px;
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+}
+.addon-details > summary {
+  cursor: pointer;
+  padding: 5px 0;
+}
+.addon-unavailable {
+  margin-inline-start: 10px;
+}
+.addon-details-content {
+  max-height: min(28vh, 240px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 4px 0 7px;
+}
+.addon-detail-row {
   display: grid;
   gap: 3px;
-  margin-top: 12px;
+  padding: 7px 0;
+  color: var(--vscode-foreground);
 }
-.activity-status span {
+.addon-detail-row strong {
+  font-weight: 500;
+}
+.addon-detail-row span {
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.addon-compatibility .approval-btn {
+  justify-self: start;
+  padding: 3px 8px;
 }
 .activity-count {
   font-variant-numeric: tabular-nums;

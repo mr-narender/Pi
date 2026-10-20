@@ -40,5 +40,6 @@ export function toPersistedChatSnapshot(snapshot: WebviewSnapshot): PersistedCha
     >),
     messages: sanitizeMessageImages(snapshot.messages),
     pendingImages: sanitizePendingImages(snapshot.pendingImages),
+    approvals: snapshot.approvals?.filter((item) => item.method !== 'unsupported_ui'),
   };
 }

@@ -121,6 +121,9 @@ function denseSnapshot(): WebviewSnapshot {
       },
     ],
   };
+  snapshot.statuses = Object.fromEntries(
+    snapshot.activity.statuses.map(({ label, text }) => [label, text])
+  );
   return snapshot;
 }
 
@@ -165,7 +168,8 @@ test('dense activity groups every original read and reasoning entry without repe
     activity.querySelector('[data-work-call="delegate-two"] > summary')!.textContent!,
     /Failed/i
   );
-  const runtime = activity.querySelector<HTMLDetailsElement>('[data-work-group="runtime"]')!;
+  assert.equal(activity.querySelector('[data-work-group="runtime"]'), null);
+  const runtime = doc.querySelector<HTMLDetailsElement>('#addon-details')!;
   assert.ok(runtime);
   assert.equal(runtime.open, false);
   for (const text of [

@@ -3056,6 +3056,7 @@ function structureSignature(s: WebviewSnapshot): string {
     `|extensionDraftAck${JSON.stringify(s.extensionUiDraftAck ?? null)}` +
     `|reported${JSON.stringify(s.activity?.agents ?? [])}` +
     `|runtimeActivity${JSON.stringify([s.activity?.tools, s.activity?.output, s.activity?.statuses, s.activity?.files])}` +
+    `|addons${JSON.stringify([s.statuses, s.widgets, s.approvals?.filter((item) => item.method === 'unsupported_ui')])}` +
     `|modelTools${JSON.stringify([s.modelTools?.requestId, s.modelTools?.status, s.modelTools?.revision, s.modelTools?.message])}` +
     `|mcpStatus${JSON.stringify(s.mcpStatus ?? null)}` +
     `|outbox${JSON.stringify([s.outbox?.key, s.outbox?.notice, s.outbox?.readOnly, s.outbox?.items.map((item) => [item.id, item.revision, item.status])])}|outboxAck${JSON.stringify(s.outboxAck ?? null)}`

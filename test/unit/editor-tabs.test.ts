@@ -250,6 +250,21 @@ test('editorTabs.revive.noPromptReplay', () => {
   assert.equal(persisted.pendingImages[0]?.requiresReselect, true);
 });
 
+test('saved chat snapshots omit compatibility notices while preserving real prompts and data', () => {
+  const prompt = { id: 'approve', method: 'confirm' as const, requestKey: 'real', title: 'Allow?' };
+  const original = snapshot({
+    approvals: [
+      { id: 'old', method: 'unsupported_ui', requestKey: 'notice', uiCapability: 'footer' },
+      prompt,
+    ],
+  });
+  const persisted = toPersistedChatSnapshot(original);
+  assert.deepEqual(persisted.approvals, [prompt]);
+  assert.equal(original.approvals!.length, 2, 'live snapshot is unchanged');
+  assert.deepEqual(persisted.statuses, original.statuses);
+  assert.deepEqual(persisted.pendingContextItems, original.pendingContextItems);
+});
+
 test('different sessions keep distinct identity even if the short label collides', () => {
   const a = chatPathFor({
     workspaceFolderUri: 'file:///w',

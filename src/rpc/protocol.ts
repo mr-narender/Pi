@@ -448,7 +448,7 @@ export function parseEnvelope(value: unknown): RpcResponse | ExtensionUiRequest 
         ? asStringArray(record.options, 'extension_ui_request.options')
         : undefined,
       message: !known.includes(rawMethod)
-        ? 'This interface is not available in the chat. Use the extension in Pi’s terminal.'
+        ? 'This add-on has not provided a chat-compatible version of this view.'
         : asOptionalString(record.message),
       placeholder: asOptionalString(record.placeholder),
       prefill: asOptionalString(record.prefill),
