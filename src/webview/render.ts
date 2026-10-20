@@ -6,6 +6,7 @@ import { chipPrivacyLabel, summarizeChip, type PendingContextItem } from './comp
 import { formatUsageChip } from './usageSummary';
 import { editReplacements, editToolFilePath, type EditReplacement } from './editToolPath';
 import { toolActivity } from '../live/toolActivity';
+import { displayText } from './displayText';
 
 export const COMPOSER_FIELD_ID = 'composer-field';
 export const ATTACH_TRIGGER_ID = 'attach-trigger';
@@ -1177,7 +1178,7 @@ function sessionLabel(snapshot: WebviewSnapshot): string {
 // Extension UI prompts rendered inline so approvals and multiline editing stay
 // in the conversation instead of opening native modals or untitled files.
 function renderApprovals(snapshot: WebviewSnapshot): string {
-  const approvals = snapshot.approvals ?? [];
+  const approvals = (snapshot.approvals ?? []).filter((item) => item.method !== 'unsupported_ui');
   if (approvals.length === 0) {
     return '';
   }
@@ -1205,9 +1206,6 @@ function renderApprovals(snapshot: WebviewSnapshot): string {
             ? 'Response delivery could not be confirmed. It will not be sent again automatically. Check Pi’s output log before continuing.'
             : (approval.responseError ?? '');
       const notice = `<p class="approval-msg" role="status">${escapeHtml(status)}</p>`;
-      if (approval.method === 'unsupported_ui') {
-        return `<div class="approval-card" data-extension-request="${key}" role="status"><div class="approval-head">This extension needs a terminal-only view</div><p class="approval-msg">Pi cannot display this custom terminal interface in the chat. Use the extension in Pi’s terminal.</p>${body}<div class="approval-actions"><button type="button" class="approval-btn" ${attrs} data-ui-cancelled="true">Dismiss</button></div>${notice}</div>`;
-      }
       if (approval.method === 'set_editor_text') {
         const prepared =
           typeof approval.draftRevision === 'number' && typeof approval.draftResetSeq === 'number';
@@ -1233,6 +1231,47 @@ function renderApprovals(snapshot: WebviewSnapshot): string {
       return `<div class="approval-card" data-extension-request="${key}" role="alertdialog" aria-label="${heading}"><div class="approval-head">${heading}</div>${body}<div class="approval-actions">${buttons}</div>${notice}</div>`;
     })
     .join('');
+}
+
+function renderAddonDetails(snapshot: WebviewSnapshot): string {
+  const text = (value: string) => escapeHtml(displayText(value, 16000));
+  const rows = [
+    ...Object.entries(snapshot.statuses).map(([key, value]) => ({ key, value })),
+    ...snapshot.widgets.map((widget) => ({ key: widget.key, value: widget.lines.join('\n') })),
+  ].map(
+    ({ key, value }) =>
+      `<div class="addon-detail-row"><strong>${text(key)}</strong><span>${text(value)}</span></div>`
+  );
+  const notices =
+    snapshot.bindingState === 'cached'
+      ? []
+      : (snapshot.approvals ?? []).filter((item) => item.method === 'unsupported_ui');
+  const labels: Record<string, string> = {
+    custom: 'Custom view',
+    widget: 'Custom widget',
+    footer: 'Custom footer',
+    header: 'Custom header',
+    editor: 'Custom editor',
+  };
+  for (const notice of notices) {
+    const blocked =
+      !notice.requestKey ||
+      !!notice.responseState ||
+      snapshot.switchingSession ||
+      !['starting', 'handshaking', 'ready', 'busy'].includes(snapshot.connectionState);
+    const status =
+      notice.responseState === 'sending'
+        ? 'Sending response…'
+        : notice.responseState === 'unknown'
+          ? 'Response delivery could not be confirmed. It will not be sent again automatically. Check Pi’s output log before continuing.'
+          : notice.responseError;
+    rows.push(
+      `<div class="addon-detail-row addon-compatibility" data-extension-request="${escapeHtml(notice.requestKey ?? '')}" role="status"><strong>${text(notice.title ?? labels[notice.uiCapability ?? 'custom'] ?? 'Add-on view')}</strong><span>This add-on has not provided a chat-compatible version of this view.</span><button type="button" class="approval-btn" data-ui-id="${escapeHtml(notice.id)}" data-ui-key="${escapeHtml(notice.requestKey ?? '')}" data-ui-cancelled="true"${blocked ? ' disabled' : ''}>Dismiss</button>${status ? `<span>${text(status)}</span>` : ''}</div>`
+    );
+  }
+  return rows.length
+    ? `<details id="addon-details" class="addon-details" data-preserve-open><summary>Add-ons${notices.length ? '<span class="addon-unavailable">View unavailable</span>' : ''}</summary><div class="addon-details-content">${rows.join('')}</div></details>`
+    : '';
 }
 
 // #5 — compact tokens / context% / cost chip. Click opens full session stats.
@@ -1511,12 +1550,6 @@ function renderMessages(
   const turnCalls = new Set<string>();
   const turnIds = new Set<string>();
   const turnPaths = new Set<string>();
-  const latestReply = [...snapshot.messages]
-    .reverse()
-    .find(
-      (message) =>
-        message.role === 'assistant' && (assistantHasContent(message) || message.errorMessage)
-    );
   let turnTasks: WebviewSnapshot['messages'][number]['reportedTasks'];
   const flushTurn = (): void => {
     if (!turnIds.size) return;
@@ -1533,7 +1566,6 @@ function renderMessages(
       .filter(Boolean)
       .join(' · ');
     const reported = renderReportedTasks(plan);
-    const current = !!latestReply && turnIds.has(latestReply.id);
     const scopedTools = snapshot.activity?.tools.filter((tool) => turnCalls.has(tool.id)) ?? [];
     const files = [...turnPaths]
       .filter((path) => path.length <= 1000 && !/[\u0000-\u001f\u007f]/.test(path))
@@ -1556,7 +1588,7 @@ function renderMessages(
         tools: scopedTools,
         output: lastTool && turnCalls.has(lastTool.id) ? (snapshot.activity?.output ?? '') : '',
         files,
-        statuses: current ? (snapshot.activity?.statuses ?? []) : [],
+        statuses: [],
       },
     };
     const hasActivity =
@@ -1564,8 +1596,7 @@ function renderMessages(
       reported ||
       agents.length ||
       files.length ||
-      scoped.activity.tools.length ||
-      scoped.activity.statuses.length;
+      scoped.activity.tools.length;
     if (hasActivity) activityTurns?.push(turnContent);
     const footer = hasActivity
       ? renderActivityPanel(
@@ -1975,26 +2006,11 @@ export function renderActivityContent(
     : tools.length
       ? `<p class="muted">Current chat runtime activity</p><ol class="activity-tools">${tools.map((tool) => `<li><span>${escapeHtml(tool.name)}</span><span class="muted">${escapeHtml(tool.status)}${tool.durationMs === undefined ? '' : ` · ${escapeHtml(String(tool.durationMs))} ms`}</span></li>`).join('')}</ol>${activity?.output ? renderActivityDetails(`<pre class="activity-output">${escapeHtml(activity.output)}</pre>`, `${scope}-output`) : '<p class="muted">Waiting for tool output.</p>'}`
       : '<p class="muted">Tool activity will appear here as Pi works.</p>';
-  const statusRows = (activity?.statuses ?? [])
-    .map(
-      (status) =>
-        `<div class="activity-status"><strong>${escapeHtml(status.label)}</strong><span>${escapeHtml(status.text)}</span></div>`
-    )
-    .join('');
-  const statuses = statusRows
-    ? renderActivityDetails(
-        statusRows,
-        `${scope}-runtime`,
-        'Runtime details',
-        `${activity!.statuses.length} status updates`,
-        'runtime'
-      )
-    : '';
   const files = activity?.files ?? [];
   const sources = files.length
     ? `<p class="muted">Files reported by tools or attached for this reply.</p><ul class="activity-files">${files.map((file) => `<li><button type="button" data-file-open="${escapeHtml(file.path)}">${escapeHtml(file.path)}</button></li>`).join('')}</ul>`
     : '<p class="muted">No source files reported for this reply.</p>';
-  return `<div class="activity-tabs" role="tablist" aria-label="Activity views">${tabs}</div>${view('output', output + statuses)}${view('sources', sources)}${activity?.agents?.length ? view('agents', renderReportedAgents(activity.agents, snapshot, scope)) : ''}`;
+  return `<div class="activity-tabs" role="tablist" aria-label="Activity views">${tabs}</div>${view('output', output)}${view('sources', sources)}${activity?.agents?.length ? view('agents', renderReportedAgents(activity.agents, snapshot, scope)) : ''}`;
 }
 
 export function renderModelTools(snapshot: WebviewSnapshot): string {
@@ -2199,7 +2215,7 @@ ${renderCompactionBanner(snapshot)}
               <button type="button" id="${SEND_BUTTON_ID}" class="send-button" data-send-command="${sendCommand}" title="${sendLabel}" aria-label="${sendLabel}" ${unsafeDisabledAttr}><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12.5 4v3a1.5 1.5 0 0 1-1.5 1.5H4.5"/><path d="M7 6L4.3 8.5 7 11"/></svg></button>
             </div>
           </div>
-        </div>
+        </div>${renderAddonDetails(snapshot)}
       </section>
 
       ${renderPreview(snapshot)}

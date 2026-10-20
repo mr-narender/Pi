@@ -272,7 +272,7 @@ function createSessionRunner(sessionKey, runtimeHost, hostEmit) {
       id: crypto.randomUUID(),
       method: 'unsupported_ui',
       uiCapability,
-      message: 'This interface is not available in the chat. Use the extension in Pi’s terminal.',
+      message: 'This add-on has not provided a chat-compatible version of this view.',
     });
   };
   /** Helper for dialog methods with signal/timeout support */
@@ -396,10 +396,10 @@ function createSessionRunner(sessionKey, runtimeHost, hostEmit) {
       // Component factories are not supported in RPC mode - would need TUI access
     },
     setFooter(_factory) {
-      unsupportedUi('footer');
+      if (_factory !== undefined) unsupportedUi('footer');
     },
     setHeader(_factory) {
-      unsupportedUi('header');
+      if (_factory !== undefined) unsupportedUi('header');
     },
     setTitle(title) {
       // Fire and forget - host can implement terminal title control
@@ -442,8 +442,8 @@ function createSessionRunner(sessionKey, runtimeHost, hostEmit) {
     addAutocompleteProvider() {
       // Autocomplete provider composition is not supported in RPC mode
     },
-    setEditorComponent() {
-      unsupportedUi('editor');
+    setEditorComponent(factory) {
+      if (factory !== undefined) unsupportedUi('editor');
     },
     getEditorComponent() {
       // Custom editor components not supported in RPC mode

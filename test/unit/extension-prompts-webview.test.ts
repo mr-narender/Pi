@@ -730,20 +730,112 @@ test('unknown response is read-only, and a detached old request cannot respond t
   }
 });
 
-test('terminal-only notice dismisses locally without pretending to be a blocking approval', async () => {
-  const notice = { id: 'notice', requestKey: 'key-notice', method: 'unsupported_ui' as const };
+test('compatibility details stay below the input and dismiss without pretending to be an approval', async () => {
+  const notice = {
+    id: 'notice',
+    requestKey: 'key-notice',
+    method: 'unsupported_ui' as const,
+    uiCapability: 'custom',
+  };
   const s = snapshot({ approvals: [notice], connectionState: 'busy', isStreaming: true });
   assert.doesNotMatch(workingLabel(s), /approval/);
   const f = await frame();
   try {
     await f.send(s);
-    assert.match(f.w.document.querySelector('.approval-card')!.textContent!, /terminal-only/);
+    const details = f.w.document.querySelector<HTMLDetailsElement>('#addon-details')!;
+    assert.ok(details);
+    assert.equal(details.open, false);
+    assert.equal(f.w.document.querySelector('.approval-card'), null);
+    assert.match(details.textContent!, /Custom view/);
+    assert.doesNotMatch(f.w.document.body.textContent!, /terminal-only|Use the extension in Pi/);
+    assert.ok(details.previousElementSibling?.classList.contains('composer-card'));
     const dismiss = f.w.document.querySelector<HTMLButtonElement>('[data-ui-cancelled]')!;
     assert.equal(dismiss.textContent, 'Dismiss');
     dismiss.click();
     const response = f.posted.filter((message) => message.type === 'respondUi').at(-1)!;
     assert.equal(response.requestKey, notice.requestKey);
     assert.equal(response.cancelled, true);
+    await f.send({ ...s, approvals: [{ ...notice, responseState: 'unknown' }], sequence: 2 });
+    assert.match(
+      f.w.document.querySelector('#addon-details')!.textContent!,
+      /will not be sent again/
+    );
+    assert.equal(
+      f.w.document.querySelector<HTMLButtonElement>('[data-ui-cancelled]')!.disabled,
+      true
+    );
+  } finally {
+    f.dom.window.close();
+  }
+});
+
+test('add-on status and text widgets are escaped, below the composer and hidden when empty', () => {
+  const empty = new JSDOM(renderChatApp(snapshot())).window.document;
+  assert.equal(empty.querySelector('#addon-details'), null);
+  const doc = new JSDOM(
+    renderChatApp(
+      snapshot({
+        statuses: {
+          '<addon>': '<script>unsafe</script>',
+          color: '\u001b[31mReady\u001b[0m',
+          credential: 'Bearer ' + 'x'.repeat(40),
+        },
+        widgets: [
+          { key: 'Search', lines: ['Index ready', 'Two lines'], placement: 'aboveEditor' },
+          { key: 'Semantic', lines: ['Building'], placement: 'belowEditor' },
+        ],
+        approvals: [request('input')],
+      })
+    )
+  ).window.document;
+  const details = doc.querySelector<HTMLDetailsElement>('#addon-details')!;
+  assert.ok(details);
+  assert.equal(details.open, false);
+  assert.equal(details.querySelector('script, addon'), null);
+  assert.match(details.textContent!, /<addon>/);
+  assert.match(details.textContent!, /<script>unsafe<\/script>/);
+  assert.match(details.textContent!, /Index ready\nTwo lines/);
+  assert.match(details.textContent!, /Building/);
+  assert.match(details.textContent!, /Ready/);
+  assert.match(details.textContent!, /\[REDACTED\]/);
+  assert.doesNotMatch(details.textContent!, /\u001b|xxxxxxxx|\[31m/);
+  assert.ok(details.closest('.composer-dock'));
+  assert.ok(details.previousElementSibling?.classList.contains('composer-card'));
+  assert.ok(doc.querySelector('.approval-card .approval-input'), 'real input stays interactive');
+});
+
+test('add-on disclosure and unsent draft survive streaming status changes and reset for another chat', async () => {
+  const f = await frame();
+  try {
+    await f.send({ statuses: { search: 'First status' } });
+    const details = f.w.document.querySelector<HTMLDetailsElement>('#addon-details')!;
+    assert.ok(details);
+    details.open = true;
+    const composer = f.w.document.querySelector<HTMLTextAreaElement>('#composer-field')!;
+    composer.value = 'My unsent text';
+    composer.dispatchEvent(new f.w.Event('input', { bubbles: true }));
+    await f.send({
+      sequence: 2,
+      connectionState: 'busy',
+      isStreaming: true,
+      statuses: { search: 'Second status' },
+    });
+    assert.equal(f.w.document.querySelector<HTMLDetailsElement>('#addon-details')!.open, true);
+    assert.match(f.w.document.querySelector('#addon-details')!.textContent!, /Second status/);
+    assert.equal(
+      f.w.document.querySelector<HTMLTextAreaElement>('#composer-field')!.value,
+      'My unsent text'
+    );
+    await f.send({ sequence: 3, statuses: {} });
+    assert.equal(f.w.document.querySelector('#addon-details'), null);
+    await f.send({ sequence: 4, statuses: { search: 'Returned' } });
+    assert.equal(f.w.document.querySelector<HTMLDetailsElement>('#addon-details')!.open, true);
+    await f.send({
+      sequence: 5,
+      sessionFile: '/tmp/project/other.jsonl',
+      statuses: { search: 'Other chat' },
+    });
+    assert.equal(f.w.document.querySelector<HTMLDetailsElement>('#addon-details')!.open, false);
   } finally {
     f.dom.window.close();
   }

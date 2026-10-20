@@ -41,7 +41,19 @@ export class ChatTabStateCache implements vscode.Disposable {
       if (!state) {
         continue;
       }
-      this.states.set(resource, value);
+      const snapshot = value.lastSnapshot;
+      this.states.set(
+        resource,
+        Array.isArray(snapshot?.approvals)
+          ? {
+              ...value,
+              lastSnapshot: {
+                ...snapshot,
+                approvals: snapshot.approvals.filter((item) => item?.method !== 'unsupported_ui'),
+              },
+            }
+          : value
+      );
     }
     for (const resource of savedResources) {
       if (typeof resource === 'string') {

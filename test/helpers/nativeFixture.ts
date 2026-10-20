@@ -211,6 +211,12 @@ export default function ownedExtensionUi(pi) {
     ctx.ui.setWidget('owned-widget', ['Owned widget']);
     ctx.ui.setTitle('Owned title');
   } });
+  pi.registerCommand('owned-ui-clear-components', { handler: async (_args, ctx) => {
+    ctx.ui.setFooter(undefined);
+    ctx.ui.setHeader(undefined);
+    ctx.ui.setEditorComponent(undefined);
+    trace({ kind: 'components-cleared' });
+  } });
   pi.registerCommand('owned-ui-widget-factory', { handler: async (_args, ctx) => {
     ctx.ui.setWidget('owned-widget', () => { trace({ kind: 'widget-factory-executed' }); throw new Error('Owned widget factory must not execute'); });
   } });

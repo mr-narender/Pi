@@ -184,7 +184,14 @@ for (const version of ['1.2.0', '1.3.0']) {
             .find(
               (request) => request.method === 'unsupported_ui' && request.uiCapability === 'custom'
             )!;
-          assert.match(custom.message!, /terminal|TUI/i);
+          assert.match(custom.message!, /chat-compatible/);
+          const clearStart = requests.length;
+          await client.prompt('/owned-ui-clear-components');
+          await until(async () => (await trace()).some((row) => row.kind === 'components-cleared'));
+          assert.ok(
+            !requests.slice(clearStart).some((request) => request.method === 'unsupported_ui'),
+            'clearing cosmetic components does not create a compatibility notice'
+          );
           await client.prompt('/owned-ui-status');
           assert.ok(
             requests.some(
