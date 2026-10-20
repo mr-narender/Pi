@@ -814,16 +814,30 @@ let loadOlderPending = false;
 // actually appear.
 let pendingBottomKey: string | undefined;
 
-// Robust scroll-to-bottom. With the virtualized list, off-screen messages use
-// `content-visibility` with an *estimated* height, so `scrollHeight` keeps
-// changing as messages render into view or images/code lay out. Instead of a
-// one-shot assignment, we PIN to the bottom across a short window, re-asserting
-// every animation frame so late relayout can't leave us stranded near the top.
-// The user scrolling (wheel/touch/keys) cancels the pin immediately.
+// Keep late image/code layout at the bottom until the reader scrolls away.
+// A small upward gesture must also pause streaming follow, even inside the
+// near-bottom tolerance used for ordinary layout changes.
 let bottomPinUntil = 0;
 let bottomPinRaf = 0;
+let readerPaused = false;
+let lastObservedScrollTop = 0;
+function pauseTranscriptFollow(): void {
+  readerPaused = true;
+  bottomPinUntil = 0;
+  if (bottomPinRaf) {
+    cancelAnimationFrame(bottomPinRaf);
+    bottomPinRaf = 0;
+  }
+}
+function setMessageScrollTop(messages: HTMLElement, top: number): void {
+  messages.scrollTop = top;
+  // Record the browser's clamped position now. Its queued scroll event is not
+  // evidence that the reader deliberately returned to the bottom.
+  lastObservedScrollTop = messages.scrollTop;
+}
 function scrollMessagesToBottom(messages: HTMLElement, durationMs = 650): void {
-  messages.scrollTop = messages.scrollHeight;
+  readerPaused = false;
+  setMessageScrollTop(messages, messages.scrollHeight);
   bottomPinUntil = performance.now() + durationMs;
   if (bottomPinRaf) {
     return;
@@ -831,27 +845,46 @@ function scrollMessagesToBottom(messages: HTMLElement, durationMs = 650): void {
   const step = (): void => {
     const el = document.getElementById('messages');
     if (el && performance.now() < bottomPinUntil) {
-      el.scrollTop = el.scrollHeight;
+      setMessageScrollTop(el, el.scrollHeight);
       bottomPinRaf = requestAnimationFrame(step);
     } else {
       bottomPinRaf = 0;
-      (el?.lastElementChild as HTMLElement | null)?.scrollIntoView({ block: 'end' });
     }
   };
   bottomPinRaf = requestAnimationFrame(step);
 }
-// Any explicit user scroll intent cancels an active bottom-pin.
-for (const evt of ['wheel', 'touchmove', 'keydown'] as const) {
+let touchY: number | undefined;
+// Cancel before native scrolling, so a render between the input and its scroll
+// event cannot reacquire the bottom. Composer caret movement is unrelated.
+for (const evt of ['wheel', 'touchstart', 'touchmove', 'keydown'] as const) {
   window.addEventListener(
     evt,
     (event) => {
+      const target = event.target instanceof window.Element ? event.target : undefined;
+      const messages = document.getElementById('messages');
       if (evt === 'keydown') {
         const key = (event as KeyboardEvent).key;
-        if (key !== 'PageUp' && key !== 'ArrowUp' && key !== 'Home') {
+        if (
+          (key !== 'PageUp' && key !== 'ArrowUp' && key !== 'Home') ||
+          target?.closest('textarea, input, [contenteditable]:not([contenteditable="false"])')
+        ) {
           return;
         }
+      } else {
+        if (!target || !messages?.contains(target)) return;
+        if (evt === 'wheel' && (event as WheelEvent).deltaY >= 0) return;
+        if (evt === 'touchstart') {
+          touchY = (event as TouchEvent).touches[0]?.clientY;
+          return;
+        }
+        if (evt === 'touchmove') {
+          const nextY = (event as TouchEvent).touches[0]?.clientY;
+          const upwards = nextY !== undefined && touchY !== undefined && nextY > touchY;
+          touchY = nextY;
+          if (!upwards) return;
+        }
       }
-      bottomPinUntil = 0;
+      pauseTranscriptFollow();
     },
     { passive: true }
   );
@@ -2581,17 +2614,34 @@ function renderNow(snapshot: WebviewSnapshot): void {
 
   const messagesEl = document.getElementById('messages');
   bindOnce(messagesEl, 'scroll', persistViewState, { passive: true });
+  bindOnce(
+    messagesEl,
+    'scroll',
+    () => {
+      if (!messagesEl) return;
+      const top = messagesEl.scrollTop;
+      const distance = messagesEl.scrollHeight - top - messagesEl.clientHeight;
+      if (top < lastObservedScrollTop - 1) {
+        // Includes scrollbar dragging and assistive/native scrolling.
+        pauseTranscriptFollow();
+      } else if (top > lastObservedScrollTop + 1 && distance <= 2) {
+        readerPaused = false;
+      }
+      lastObservedScrollTop = top;
+    },
+    { passive: true }
+  );
 
   // #6 — jump-to-latest button appears when scrolled up.
   const jumpBtn = document.getElementById('jump-latest') as HTMLButtonElement | null;
   if (messagesEl && jumpBtn) {
     const updateJump = (): void => {
       const distance = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight;
-      jumpBtn.hidden = distance < 120;
+      jumpBtn.hidden = distance <= 2 || (!readerPaused && distance < 120);
     };
     bindOnce(messagesEl, 'scroll', updateJump, { passive: true });
     bindOnce(jumpBtn, 'click', () => {
-      messagesEl.scrollTop = messagesEl.scrollHeight;
+      scrollMessagesToBottom(messagesEl);
       jumpBtn.hidden = true;
     });
     updateJump();
@@ -2777,6 +2827,7 @@ function updateFindCurrent(scroll: boolean): void {
       details.open = true;
       container = details.parentElement;
     }
+    pauseTranscriptFollow();
     (current.startContainer.parentElement ?? null)?.scrollIntoView({ block: 'center' });
   }
 }
@@ -2863,6 +2914,7 @@ function jumpTurn(direction: 1 | -1): void {
   if (!target) {
     return;
   }
+  pauseTranscriptFollow();
   target.scrollIntoView({ block: 'start', behavior: 'smooth' });
   target.classList.add('find-flash');
   setTimeout(() => target.classList.remove('find-flash'), 700);
@@ -3027,8 +3079,12 @@ function lastStreamText(s: WebviewSnapshot): string | undefined {
 }
 function keepPinnedToBottom(): void {
   const messages = document.getElementById('messages');
-  if (messages && messages.scrollHeight - messages.scrollTop - messages.clientHeight < 120) {
-    messages.scrollTop = messages.scrollHeight;
+  if (
+    messages &&
+    !readerPaused &&
+    messages.scrollHeight - messages.scrollTop - messages.clientHeight < 120
+  ) {
+    setMessageScrollTop(messages, messages.scrollHeight);
   }
 }
 const TYPEWRITER_SPEEDS: Record<string, { divisor: number; interval: number }> = {
@@ -3299,6 +3355,7 @@ function applyScrollAndPaging(snapshot: WebviewSnapshot, metrics: ScrollMetrics)
     // arrived yet (loading state), defer the jump to the render that has them.
     lastMessageKey = key;
     lastWindowOffset = win?.offset;
+    readerPaused = false;
     if (hasMessages) {
       scrollMessagesToBottom(messages);
     } else {
@@ -3317,13 +3374,13 @@ function applyScrollAndPaging(snapshot: WebviewSnapshot, metrics: ScrollMetrics)
     // Older batch was prepended: keep the viewport anchored on the message the
     // user was looking at (no jump).
     const delta = messages.scrollHeight - metrics.prevScrollHeight;
-    messages.scrollTop = metrics.prevScrollTop + delta;
+    setMessageScrollTop(messages, metrics.prevScrollTop + delta);
     loadOlderPending = false;
-  } else if (metrics.wasNearBottom) {
+  } else if (!readerPaused && metrics.wasNearBottom) {
     // Live streaming while already near the bottom: stick to the bottom.
     scrollMessagesToBottom(messages);
   } else {
-    messages.scrollTop = metrics.prevScrollTop;
+    setMessageScrollTop(messages, metrics.prevScrollTop);
   }
 
   lastMessageKey = key;
@@ -3410,6 +3467,7 @@ function applyFocus(): void {
 
 window.addEventListener('beforeunload', () => {
   persistViewState();
+  pauseTranscriptFollow();
   workingDisposed = true;
   stopWorkingPhrases();
   if (flushTimer) clearTimeout(flushTimer);
